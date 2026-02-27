@@ -1,0 +1,26 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: games-hub
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    volumes:
+      - .:/var/www
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_CONNECTION=sqlite
+      - DB_DATABASE=/var/www/database/database.sqlite
+    command: >
+      sh -c "composer install --no-interaction &&
+             cp -n .env.example .env || true &&
+             php artisan key:generate --force &&
+             touch /var/www/database/database.sqlite &&
+             chown -R www-data:www-data /var/www/database /var/www/storage /var/www/bootstrap/cache &&
+             chmod -R 775 /var/www/storage /var/www/bootstrap/cache &&
+             php artisan migrate --force &&
+             php artisan db:seed --force &&
+             /usr/bin/supervisord -c /etc/supervisord.conf"
