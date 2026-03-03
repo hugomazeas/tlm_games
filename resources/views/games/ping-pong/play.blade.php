@@ -15,7 +15,7 @@
     .pp-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 16px;
+        gap: 20px;
         flex: 1;
         min-height: 0;
     }
@@ -23,8 +23,8 @@
     .pp-panel {
         background: rgba(255,255,255,0.05);
         border: 1px solid rgba(255,255,255,0.1);
-        border-radius: 12px;
-        padding: 20px;
+        border-radius: 16px;
+        padding: 24px;
         display: flex;
         flex-direction: column;
         overflow: hidden;
@@ -32,8 +32,8 @@
 
     .pp-player-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-        gap: 10px;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 16px;
         overflow-y: auto;
         flex: 1;
         min-height: 0;
@@ -41,9 +41,13 @@
 
     .pp-player-card {
         background: rgba(255,255,255,0.05);
-        border: 2px solid rgba(255,255,255,0.1);
-        border-radius: 10px;
-        padding: 14px 10px;
+        border: 3px solid rgba(255,255,255,0.1);
+        border-radius: 16px;
+        aspect-ratio: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
         text-align: center;
         cursor: pointer;
         transition: all 0.2s;
@@ -52,31 +56,31 @@
     .pp-player-card:hover, .pp-player-card.focused {
         background: rgba(59, 130, 246, 0.15);
         border-color: #3b82f6;
-        transform: translateY(-2px);
+        transform: translateY(-3px);
     }
 
     .pp-player-card .name {
         font-weight: 700;
-        font-size: 1rem;
-        margin-bottom: 4px;
+        font-size: 1.6rem;
+        margin-bottom: 8px;
     }
 
     .pp-player-card .elo {
         color: rgba(255,255,255,0.5);
-        font-size: 0.8rem;
+        font-size: 1.15rem;
     }
 
     .pp-leaderboard-table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 0.85rem;
+        font-size: 1.2rem;
     }
 
     .pp-leaderboard-table th {
         text-align: left;
-        padding: 8px 6px;
+        padding: 12px 10px;
         color: rgba(255,255,255,0.5);
-        font-size: 0.75rem;
+        font-size: 1rem;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         border-bottom: 1px solid rgba(255,255,255,0.1);
@@ -86,7 +90,7 @@
     }
 
     .pp-leaderboard-table td {
-        padding: 8px 6px;
+        padding: 12px 10px;
         border-bottom: 1px solid rgba(255,255,255,0.05);
     }
 
@@ -108,17 +112,17 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 20px;
+        gap: 28px;
         min-height: 0;
     }
 
     .pp-side-box {
         flex: 1;
-        max-width: 300px;
-        padding: 40px 20px;
-        border-radius: 16px;
+        max-width: 450px;
+        padding: 60px 40px;
+        border-radius: 24px;
         text-align: center;
-        border: 2px solid rgba(255,255,255,0.1);
+        border: 3px solid rgba(255,255,255,0.1);
     }
 
     .pp-side-box.left {
@@ -132,15 +136,15 @@
     }
 
     .pp-side-box .label {
-        font-size: 0.8rem;
+        font-size: 1.3rem;
         text-transform: uppercase;
         letter-spacing: 0.1em;
         color: rgba(255,255,255,0.5);
-        margin-bottom: 8px;
+        margin-bottom: 12px;
     }
 
     .pp-side-box .player-name {
-        font-size: 1.5rem;
+        font-size: 2.8rem;
         font-weight: 800;
     }
 
@@ -148,15 +152,15 @@
         background: rgba(255,255,255,0.1);
         border: 2px solid rgba(255,255,255,0.2);
         border-radius: 50%;
-        width: 50px;
-        height: 50px;
+        width: 76px;
+        height: 76px;
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
         transition: all 0.2s;
         color: white;
-        font-size: 1.2rem;
+        font-size: 2rem;
         flex-shrink: 0;
     }
 
@@ -170,50 +174,50 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 24px;
-        padding: 8px 0;
-        margin-bottom: 12px;
+        gap: 32px;
+        padding: 10px 0;
+        margin-bottom: 16px;
         flex-shrink: 0;
     }
 
     .pp-badge {
         background: rgba(59, 130, 246, 0.2);
         color: #3b82f6;
-        padding: 4px 12px;
+        padding: 8px 20px;
         border-radius: 999px;
-        font-size: 0.8rem;
+        font-size: 1.25rem;
         font-weight: 700;
     }
 
     .pp-timer {
         font-family: monospace;
-        font-size: 1.1rem;
+        font-size: 1.7rem;
         color: rgba(255,255,255,0.7);
     }
 
     .pp-clock {
         font-family: monospace;
-        font-size: 0.9rem;
+        font-size: 1.3rem;
         color: rgba(255,255,255,0.4);
     }
 
     .pp-game-area {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 16px;
+        gap: 24px;
         flex: 1;
         min-height: 0;
     }
 
     .pp-score-panel {
-        border-radius: 16px;
-        padding: 24px;
+        border-radius: 24px;
+        padding: 40px;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
         position: relative;
-        border: 2px solid rgba(255,255,255,0.1);
+        border: 3px solid rgba(255,255,255,0.1);
     }
 
     .pp-score-panel.left {
@@ -227,24 +231,27 @@
     }
 
     .pp-score-panel .player-name {
-        font-size: 1.4rem;
+        font-size: 2.5rem;
         font-weight: 700;
-        margin-bottom: 8px;
+        margin-bottom: 12px;
         color: rgba(255,255,255,0.9);
     }
 
     .pp-serve-indicator {
-        font-size: 0.8rem;
-        padding: 3px 10px;
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 24px;
+        min-height: 50px;
+        padding: 6px 28px;
         border-radius: 999px;
-        margin-bottom: 16px;
-        font-weight: 600;
-        min-height: 26px;
+        visibility: hidden;
     }
 
     .pp-serve-indicator.serving {
-        background: rgba(59, 130, 246, 0.25);
-        color: #60a5fa;
+        visibility: visible;
+        color: #fca5a5;
+        background: rgba(252, 165, 165, 0.12);
+        border: 2px solid rgba(252, 165, 165, 0.25);
         animation: pulse-serve 1.5s ease-in-out infinite;
     }
 
@@ -254,10 +261,10 @@
     }
 
     .pp-score-value {
-        font-size: 8rem;
+        font-size: 10rem;
         font-weight: 900;
         line-height: 1;
-        margin-bottom: 20px;
+        margin-bottom: 24px;
     }
 
     .pp-score-panel.left .pp-score-value { color: #fb7185; }
@@ -265,17 +272,17 @@
 
     .pp-score-buttons {
         display: flex;
-        gap: 12px;
+        gap: 16px;
     }
 
     .pp-score-btn {
-        width: 56px;
-        height: 56px;
+        width: 84px;
+        height: 84px;
         border-radius: 50%;
-        border: 2px solid rgba(255,255,255,0.2);
+        border: 3px solid rgba(255,255,255,0.2);
         background: rgba(255,255,255,0.05);
         color: white;
-        font-size: 1.5rem;
+        font-size: 2.4rem;
         font-weight: 700;
         cursor: pointer;
         transition: all 0.15s;
@@ -301,12 +308,12 @@
         align-items: center;
         justify-content: center;
         flex: 1;
-        gap: 24px;
+        gap: 28px;
         min-height: 0;
     }
 
     .pp-winner-text {
-        font-size: 2.5rem;
+        font-size: 4.5rem;
         font-weight: 900;
         background: linear-gradient(135deg, #3b82f6, #06b6d4);
         -webkit-background-clip: text;
@@ -314,7 +321,7 @@
     }
 
     .pp-final-score {
-        font-size: 3rem;
+        font-size: 5rem;
         font-weight: 800;
         color: rgba(255,255,255,0.9);
     }
@@ -322,46 +329,46 @@
     .pp-elo-changes {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 24px;
+        gap: 32px;
         width: 100%;
-        max-width: 500px;
+        max-width: 700px;
     }
 
     .pp-elo-card {
         background: rgba(255,255,255,0.05);
         border: 1px solid rgba(255,255,255,0.1);
-        border-radius: 12px;
-        padding: 16px;
+        border-radius: 16px;
+        padding: 28px;
         text-align: center;
     }
 
-    .pp-elo-card .name { font-weight: 700; margin-bottom: 8px; }
-    .pp-elo-card .change { font-size: 1.5rem; font-weight: 800; }
-    .pp-elo-card .detail { font-size: 0.85rem; color: rgba(255,255,255,0.5); margin-top: 4px; }
+    .pp-elo-card .name { font-weight: 700; margin-bottom: 10px; font-size: 1.5rem; }
+    .pp-elo-card .change { font-size: 2.5rem; font-weight: 800; }
+    .pp-elo-card .detail { font-size: 1.15rem; color: rgba(255,255,255,0.5); margin-top: 6px; }
 
     .pp-elo-positive { color: #22c55e; }
     .pp-elo-negative { color: #ef4444; }
 
     .pp-hint {
         color: rgba(255,255,255,0.3);
-        font-size: 0.85rem;
-        margin-top: 8px;
+        font-size: 1.15rem;
+        margin-top: 12px;
     }
 
     .pp-header {
-        margin-bottom: 12px;
+        margin-bottom: 16px;
         flex-shrink: 0;
     }
 
     .pp-header h2 {
-        font-size: 1.3rem;
+        font-size: 2.2rem;
         font-weight: 800;
         color: #3b82f6;
     }
 
     .pp-header-sub {
         color: rgba(255,255,255,0.5);
-        font-size: 0.85rem;
+        font-size: 1.2rem;
     }
 
     .pp-confirm-overlay {
@@ -377,21 +384,22 @@
     .pp-confirm-box {
         background: #1e293b;
         border: 2px solid rgba(255,255,255,0.2);
-        border-radius: 16px;
-        padding: 32px;
+        border-radius: 20px;
+        padding: 40px;
         text-align: center;
-        max-width: 400px;
+        max-width: 480px;
     }
 
     .pp-confirm-box h3 {
-        font-size: 1.3rem;
+        font-size: 2rem;
         font-weight: 700;
-        margin-bottom: 8px;
+        margin-bottom: 12px;
     }
 
     .pp-confirm-box p {
         color: rgba(255,255,255,0.5);
-        margin-bottom: 20px;
+        margin-bottom: 24px;
+        font-size: 1.3rem;
     }
 
     .pp-confirm-buttons {
@@ -401,12 +409,12 @@
     }
 
     .pp-confirm-buttons button {
-        padding: 8px 24px;
-        border-radius: 8px;
+        padding: 12px 32px;
+        border-radius: 12px;
         font-weight: 600;
         cursor: pointer;
         border: none;
-        font-size: 0.9rem;
+        font-size: 1.3rem;
     }
 
     .pp-btn-danger {
@@ -422,7 +430,7 @@
 
     .pp-duration {
         color: rgba(255,255,255,0.5);
-        font-size: 1rem;
+        font-size: 1.5rem;
     }
 </style>
 
@@ -494,7 +502,7 @@
     <template x-if="screen === 'opponent'">
         <div style="display: flex; flex-direction: column; height: 100%;">
             <div class="pp-header" style="text-align: center; padding: 16px 0;">
-                <h2 style="font-size: 1.8rem;">Ready, <span x-text="player1.name" style="color: #3b82f6;"></span>?</h2>
+                <h2 style="font-size: 2.8rem;">Ready, <span x-text="player1.name" style="color: #3b82f6;"></span>?</h2>
                 <div class="pp-header-sub">Pick your opponent</div>
             </div>
             <div class="pp-panel" style="flex: 1;">
@@ -517,7 +525,7 @@
     <template x-if="screen === 'sides'">
         <div style="display: flex; flex-direction: column; height: 100%;">
             <div class="pp-header" style="text-align: center; padding: 16px 0;">
-                <h2 style="font-size: 1.8rem;">Choose Sides</h2>
+                <h2 style="font-size: 2.8rem;">Choose Sides</h2>
                 <div class="pp-header-sub">Left/Right arrows to swap, Enter to start</div>
             </div>
             <div class="pp-sides-panel">
@@ -550,8 +558,7 @@
                 <div class="pp-score-panel left">
                     <div class="player-name" x-text="match.player_left?.name || leftPlayer.name"></div>
                     <div class="pp-serve-indicator" :class="{ 'serving': isServing('left') }">
-                        <span x-show="isServing('left')">Serving</span>
-                        <span x-show="!isServing('left')">&nbsp;</span>
+                        Serving
                     </div>
                     <div class="pp-score-value" x-text="match.player_left_score ?? 0"></div>
                     <div class="pp-score-buttons">
@@ -563,8 +570,7 @@
                 <div class="pp-score-panel right">
                     <div class="player-name" x-text="match.player_right?.name || rightPlayer.name"></div>
                     <div class="pp-serve-indicator" :class="{ 'serving': isServing('right') }">
-                        <span x-show="isServing('right')">Serving</span>
-                        <span x-show="!isServing('right')">&nbsp;</span>
+                        Serving
                     </div>
                     <div class="pp-score-value" x-text="match.player_right_score ?? 0"></div>
                     <div class="pp-score-buttons">
