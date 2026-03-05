@@ -11,8 +11,11 @@ class PingPongMatch extends Model
     protected $table = 'ping_pong_matches';
 
     protected $fillable = [
+        'mode',
         'player_left_id',
+        'team_left_player2_id',
         'player_right_id',
+        'team_right_player2_id',
         'player_left_score',
         'player_right_score',
         'winner_id',
@@ -24,6 +27,10 @@ class PingPongMatch extends Model
         'player_right_elo_before',
         'player_left_elo_after',
         'player_right_elo_after',
+        'team_left_player2_elo_before',
+        'team_left_player2_elo_after',
+        'team_right_player2_elo_before',
+        'team_right_player2_elo_after',
     ];
 
     protected function casts(): array
@@ -38,6 +45,10 @@ class PingPongMatch extends Model
             'player_right_elo_before' => 'integer',
             'player_left_elo_after' => 'integer',
             'player_right_elo_after' => 'integer',
+            'team_left_player2_elo_before' => 'integer',
+            'team_left_player2_elo_after' => 'integer',
+            'team_right_player2_elo_before' => 'integer',
+            'team_right_player2_elo_after' => 'integer',
         ];
     }
 
@@ -59,6 +70,21 @@ class PingPongMatch extends Model
     public function currentServer(): BelongsTo
     {
         return $this->belongsTo(Player::class, 'current_server_id');
+    }
+
+    public function teamLeftPlayer2(): BelongsTo
+    {
+        return $this->belongsTo(Player::class, 'team_left_player2_id');
+    }
+
+    public function teamRightPlayer2(): BelongsTo
+    {
+        return $this->belongsTo(Player::class, 'team_right_player2_id');
+    }
+
+    public function isDoubles(): bool
+    {
+        return $this->mode === '2v2';
     }
 
     public function getDurationAttribute(): ?int

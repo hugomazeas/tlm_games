@@ -10,10 +10,10 @@ class EloService
     private const K = 32;
     private const DEFAULT_RATING = 1200;
 
-    public function getOrCreateRating(int $playerId): PingPongRating
+    public function getOrCreateRating(int $playerId, string $mode = '1v1'): PingPongRating
     {
         return PingPongRating::firstOrCreate(
-            ['player_id' => $playerId],
+            ['player_id' => $playerId, 'mode' => $mode],
             ['elo_rating' => self::DEFAULT_RATING]
         );
     }
@@ -26,6 +26,15 @@ class EloService
     }
 
     public function applyMatchResult(PingPongMatch $match): array
+    {
+        if ($match->isDoubles()) {
+            return $this->applyDoublesResult($match);
+        }
+
+        return $this->applySinglesResult($match);
+    }
+
+    private function applySinglesResult(PingPongMatch $match): array
     {
         $leftRating = $this->getOrCreateRating($match->player_left_id);
         $rightRating = $this->getOrCreateRating($match->player_right_id);
@@ -59,6 +68,66 @@ class EloService
                 'before' => $rightBefore,
                 'after' => $rightBefore + $rightChange,
                 'change' => $rightChange,
+            ],
+        ];
+    }
+
+    private function applyDoublesResult(PingPongMatch $match): array
+    {
+        $mode = '2v2';
+
+        $leftP1Rating = $this->getOrCreateRating($match->player_left_id, $mode);
+        $leftP2Rating = $this->getOrCreateRating($match->team_left_player2_id, $mode);
+        $rightP1Rating = $this->getOrCreateRating($match->player_right_id, $mode);
+        $rightP2Rating = $this->getOrCreateRating($match->team_right_player2_id, $mode);
+
+        $leftP1Before = $leftP1Rating->elo_rating;
+        $leftP2Before = $leftP2Rating->elo_rating;
+        $rightP1Before = $rightP1Rating->elo_rating;
+        $rightP2Before = $rightP2Rating->elo_rating;
+
+        $teamLeftAvg = (int) round(($leftP1Before + $leftP2Before) / 2);
+        $teamRightAvg = (int) round(($rightP1Before + $rightP2Before) / 2);
+
+        // Determine if left team won (winner_id matches either left team player)
+        $leftWon = $match->winner_id === $match->player_left_id;
+        $leftScore = $leftWon ? 1.0 : 0.0;
+        $rightScore = 1.0 - $leftScore;
+
+        // Same change for both teammates, based on team averages
+        $leftChange = $this->calculateChange($teamLeftAvg, $teamRightAvg, $leftScore);
+        $rightChange = $this->calculateChange($teamRightAvg, $teamLeftAvg, $rightScore);
+
+        $leftP1Rating->update(['elo_rating' => $leftP1Before + $leftChange]);
+        $leftP2Rating->update(['elo_rating' => $leftP2Before + $leftChange]);
+        $rightP1Rating->update(['elo_rating' => $rightP1Before + $rightChange]);
+        $rightP2Rating->update(['elo_rating' => $rightP2Before + $rightChange]);
+
+        $match->update([
+            'player_left_elo_before' => $leftP1Before,
+            'player_left_elo_after' => $leftP1Before + $leftChange,
+            'team_left_player2_elo_before' => $leftP2Before,
+            'team_left_player2_elo_after' => $leftP2Before + $leftChange,
+            'player_right_elo_before' => $rightP1Before,
+            'player_right_elo_after' => $rightP1Before + $rightChange,
+            'team_right_player2_elo_before' => $rightP2Before,
+            'team_right_player2_elo_after' => $rightP2Before + $rightChange,
+        ]);
+
+        return [
+            'left' => [
+                'team_avg_before' => $teamLeftAvg,
+                'team_avg_after' => $teamLeftAvg + $leftChange,
+                'change' => $leftChange,
+                'player1' => ['before' => $leftP1Before, 'after' => $leftP1Before + $leftChange],
+                'player2' => ['before' => $leftP2Before, 'after' => $leftP2Before + $leftChange],
+            ],
+            'right' => [
+                'team_avg_before' => $teamRightAvg,
+                'team_avg_after' => $teamRightAvg + $rightChange,
+                'change' => $rightChange,
+                'player1' => ['before' => $rightP1Before, 'after' => $rightP1Before + $rightChange],
+                'player2' => ['before' => $rightP2Before, 'after' => $rightP2Before + $rightChange],
             ],
         ];
     }

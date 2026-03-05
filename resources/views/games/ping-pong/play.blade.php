@@ -148,6 +148,13 @@
         font-weight: 800;
     }
 
+    .pp-side-box .player-name-sub {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-top: 4px;
+        opacity: 0.7;
+    }
+
     .pp-swap-btn {
         background: rgba(255,255,255,0.1);
         border: 2px solid rgba(255,255,255,0.2);
@@ -167,6 +174,38 @@
     .pp-swap-btn:hover {
         background: rgba(59, 130, 246, 0.2);
         border-color: #3b82f6;
+    }
+
+    /* Mode toggle */
+    .pp-mode-toggle {
+        display: flex;
+        gap: 4px;
+        background: rgba(255,255,255,0.05);
+        border-radius: 12px;
+        padding: 4px;
+        border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .pp-mode-btn {
+        padding: 8px 24px;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 1.15rem;
+        cursor: pointer;
+        border: none;
+        background: transparent;
+        color: rgba(255,255,255,0.5);
+        transition: all 0.2s;
+    }
+
+    .pp-mode-btn.active {
+        background: #3b82f6;
+        color: white;
+    }
+
+    .pp-mode-btn:hover:not(.active) {
+        background: rgba(255,255,255,0.1);
+        color: rgba(255,255,255,0.8);
     }
 
     /* Playing screen */
@@ -233,8 +272,15 @@
     .pp-score-panel .player-name {
         font-size: 2.5rem;
         font-weight: 700;
-        margin-bottom: 12px;
+        margin-bottom: 4px;
         color: rgba(255,255,255,0.9);
+    }
+
+    .pp-score-panel .player-name-sub {
+        font-size: 1.6rem;
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: rgba(255,255,255,0.5);
     }
 
     .pp-serve-indicator {
@@ -332,6 +378,11 @@
         gap: 32px;
         width: 100%;
         max-width: 700px;
+    }
+
+    .pp-elo-changes.doubles {
+        grid-template-columns: 1fr 1fr 1fr 1fr;
+        max-width: 1000px;
     }
 
     .pp-elo-card {
@@ -441,9 +492,15 @@
         <div class="pp-grid" style="height: 100%;">
             <!-- Left: Player Grid -->
             <div class="pp-panel">
-                <div class="pp-header">
-                    <h2>Select Player</h2>
-                    <div class="pp-header-sub">Choose who's playing</div>
+                <div class="pp-header" style="display: flex; align-items: center; justify-content: space-between;">
+                    <div>
+                        <h2>Select Player</h2>
+                        <div class="pp-header-sub">Choose who's playing</div>
+                    </div>
+                    <div class="pp-mode-toggle">
+                        <button class="pp-mode-btn" :class="{ active: mode === '1v1' }" @click="setMode('1v1')">1v1</button>
+                        <button class="pp-mode-btn" :class="{ active: mode === '2v2' }" @click="setMode('2v2')">2v2</button>
+                    </div>
                 </div>
                 <div class="pp-player-grid">
                     <template x-for="(player, index) in players" :key="player.id">
@@ -461,7 +518,7 @@
             <!-- Right: Leaderboard -->
             <div class="pp-panel">
                 <div class="pp-header">
-                    <h2>ELO Leaderboard</h2>
+                    <h2 x-text="mode === '2v2' ? '2v2 ELO Leaderboard' : 'ELO Leaderboard'"></h2>
                 </div>
                 <div style="overflow-y: auto; flex: 1; min-height: 0;">
                     <table class="pp-leaderboard-table" x-show="leaderboard.length > 0">
@@ -498,12 +555,47 @@
         </div>
     </template>
 
+    <!-- SCREEN: PARTNER (2v2 only) -->
+    <template x-if="screen === 'partner'">
+        <div style="display: flex; flex-direction: column; height: 100%;">
+            <div class="pp-header" style="text-align: center; padding: 16px 0;">
+                <h2 style="font-size: 2.8rem;"><span x-text="player1.name" style="color: #3b82f6;"></span>'s Partner</h2>
+                <div class="pp-header-sub">Pick a teammate</div>
+            </div>
+            <div class="pp-panel" style="flex: 1;">
+                <div class="pp-player-grid">
+                    <template x-for="(player, index) in availableForPartner" :key="player.id">
+                        <div class="pp-player-card"
+                             :class="{ 'focused': selectedIndex === index }"
+                             @click="selectPartner(player)">
+                            <div class="name" x-text="player.name"></div>
+                            <div class="elo" x-text="'ELO ' + player.elo_rating"></div>
+                        </div>
+                    </template>
+                </div>
+                <div class="pp-hint" style="margin-top: 12px;">Arrow keys to navigate, Enter to select, Backspace to go back</div>
+            </div>
+        </div>
+    </template>
+
     <!-- SCREEN: OPPONENT -->
     <template x-if="screen === 'opponent'">
         <div style="display: flex; flex-direction: column; height: 100%;">
             <div class="pp-header" style="text-align: center; padding: 16px 0;">
-                <h2 style="font-size: 2.8rem;">Ready, <span x-text="player1.name" style="color: #3b82f6;"></span>?</h2>
-                <div class="pp-header-sub">Pick your opponent</div>
+                <template x-if="mode === '1v1'">
+                    <div>
+                        <h2 style="font-size: 2.8rem;">Ready, <span x-text="player1.name" style="color: #3b82f6;"></span>?</h2>
+                        <div class="pp-header-sub">Pick your opponent</div>
+                    </div>
+                </template>
+                <template x-if="mode === '2v2'">
+                    <div>
+                        <h2 style="font-size: 2.8rem;">Pick Opponent 1</h2>
+                        <div class="pp-header-sub">
+                            Team: <span x-text="player1.name" style="color: #fb7185;"></span> &amp; <span x-text="player1Partner.name" style="color: #fb7185;"></span>
+                        </div>
+                    </div>
+                </template>
             </div>
             <div class="pp-panel" style="flex: 1;">
                 <div class="pp-player-grid">
@@ -511,6 +603,29 @@
                         <div class="pp-player-card"
                              :class="{ 'focused': selectedIndex === index }"
                              @click="selectOpponent(player)">
+                            <div class="name" x-text="player.name"></div>
+                            <div class="elo" x-text="'ELO ' + player.elo_rating"></div>
+                        </div>
+                    </template>
+                </div>
+                <div class="pp-hint" style="margin-top: 12px;">Arrow keys to navigate, Enter to select, Backspace to go back</div>
+            </div>
+        </div>
+    </template>
+
+    <!-- SCREEN: OPPONENT2 (2v2 only) -->
+    <template x-if="screen === 'opponent2'">
+        <div style="display: flex; flex-direction: column; height: 100%;">
+            <div class="pp-header" style="text-align: center; padding: 16px 0;">
+                <h2 style="font-size: 2.8rem;"><span x-text="player2.name" style="color: #22d3ee;"></span>'s Partner</h2>
+                <div class="pp-header-sub">Pick the last player</div>
+            </div>
+            <div class="pp-panel" style="flex: 1;">
+                <div class="pp-player-grid">
+                    <template x-for="(player, index) in availableForOpponent2" :key="player.id">
+                        <div class="pp-player-card"
+                             :class="{ 'focused': selectedIndex === index }"
+                             @click="selectOpponent2(player)">
                             <div class="name" x-text="player.name"></div>
                             <div class="elo" x-text="'ELO ' + player.elo_rating"></div>
                         </div>
@@ -532,6 +647,9 @@
                 <div class="pp-side-box left">
                     <div class="label">Left Side</div>
                     <div class="player-name" style="color: #fb7185;" x-text="leftPlayer.name"></div>
+                    <template x-if="mode === '2v2'">
+                        <div class="player-name-sub" style="color: #fb7185;" x-text="leftPlayer2.name"></div>
+                    </template>
                 </div>
                 <button class="pp-swap-btn" @click="swapSides()">
                     &#8644;
@@ -539,6 +657,9 @@
                 <div class="pp-side-box right">
                     <div class="label">Right Side</div>
                     <div class="player-name" style="color: #22d3ee;" x-text="rightPlayer.name"></div>
+                    <template x-if="mode === '2v2'">
+                        <div class="player-name-sub" style="color: #22d3ee;" x-text="rightPlayer2.name"></div>
+                    </template>
                 </div>
             </div>
             <div class="pp-hint" style="text-align: center;">Backspace to go back</div>
@@ -549,14 +670,17 @@
     <template x-if="screen === 'playing'">
         <div style="display: flex; flex-direction: column; height: 100%;">
             <div class="pp-game-topbar">
-                <span class="pp-badge">First to 11</span>
+                <span class="pp-badge" x-text="mode === '2v2' ? '2v2 - First to 11' : 'First to 11'"></span>
                 <span class="pp-timer" x-text="timerDisplay"></span>
                 <span class="pp-clock" x-text="clockDisplay"></span>
             </div>
             <div class="pp-game-area">
-                <!-- Left Player -->
+                <!-- Left Team -->
                 <div class="pp-score-panel left">
                     <div class="player-name" x-text="match.player_left?.name || leftPlayer.name"></div>
+                    <template x-if="mode === '2v2'">
+                        <div class="player-name-sub" x-text="match.team_left_player2?.name || leftPlayer2?.name"></div>
+                    </template>
                     <div class="pp-serve-indicator" :class="{ 'serving': isServing('left') }">
                         Serving
                     </div>
@@ -566,9 +690,12 @@
                         <button class="pp-score-btn plus" @click="updateScore('left', 'increment')">+</button>
                     </div>
                 </div>
-                <!-- Right Player -->
+                <!-- Right Team -->
                 <div class="pp-score-panel right">
                     <div class="player-name" x-text="match.player_right?.name || rightPlayer.name"></div>
+                    <template x-if="mode === '2v2'">
+                        <div class="player-name-sub" x-text="match.team_right_player2?.name || rightPlayer2?.name"></div>
+                    </template>
                     <div class="pp-serve-indicator" :class="{ 'serving': isServing('right') }">
                         Serving
                     </div>
@@ -588,7 +715,7 @@
     <!-- SCREEN: GAMEOVER -->
     <template x-if="screen === 'gameover'">
         <div class="pp-gameover">
-            <div class="pp-winner-text" x-text="winnerName + ' Wins!'"></div>
+            <div class="pp-winner-text" x-text="winnerName"></div>
             <div class="pp-final-score">
                 <span style="color: #fb7185;" x-text="match.player_left_score"></span>
                 <span style="color: rgba(255,255,255,0.3);"> - </span>
@@ -596,20 +723,53 @@
             </div>
             <div class="pp-duration" x-text="match.duration_formatted ? 'Duration: ' + match.duration_formatted : ''"></div>
 
-            <div class="pp-elo-changes" x-show="eloChanges">
-                <div class="pp-elo-card">
-                    <div class="name" x-text="match.player_left?.name || leftPlayer.name"></div>
-                    <div class="change" :class="eloChanges?.left?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
-                         x-text="(eloChanges?.left?.change >= 0 ? '+' : '') + (eloChanges?.left?.change ?? 0)"></div>
-                    <div class="detail" x-text="(eloChanges?.left?.before ?? '') + ' → ' + (eloChanges?.left?.after ?? '')"></div>
+            <!-- 1v1 ELO changes -->
+            <template x-if="mode === '1v1' && eloChanges">
+                <div class="pp-elo-changes">
+                    <div class="pp-elo-card">
+                        <div class="name" x-text="match.player_left?.name || leftPlayer.name"></div>
+                        <div class="change" :class="eloChanges?.left?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
+                             x-text="(eloChanges?.left?.change >= 0 ? '+' : '') + (eloChanges?.left?.change ?? 0)"></div>
+                        <div class="detail" x-text="(eloChanges?.left?.before ?? '') + ' &rarr; ' + (eloChanges?.left?.after ?? '')"></div>
+                    </div>
+                    <div class="pp-elo-card">
+                        <div class="name" x-text="match.player_right?.name || rightPlayer.name"></div>
+                        <div class="change" :class="eloChanges?.right?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
+                             x-text="(eloChanges?.right?.change >= 0 ? '+' : '') + (eloChanges?.right?.change ?? 0)"></div>
+                        <div class="detail" x-text="(eloChanges?.right?.before ?? '') + ' &rarr; ' + (eloChanges?.right?.after ?? '')"></div>
+                    </div>
                 </div>
-                <div class="pp-elo-card">
-                    <div class="name" x-text="match.player_right?.name || rightPlayer.name"></div>
-                    <div class="change" :class="eloChanges?.right?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
-                         x-text="(eloChanges?.right?.change >= 0 ? '+' : '') + (eloChanges?.right?.change ?? 0)"></div>
-                    <div class="detail" x-text="(eloChanges?.right?.before ?? '') + ' → ' + (eloChanges?.right?.after ?? '')"></div>
+            </template>
+
+            <!-- 2v2 ELO changes -->
+            <template x-if="mode === '2v2' && eloChanges">
+                <div class="pp-elo-changes doubles">
+                    <div class="pp-elo-card">
+                        <div class="name" x-text="match.player_left?.name || leftPlayer.name"></div>
+                        <div class="change" :class="eloChanges?.left?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
+                             x-text="(eloChanges?.left?.change >= 0 ? '+' : '') + (eloChanges?.left?.change ?? 0)"></div>
+                        <div class="detail" x-text="(eloChanges?.left?.player1?.before ?? '') + ' &rarr; ' + (eloChanges?.left?.player1?.after ?? '')"></div>
+                    </div>
+                    <div class="pp-elo-card">
+                        <div class="name" x-text="match.team_left_player2?.name || leftPlayer2?.name"></div>
+                        <div class="change" :class="eloChanges?.left?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
+                             x-text="(eloChanges?.left?.change >= 0 ? '+' : '') + (eloChanges?.left?.change ?? 0)"></div>
+                        <div class="detail" x-text="(eloChanges?.left?.player2?.before ?? '') + ' &rarr; ' + (eloChanges?.left?.player2?.after ?? '')"></div>
+                    </div>
+                    <div class="pp-elo-card">
+                        <div class="name" x-text="match.player_right?.name || rightPlayer.name"></div>
+                        <div class="change" :class="eloChanges?.right?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
+                             x-text="(eloChanges?.right?.change >= 0 ? '+' : '') + (eloChanges?.right?.change ?? 0)"></div>
+                        <div class="detail" x-text="(eloChanges?.right?.player1?.before ?? '') + ' &rarr; ' + (eloChanges?.right?.player1?.after ?? '')"></div>
+                    </div>
+                    <div class="pp-elo-card">
+                        <div class="name" x-text="match.team_right_player2?.name || rightPlayer2?.name"></div>
+                        <div class="change" :class="eloChanges?.right?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
+                             x-text="(eloChanges?.right?.change >= 0 ? '+' : '') + (eloChanges?.right?.change ?? 0)"></div>
+                        <div class="detail" x-text="(eloChanges?.right?.player2?.before ?? '') + ' &rarr; ' + (eloChanges?.right?.player2?.after ?? '')"></div>
+                    </div>
                 </div>
-            </div>
+            </template>
 
             <div class="pp-hint">Enter for rematch | Backspace for lobby</div>
         </div>
@@ -637,15 +797,22 @@ function pingPong() {
         csrf: document.querySelector('meta[name="csrf-token"]').content,
 
         screen: 'lobby',
+        mode: '1v1',
         players: [],
         leaderboard: [],
         opponents: [],
+        availableForPartner: [],
+        availableForOpponent2: [],
         selectedIndex: 0,
 
         player1: null,
+        player1Partner: null,
         player2: null,
+        player2Partner: null,
         leftPlayer: null,
+        leftPlayer2: null,
         rightPlayer: null,
+        rightPlayer2: null,
 
         match: {},
         eloChanges: null,
@@ -664,6 +831,13 @@ function pingPong() {
             await this.loadPlayers();
             await this.loadLeaderboard();
             this.startClock();
+        },
+
+        async setMode(newMode) {
+            this.mode = newMode;
+            this.selectedIndex = 0;
+            await this.loadPlayers();
+            await this.loadLeaderboard();
         },
 
         startClock() {
@@ -696,12 +870,12 @@ function pingPong() {
         },
 
         async loadPlayers() {
-            const res = await fetch(`${this.API}/players`);
+            const res = await fetch(`${this.API}/players?mode=${this.mode}`);
             this.players = await res.json();
         },
 
         async loadLeaderboard() {
-            const res = await fetch(`${this.API}/leaderboard`);
+            const res = await fetch(`${this.API}/leaderboard?mode=${this.mode}`);
             this.leaderboard = await res.json();
         },
 
@@ -710,6 +884,15 @@ function pingPong() {
             if (!container) return 4;
             const style = window.getComputedStyle(container);
             return style.gridTemplateColumns.split(' ').length;
+        },
+
+        selectedPlayers() {
+            const ids = [];
+            if (this.player1) ids.push(this.player1.id);
+            if (this.player1Partner) ids.push(this.player1Partner.id);
+            if (this.player2) ids.push(this.player2.id);
+            if (this.player2Partner) ids.push(this.player2Partner.id);
+            return ids;
         },
 
         handleKeydown(e) {
@@ -729,6 +912,8 @@ function pingPong() {
             switch (this.screen) {
                 case 'lobby':
                 case 'opponent':
+                case 'partner':
+                case 'opponent2':
                     this.handleGridNav(e);
                     break;
                 case 'sides':
@@ -743,8 +928,18 @@ function pingPong() {
             }
         },
 
+        currentGridList() {
+            switch (this.screen) {
+                case 'lobby': return this.players;
+                case 'partner': return this.availableForPartner;
+                case 'opponent': return this.opponents;
+                case 'opponent2': return this.availableForOpponent2;
+                default: return [];
+            }
+        },
+
         handleGridNav(e) {
-            const list = this.screen === 'lobby' ? this.players : this.opponents;
+            const list = this.currentGridList();
             if (list.length === 0) return;
 
             const cols = this.gridColumns();
@@ -768,20 +963,48 @@ function pingPong() {
                     break;
                 case 'Enter':
                     e.preventDefault();
-                    if (this.screen === 'lobby') {
-                        this.selectPlayer(list[this.selectedIndex]);
-                    } else {
-                        this.selectOpponent(list[this.selectedIndex]);
-                    }
+                    this.handleGridSelect(list[this.selectedIndex]);
                     break;
                 case 'Backspace':
                     e.preventDefault();
-                    if (this.screen === 'opponent') {
-                        this.screen = 'lobby';
-                        this.selectedIndex = 0;
+                    this.handleGridBack();
+                    break;
+            }
+        },
+
+        handleGridSelect(player) {
+            switch (this.screen) {
+                case 'lobby': this.selectPlayer(player); break;
+                case 'partner': this.selectPartner(player); break;
+                case 'opponent': this.selectOpponent(player); break;
+                case 'opponent2': this.selectOpponent2(player); break;
+            }
+        },
+
+        handleGridBack() {
+            switch (this.screen) {
+                case 'lobby':
+                    window.location.href = '/';
+                    break;
+                case 'partner':
+                    this.player1 = null;
+                    this.screen = 'lobby';
+                    this.selectedIndex = 0;
+                    break;
+                case 'opponent':
+                    if (this.mode === '2v2') {
+                        this.player1Partner = null;
+                        this.screen = 'partner';
                     } else {
-                        window.location.href = '/';
+                        this.player1 = null;
+                        this.screen = 'lobby';
                     }
+                    this.selectedIndex = 0;
+                    break;
+                case 'opponent2':
+                    this.player2 = null;
+                    this.screen = 'opponent';
+                    this.selectedIndex = 0;
                     break;
             }
         },
@@ -799,7 +1022,11 @@ function pingPong() {
                     break;
                 case 'Backspace':
                     e.preventDefault();
-                    this.screen = 'opponent';
+                    if (this.mode === '2v2') {
+                        this.screen = 'opponent2';
+                    } else {
+                        this.screen = 'opponent';
+                    }
                     this.selectedIndex = 0;
                     break;
             }
@@ -846,35 +1073,78 @@ function pingPong() {
 
         selectPlayer(player) {
             this.player1 = player;
-            this.opponents = this.players.filter(p => p.id !== player.id);
+            this.selectedIndex = 0;
+
+            if (this.mode === '2v2') {
+                this.availableForPartner = this.players.filter(p => p.id !== player.id);
+                this.screen = 'partner';
+            } else {
+                this.opponents = this.players.filter(p => p.id !== player.id);
+                this.screen = 'opponent';
+            }
+        },
+
+        selectPartner(player) {
+            this.player1Partner = player;
+            const taken = [this.player1.id, player.id];
+            this.opponents = this.players.filter(p => !taken.includes(p.id));
             this.selectedIndex = 0;
             this.screen = 'opponent';
         },
 
         selectOpponent(player) {
             this.player2 = player;
+            this.selectedIndex = 0;
+
+            if (this.mode === '2v2') {
+                const taken = [this.player1.id, this.player1Partner.id, player.id];
+                this.availableForOpponent2 = this.players.filter(p => !taken.includes(p.id));
+                this.screen = 'opponent2';
+            } else {
+                this.leftPlayer = { ...this.player1 };
+                this.rightPlayer = { ...this.player2 };
+                this.screen = 'sides';
+            }
+        },
+
+        selectOpponent2(player) {
+            this.player2Partner = player;
             this.leftPlayer = { ...this.player1 };
+            this.leftPlayer2 = { ...this.player1Partner };
             this.rightPlayer = { ...this.player2 };
+            this.rightPlayer2 = { ...this.player2Partner };
+            this.selectedIndex = 0;
             this.screen = 'sides';
         },
 
         swapSides() {
-            const tmp = this.leftPlayer;
+            const tmpL = this.leftPlayer;
+            const tmpL2 = this.leftPlayer2;
             this.leftPlayer = this.rightPlayer;
-            this.rightPlayer = tmp;
+            this.leftPlayer2 = this.rightPlayer2;
+            this.rightPlayer = tmpL;
+            this.rightPlayer2 = tmpL2;
         },
 
         async startMatch() {
             this.loading = true;
             try {
+                const body = {
+                    mode: this.mode,
+                    player_left_id: this.leftPlayer.id,
+                    player_right_id: this.rightPlayer.id,
+                    first_server_id: this.leftPlayer.id,
+                };
+
+                if (this.mode === '2v2') {
+                    body.team_left_player2_id = this.leftPlayer2.id;
+                    body.team_right_player2_id = this.rightPlayer2.id;
+                }
+
                 const res = await fetch(`${this.API}/matches`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf },
-                    body: JSON.stringify({
-                        player_left_id: this.leftPlayer.id,
-                        player_right_id: this.rightPlayer.id,
-                        first_server_id: this.leftPlayer.id,
-                    }),
+                    body: JSON.stringify(body),
                 });
                 this.match = await res.json();
                 this.eloChanges = null;
@@ -907,15 +1177,31 @@ function pingPong() {
                 if (data.is_complete) {
                     this.stopTimer();
                     this.eloChanges = data.elo_changes || null;
-                    this.winnerName = data.winner_id === data.player_left_id
-                        ? (data.player_left?.name || this.leftPlayer.name)
-                        : (data.player_right?.name || this.rightPlayer.name);
+                    this.setWinnerName(data);
                     this.screen = 'gameover';
                 }
             } catch (err) {
                 console.error('Error updating score:', err);
             }
             this.loading = false;
+        },
+
+        setWinnerName(data) {
+            const leftWon = data.winner_id === data.player_left_id;
+            if (this.mode === '2v2') {
+                const p1 = leftWon
+                    ? (data.player_left?.name || this.leftPlayer.name)
+                    : (data.player_right?.name || this.rightPlayer.name);
+                const p2 = leftWon
+                    ? (data.team_left_player2?.name || this.leftPlayer2?.name)
+                    : (data.team_right_player2?.name || this.rightPlayer2?.name);
+                this.winnerName = p1 + ' & ' + p2 + ' Win!';
+            } else {
+                const name = leftWon
+                    ? (data.player_left?.name || this.leftPlayer.name)
+                    : (data.player_right?.name || this.rightPlayer.name);
+                this.winnerName = name + ' Wins!';
+            }
         },
 
         async rematch() {
@@ -946,9 +1232,13 @@ function pingPong() {
             this.match = {};
             this.eloChanges = null;
             this.player1 = null;
+            this.player1Partner = null;
             this.player2 = null;
+            this.player2Partner = null;
             this.leftPlayer = null;
+            this.leftPlayer2 = null;
             this.rightPlayer = null;
+            this.rightPlayer2 = null;
             this.selectedIndex = 0;
             this.stopTimer();
             this.timerDisplay = '00:00';
