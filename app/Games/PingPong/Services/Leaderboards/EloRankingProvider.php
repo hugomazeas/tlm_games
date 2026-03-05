@@ -7,7 +7,6 @@ use App\Games\PingPong\Models\PingPongMatch;
 use App\Games\PingPong\Models\PingPongRating;
 use App\Models\Player;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 
 class EloRankingProvider implements LeaderboardProviderInterface
 {
@@ -24,11 +23,13 @@ class EloRankingProvider implements LeaderboardProviderInterface
     public function getLeaderboard(): Collection
     {
         $playerIds = PingPongMatch::whereNotNull('ended_at')
+            ->where('mode', '1v1')
             ->select('player_left_id')
             ->distinct()
             ->pluck('player_left_id')
             ->merge(
                 PingPongMatch::whereNotNull('ended_at')
+                    ->where('mode', '1v1')
                     ->select('player_right_id')
                     ->distinct()
                     ->pluck('player_right_id')
@@ -41,14 +42,16 @@ class EloRankingProvider implements LeaderboardProviderInterface
                 return null;
             }
 
-            $rating = PingPongRating::where('player_id', $playerId)->first();
+            $rating = PingPongRating::where('player_id', $playerId)->where('mode', '1v1')->first();
             $elo = $rating ? $rating->elo_rating : 1200;
 
             $wins = PingPongMatch::where('winner_id', $playerId)
+                ->where('mode', '1v1')
                 ->whereNotNull('ended_at')
                 ->count();
 
             $totalGames = PingPongMatch::whereNotNull('ended_at')
+                ->where('mode', '1v1')
                 ->where(function ($q) use ($playerId) {
                     $q->where('player_left_id', $playerId)
                       ->orWhere('player_right_id', $playerId);
@@ -76,6 +79,7 @@ class EloRankingProvider implements LeaderboardProviderInterface
     public function getPlayerStats(int $playerId): ?array
     {
         $totalGames = PingPongMatch::whereNotNull('ended_at')
+            ->where('mode', '1v1')
             ->where(function ($q) use ($playerId) {
                 $q->where('player_left_id', $playerId)
                   ->orWhere('player_right_id', $playerId);
@@ -86,10 +90,11 @@ class EloRankingProvider implements LeaderboardProviderInterface
             return null;
         }
 
-        $rating = PingPongRating::where('player_id', $playerId)->first();
+        $rating = PingPongRating::where('player_id', $playerId)->where('mode', '1v1')->first();
         $elo = $rating ? $rating->elo_rating : 1200;
 
         $wins = PingPongMatch::where('winner_id', $playerId)
+            ->where('mode', '1v1')
             ->whereNotNull('ended_at')
             ->count();
 

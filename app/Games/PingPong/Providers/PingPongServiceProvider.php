@@ -2,6 +2,7 @@
 
 namespace App\Games\PingPong\Providers;
 
+use App\Games\PingPong\Services\Leaderboards\DoublesEloRankingProvider;
 use App\Games\PingPong\Services\Leaderboards\EloRankingProvider;
 use App\Services\LeaderboardService;
 use Illuminate\Support\ServiceProvider;
@@ -19,5 +20,6 @@ class PingPongServiceProvider extends ServiceProvider
 
         $leaderboard = $this->app->make(LeaderboardService::class);
         $leaderboard->register(new EloRankingProvider());
+        $leaderboard->register(new DoublesEloRankingProvider());
     }
 }
