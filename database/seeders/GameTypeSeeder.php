@@ -70,5 +70,22 @@ class GameTypeSeeder extends Seeder
                 ],
             ]
         );
+
+        GameMode::updateOrCreate(
+            ['game_type_id' => $pingPong->id, 'slug' => 'doubles-elo-ranking'],
+            [
+                'name' => '2v2 ELO Ranking',
+                'description' => 'Player rankings for doubles matches.',
+                'is_active' => true,
+                'sort_order' => 1,
+                'leaderboard_columns' => [
+                    ['key' => 'elo_rating', 'label' => 'ELO', 'sortable' => true],
+                    ['key' => 'wins', 'label' => 'Wins', 'sortable' => true],
+                    ['key' => 'losses', 'label' => 'Losses', 'sortable' => true],
+                    ['key' => 'win_rate', 'label' => 'Win %', 'sortable' => true],
+                    ['key' => 'games_played', 'label' => 'Games', 'sortable' => true],
+                ],
+            ]
+        );
     }
 }
