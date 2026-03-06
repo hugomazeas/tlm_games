@@ -262,11 +262,25 @@
     .pp-score-panel.left {
         background: rgba(244, 63, 94, 0.08);
         border-color: rgba(244, 63, 94, 0.2);
+        transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
     }
 
     .pp-score-panel.right {
         background: rgba(6, 182, 212, 0.08);
         border-color: rgba(6, 182, 212, 0.2);
+        transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .pp-score-panel.left.serving-active {
+        background: rgba(244, 63, 94, 0.35);
+        border-color: rgba(244, 63, 94, 0.7);
+        box-shadow: inset 0 0 60px rgba(244, 63, 94, 0.15), 0 0 30px rgba(244, 63, 94, 0.2);
+    }
+
+    .pp-score-panel.right.serving-active {
+        background: rgba(6, 182, 212, 0.35);
+        border-color: rgba(6, 182, 212, 0.7);
+        box-shadow: inset 0 0 60px rgba(6, 182, 212, 0.15), 0 0 30px rgba(6, 182, 212, 0.2);
     }
 
     .pp-score-panel .player-name {
@@ -676,7 +690,7 @@
             </div>
             <div class="pp-game-area">
                 <!-- Left Team -->
-                <div class="pp-score-panel left">
+                <div class="pp-score-panel left" :class="{ 'serving-active': isServing('left') }">
                     <div class="player-name" x-text="match.player_left?.name || leftPlayer.name"></div>
                     <template x-if="mode === '2v2'">
                         <div class="player-name-sub" x-text="match.team_left_player2?.name || leftPlayer2?.name"></div>
@@ -691,7 +705,7 @@
                     </div>
                 </div>
                 <!-- Right Team -->
-                <div class="pp-score-panel right">
+                <div class="pp-score-panel right" :class="{ 'serving-active': isServing('right') }">
                     <div class="player-name" x-text="match.player_right?.name || rightPlayer.name"></div>
                     <template x-if="mode === '2v2'">
                         <div class="player-name-sub" x-text="match.team_right_player2?.name || rightPlayer2?.name"></div>
