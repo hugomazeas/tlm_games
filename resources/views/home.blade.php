@@ -4,7 +4,7 @@
 
 @section('content')
     <div class="mb-8">
-        <h1 class="text-3xl font-extrabold tracking-tight mb-2">Games Hub</h1>
+        <h1 class="text-5xl font-extrabold tracking-tight mb-2">Games Hub</h1>
         <p class="text-white/50">Your office gaming dashboard. Track scores, compete, and have fun.</p>
     </div>
 
