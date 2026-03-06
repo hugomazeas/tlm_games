@@ -9,10 +9,9 @@ class HomeController extends Controller
 {
     public function index()
     {
-        return view('home', [
-            'gameTypes' => GameType::all(),
-            'playerCount' => Player::count(),
-            'activeGameCount' => GameType::active()->count(),
-        ]);
+        return view('home')
+            ->with('gameTypes', GameType::all())
+            ->with('playerCount', Player::count())
+            ->with('activeGameCount', GameType::active()->count());
     }
 }
