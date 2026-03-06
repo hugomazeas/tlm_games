@@ -17,3 +17,4 @@ Route::delete('/players/{player}', [PlayerController::class, 'destroy']);
 Route::get('/leaderboards', [LeaderboardController::class, 'index']);
 Route::get('/leaderboards/{gameType:slug}', [LeaderboardController::class, 'show']);
 Route::get('/leaderboards/{gameType:slug}/{modeSlug}', [LeaderboardController::class, 'mode']);
+
