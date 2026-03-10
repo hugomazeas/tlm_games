@@ -297,6 +297,31 @@
         color: rgba(255,255,255,0.5);
     }
 
+    .pp-score-panel .player-name-doubles {
+        font-size: 2.8rem;
+        font-weight: 700;
+        margin-bottom: 2px;
+        line-height: 1.2;
+        color: rgba(255,255,255,0.4);
+        transition: all 0.3s ease;
+    }
+
+    .pp-score-panel .player-name-doubles.serving-player {
+        font-size: 3.6rem;
+        font-weight: 800;
+        color: rgba(255,255,255,1);
+    }
+
+    .pp-score-panel.left .player-name-doubles.serving-player {
+        color: #fb7185;
+        text-shadow: 0 0 30px rgba(251, 113, 133, 0.5);
+    }
+
+    .pp-score-panel.right .player-name-doubles.serving-player {
+        color: #22d3ee;
+        text-shadow: 0 0 30px rgba(34, 211, 238, 0.5);
+    }
+
     .pp-serve-indicator {
         font-size: 2.5rem;
         font-weight: 700;
@@ -691,9 +716,18 @@
             <div class="pp-game-area">
                 <!-- Left Team -->
                 <div class="pp-score-panel left" :class="{ 'serving-active': isServing('left') }">
-                    <div class="player-name" x-text="match.player_left?.name || leftPlayer.name"></div>
+                    <template x-if="mode === '1v1'">
+                        <div class="player-name" x-text="match.player_left?.name || leftPlayer.name"></div>
+                    </template>
                     <template x-if="mode === '2v2'">
-                        <div class="player-name-sub" x-text="match.team_left_player2?.name || leftPlayer2?.name"></div>
+                        <div>
+                            <div class="player-name-doubles"
+                                 :class="{ 'serving-player': isPlayerServing(match.player_left_id || leftPlayer?.id) }"
+                                 x-text="match.player_left?.name || leftPlayer.name"></div>
+                            <div class="player-name-doubles"
+                                 :class="{ 'serving-player': isPlayerServing(match.team_left_player2_id || leftPlayer2?.id) }"
+                                 x-text="match.team_left_player2?.name || leftPlayer2?.name"></div>
+                        </div>
                     </template>
                     <div class="pp-serve-indicator" :class="{ 'serving': isServing('left') }">
                         Serving
@@ -706,9 +740,18 @@
                 </div>
                 <!-- Right Team -->
                 <div class="pp-score-panel right" :class="{ 'serving-active': isServing('right') }">
-                    <div class="player-name" x-text="match.player_right?.name || rightPlayer.name"></div>
+                    <template x-if="mode === '1v1'">
+                        <div class="player-name" x-text="match.player_right?.name || rightPlayer.name"></div>
+                    </template>
                     <template x-if="mode === '2v2'">
-                        <div class="player-name-sub" x-text="match.team_right_player2?.name || rightPlayer2?.name"></div>
+                        <div>
+                            <div class="player-name-doubles"
+                                 :class="{ 'serving-player': isPlayerServing(match.player_right_id || rightPlayer?.id) }"
+                                 x-text="match.player_right?.name || rightPlayer.name"></div>
+                            <div class="player-name-doubles"
+                                 :class="{ 'serving-player': isPlayerServing(match.team_right_player2_id || rightPlayer2?.id) }"
+                                 x-text="match.team_right_player2?.name || rightPlayer2?.name"></div>
+                        </div>
                     </template>
                     <div class="pp-serve-indicator" :class="{ 'serving': isServing('right') }">
                         Serving
@@ -1172,8 +1215,17 @@ function pingPong() {
 
         isServing(side) {
             if (!this.match || !this.match.current_server_id) return false;
-            if (side === 'left') return this.match.current_server_id === (this.match.player_left_id || this.leftPlayer.id);
-            return this.match.current_server_id === (this.match.player_right_id || this.rightPlayer.id);
+            if (side === 'left') {
+                return this.match.current_server_id === (this.match.player_left_id || this.leftPlayer?.id)
+                    || this.match.current_server_id === (this.match.team_left_player2_id || this.leftPlayer2?.id);
+            }
+            return this.match.current_server_id === (this.match.player_right_id || this.rightPlayer?.id)
+                || this.match.current_server_id === (this.match.team_right_player2_id || this.rightPlayer2?.id);
+        },
+
+        isPlayerServing(playerId) {
+            if (!this.match || !this.match.current_server_id || !playerId) return false;
+            return this.match.current_server_id === playerId;
         },
 
         async updateScore(side, action) {

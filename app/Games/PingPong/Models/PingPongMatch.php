@@ -137,10 +137,37 @@ class PingPongMatch extends Model
     {
         $totalScore = $this->player_left_score + $this->player_right_score;
         $inDeuce = $this->player_left_score >= 10 && $this->player_right_score >= 10;
-        $serveInterval = $inDeuce ? 1 : 2;
 
-        $serverIndex = intval(floor($totalScore / $serveInterval)) % 2;
-        $this->current_server_id = $serverIndex === 0 ? $this->player_left_id : $this->player_right_id;
-        $this->serve_count = $totalScore % $serveInterval;
+        if ($this->mode === '2v2') {
+            // 2 serves per team, alternating players each point
+            // Cycle: left1 → left2 → right1 → right2 → repeat
+            // In deuce (both >= 10), 1 serve per team (still alternating players)
+            $servesPerTeam = $inDeuce ? 1 : 2;
+            $cycleLength = $servesPerTeam * 2; // full cycle = both teams
+            $posInCycle = $totalScore % ($cycleLength * 2); // *2 for both pairs of players
+            // Map: 0=left1, 1=left2, 2=right1, 3=right2 (when servesPerTeam=2)
+            //       0=left1, 1=right1, 2=left2, 3=right2 (when servesPerTeam=1)
+            $servers = $inDeuce
+                ? [
+                    $this->player_left_id,
+                    $this->player_right_id,
+                    $this->team_left_player2_id,
+                    $this->team_right_player2_id,
+                ]
+                : [
+                    $this->player_left_id,
+                    $this->team_left_player2_id,
+                    $this->player_right_id,
+                    $this->team_right_player2_id,
+                ];
+            $serverIndex = $posInCycle % 4;
+            $this->current_server_id = $servers[$serverIndex];
+            $this->serve_count = 0;
+        } else {
+            $serveInterval = $inDeuce ? 1 : 2;
+            $serverIndex = intval(floor($totalScore / $serveInterval)) % 2;
+            $this->current_server_id = $serverIndex === 0 ? $this->player_left_id : $this->player_right_id;
+            $this->serve_count = $totalScore % $serveInterval;
+        }
     }
 }
