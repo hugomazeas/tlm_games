@@ -451,7 +451,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 60px;
+        gap: 120px;
         min-height: 0;
     }
 
@@ -1315,7 +1315,7 @@ function pingPong() {
         },
 
         generateQrCodes() {
-            const origin = window.location.origin;
+            const origin = @json(config('games.remote_url'));
             const baseUrl = `${origin}/games/ping-pong/remote/${this.match.id}`;
 
             const leftEl = this.$refs.qrLeft;
