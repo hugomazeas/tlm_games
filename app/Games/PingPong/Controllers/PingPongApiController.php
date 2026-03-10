@@ -137,6 +137,59 @@ class PingPongApiController extends Controller
         return response()->json($entries);
     }
 
+    public function getMatch(int $id): JsonResponse
+    {
+        $match = PingPongMatch::with(['playerLeft', 'playerRight', 'currentServer', 'winner', 'teamLeftPlayer2', 'teamRightPlayer2'])
+            ->findOrFail($id);
+
+        $response = $match->toArray();
+        $response['duration'] = $match->duration;
+        $response['duration_formatted'] = $match->duration_formatted;
+        $response['is_complete'] = $match->is_complete;
+
+        if ($match->is_complete && $match->player_left_elo_before !== null) {
+            if ($match->isDoubles()) {
+                $leftChange = $match->player_left_elo_after - $match->player_left_elo_before;
+                $rightChange = $match->player_right_elo_after - $match->player_right_elo_before;
+
+                $teamLeftAvg = (int) round(($match->player_left_elo_before + $match->team_left_player2_elo_before) / 2);
+                $teamRightAvg = (int) round(($match->player_right_elo_before + $match->team_right_player2_elo_before) / 2);
+
+                $response['elo_changes'] = [
+                    'left' => [
+                        'team_avg_before' => $teamLeftAvg,
+                        'team_avg_after' => $teamLeftAvg + $leftChange,
+                        'change' => $leftChange,
+                        'player1' => ['before' => $match->player_left_elo_before, 'after' => $match->player_left_elo_after],
+                        'player2' => ['before' => $match->team_left_player2_elo_before, 'after' => $match->team_left_player2_elo_after],
+                    ],
+                    'right' => [
+                        'team_avg_before' => $teamRightAvg,
+                        'team_avg_after' => $teamRightAvg + $rightChange,
+                        'change' => $rightChange,
+                        'player1' => ['before' => $match->player_right_elo_before, 'after' => $match->player_right_elo_after],
+                        'player2' => ['before' => $match->team_right_player2_elo_before, 'after' => $match->team_right_player2_elo_after],
+                    ],
+                ];
+            } else {
+                $response['elo_changes'] = [
+                    'left' => [
+                        'before' => $match->player_left_elo_before,
+                        'after' => $match->player_left_elo_after,
+                        'change' => $match->player_left_elo_after - $match->player_left_elo_before,
+                    ],
+                    'right' => [
+                        'before' => $match->player_right_elo_before,
+                        'after' => $match->player_right_elo_after,
+                        'change' => $match->player_right_elo_after - $match->player_right_elo_before,
+                    ],
+                ];
+            }
+        }
+
+        return response()->json($response);
+    }
+
     public function createMatch(Request $request): JsonResponse
     {
         $mode = $request->input('mode', '1v1');

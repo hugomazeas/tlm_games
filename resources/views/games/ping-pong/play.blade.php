@@ -445,6 +445,51 @@
         margin-top: 12px;
     }
 
+    /* QR Scan screen */
+    .pp-qr-panel {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 60px;
+        min-height: 0;
+    }
+
+    .pp-qr-box {
+        text-align: center;
+    }
+
+    .pp-qr-box .qr-label {
+        font-size: 1.8rem;
+        font-weight: 700;
+        margin-bottom: 16px;
+    }
+
+    .pp-qr-box .qr-canvas {
+        background: white;
+        border-radius: 16px;
+        padding: 16px;
+        display: inline-block;
+    }
+
+    .pp-qr-start-btn {
+        margin-top: 24px;
+        padding: 16px 48px;
+        border-radius: 16px;
+        font-size: 1.5rem;
+        font-weight: 700;
+        cursor: pointer;
+        border: none;
+        background: #3b82f6;
+        color: white;
+        transition: all 0.2s;
+    }
+
+    .pp-qr-start-btn:hover {
+        background: #2563eb;
+        transform: scale(1.05);
+    }
+
     .pp-header {
         margin-bottom: 16px;
         flex-shrink: 0;
@@ -705,6 +750,44 @@
         </div>
     </template>
 
+    <!-- SCREEN: QR SCAN -->
+    <template x-if="screen === 'qrscan'">
+        <div style="display: flex; flex-direction: column; height: 100%;">
+            <div class="pp-header" style="text-align: center; padding: 16px 0;">
+                <h2 style="font-size: 2.8rem;">Scan to Score</h2>
+                <div class="pp-header-sub">Use your phone as a remote</div>
+            </div>
+            <div class="pp-qr-panel">
+                <div class="pp-qr-box">
+                    <div class="qr-label" style="color: #fb7185;">
+                        <template x-if="mode === '1v1'">
+                            <span x-text="leftPlayer.name"></span>
+                        </template>
+                        <template x-if="mode === '2v2'">
+                            <span x-text="leftPlayer.name + ' & ' + leftPlayer2.name"></span>
+                        </template>
+                    </div>
+                    <div class="qr-canvas" x-ref="qrLeft"></div>
+                </div>
+                <div class="pp-qr-box">
+                    <div class="qr-label" style="color: #22d3ee;">
+                        <template x-if="mode === '1v1'">
+                            <span x-text="rightPlayer.name"></span>
+                        </template>
+                        <template x-if="mode === '2v2'">
+                            <span x-text="rightPlayer.name + ' & ' + rightPlayer2.name"></span>
+                        </template>
+                    </div>
+                    <div class="qr-canvas" x-ref="qrRight"></div>
+                </div>
+            </div>
+            <div style="text-align: center;">
+                <button class="pp-qr-start-btn" @click="beginPlaying()">Start Match</button>
+            </div>
+            <div class="pp-hint" style="text-align: center;">Enter to start | Backspace to go back</div>
+        </div>
+    </template>
+
     <!-- SCREEN: PLAYING -->
     <template x-if="screen === 'playing'">
         <div style="display: flex; flex-direction: column; height: 100%;">
@@ -847,6 +930,7 @@
     </template>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
 function pingPong() {
     return {
@@ -883,6 +967,7 @@ function pingPong() {
 
         showAbandonConfirm: false,
         loading: false,
+        pollInterval: null,
 
         async init() {
             await this.loadPlayers();
@@ -975,6 +1060,9 @@ function pingPong() {
                     break;
                 case 'sides':
                     this.handleSidesNav(e);
+                    break;
+                case 'qrscan':
+                    this.handleQrScanNav(e);
                     break;
                 case 'playing':
                     this.handlePlayingNav(e);
@@ -1085,6 +1173,19 @@ function pingPong() {
                         this.screen = 'opponent';
                     }
                     this.selectedIndex = 0;
+                    break;
+            }
+        },
+
+        handleQrScanNav(e) {
+            switch (e.key) {
+                case 'Enter':
+                    e.preventDefault();
+                    this.beginPlaying();
+                    break;
+                case 'Backspace':
+                    e.preventDefault();
+                    this.screen = 'sides';
                     break;
             }
         },
@@ -1205,12 +1306,70 @@ function pingPong() {
                 });
                 this.match = await res.json();
                 this.eloChanges = null;
-                this.startTimer();
-                this.screen = 'playing';
+                this.screen = 'qrscan';
+                this.$nextTick(() => this.generateQrCodes());
             } catch (err) {
                 console.error('Error starting match:', err);
             }
             this.loading = false;
+        },
+
+        generateQrCodes() {
+            const origin = window.location.origin;
+            const baseUrl = `${origin}/games/ping-pong/remote/${this.match.id}`;
+
+            const leftEl = this.$refs.qrLeft;
+            const rightEl = this.$refs.qrRight;
+            if (leftEl) {
+                leftEl.innerHTML = '';
+                new QRCode(leftEl, { text: `${baseUrl}/left`, width: 200, height: 200 });
+            }
+            if (rightEl) {
+                rightEl.innerHTML = '';
+                new QRCode(rightEl, { text: `${baseUrl}/right`, width: 200, height: 200 });
+            }
+        },
+
+        beginPlaying() {
+            this.startTimer();
+            this.startPolling();
+            this.screen = 'playing';
+        },
+
+        startPolling() {
+            this.stopPolling();
+            this.pollInterval = setInterval(() => this.pollMatch(), 1500);
+        },
+
+        stopPolling() {
+            if (this.pollInterval) {
+                clearInterval(this.pollInterval);
+                this.pollInterval = null;
+            }
+        },
+
+        async pollMatch() {
+            if (!this.match.id) return;
+            try {
+                const res = await fetch(`${this.API}/matches/${this.match.id}`);
+                const data = await res.json();
+
+                if (data.player_left_score !== this.match.player_left_score ||
+                    data.player_right_score !== this.match.player_right_score ||
+                    data.is_complete !== this.match.is_complete) {
+                    this.match = data;
+
+                    if (data.is_complete && this.screen === 'playing') {
+                        this.stopTimer();
+                        this.stopPolling();
+                        this.eloChanges = data.elo_changes || null;
+                        this.setWinnerName(data);
+                        this.screen = 'gameover';
+                    }
+                }
+            } catch (err) {
+                // Silently ignore polling errors
+            }
         },
 
         isServing(side) {
@@ -1242,6 +1401,7 @@ function pingPong() {
 
                 if (data.is_complete) {
                     this.stopTimer();
+                    this.stopPolling();
                     this.eloChanges = data.elo_changes || null;
                     this.setWinnerName(data);
                     this.screen = 'gameover';
@@ -1280,8 +1440,8 @@ function pingPong() {
                 });
                 this.match = await res.json();
                 this.eloChanges = null;
-                this.startTimer();
-                this.screen = 'playing';
+                this.screen = 'qrscan';
+                this.$nextTick(() => this.generateQrCodes());
             } catch (err) {
                 console.error('Error creating rematch:', err);
             }
@@ -1291,10 +1451,12 @@ function pingPong() {
         abandonMatch() {
             this.showAbandonConfirm = false;
             this.stopTimer();
+            this.stopPolling();
             this.goToLobby();
         },
 
         async goToLobby() {
+            this.stopPolling();
             this.match = {};
             this.eloChanges = null;
             this.player1 = null;
