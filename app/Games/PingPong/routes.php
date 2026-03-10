@@ -15,3 +15,5 @@ Route::post('/games/ping-pong/api/matches/{id}/rematch', [PingPongApiController:
 Route::get('/games/ping-pong/api/players/{id}/stats', [PingPongApiController::class, 'playerStatsApi']);
 Route::get('/games/ping-pong/api/players/{id}/matches', [PingPongApiController::class, 'playerMatches']);
 Route::get('/games/ping-pong/api/players/{id}/head-to-head', [PingPongApiController::class, 'headToHead']);
+Route::get('/games/ping-pong/api/matches/{id}', [PingPongApiController::class, 'getMatch']);
+Route::get('/games/ping-pong/remote/{id}/{side}', [PingPongController::class, 'remote']);
