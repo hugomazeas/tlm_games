@@ -29,6 +29,7 @@ class PingPongController extends Controller
         return view('games.ping-pong.remote', [
             'matchId' => $match->id,
             'side' => $side,
+            'remoteUrl' => config('games.remote_url'),
         ]);
     }
 }

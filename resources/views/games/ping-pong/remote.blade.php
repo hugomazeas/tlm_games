@@ -113,20 +113,67 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 16px;
-            padding: 24px;
+            gap: 12px;
+            padding: 16px;
             text-align: center;
+            overflow-y: auto;
         }
 
         .gameover-display .result {
-            font-size: 2rem;
+            font-size: 1.6rem;
             font-weight: 900;
         }
 
         .gameover-display .final-score {
-            font-size: 3rem;
+            font-size: 2.4rem;
             font-weight: 800;
         }
+
+        .elo-section {
+            width: 100%;
+            max-width: 500px;
+            margin-top: 8px;
+        }
+
+        .elo-section-title {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            opacity: 0.5;
+            margin-bottom: 8px;
+        }
+
+        .elo-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.05);
+            margin-bottom: 6px;
+        }
+
+        .elo-row .elo-name {
+            font-weight: 700;
+            font-size: 0.9rem;
+            flex: 1;
+        }
+
+        .elo-row .elo-rating {
+            font-size: 0.85rem;
+            opacity: 0.6;
+            margin-right: 10px;
+        }
+
+        .elo-row .elo-change {
+            font-weight: 900;
+            font-size: 1rem;
+            min-width: 50px;
+            text-align: right;
+        }
+
+        .elo-positive { color: #22c55e; }
+        .elo-negative { color: #ef4444; }
 
         /* Landscape lock: rotate when in portrait */
         @media (orientation: portrait) {
@@ -162,13 +209,14 @@
         <div class="gameover-display" id="gameoverArea" style="display: none;">
             <div class="result" id="resultText"></div>
             <div class="final-score" id="finalScore"></div>
+            <div class="elo-section" id="eloSection" style="display: none;"></div>
         </div>
     </div>
 
     <script>
         const MATCH_ID = {{ $matchId }};
         const SIDE = '{{ $side }}';
-        const API = '/games/ping-pong/api';
+        const API = @json(rtrim($remoteUrl, '/')) + '/games/ping-pong/api';
         const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 
         let isUpdating = false;
@@ -279,6 +327,64 @@
                 '<span style="color:#fb7185">' + data.player_left_score + '</span>' +
                 '<span style="color:rgba(255,255,255,0.3)"> - </span>' +
                 '<span style="color:#22d3ee">' + data.player_right_score + '</span>';
+
+            renderEloChanges(data);
+        }
+
+        function renderEloChanges(data) {
+            const elo = data.elo_changes;
+            if (!elo) return;
+
+            const eloSection = document.getElementById('eloSection');
+            let html = '<div class="elo-section-title">Elo Changes</div>';
+
+            if (data.mode === '2v2') {
+                // Left team
+                const leftTeamLabel = (data.player_left?.name || '?') + ' & ' + (data.team_left_player2?.name || '?');
+                const lc = elo.left;
+                html += eloTeamRow(leftTeamLabel, lc.team_avg_before, lc.team_avg_after, lc.change, '#fb7185');
+                html += eloPlayerRow(data.player_left?.name || '?', lc.player1.before, lc.player1.after);
+                html += eloPlayerRow(data.team_left_player2?.name || '?', lc.player2.before, lc.player2.after);
+
+                // Right team
+                const rightTeamLabel = (data.player_right?.name || '?') + ' & ' + (data.team_right_player2?.name || '?');
+                const rc = elo.right;
+                html += '<div style="height:6px"></div>';
+                html += eloTeamRow(rightTeamLabel, rc.team_avg_before, rc.team_avg_after, rc.change, '#22d3ee');
+                html += eloPlayerRow(data.player_right?.name || '?', rc.player1.before, rc.player1.after);
+                html += eloPlayerRow(data.team_right_player2?.name || '?', rc.player2.before, rc.player2.after);
+            } else {
+                // 1v1
+                const lc = elo.left;
+                const rc = elo.right;
+                html += eloPlayerRow(data.player_left?.name || '?', lc.before, lc.after, '#fb7185');
+                html += eloPlayerRow(data.player_right?.name || '?', rc.before, rc.after, '#22d3ee');
+            }
+
+            eloSection.innerHTML = html;
+            eloSection.style.display = 'block';
+        }
+
+        function eloTeamRow(name, before, after, change, color) {
+            const sign = change >= 0 ? '+' : '';
+            const cls = change >= 0 ? 'elo-positive' : 'elo-negative';
+            return '<div class="elo-row" style="border-left: 3px solid ' + color + ';">' +
+                '<span class="elo-name">' + name + '</span>' +
+                '<span class="elo-rating">' + before + ' → ' + after + '</span>' +
+                '<span class="elo-change ' + cls + '">' + sign + change + '</span>' +
+                '</div>';
+        }
+
+        function eloPlayerRow(name, before, after, color) {
+            const change = after - before;
+            const sign = change >= 0 ? '+' : '';
+            const cls = change >= 0 ? 'elo-positive' : 'elo-negative';
+            const borderStyle = color ? 'border-left: 3px solid ' + color + ';' : 'margin-left: 16px; border-left: 2px solid rgba(255,255,255,0.1);';
+            return '<div class="elo-row" style="' + borderStyle + '">' +
+                '<span class="elo-name">' + name + '</span>' +
+                '<span class="elo-rating">' + before + ' → ' + after + '</span>' +
+                '<span class="elo-change ' + cls + '">' + sign + change + '</span>' +
+                '</div>';
         }
 
         async function pollMatch() {
