@@ -230,14 +230,16 @@
 
     .pp-timer {
         font-family: monospace;
-        font-size: 1.7rem;
-        color: rgba(255,255,255,0.7);
+        font-size: 1.5rem;
+        color: rgba(255,255,255,0.4);
     }
 
     .pp-clock {
         font-family: monospace;
-        font-size: 1.3rem;
-        color: rgba(255,255,255,0.4);
+        font-size: 3rem;
+        font-weight: 700;
+        color: rgba(255,255,255,0.85);
+        letter-spacing: 0.05em;
     }
 
     .pp-game-area {
@@ -793,8 +795,8 @@
         <div style="display: flex; flex-direction: column; height: 100%;">
             <div class="pp-game-topbar">
                 <span class="pp-badge" x-text="mode === '2v2' ? '2v2 - First to 11' : 'First to 11'"></span>
-                <span class="pp-timer" x-text="timerDisplay"></span>
                 <span class="pp-clock" x-text="clockDisplay"></span>
+                <span class="pp-timer" x-text="timerDisplay"></span>
             </div>
             <div class="pp-game-area">
                 <!-- Left Team -->

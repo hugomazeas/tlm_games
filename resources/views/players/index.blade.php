@@ -3,15 +3,15 @@
 @section('title', 'Players - Games Hub')
 
 @section('content')
-    <div class="flex items-center justify-between mb-8">
+    <div class="flex items-center justify-between mb-6 sm:mb-8">
         <div>
-            <h1 class="text-3xl font-extrabold tracking-tight mb-1">Players</h1>
+            <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight mb-1">Players</h1>
             <p class="text-white/50 text-sm">{{ $players->count() }} registered {{ Str::plural('player', $players->count()) }}</p>
         </div>
     </div>
 
-    {{-- Inline create form --}}
-    <div class="bg-white/5 border border-white/10 rounded-xl p-6 mb-8" x-data="{ open: false }">
+    {{-- Inline create form: hidden on mobile --}}
+    <div class="hidden sm:block bg-white/5 border border-white/10 rounded-xl p-6 mb-8" x-data="{ open: false }">
         <button @click="open = !open" class="text-sm font-medium text-indigo-400 hover:text-indigo-300 transition">
             <span x-show="!open">+ Add Player</span>
             <span x-show="open" x-cloak>− Cancel</span>
@@ -37,12 +37,12 @@
         <div class="space-y-2">
             @foreach($players as $player)
                 <a href="{{ url('/players/' . $player->id) }}"
-                   class="flex items-center justify-between bg-white/5 border border-white/10 rounded-lg px-5 py-3 hover:bg-white/10 transition group">
-                    <div>
-                        <span class="font-semibold">{{ $player->name }}</span>
-                        <span class="text-xs text-white/40 ml-3">Joined {{ $player->created_at->diffForHumans() }}</span>
+                   class="flex items-center justify-between bg-white/5 border border-white/10 rounded-lg px-4 sm:px-5 py-3 hover:bg-white/10 transition group">
+                    <div class="min-w-0">
+                        <span class="font-semibold text-sm sm:text-base">{{ $player->name }}</span>
+                        <span class="text-xs text-white/40 ml-2 sm:ml-3 hidden sm:inline">Joined {{ $player->created_at->diffForHumans() }}</span>
                     </div>
-                    <span class="text-white/30 group-hover:text-white/60 transition text-sm">→</span>
+                    <span class="text-white/30 group-hover:text-white/60 transition text-sm flex-shrink-0 ml-2">→</span>
                 </a>
             @endforeach
         </div>
