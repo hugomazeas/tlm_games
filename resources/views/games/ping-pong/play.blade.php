@@ -230,14 +230,16 @@
 
     .pp-timer {
         font-family: monospace;
-        font-size: 1.7rem;
-        color: rgba(255,255,255,0.7);
+        font-size: 1.5rem;
+        color: rgba(255,255,255,0.4);
     }
 
     .pp-clock {
         font-family: monospace;
-        font-size: 1.3rem;
-        color: rgba(255,255,255,0.4);
+        font-size: 3rem;
+        font-weight: 700;
+        color: rgba(255,255,255,0.85);
+        letter-spacing: 0.05em;
     }
 
     .pp-game-area {
@@ -295,6 +297,31 @@
         font-weight: 600;
         margin-bottom: 8px;
         color: rgba(255,255,255,0.5);
+    }
+
+    .pp-score-panel .player-name-doubles {
+        font-size: 2.8rem;
+        font-weight: 700;
+        margin-bottom: 2px;
+        line-height: 1.2;
+        color: rgba(255,255,255,0.4);
+        transition: all 0.3s ease;
+    }
+
+    .pp-score-panel .player-name-doubles.serving-player {
+        font-size: 3.6rem;
+        font-weight: 800;
+        color: rgba(255,255,255,1);
+    }
+
+    .pp-score-panel.left .player-name-doubles.serving-player {
+        color: #fb7185;
+        text-shadow: 0 0 30px rgba(251, 113, 133, 0.5);
+    }
+
+    .pp-score-panel.right .player-name-doubles.serving-player {
+        color: #22d3ee;
+        text-shadow: 0 0 30px rgba(34, 211, 238, 0.5);
     }
 
     .pp-serve-indicator {
@@ -418,6 +445,51 @@
         color: rgba(255,255,255,0.3);
         font-size: 1.15rem;
         margin-top: 12px;
+    }
+
+    /* QR Scan screen */
+    .pp-qr-panel {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 120px;
+        min-height: 0;
+    }
+
+    .pp-qr-box {
+        text-align: center;
+    }
+
+    .pp-qr-box .qr-label {
+        font-size: 1.8rem;
+        font-weight: 700;
+        margin-bottom: 16px;
+    }
+
+    .pp-qr-box .qr-canvas {
+        background: white;
+        border-radius: 16px;
+        padding: 16px;
+        display: inline-block;
+    }
+
+    .pp-qr-start-btn {
+        margin-top: 24px;
+        padding: 16px 48px;
+        border-radius: 16px;
+        font-size: 1.5rem;
+        font-weight: 700;
+        cursor: pointer;
+        border: none;
+        background: #3b82f6;
+        color: white;
+        transition: all 0.2s;
+    }
+
+    .pp-qr-start-btn:hover {
+        background: #2563eb;
+        transform: scale(1.05);
     }
 
     .pp-header {
@@ -680,20 +752,67 @@
         </div>
     </template>
 
+    <!-- SCREEN: QR SCAN -->
+    <template x-if="screen === 'qrscan'">
+        <div style="display: flex; flex-direction: column; height: 100%;">
+            <div class="pp-header" style="text-align: center; padding: 16px 0;">
+                <h2 style="font-size: 2.8rem;">Scan to Score</h2>
+                <div class="pp-header-sub">Use your phone as a remote</div>
+            </div>
+            <div class="pp-qr-panel">
+                <div class="pp-qr-box">
+                    <div class="qr-label" style="color: #fb7185;">
+                        <template x-if="mode === '1v1'">
+                            <span x-text="leftPlayer.name"></span>
+                        </template>
+                        <template x-if="mode === '2v2'">
+                            <span x-text="leftPlayer.name + ' & ' + leftPlayer2.name"></span>
+                        </template>
+                    </div>
+                    <div class="qr-canvas" x-ref="qrLeft"></div>
+                </div>
+                <div class="pp-qr-box">
+                    <div class="qr-label" style="color: #22d3ee;">
+                        <template x-if="mode === '1v1'">
+                            <span x-text="rightPlayer.name"></span>
+                        </template>
+                        <template x-if="mode === '2v2'">
+                            <span x-text="rightPlayer.name + ' & ' + rightPlayer2.name"></span>
+                        </template>
+                    </div>
+                    <div class="qr-canvas" x-ref="qrRight"></div>
+                </div>
+            </div>
+            <div style="text-align: center;">
+                <button class="pp-qr-start-btn" @click="beginPlaying()">Start Match</button>
+            </div>
+            <div class="pp-hint" style="text-align: center;">Enter to start | Backspace to go back</div>
+        </div>
+    </template>
+
     <!-- SCREEN: PLAYING -->
     <template x-if="screen === 'playing'">
         <div style="display: flex; flex-direction: column; height: 100%;">
             <div class="pp-game-topbar">
                 <span class="pp-badge" x-text="mode === '2v2' ? '2v2 - First to 11' : 'First to 11'"></span>
-                <span class="pp-timer" x-text="timerDisplay"></span>
                 <span class="pp-clock" x-text="clockDisplay"></span>
+                <span class="pp-timer" x-text="timerDisplay"></span>
             </div>
             <div class="pp-game-area">
                 <!-- Left Team -->
                 <div class="pp-score-panel left" :class="{ 'serving-active': isServing('left') }">
-                    <div class="player-name" x-text="match.player_left?.name || leftPlayer.name"></div>
+                    <template x-if="mode === '1v1'">
+                        <div class="player-name" x-text="match.player_left?.name || leftPlayer.name"></div>
+                    </template>
                     <template x-if="mode === '2v2'">
-                        <div class="player-name-sub" x-text="match.team_left_player2?.name || leftPlayer2?.name"></div>
+                        <div>
+                            <div class="player-name-doubles"
+                                 :class="{ 'serving-player': isPlayerServing(match.player_left_id || leftPlayer?.id) }"
+                                 x-text="match.player_left?.name || leftPlayer.name"></div>
+                            <div class="player-name-doubles"
+                                 :class="{ 'serving-player': isPlayerServing(match.team_left_player2_id || leftPlayer2?.id) }"
+                                 x-text="match.team_left_player2?.name || leftPlayer2?.name"></div>
+                        </div>
                     </template>
                     <div class="pp-serve-indicator" :class="{ 'serving': isServing('left') }">
                         Serving
@@ -706,9 +825,18 @@
                 </div>
                 <!-- Right Team -->
                 <div class="pp-score-panel right" :class="{ 'serving-active': isServing('right') }">
-                    <div class="player-name" x-text="match.player_right?.name || rightPlayer.name"></div>
+                    <template x-if="mode === '1v1'">
+                        <div class="player-name" x-text="match.player_right?.name || rightPlayer.name"></div>
+                    </template>
                     <template x-if="mode === '2v2'">
-                        <div class="player-name-sub" x-text="match.team_right_player2?.name || rightPlayer2?.name"></div>
+                        <div>
+                            <div class="player-name-doubles"
+                                 :class="{ 'serving-player': isPlayerServing(match.player_right_id || rightPlayer?.id) }"
+                                 x-text="match.player_right?.name || rightPlayer.name"></div>
+                            <div class="player-name-doubles"
+                                 :class="{ 'serving-player': isPlayerServing(match.team_right_player2_id || rightPlayer2?.id) }"
+                                 x-text="match.team_right_player2?.name || rightPlayer2?.name"></div>
+                        </div>
                     </template>
                     <div class="pp-serve-indicator" :class="{ 'serving': isServing('right') }">
                         Serving
@@ -804,6 +932,7 @@
     </template>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
 function pingPong() {
     return {
@@ -840,6 +969,7 @@ function pingPong() {
 
         showAbandonConfirm: false,
         loading: false,
+        pollInterval: null,
 
         async init() {
             await this.loadPlayers();
@@ -932,6 +1062,9 @@ function pingPong() {
                     break;
                 case 'sides':
                     this.handleSidesNav(e);
+                    break;
+                case 'qrscan':
+                    this.handleQrScanNav(e);
                     break;
                 case 'playing':
                     this.handlePlayingNav(e);
@@ -1042,6 +1175,19 @@ function pingPong() {
                         this.screen = 'opponent';
                     }
                     this.selectedIndex = 0;
+                    break;
+            }
+        },
+
+        handleQrScanNav(e) {
+            switch (e.key) {
+                case 'Enter':
+                    e.preventDefault();
+                    this.beginPlaying();
+                    break;
+                case 'Backspace':
+                    e.preventDefault();
+                    this.screen = 'sides';
                     break;
             }
         },
@@ -1162,18 +1308,85 @@ function pingPong() {
                 });
                 this.match = await res.json();
                 this.eloChanges = null;
-                this.startTimer();
-                this.screen = 'playing';
+                this.screen = 'qrscan';
+                this.$nextTick(() => this.generateQrCodes());
             } catch (err) {
                 console.error('Error starting match:', err);
             }
             this.loading = false;
         },
 
+        generateQrCodes() {
+            const origin = @json(config('games.remote_url'));
+            const baseUrl = `${origin}/games/ping-pong/remote/${this.match.id}`;
+
+            const leftEl = this.$refs.qrLeft;
+            const rightEl = this.$refs.qrRight;
+            if (leftEl) {
+                leftEl.innerHTML = '';
+                new QRCode(leftEl, { text: `${baseUrl}/left`, width: 200, height: 200 });
+            }
+            if (rightEl) {
+                rightEl.innerHTML = '';
+                new QRCode(rightEl, { text: `${baseUrl}/right`, width: 200, height: 200 });
+            }
+        },
+
+        beginPlaying() {
+            this.startTimer();
+            this.startPolling();
+            this.screen = 'playing';
+        },
+
+        startPolling() {
+            this.stopPolling();
+            this.pollInterval = setInterval(() => this.pollMatch(), 1500);
+        },
+
+        stopPolling() {
+            if (this.pollInterval) {
+                clearInterval(this.pollInterval);
+                this.pollInterval = null;
+            }
+        },
+
+        async pollMatch() {
+            if (!this.match.id) return;
+            try {
+                const res = await fetch(`${this.API}/matches/${this.match.id}`);
+                const data = await res.json();
+
+                if (data.player_left_score !== this.match.player_left_score ||
+                    data.player_right_score !== this.match.player_right_score ||
+                    data.is_complete !== this.match.is_complete) {
+                    this.match = data;
+
+                    if (data.is_complete && this.screen === 'playing') {
+                        this.stopTimer();
+                        this.stopPolling();
+                        this.eloChanges = data.elo_changes || null;
+                        this.setWinnerName(data);
+                        this.screen = 'gameover';
+                    }
+                }
+            } catch (err) {
+                // Silently ignore polling errors
+            }
+        },
+
         isServing(side) {
             if (!this.match || !this.match.current_server_id) return false;
-            if (side === 'left') return this.match.current_server_id === (this.match.player_left_id || this.leftPlayer.id);
-            return this.match.current_server_id === (this.match.player_right_id || this.rightPlayer.id);
+            if (side === 'left') {
+                return this.match.current_server_id === (this.match.player_left_id || this.leftPlayer?.id)
+                    || this.match.current_server_id === (this.match.team_left_player2_id || this.leftPlayer2?.id);
+            }
+            return this.match.current_server_id === (this.match.player_right_id || this.rightPlayer?.id)
+                || this.match.current_server_id === (this.match.team_right_player2_id || this.rightPlayer2?.id);
+        },
+
+        isPlayerServing(playerId) {
+            if (!this.match || !this.match.current_server_id || !playerId) return false;
+            return this.match.current_server_id === playerId;
         },
 
         async updateScore(side, action) {
@@ -1190,6 +1403,7 @@ function pingPong() {
 
                 if (data.is_complete) {
                     this.stopTimer();
+                    this.stopPolling();
                     this.eloChanges = data.elo_changes || null;
                     this.setWinnerName(data);
                     this.screen = 'gameover';
@@ -1228,8 +1442,8 @@ function pingPong() {
                 });
                 this.match = await res.json();
                 this.eloChanges = null;
-                this.startTimer();
-                this.screen = 'playing';
+                this.screen = 'qrscan';
+                this.$nextTick(() => this.generateQrCodes());
             } catch (err) {
                 console.error('Error creating rematch:', err);
             }
@@ -1239,10 +1453,12 @@ function pingPong() {
         abandonMatch() {
             this.showAbandonConfirm = false;
             this.stopTimer();
+            this.stopPolling();
             this.goToLobby();
         },
 
         async goToLobby() {
+            this.stopPolling();
             this.match = {};
             this.eloChanges = null;
             this.player1 = null;
