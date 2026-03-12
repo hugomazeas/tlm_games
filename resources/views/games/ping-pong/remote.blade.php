@@ -175,9 +175,9 @@
         .elo-positive { color: #22c55e; }
         .elo-negative { color: #ef4444; }
 
-        /* Landscape lock: rotate when in portrait */
+        /* Landscape lock: rotate when in portrait (only during play) */
         @media (orientation: portrait) {
-            html {
+            html:not(.portrait-mode) {
                 transform: rotate(90deg);
                 transform-origin: top left;
                 width: 100vh;
@@ -187,6 +187,87 @@
                 left: 100%;
                 overflow: hidden;
             }
+        }
+
+        /* Portrait game-over styles */
+        html.portrait-mode, html.portrait-mode body {
+            height: auto;
+            min-height: 100%;
+            overflow: auto;
+        }
+
+        .gameover-portrait {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            padding: 24px 16px;
+            text-align: center;
+            overflow-y: auto;
+            min-height: 100vh;
+        }
+
+        .gameover-portrait .result {
+            font-size: 1.8rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, #3b82f6, #06b6d4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .gameover-portrait .final-score {
+            font-size: 3rem;
+            font-weight: 800;
+        }
+
+        .leaderboard-section {
+            width: 100%;
+            max-width: 400px;
+            margin-top: 8px;
+        }
+
+        .leaderboard-section-title {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            opacity: 0.5;
+            margin-bottom: 10px;
+        }
+
+        .leaderboard-row {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.05);
+            margin-bottom: 6px;
+            gap: 10px;
+        }
+
+        .leaderboard-row .lb-rank {
+            font-weight: 900;
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.4);
+            min-width: 24px;
+            text-align: center;
+        }
+
+        .leaderboard-row .lb-name {
+            font-weight: 700;
+            font-size: 0.9rem;
+            flex: 1;
+        }
+
+        .leaderboard-row .lb-elo {
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.7);
+        }
+
+        .leaderboard-row .lb-record {
+            font-size: 0.75rem;
+            color: rgba(255,255,255,0.4);
         }
     </style>
 </head>
@@ -210,6 +291,14 @@
             <div class="result" id="resultText"></div>
             <div class="final-score" id="finalScore"></div>
             <div class="elo-section" id="eloSection" style="display: none;"></div>
+        </div>
+
+        <!-- Portrait game over (hidden initially) -->
+        <div class="gameover-portrait" id="gameoverPortrait" style="display: none;">
+            <div class="result" id="resultTextPortrait"></div>
+            <div class="final-score" id="finalScorePortrait"></div>
+            <div class="elo-section" id="eloSectionPortrait" style="display: none;"></div>
+            <div class="leaderboard-section" id="leaderboardSection" style="display: none;"></div>
         </div>
     </div>
 
@@ -415,8 +504,25 @@
             }
         }
 
+        // Register remote connection
+        async function registerConnection() {
+            try {
+                await fetch(`${API}/matches/${MATCH_ID}/connect`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': CSRF
+                    },
+                    body: JSON.stringify({ side: SIDE }),
+                });
+            } catch (err) {
+                // Silently ignore
+            }
+        }
+
         // Initial load
         async function init() {
+            await registerConnection();
             try {
                 const res = await fetch(`${API}/matches/${MATCH_ID}`);
                 const data = await res.json();

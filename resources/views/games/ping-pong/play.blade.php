@@ -757,7 +757,14 @@
         <div style="display: flex; flex-direction: column; height: 100%;">
             <div class="pp-header" style="text-align: center; padding: 16px 0;">
                 <h2 style="font-size: 2.8rem;">Scan to Score</h2>
-                <div class="pp-header-sub">Use your phone as a remote</div>
+                <div class="pp-header-sub">
+                    <template x-if="leftRemoteConnected && rightRemoteConnected">
+                        <span style="color: #22c55e; font-weight: 700;">Both players connected! Starting...</span>
+                    </template>
+                    <template x-if="!(leftRemoteConnected && rightRemoteConnected)">
+                        <span>Waiting for players to scan...</span>
+                    </template>
+                </div>
             </div>
             <div class="pp-qr-panel">
                 <div class="pp-qr-box">
@@ -770,6 +777,10 @@
                         </template>
                     </div>
                     <div class="qr-canvas" x-ref="qrLeft"></div>
+                    <div style="margin-top: 12px; font-size: 1.2rem; font-weight: 700;"
+                         :style="leftRemoteConnected ? 'color: #22c55e' : 'color: rgba(255,255,255,0.3)'">
+                        <span x-text="leftRemoteConnected ? 'Connected' : 'Waiting...'"></span>
+                    </div>
                 </div>
                 <div class="pp-qr-box">
                     <div class="qr-label" style="color: #22d3ee;">
@@ -781,6 +792,10 @@
                         </template>
                     </div>
                     <div class="qr-canvas" x-ref="qrRight"></div>
+                    <div style="margin-top: 12px; font-size: 1.2rem; font-weight: 700;"
+                         :style="rightRemoteConnected ? 'color: #22c55e' : 'color: rgba(255,255,255,0.3)'">
+                        <span x-text="rightRemoteConnected ? 'Connected' : 'Waiting...'"></span>
+                    </div>
                 </div>
             </div>
             <div style="text-align: center;">
@@ -970,6 +985,9 @@ function pingPong() {
         showAbandonConfirm: false,
         loading: false,
         pollInterval: null,
+        qrPollInterval: null,
+        leftRemoteConnected: false,
+        rightRemoteConnected: false,
 
         async init() {
             await this.loadPlayers();
@@ -1187,6 +1205,7 @@ function pingPong() {
                     break;
                 case 'Backspace':
                     e.preventDefault();
+                    this.stopQrPolling();
                     this.screen = 'sides';
                     break;
             }
@@ -1308,8 +1327,13 @@ function pingPong() {
                 });
                 this.match = await res.json();
                 this.eloChanges = null;
+                this.leftRemoteConnected = false;
+                this.rightRemoteConnected = false;
                 this.screen = 'qrscan';
-                this.$nextTick(() => this.generateQrCodes());
+                this.$nextTick(() => {
+                    this.generateQrCodes();
+                    this.startQrPolling();
+                });
             } catch (err) {
                 console.error('Error starting match:', err);
             }
@@ -1332,7 +1356,42 @@ function pingPong() {
             }
         },
 
+        startQrPolling() {
+            this.stopQrPolling();
+            this.qrPollInterval = setInterval(() => this.pollRemoteConnections(), 1500);
+        },
+
+        stopQrPolling() {
+            if (this.qrPollInterval) {
+                clearInterval(this.qrPollInterval);
+                this.qrPollInterval = null;
+            }
+        },
+
+        async pollRemoteConnections() {
+            if (!this.match.id || this.screen !== 'qrscan') return;
+            try {
+                const res = await fetch(`${this.API}/matches/${this.match.id}`);
+                const data = await res.json();
+                this.leftRemoteConnected = !!data.left_remote_connected;
+                this.rightRemoteConnected = !!data.right_remote_connected;
+
+                if (this.leftRemoteConnected && this.rightRemoteConnected) {
+                    this.stopQrPolling();
+                    // Small delay so user sees "Both connected" message
+                    setTimeout(() => {
+                        if (this.screen === 'qrscan') {
+                            this.beginPlaying();
+                        }
+                    }, 1000);
+                }
+            } catch (err) {
+                // Silently ignore
+            }
+        },
+
         beginPlaying() {
+            this.stopQrPolling();
             this.startTimer();
             this.startPolling();
             this.screen = 'playing';
@@ -1442,8 +1501,13 @@ function pingPong() {
                 });
                 this.match = await res.json();
                 this.eloChanges = null;
+                this.leftRemoteConnected = false;
+                this.rightRemoteConnected = false;
                 this.screen = 'qrscan';
-                this.$nextTick(() => this.generateQrCodes());
+                this.$nextTick(() => {
+                    this.generateQrCodes();
+                    this.startQrPolling();
+                });
             } catch (err) {
                 console.error('Error creating rematch:', err);
             }
@@ -1459,6 +1523,7 @@ function pingPong() {
 
         async goToLobby() {
             this.stopPolling();
+            this.stopQrPolling();
             this.match = {};
             this.eloChanges = null;
             this.player1 = null;
