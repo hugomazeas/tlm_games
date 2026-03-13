@@ -198,6 +198,41 @@
         background: rgba(239, 68, 68, 0.15);
         color: #ef4444;
     }
+
+    .pps .elo-chart-container {
+        position: relative;
+        height: 240px;
+        margin-top: 12px;
+    }
+
+    .pps .elo-mode-tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+
+    .pps .elo-mode-tab {
+        padding: 6px 14px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        cursor: pointer;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        color: rgba(255,255,255,0.6);
+        transition: all 0.2s;
+    }
+
+    .pps .elo-mode-tab:hover {
+        background: rgba(255,255,255,0.08);
+        color: rgba(255,255,255,0.9);
+    }
+
+    .pps .elo-mode-tab.active {
+        background: rgba(59, 130, 246, 0.2);
+        border-color: #3b82f6;
+        color: #3b82f6;
+    }
 </style>
 
 <div class="pps" x-data="playerStats()" x-init="init()">
@@ -250,6 +285,20 @@
         </div>
     </div>
 
+    <!-- ELO History -->
+    <div class="section">
+        <h2>ELO History</h2>
+        <div class="elo-mode-tabs">
+            <button class="elo-mode-tab" :class="{ active: eloMode === '1v1' }" @click="eloMode = '1v1'; loadEloHistory();">1v1</button>
+            <button class="elo-mode-tab" :class="{ active: eloMode === '2v2' }" @click="eloMode = '2v2'; loadEloHistory();">2v2</button>
+        </div>
+        <div class="elo-chart-container" x-show="eloHistory.length > 0">
+            <canvas id="eloChart" width="400" height="240"></canvas>
+        </div>
+        <div class="empty" x-show="eloHistory.length === 0 && !loadingEloHistory">No ELO history yet</div>
+        <div class="loading" x-show="loadingEloHistory">Loading...</div>
+    </div>
+
     <!-- Head to Head -->
     <div class="section">
         <h2>Head-to-Head</h2>
@@ -296,14 +345,18 @@ function playerStats() {
         stats: {},
         h2h: [],
         matches: [],
+        eloHistory: [],
+        eloMode: '1v1',
         loadingH2h: true,
         loadingMatches: true,
+        loadingEloHistory: true,
 
         async init() {
             await Promise.all([
                 this.loadStats(),
                 this.loadH2h(),
                 this.loadMatches(),
+                this.loadEloHistory(),
             ]);
         },
 
@@ -337,6 +390,57 @@ function playerStats() {
                 console.error('Error loading matches:', err);
             }
             this.loadingMatches = false;
+        },
+
+        async loadEloHistory() {
+            this.loadingEloHistory = true;
+            try {
+                const res = await fetch(`${this.API}/players/${this.playerId}/elo-history?mode=${this.eloMode}`);
+                const data = await res.json();
+                this.eloHistory = data.history || [];
+                this.$nextTick(() => this.renderEloChart());
+            } catch (err) {
+                console.error('Error loading ELO history:', err);
+                this.eloHistory = [];
+            }
+            this.loadingEloHistory = false;
+        },
+
+        renderEloChart() {
+            if (this.eloHistory.length === 0) return;
+            const canvas = document.getElementById('eloChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const values = this.eloHistory.map(p => p.rating_after);
+            const minY = Math.min(1200, ...values) - 50;
+            const maxY = Math.max(1200, ...values) + 50;
+            const w = canvas.width;
+            const h = canvas.height;
+            const pad = { left: 40, right: 20, top: 20, bottom: 30 };
+            const chartW = w - pad.left - pad.right;
+            const chartH = h - pad.top - pad.bottom;
+            const toX = (i) => pad.left + (i / Math.max(1, values.length - 1)) * chartW;
+            const toY = (v) => pad.top + chartH - ((v - minY) / (maxY - minY)) * chartH;
+            ctx.clearRect(0, 0, w, h);
+            ctx.beginPath();
+            ctx.moveTo(toX(0), toY(values[0]));
+            for (let i = 1; i < values.length; i++) ctx.lineTo(toX(i), toY(values[i]));
+            ctx.lineTo(toX(values.length - 1), pad.top + chartH);
+            ctx.lineTo(toX(0), pad.top + chartH);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(59, 130, 246, 0.15)';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(toX(0), toY(values[0]));
+            for (let i = 1; i < values.length; i++) ctx.lineTo(toX(i), toY(values[i]));
+            ctx.strokeStyle = 'rgba(59, 130, 246, 0.9)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+            ctx.font = '11px Outfit, sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(minY, pad.left - 6, pad.top + chartH + 4);
+            ctx.fillText(maxY, pad.left - 6, pad.top + 4);
         },
     };
 }

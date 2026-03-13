@@ -4,6 +4,7 @@ namespace App\Games\PingPong\Services;
 
 use App\Games\PingPong\Models\PingPongMatch;
 use App\Games\PingPong\Models\PingPongRating;
+use App\Games\PingPong\Models\PingPongRatingChange;
 
 class EloService
 {
@@ -16,6 +17,15 @@ class EloService
             ['player_id' => $playerId, 'mode' => $mode],
             ['elo_rating' => self::DEFAULT_RATING]
         );
+    }
+
+    public function getEloFromHistory(int $playerId, string $mode = '1v1'): int
+    {
+        $sum = PingPongRatingChange::where('player_id', $playerId)
+            ->where('mode', $mode)
+            ->sum('rating_change');
+
+        return self::DEFAULT_RATING + (int) $sum;
     }
 
     public function calculateChange(int $playerRating, int $opponentRating, float $score): int
@@ -47,6 +57,19 @@ class EloService
 
         $leftChange = $this->calculateChange($leftBefore, $rightBefore, $leftScore);
         $rightChange = $this->calculateChange($rightBefore, $leftBefore, $rightScore);
+
+        PingPongRatingChange::create([
+            'player_id' => $match->player_left_id,
+            'match_id' => $match->id,
+            'mode' => '1v1',
+            'rating_change' => $leftChange,
+        ]);
+        PingPongRatingChange::create([
+            'player_id' => $match->player_right_id,
+            'match_id' => $match->id,
+            'mode' => '1v1',
+            'rating_change' => $rightChange,
+        ]);
 
         $leftRating->update(['elo_rating' => $leftBefore + $leftChange]);
         $rightRating->update(['elo_rating' => $rightBefore + $rightChange]);
@@ -97,6 +120,31 @@ class EloService
         // Same change for both teammates, based on team averages
         $leftChange = $this->calculateChange($teamLeftAvg, $teamRightAvg, $leftScore);
         $rightChange = $this->calculateChange($teamRightAvg, $teamLeftAvg, $rightScore);
+
+        PingPongRatingChange::create([
+            'player_id' => $match->player_left_id,
+            'match_id' => $match->id,
+            'mode' => $mode,
+            'rating_change' => $leftChange,
+        ]);
+        PingPongRatingChange::create([
+            'player_id' => $match->team_left_player2_id,
+            'match_id' => $match->id,
+            'mode' => $mode,
+            'rating_change' => $leftChange,
+        ]);
+        PingPongRatingChange::create([
+            'player_id' => $match->player_right_id,
+            'match_id' => $match->id,
+            'mode' => $mode,
+            'rating_change' => $rightChange,
+        ]);
+        PingPongRatingChange::create([
+            'player_id' => $match->team_right_player2_id,
+            'match_id' => $match->id,
+            'mode' => $mode,
+            'rating_change' => $rightChange,
+        ]);
 
         $leftP1Rating->update(['elo_rating' => $leftP1Before + $leftChange]);
         $leftP2Rating->update(['elo_rating' => $leftP2Before + $leftChange]);
