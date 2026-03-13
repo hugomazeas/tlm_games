@@ -6,7 +6,21 @@
     {{-- Hero --}}
     <div class="mb-8 sm:mb-12">
         <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight mb-1.5">Games Hub</h1>
-        <p class="text-white/50 text-sm sm:text-base">Your office gaming dashboard. Track scores, compete, and have fun.</p>
+        <p class="text-white/50 text-sm sm:text-base mb-4">Your office gaming dashboard. Track scores, compete, and have fun.</p>
+        <div class="flex flex-wrap gap-2 mb-4">
+            <span class="bg-white/10 rounded-full px-3 py-1 text-xs text-white/60">{{ $totalGamesPlayed }} games played</span>
+            <span class="bg-white/10 rounded-full px-3 py-1 text-xs text-white/60">{{ $playerCount }} players</span>
+            <span class="bg-white/10 rounded-full px-3 py-1 text-xs text-white/60">{{ $todayGamesCount }} today</span>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            @foreach($gameTypes->where('is_active', true) as $game)
+                <a href="{{ url('/games/' . $game->slug) }}"
+                   class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition hover:opacity-90"
+                   style="background-color: {{ $game->color }}; color: #fff;">
+                    {{ $game->icon }} Play {{ $game->name }}
+                </a>
+            @endforeach
+        </div>
     </div>
 
     {{-- Game sections --}}
@@ -104,7 +118,7 @@
                             View Full Leaderboard &rarr;
                         </a>
                         <a href="{{ url('/games/' . $game->slug) }}"
-                           class="hidden sm:inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm font-semibold transition hover:opacity-90"
+                           class="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm font-semibold transition hover:opacity-90"
                            style="background-color: {{ $game->color }}; color: #fff;">
                             Play &rarr;
                         </a>
@@ -118,8 +132,26 @@
         @endforeach
     </div>
 
+    {{-- Recent Activity --}}
+    @if($recentActivity->isNotEmpty())
+    <div class="mb-10 sm:mb-12">
+        <h2 class="text-lg sm:text-xl font-bold mb-4">Recent Activity</h2>
+        <div class="bg-white/5 border border-white/10 rounded-2xl divide-y divide-white/5">
+            @foreach($recentActivity as $activity)
+            <div class="px-4 sm:px-6 py-3 flex items-center gap-3">
+                <span class="text-xl flex-shrink-0">{{ $activity['icon'] }}</span>
+                <div class="min-w-0 flex-1">
+                    <p class="text-sm text-white/80 truncate">{{ $activity['description'] }}</p>
+                </div>
+                <span class="text-xs text-white/30 flex-shrink-0 whitespace-nowrap">{{ $activity['time']->diffForHumans(short: true) }}</span>
+            </div>
+            @endforeach
+        </div>
+    </div>
+    @endif
+
     {{-- Quick links --}}
-    <div class="grid grid-cols-2 gap-3 sm:gap-6">
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-6">
         <a href="{{ url('/players') }}" class="bg-white/5 border border-white/10 rounded-xl p-4 sm:p-6 hover:bg-white/10 transition group">
             <h2 class="text-base sm:text-lg font-bold mb-1 sm:mb-4">👥 Players</h2>
             <p class="text-xs sm:text-sm text-white/50 mb-2 sm:mb-4">{{ $playerCount }} registered</p>
@@ -129,6 +161,11 @@
             <h2 class="text-base sm:text-lg font-bold mb-1 sm:mb-4">🏆 Leaderboards</h2>
             <p class="text-xs sm:text-sm text-white/50 mb-2 sm:mb-4">{{ $activeGameCount }} active {{ Str::plural('game', $activeGameCount) }}</p>
             <span class="text-xs sm:text-sm text-indigo-400 group-hover:text-indigo-300 font-medium hidden sm:inline">View Leaderboards →</span>
+        </a>
+        <a href="{{ url('/leaderboards') }}" class="bg-white/5 border border-white/10 rounded-xl p-4 sm:p-6 hover:bg-white/10 transition group">
+            <h2 class="text-base sm:text-lg font-bold mb-1 sm:mb-4">🔥 Today</h2>
+            <p class="text-xs sm:text-sm text-white/50 mb-2 sm:mb-4">{{ $todayGamesCount }} {{ Str::plural('game', $todayGamesCount) }} today</p>
+            <span class="text-xs sm:text-sm text-indigo-400 group-hover:text-indigo-300 font-medium hidden sm:inline">View Activity →</span>
         </a>
     </div>
 @endsection
