@@ -240,6 +240,22 @@
         border-color: #3b82f6;
         color: #3b82f6;
     }
+
+    .pps .elo-tooltip {
+        position: fixed;
+        z-index: 50;
+        padding: 8px 12px;
+        min-width: 90px;
+        background: rgba(15, 23, 42, 0.95);
+        border: 1px solid rgba(59, 130, 246, 0.4);
+        border-radius: 8px;
+        font-size: 0.875rem;
+        pointer-events: none;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    .pps .elo-tooltip .tooltip-date { color: rgba(255,255,255,0.7); font-size: 0.8rem; }
+    .pps .elo-tooltip .tooltip-rating { color: #3b82f6; font-weight: 700; font-size: 1.1rem; }
 </style>
 
 <div class="pps" x-data="playerStats()" x-init="init()">
@@ -299,8 +315,15 @@
             <button class="elo-mode-tab" :class="{ active: eloMode === '1v1' }" @click="eloMode = '1v1'; loadEloHistory();">1v1</button>
             <button class="elo-mode-tab" :class="{ active: eloMode === '2v2' }" @click="eloMode = '2v2'; loadEloHistory();">2v2</button>
         </div>
-        <div class="elo-chart-container" x-show="eloHistory.length > 0" x-ref="eloChartContainer">
+        <div class="elo-chart-container" x-show="eloHistory.length > 0" x-ref="eloChartContainer"
+             @mousemove="onEloChartMouseMove($event)"
+             @mouseleave="eloTooltip.show = false">
             <canvas id="eloChart"></canvas>
+            <div class="elo-tooltip" x-show="eloTooltip.show" x-cloak
+                 :style="'left: ' + eloTooltip.x + 'px; top: ' + eloTooltip.y + 'px;'">
+                <div class="tooltip-date" x-text="eloTooltip.date"></div>
+                <div class="tooltip-rating" x-text="eloTooltip.rating ? 'ELO ' + eloTooltip.rating : ''"></div>
+            </div>
         </div>
         <div class="empty" x-show="eloHistory.length === 0 && !loadingEloHistory">No ELO history yet</div>
         <div class="loading" x-show="loadingEloHistory">Loading...</div>
@@ -354,6 +377,8 @@ function playerStats() {
         matches: [],
         eloHistory: [],
         eloMode: '1v1',
+        eloTooltip: { show: false, date: '', rating: '', x: 0, y: 0 },
+        eloChartData: null,
         loadingH2h: true,
         loadingMatches: true,
         loadingEloHistory: true,
@@ -494,6 +519,37 @@ function playerStats() {
             ctx.lineWidth = 2;
             ctx.stroke();
             ctx.setTransform(1, 0, 0, 1, 0, 0);
+            this.eloChartData = { pts, values, pad, chartW, chartH, n: values.length };
+        },
+
+        onEloChartMouseMove(e) {
+            if (!this.eloChartData || this.eloHistory.length === 0) return;
+            const { pts, pad, chartW, n } = this.eloChartData;
+            const rect = this.$refs.eloChartContainer?.getBoundingClientRect();
+            if (!rect) return;
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            if (mouseX < pad.left || mouseX > pad.left + chartW) {
+                this.eloTooltip.show = false;
+                return;
+            }
+            const toX = (i) => pad.left + (i / Math.max(1, n - 1)) * chartW;
+            let best = 0;
+            let bestDist = Infinity;
+            for (let i = 0; i < n; i++) {
+                const d = Math.abs(mouseX - toX(i));
+                if (d < bestDist) { bestDist = d; best = i; }
+            }
+            const pt = pts[best];
+            const d = pt?.created_at ? new Date(pt.created_at) : null;
+            const dateStr = d ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+            const ratingStr = pt ? String(pt.rating_after) : '';
+            const offset = 12;
+            let x = e.clientX + offset;
+            let y = e.clientY + offset;
+            if (x + 120 > window.innerWidth) x = e.clientX - 130;
+            if (y + 60 > window.innerHeight) y = e.clientY - 55;
+            this.eloTooltip = { show: true, date: dateStr, rating: ratingStr, x, y };
         },
     };
 }
