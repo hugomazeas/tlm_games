@@ -1341,7 +1341,7 @@ function pingPong() {
         },
 
         generateQrCodes() {
-            const origin = window.location.origin;
+            const origin = @json(config('games.remote_url'));
             const baseUrl = `${origin}/games/ping-pong/remote/${this.match.id}`;
 
             const leftEl = this.$refs.qrLeft;

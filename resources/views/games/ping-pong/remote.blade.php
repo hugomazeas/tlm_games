@@ -361,7 +361,7 @@
     <script>
         const MATCH_ID = {{ $matchId }};
         const SIDE = '{{ $side }}';
-        const API = window.location.origin + '/games/ping-pong/api';
+        const API = @json(rtrim($remoteUrl, '/')) + '/games/ping-pong/api';
         const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 
         let isUpdating = false;
