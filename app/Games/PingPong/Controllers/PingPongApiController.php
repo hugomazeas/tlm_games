@@ -4,6 +4,7 @@ namespace App\Games\PingPong\Controllers;
 
 use App\Games\PingPong\Models\PingPongMatch;
 use App\Games\PingPong\Models\PingPongRating;
+use App\Games\PingPong\Models\PingPongRatingChange;
 use App\Games\PingPong\Services\EloService;
 use App\Http\Controllers\Controller;
 use App\Models\Player;
@@ -433,6 +434,35 @@ class PingPongApiController extends Controller
             'avg_duration' => $avgDurationFormatted,
             'streak' => $streak,
             'streak_type' => $streakType,
+        ]);
+    }
+
+    public function eloHistory(Request $request, int $id): JsonResponse
+    {
+        $player = Player::findOrFail($id);
+        $mode = $request->query('mode', '1v1');
+
+        $changes = PingPongRatingChange::where('player_id', $id)
+            ->where('mode', $mode)
+            ->orderBy('created_at')
+            ->get();
+
+        $cumulative = 1200;
+        $history = $changes->map(function ($change) use (&$cumulative) {
+            $cumulative += $change->rating_change;
+
+            return [
+                'match_id' => $change->match_id,
+                'rating_change' => $change->rating_change,
+                'rating_after' => $cumulative,
+                'created_at' => $change->created_at->toIso8601String(),
+            ];
+        });
+
+        return response()->json([
+            'player' => ['id' => $player->id, 'name' => $player->name],
+            'mode' => $mode,
+            'history' => $history,
         ]);
     }
 
