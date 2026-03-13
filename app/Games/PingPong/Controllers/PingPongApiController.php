@@ -146,6 +146,8 @@ class PingPongApiController extends Controller
         $response['duration'] = $match->duration;
         $response['duration_formatted'] = $match->duration_formatted;
         $response['is_complete'] = $match->is_complete;
+        $response['left_remote_connected'] = $match->left_remote_connected_at !== null;
+        $response['right_remote_connected'] = $match->right_remote_connected_at !== null;
 
         if ($match->is_complete && $match->player_left_elo_before !== null) {
             if ($match->isDoubles()) {
@@ -278,6 +280,28 @@ class PingPongApiController extends Controller
         }
 
         return response()->json($response);
+    }
+
+    public function connectRemote(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'side' => 'required|in:left,right',
+        ]);
+
+        $match = PingPongMatch::findOrFail($id);
+
+        $field = $validated['side'] === 'left' ? 'left_remote_connected_at' : 'right_remote_connected_at';
+
+        if ($match->$field === null) {
+            $match->$field = now();
+            $match->save();
+        }
+
+        return response()->json([
+            'connected' => true,
+            'left_remote_connected' => $match->left_remote_connected_at !== null,
+            'right_remote_connected' => $match->right_remote_connected_at !== null,
+        ]);
     }
 
     public function rematch(int $id): JsonResponse

@@ -31,6 +31,8 @@ class PingPongMatch extends Model
         'team_left_player2_elo_after',
         'team_right_player2_elo_before',
         'team_right_player2_elo_after',
+        'left_remote_connected_at',
+        'right_remote_connected_at',
     ];
 
     protected function casts(): array
@@ -38,6 +40,8 @@ class PingPongMatch extends Model
         return [
             'started_at' => 'datetime',
             'ended_at' => 'datetime',
+            'left_remote_connected_at' => 'datetime',
+            'right_remote_connected_at' => 'datetime',
             'player_left_score' => 'integer',
             'player_right_score' => 'integer',
             'serve_count' => 'integer',

@@ -84,11 +84,38 @@
             font-weight: 900;
             cursor: pointer;
             border: none;
-            transition: opacity 0.1s;
+            transition: transform 0.1s ease, filter 0.1s ease, opacity 0.1s;
+            position: relative;
+            overflow: hidden;
         }
 
         .action-btn:active {
-            opacity: 0.7;
+            transform: scale(0.95);
+            filter: brightness(1.3);
+            opacity: 0.9;
+        }
+
+        .action-btn.tapped {
+            transform: scale(0.95);
+            filter: brightness(1.3);
+        }
+
+        .action-btn.tapped::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 120%;
+            height: 120%;
+            background: radial-gradient(circle, rgba(255,255,255,0.2) 0%, transparent 70%);
+            transform: translate(-50%, -50%) scale(0);
+            animation: ripple 0.4s ease-out forwards;
+            pointer-events: none;
+        }
+
+        @keyframes ripple {
+            0% { transform: translate(-50%, -50%) scale(0); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
         }
 
         .action-btn.plus {
@@ -175,9 +202,9 @@
         .elo-positive { color: #22c55e; }
         .elo-negative { color: #ef4444; }
 
-        /* Landscape lock: rotate when in portrait */
+        /* Landscape lock: rotate when in portrait (only during play) */
         @media (orientation: portrait) {
-            html {
+            html:not(.portrait-mode) {
                 transform: rotate(90deg);
                 transform-origin: top left;
                 width: 100vh;
@@ -187,6 +214,116 @@
                 left: 100%;
                 overflow: hidden;
             }
+        }
+
+        /* Portrait game-over styles */
+        html.portrait-mode, html.portrait-mode body {
+            height: auto;
+            min-height: 100%;
+            overflow: auto;
+        }
+
+        .gameover-portrait {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            padding: 24px 16px;
+            text-align: center;
+            overflow-y: auto;
+            min-height: 100vh;
+        }
+
+        .gameover-portrait .result {
+            font-size: 2.4rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, #3b82f6, #06b6d4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .gameover-portrait .final-score {
+            font-size: 4rem;
+            font-weight: 800;
+        }
+
+        .gameover-portrait .elo-section-title {
+            font-size: 0.9rem;
+        }
+
+        .gameover-portrait .elo-row .elo-name {
+            font-size: 1.05rem;
+        }
+
+        .gameover-portrait .elo-row .elo-rating {
+            font-size: 1rem;
+        }
+
+        .gameover-portrait .elo-row .elo-change {
+            font-size: 1.2rem;
+        }
+
+        .leaderboard-section {
+            width: 100%;
+            max-width: 400px;
+            margin-top: 8px;
+        }
+
+        .leaderboard-section-title {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            opacity: 0.5;
+            margin-bottom: 10px;
+        }
+
+        .leaderboard-row {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.05);
+            margin-bottom: 6px;
+            gap: 10px;
+        }
+
+        .leaderboard-row .lb-rank {
+            font-weight: 900;
+            font-size: 1rem;
+            color: rgba(255,255,255,0.4);
+            min-width: 28px;
+            text-align: center;
+        }
+
+        .leaderboard-row .lb-name {
+            font-weight: 700;
+            font-size: 1.05rem;
+            flex: 1;
+        }
+
+        .leaderboard-row .lb-elo {
+            font-weight: 700;
+            font-size: 1rem;
+            color: rgba(255,255,255,0.7);
+        }
+
+        .leaderboard-row .lb-record {
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.4);
+        }
+
+        .leaderboard-row .lb-elo-change {
+            font-weight: 800;
+            font-size: 0.85rem;
+            min-width: 40px;
+            text-align: right;
+        }
+
+        .leaderboard-row.highlight {
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            box-shadow: 0 0 12px rgba(59, 130, 246, 0.1);
         }
     </style>
 </head>
@@ -211,12 +348,20 @@
             <div class="final-score" id="finalScore"></div>
             <div class="elo-section" id="eloSection" style="display: none;"></div>
         </div>
+
+        <!-- Portrait game over (hidden initially) -->
+        <div class="gameover-portrait" id="gameoverPortrait" style="display: none;">
+            <div class="result" id="resultTextPortrait"></div>
+            <div class="final-score" id="finalScorePortrait"></div>
+            <div class="elo-section" id="eloSectionPortrait" style="display: none;"></div>
+            <div class="leaderboard-section" id="leaderboardSection" style="display: none;"></div>
+        </div>
     </div>
 
     <script>
         const MATCH_ID = {{ $matchId }};
         const SIDE = '{{ $side }}';
-        const API = @json(rtrim($remoteUrl, '/')) + '/games/ping-pong/api';
+        const API = window.location.origin + '/games/ping-pong/api';
         const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 
         let isUpdating = false;
@@ -242,14 +387,23 @@
         sideLabel.textContent = SIDE === 'left' ? 'LEFT' : 'RIGHT';
 
         // Touch events for faster response
+        function addTapFeedback(el) {
+            el.classList.add('tapped');
+            setTimeout(() => el.classList.remove('tapped'), 300);
+        }
+
         function addTouchHandler(el, handler) {
             el.addEventListener('touchstart', function(e) {
                 e.preventDefault();
+                addTapFeedback(el);
                 handler();
             }, { passive: false });
             el.addEventListener('click', function(e) {
                 // Fallback for non-touch devices
-                if (e.pointerType !== 'touch') handler();
+                if (e.pointerType !== 'touch') {
+                    addTapFeedback(el);
+                    handler();
+                }
             });
         }
 
@@ -307,8 +461,15 @@
             isComplete = true;
             stopPolling();
 
+            // Switch to portrait mode
+            document.documentElement.classList.add('portrait-mode');
+
             buttonArea.style.display = 'none';
-            gameoverArea.style.display = 'flex';
+            scoreBar.style.display = 'none';
+            gameoverArea.style.display = 'none';
+
+            const gameoverPortrait = document.getElementById('gameoverPortrait');
+            gameoverPortrait.style.display = 'flex';
 
             const leftWon = data.winner_id === data.player_left_id;
             let winnerName;
@@ -322,13 +483,18 @@
                     : (data.player_right?.name || '?');
             }
 
-            resultText.textContent = winnerName + ' Wins!';
-            finalScore.innerHTML =
+            // Populate portrait elements
+            document.getElementById('resultTextPortrait').textContent = winnerName + ' Wins!';
+            document.getElementById('finalScorePortrait').innerHTML =
                 '<span style="color:#fb7185">' + data.player_left_score + '</span>' +
                 '<span style="color:rgba(255,255,255,0.3)"> - </span>' +
                 '<span style="color:#22d3ee">' + data.player_right_score + '</span>';
 
-            renderEloChanges(data);
+            // Render elo changes in portrait section
+            renderEloChangesPortrait(data);
+
+            // Fetch and render leaderboard
+            fetchLeaderboard(data);
         }
 
         function renderEloChanges(data) {
@@ -387,6 +553,100 @@
                 '</div>';
         }
 
+        function renderEloChangesPortrait(data) {
+            const elo = data.elo_changes;
+            if (!elo) return;
+
+            const eloSection = document.getElementById('eloSectionPortrait');
+            let html = '<div class="elo-section-title">Elo Changes</div>';
+
+            if (data.mode === '2v2') {
+                const leftTeamLabel = (data.player_left?.name || '?') + ' & ' + (data.team_left_player2?.name || '?');
+                const lc = elo.left;
+                html += eloTeamRow(leftTeamLabel, lc.team_avg_before, lc.team_avg_after, lc.change, '#fb7185');
+                html += eloPlayerRow(data.player_left?.name || '?', lc.player1.before, lc.player1.after);
+                html += eloPlayerRow(data.team_left_player2?.name || '?', lc.player2.before, lc.player2.after);
+
+                const rightTeamLabel = (data.player_right?.name || '?') + ' & ' + (data.team_right_player2?.name || '?');
+                const rc = elo.right;
+                html += '<div style="height:6px"></div>';
+                html += eloTeamRow(rightTeamLabel, rc.team_avg_before, rc.team_avg_after, rc.change, '#22d3ee');
+                html += eloPlayerRow(data.player_right?.name || '?', rc.player1.before, rc.player1.after);
+                html += eloPlayerRow(data.team_right_player2?.name || '?', rc.player2.before, rc.player2.after);
+            } else {
+                const lc = elo.left;
+                const rc = elo.right;
+                html += eloPlayerRow(data.player_left?.name || '?', lc.before, lc.after, '#fb7185');
+                html += eloPlayerRow(data.player_right?.name || '?', rc.before, rc.after, '#22d3ee');
+            }
+
+            eloSection.innerHTML = html;
+            eloSection.style.display = 'block';
+        }
+
+        function getMatchPlayerIds(data) {
+            const ids = new Set();
+            if (data.player_left_id) ids.add(data.player_left_id);
+            if (data.player_right_id) ids.add(data.player_right_id);
+            if (data.team_left_player2_id) ids.add(data.team_left_player2_id);
+            if (data.team_right_player2_id) ids.add(data.team_right_player2_id);
+            return ids;
+        }
+
+        function getEloChangeForPlayer(data, playerId) {
+            const elo = data.elo_changes;
+            if (!elo) return null;
+
+            if (data.mode === '2v2') {
+                if (playerId === data.player_left_id) return elo.left.player1.after - elo.left.player1.before;
+                if (playerId === data.team_left_player2_id) return elo.left.player2.after - elo.left.player2.before;
+                if (playerId === data.player_right_id) return elo.right.player1.after - elo.right.player1.before;
+                if (playerId === data.team_right_player2_id) return elo.right.player2.after - elo.right.player2.before;
+            } else {
+                if (playerId === data.player_left_id) return elo.left.after - elo.left.before;
+                if (playerId === data.player_right_id) return elo.right.after - elo.right.before;
+            }
+            return null;
+        }
+
+        async function fetchLeaderboard(data) {
+            const leaderboardSection = document.getElementById('leaderboardSection');
+            const mode = data.mode === '2v2' ? '2v2' : '1v1';
+            const matchPlayerIds = getMatchPlayerIds(data);
+
+            try {
+                const res = await fetch(`${API}/leaderboard?mode=${mode}`);
+                const entries = await res.json();
+
+                let html = '<div class="leaderboard-section-title">Leaderboard</div>';
+
+                entries.forEach((entry, index) => {
+                    const isMatchPlayer = matchPlayerIds.has(entry.player_id);
+                    const highlightClass = isMatchPlayer ? ' highlight' : '';
+                    const eloChange = isMatchPlayer ? getEloChangeForPlayer(data, entry.player_id) : null;
+
+                    html += '<div class="leaderboard-row' + highlightClass + '">';
+                    html += '<span class="lb-rank">#' + (index + 1) + '</span>';
+                    html += '<span class="lb-name">' + entry.player_name + '</span>';
+                    html += '<span class="lb-record">' + entry.wins + 'W ' + entry.losses + 'L (' + entry.win_rate + '%)</span>';
+                    html += '<span class="lb-elo">' + entry.elo_rating + '</span>';
+
+                    if (eloChange !== null) {
+                        const sign = eloChange >= 0 ? '+' : '';
+                        const cls = eloChange >= 0 ? 'elo-positive' : 'elo-negative';
+                        html += '<span class="lb-elo-change ' + cls + '">' + sign + eloChange + '</span>';
+                    }
+
+                    html += '</div>';
+                });
+
+                leaderboardSection.innerHTML = html;
+                leaderboardSection.style.display = 'block';
+            } catch (err) {
+                // Silently ignore leaderboard fetch errors
+            }
+        }
+
         async function pollMatch() {
             if (isComplete) return;
             try {
@@ -415,8 +675,25 @@
             }
         }
 
+        // Register remote connection
+        async function registerConnection() {
+            try {
+                await fetch(`${API}/matches/${MATCH_ID}/connect`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': CSRF
+                    },
+                    body: JSON.stringify({ side: SIDE }),
+                });
+            } catch (err) {
+                // Silently ignore
+            }
+        }
+
         // Initial load
         async function init() {
+            await registerConnection();
             try {
                 const res = await fetch(`${API}/matches/${MATCH_ID}`);
                 const data = await res.json();
