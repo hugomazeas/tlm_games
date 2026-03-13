@@ -1340,7 +1340,7 @@ function pingPong() {
 
         startPolling() {
             this.stopPolling();
-            this.pollInterval = setInterval(() => this.pollMatch(), 1500);
+            this.pollInterval = setInterval(() => this.pollMatch(), 750);
         },
 
         stopPolling() {
