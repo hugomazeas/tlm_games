@@ -201,8 +201,15 @@
 
     .pps .elo-chart-container {
         position: relative;
+        width: 100%;
         height: 280px;
         margin-top: 12px;
+    }
+
+    .pps .elo-chart-container canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
     }
 
     .pps .elo-mode-tabs {
@@ -292,8 +299,8 @@
             <button class="elo-mode-tab" :class="{ active: eloMode === '1v1' }" @click="eloMode = '1v1'; loadEloHistory();">1v1</button>
             <button class="elo-mode-tab" :class="{ active: eloMode === '2v2' }" @click="eloMode = '2v2'; loadEloHistory();">2v2</button>
         </div>
-        <div class="elo-chart-container" x-show="eloHistory.length > 0">
-            <canvas id="eloChart" width="600" height="280"></canvas>
+        <div class="elo-chart-container" x-show="eloHistory.length > 0" x-ref="eloChartContainer">
+            <canvas id="eloChart"></canvas>
         </div>
         <div class="empty" x-show="eloHistory.length === 0 && !loadingEloHistory">No ELO history yet</div>
         <div class="loading" x-show="loadingEloHistory">Loading...</div>
@@ -358,6 +365,7 @@ function playerStats() {
                 this.loadMatches(),
                 this.loadEloHistory(),
             ]);
+            window.addEventListener('resize', () => { if (this.eloHistory.length > 0) this.renderEloChart(); });
         },
 
         async loadStats() {
@@ -409,8 +417,17 @@ function playerStats() {
         renderEloChart() {
             if (this.eloHistory.length === 0) return;
             const canvas = document.getElementById('eloChart');
-            if (!canvas) return;
+            const container = this.$refs.eloChartContainer;
+            if (!canvas || !container) return;
+            const rect = container.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return;
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = Math.floor(rect.width * dpr);
+            canvas.height = Math.floor(rect.height * dpr);
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
             const ctx = canvas.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             const pts = this.eloHistory;
             const values = pts.map(p => p.rating_after);
             const rawMin = Math.min(1200, ...values);
@@ -426,8 +443,8 @@ function playerStats() {
             if (yTicks.length === 0) yTicks.push(1200);
             const chartMinY = yTicks[0];
             const chartMaxY = Math.max(yTicks[yTicks.length - 1] ?? chartMinY, chartMinY + 50);
-            const w = canvas.width;
-            const h = canvas.height;
+            const w = rect.width;
+            const h = rect.height;
             const pad = { left: 48, right: 24, top: 16, bottom: 44 };
             const chartW = w - pad.left - pad.right;
             const chartH = h - pad.top - pad.bottom;
@@ -476,6 +493,7 @@ function playerStats() {
             ctx.strokeStyle = 'rgba(59, 130, 246, 0.9)';
             ctx.lineWidth = 2;
             ctx.stroke();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
         },
     };
 }
