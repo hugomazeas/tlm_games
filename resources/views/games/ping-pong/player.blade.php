@@ -201,7 +201,7 @@
 
     .pps .elo-chart-container {
         position: relative;
-        height: 240px;
+        height: 280px;
         margin-top: 12px;
     }
 
@@ -293,7 +293,7 @@
             <button class="elo-mode-tab" :class="{ active: eloMode === '2v2' }" @click="eloMode = '2v2'; loadEloHistory();">2v2</button>
         </div>
         <div class="elo-chart-container" x-show="eloHistory.length > 0">
-            <canvas id="eloChart" width="400" height="240"></canvas>
+            <canvas id="eloChart" width="600" height="280"></canvas>
         </div>
         <div class="empty" x-show="eloHistory.length === 0 && !loadingEloHistory">No ELO history yet</div>
         <div class="loading" x-show="loadingEloHistory">Loading...</div>
@@ -411,17 +411,57 @@ function playerStats() {
             const canvas = document.getElementById('eloChart');
             if (!canvas) return;
             const ctx = canvas.getContext('2d');
-            const values = this.eloHistory.map(p => p.rating_after);
-            const minY = Math.min(1200, ...values) - 50;
-            const maxY = Math.max(1200, ...values) + 50;
+            const pts = this.eloHistory;
+            const values = pts.map(p => p.rating_after);
+            const rawMin = Math.min(1200, ...values);
+            const rawMax = Math.max(1200, ...values);
+            const range = Math.max(rawMax - rawMin, 80);
+            const minY = Math.floor((rawMin - 40) / 50) * 50;
+            const maxY = Math.ceil((rawMax + 40) / 50) * 50;
+            const targetTicks = 6;
+            const roughStep = (maxY - minY) / targetTicks;
+            const yStep = roughStep <= 25 ? 25 : (roughStep <= 50 ? 50 : (roughStep <= 100 ? 100 : 200));
+            const yTicks = [];
+            for (let v = Math.ceil(minY / yStep) * yStep; v <= maxY; v += yStep) yTicks.push(v);
+            if (yTicks.length === 0) yTicks.push(1200);
+            const chartMinY = yTicks[0];
+            const chartMaxY = Math.max(yTicks[yTicks.length - 1] ?? chartMinY, chartMinY + 50);
             const w = canvas.width;
             const h = canvas.height;
-            const pad = { left: 40, right: 20, top: 20, bottom: 30 };
+            const pad = { left: 48, right: 24, top: 16, bottom: 44 };
             const chartW = w - pad.left - pad.right;
             const chartH = h - pad.top - pad.bottom;
             const toX = (i) => pad.left + (i / Math.max(1, values.length - 1)) * chartW;
-            const toY = (v) => pad.top + chartH - ((v - minY) / (maxY - minY)) * chartH;
+            const yRange = chartMaxY - chartMinY || 100;
+            const toY = (v) => pad.top + chartH - ((v - chartMinY) / yRange) * chartH;
             ctx.clearRect(0, 0, w, h);
+            ctx.font = '11px Outfit, sans-serif';
+            ctx.fillStyle = 'rgba(255,255,255,0.5)';
+            yTicks.forEach((v) => {
+                const y = toY(v);
+                ctx.beginPath();
+                ctx.moveTo(pad.left, y);
+                ctx.lineTo(pad.left + chartW, y);
+                ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(255,255,255,0.6)';
+                ctx.textAlign = 'right';
+                ctx.fillText(String(v), pad.left - 8, y + 4);
+            });
+            const maxXLabels = 8;
+            const xStep = Math.max(1, Math.floor(pts.length / maxXLabels));
+            const xIndices = [];
+            for (let i = 0; i < pts.length; i += xStep) xIndices.push(i);
+            if (pts.length > 0 && xIndices[xIndices.length - 1] !== pts.length - 1) xIndices.push(pts.length - 1);
+            xIndices.forEach((i) => {
+                const x = toX(i);
+                const d = pts[i]?.created_at ? new Date(pts[i].created_at) : null;
+                const label = d ? (d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: pts.length > 30 ? '2-digit' : undefined })) : (i + 1);
+                ctx.fillStyle = 'rgba(255,255,255,0.6)';
+                ctx.textAlign = i === 0 ? 'left' : (i === pts.length - 1 ? 'right' : 'center');
+                ctx.fillText(label, x, pad.top + chartH + 20);
+            });
             ctx.beginPath();
             ctx.moveTo(toX(0), toY(values[0]));
             for (let i = 1; i < values.length; i++) ctx.lineTo(toX(i), toY(values[i]));
@@ -436,11 +476,6 @@ function playerStats() {
             ctx.strokeStyle = 'rgba(59, 130, 246, 0.9)';
             ctx.lineWidth = 2;
             ctx.stroke();
-            ctx.fillStyle = 'rgba(255,255,255,0.6)';
-            ctx.font = '11px Outfit, sans-serif';
-            ctx.textAlign = 'right';
-            ctx.fillText(minY, pad.left - 6, pad.top + chartH + 4);
-            ctx.fillText(maxY, pad.left - 6, pad.top + 4);
         },
     };
 }
