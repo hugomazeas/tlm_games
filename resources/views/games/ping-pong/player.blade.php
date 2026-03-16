@@ -297,7 +297,7 @@
         </div>
     </div>
 
-    <div class="stats-grid" style="grid-template-columns: repeat(2, 1fr);">
+    <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
         <div class="stat-card">
             <div class="stat-value" x-text="stats.avg_duration ?? '-'"></div>
             <div class="stat-label">Avg Game Duration</div>
@@ -305,6 +305,10 @@
         <div class="stat-card">
             <div class="stat-value" x-text="stats.win_rate ? stats.win_rate + '%' : '-'"></div>
             <div class="stat-label">Win Rate</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" x-text="stats.highest_elo ?? '-'"></div>
+            <div class="stat-label">Highest ELO</div>
         </div>
     </div>
 

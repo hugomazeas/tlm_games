@@ -424,9 +424,30 @@ class PingPongApiController extends Controller
             }
         }
 
+        // Highest ELO ever (peak rating from completed matches)
+        $eloMatches = PingPongMatch::whereNotNull('ended_at')
+            ->where('mode', $mode)
+            ->where(function ($q) use ($id) {
+                $q->where('player_left_id', $id)
+                  ->orWhere('player_right_id', $id)
+                  ->orWhere('team_left_player2_id', $id)
+                  ->orWhere('team_right_player2_id', $id);
+            })
+            ->get(['player_left_id', 'player_right_id', 'team_left_player2_id', 'team_right_player2_id',
+                   'player_left_elo_after', 'player_right_elo_after', 'team_left_player2_elo_after', 'team_right_player2_elo_after']);
+
+        $highestElo = $eloMatches->map(function ($m) use ($id) {
+            if ($m->player_left_id === $id) return $m->player_left_elo_after;
+            if ($m->player_right_id === $id) return $m->player_right_elo_after;
+            if ($m->team_left_player2_id === $id) return $m->team_left_player2_elo_after;
+            if ($m->team_right_player2_id === $id) return $m->team_right_player2_elo_after;
+            return null;
+        })->filter()->max();
+
         return response()->json([
             'player' => ['id' => $player->id, 'name' => $player->name],
             'elo_rating' => $elo,
+            'highest_elo' => $highestElo,
             'wins' => $wins,
             'losses' => $losses,
             'win_rate' => $winRate,
