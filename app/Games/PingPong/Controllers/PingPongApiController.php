@@ -5,6 +5,7 @@ namespace App\Games\PingPong\Controllers;
 use App\Games\PingPong\Events\MatchScoreUpdated;
 use App\Games\PingPong\Models\PingPongMatch;
 use App\Games\PingPong\Models\PingPongRating;
+use App\Games\PingPong\Models\PingPongRatingChange;
 use App\Games\PingPong\Services\EloService;
 use App\Http\Controllers\Controller;
 use App\Models\Player;
@@ -426,9 +427,30 @@ class PingPongApiController extends Controller
             }
         }
 
+        // Highest ELO ever (peak rating from completed matches)
+        $eloMatches = PingPongMatch::whereNotNull('ended_at')
+            ->where('mode', $mode)
+            ->where(function ($q) use ($id) {
+                $q->where('player_left_id', $id)
+                  ->orWhere('player_right_id', $id)
+                  ->orWhere('team_left_player2_id', $id)
+                  ->orWhere('team_right_player2_id', $id);
+            })
+            ->get(['player_left_id', 'player_right_id', 'team_left_player2_id', 'team_right_player2_id',
+                   'player_left_elo_after', 'player_right_elo_after', 'team_left_player2_elo_after', 'team_right_player2_elo_after']);
+
+        $highestElo = $eloMatches->map(function ($m) use ($id) {
+            if ($m->player_left_id === $id) return $m->player_left_elo_after;
+            if ($m->player_right_id === $id) return $m->player_right_elo_after;
+            if ($m->team_left_player2_id === $id) return $m->team_left_player2_elo_after;
+            if ($m->team_right_player2_id === $id) return $m->team_right_player2_elo_after;
+            return null;
+        })->filter()->max();
+
         return response()->json([
             'player' => ['id' => $player->id, 'name' => $player->name],
             'elo_rating' => $elo,
+            'highest_elo' => $highestElo,
             'wins' => $wins,
             'losses' => $losses,
             'win_rate' => $winRate,
@@ -436,6 +458,35 @@ class PingPongApiController extends Controller
             'avg_duration' => $avgDurationFormatted,
             'streak' => $streak,
             'streak_type' => $streakType,
+        ]);
+    }
+
+    public function eloHistory(Request $request, int $id): JsonResponse
+    {
+        $player = Player::findOrFail($id);
+        $mode = $request->query('mode', '1v1');
+
+        $changes = PingPongRatingChange::where('player_id', $id)
+            ->where('mode', $mode)
+            ->orderBy('created_at')
+            ->get();
+
+        $cumulative = 1200;
+        $history = $changes->map(function ($change) use (&$cumulative) {
+            $cumulative += $change->rating_change;
+
+            return [
+                'match_id' => $change->match_id,
+                'rating_change' => $change->rating_change,
+                'rating_after' => $cumulative,
+                'created_at' => $change->created_at->toIso8601String(),
+            ];
+        });
+
+        return response()->json([
+            'player' => ['id' => $player->id, 'name' => $player->name],
+            'mode' => $mode,
+            'history' => $history,
         ]);
     }
 
