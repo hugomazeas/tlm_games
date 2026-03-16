@@ -388,6 +388,18 @@
 
                 await this.loadPlayers();
                 this.subscribeToLobby();
+
+                // Auto-join with last chosen player if available
+                if (this.screen === 'select') {
+                    const lastPlayer = this.getLastPlayer();
+                    if (lastPlayer) {
+                        const player = this.players.find(p => p.id === lastPlayer.player_id);
+                        if (player) {
+                            await this.joinAsPlayer(player);
+                            return;
+                        }
+                    }
+                }
             },
 
             async loadPlayers() {
@@ -492,6 +504,7 @@
                     this.mySide = data.side;
 
                     this.saveSession();
+                    this.saveLastPlayer(this.myPlayerId, playerName);
 
                     // Refresh lobby state
                     const lobbyRes = await fetch(`${this.API}/lobbies/${this.lobbyCode}`);
@@ -560,6 +573,24 @@
                     player_id: this.myPlayerId,
                     player_name: this.myPlayerName,
                     side: this.mySide,
+                }));
+            },
+
+            getLastPlayer() {
+                try {
+                    const stored = localStorage.getItem('ping_pong_last_player');
+                    if (!stored) return null;
+                    const data = JSON.parse(stored);
+                    return data.player_id && data.player_name ? data : null;
+                } catch (e) {
+                    return null;
+                }
+            },
+
+            saveLastPlayer(playerId, playerName) {
+                localStorage.setItem('ping_pong_last_player', JSON.stringify({
+                    player_id: playerId,
+                    player_name: playerName,
                 }));
             },
 
