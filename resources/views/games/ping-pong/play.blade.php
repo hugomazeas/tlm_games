@@ -645,7 +645,12 @@
                     </template>
                 </div>
             </div>
-            <div class="pp-hint" style="text-align: center;">Enter to start when ready | Backspace to cancel</div>
+            <div class="pp-hint" style="text-align: center;">
+                <span x-show="wsStatus === 'connected'" style="color: #22c55e;">&#9679; Live</span>
+                <span x-show="wsStatus === 'connecting'" style="color: #eab308;">&#9679; Connecting...</span>
+                <span x-show="wsStatus === 'error' || wsStatus === 'disconnected'" style="color: #ef4444;">&#9679; Disconnected</span>
+                &nbsp;| Enter to start when ready | Backspace to cancel
+            </div>
         </div>
     </template>
 
@@ -833,6 +838,7 @@ function pingPong() {
         echo: null,
         lobbyChannel: null,
         matchChannel: null,
+        wsStatus: 'connecting',
 
         async init() {
             await this.loadLeaderboard();
@@ -915,6 +921,8 @@ function pingPong() {
         subscribeToLobby() {
             this.unsubscribeAll();
 
+            this.wsStatus = 'connecting';
+
             this.echo = new Echo({
                 broadcaster: 'pusher',
                 key: 'games-hub-key',
@@ -926,11 +934,25 @@ function pingPong() {
                 cluster: 'mt1',
             });
 
+            this.echo.connector.pusher.connection.bind('connected', () => {
+                console.log('[WS] Connected to Reverb');
+                this.wsStatus = 'connected';
+            });
+            this.echo.connector.pusher.connection.bind('error', (err) => {
+                console.error('[WS] Connection error:', err);
+                this.wsStatus = 'error';
+            });
+            this.echo.connector.pusher.connection.bind('disconnected', () => {
+                console.warn('[WS] Disconnected');
+                this.wsStatus = 'disconnected';
+            });
+
             this.lobbyChannel = this.echo.channel('ping-pong.lobby.' + this.lobbyCode);
             this.lobbyChannel.listen('.lobby.updated', (e) => {
+                console.log('[WS] Lobby updated:', e);
                 this.lobbyParticipants = e.lobby.participants || [];
             }).listen('.lobby.match-started', (e) => {
-                // Match started from phone — transition to playing screen
+                console.log('[WS] Match started:', e);
                 this.loadAndStartMatch(e.matchId);
             });
         },
