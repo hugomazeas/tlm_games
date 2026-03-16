@@ -219,6 +219,17 @@
             66% { content: '..'; }
             100% { content: '...'; }
         }
+
+        .reselect-player {
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 10px;
+            transition: background 0.15s;
+        }
+
+        .reselect-player:active {
+            background: rgba(59, 130, 246, 0.2);
+        }
     </style>
 </head>
 <body>
@@ -263,8 +274,11 @@
         <template x-if="screen === 'waiting'">
             <div style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
                 <div style="padding: 12px 16px; text-align: center;">
-                    <div style="font-weight: 700; font-size: 1.1rem;" x-text="'You: ' + myPlayerName"></div>
-                    <div style="font-size: 0.8rem; color: rgba(255,255,255,0.4); margin-top: 2px;">Tap a side to switch</div>
+                    <div class="reselect-player"
+                         style="font-weight: 700; font-size: 1.1rem; display: inline-block;"
+                         x-text="'You: ' + myPlayerName"
+                         @click="reselectPlayer()"></div>
+                    <div style="font-size: 0.8rem; color: rgba(255,255,255,0.4); margin-top: 2px;">Tap your name to change player · Tap a side to switch</div>
                 </div>
 
                 <div class="side-panels">
@@ -515,6 +529,25 @@
                 } catch (err) {
                     alert('Error joining lobby');
                 }
+            },
+
+            async reselectPlayer() {
+                if (!this.sessionToken) return;
+                try {
+                    await fetch(`${this.API}/lobbies/${this.lobbyCode}/leave`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': this.csrf,
+                        },
+                        body: JSON.stringify({ session_token: this.sessionToken }),
+                    });
+                } catch (err) {
+                    // Continue anyway so user can try again
+                }
+                this.clearSession();
+                this.screen = 'select';
+                await this.loadPlayers();
             },
 
             async switchSide(side) {
