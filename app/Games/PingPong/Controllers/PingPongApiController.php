@@ -471,17 +471,41 @@ class PingPongApiController extends Controller
             ->orderBy('created_at')
             ->get();
 
+        // Build map of date -> rating_after (last rating at end of each day with games)
         $cumulative = 1200;
-        $history = $changes->map(function ($change) use (&$cumulative) {
+        $ratingByDate = [];
+        foreach ($changes as $change) {
             $cumulative += $change->rating_change;
+            $day = $change->created_at->startOfDay()->toDateString();
+            $ratingByDate[$day] = $cumulative;
+        }
 
-            return [
-                'match_id' => $change->match_id,
-                'rating_change' => $change->rating_change,
-                'rating_after' => $cumulative,
-                'created_at' => $change->created_at->toIso8601String(),
+        // One point per day from first ELO change to today
+        $firstChange = $changes->first();
+        if (!$firstChange) {
+            return response()->json([
+                'player' => ['id' => $player->id, 'name' => $player->name],
+                'mode' => $mode,
+                'history' => [],
+            ]);
+        }
+        $startDate = $firstChange->created_at->startOfDay();
+        $endDate = now()->startOfDay();
+        $history = [];
+        $current = $startDate->copy();
+        $lastRating = 1200;
+
+        while ($current->lte($endDate)) {
+            $dayStr = $current->toDateString();
+            if (isset($ratingByDate[$dayStr])) {
+                $lastRating = $ratingByDate[$dayStr];
+            }
+            $history[] = [
+                'rating_after' => $lastRating,
+                'created_at' => $current->toIso8601String(),
             ];
-        });
+            $current->addDay();
+        }
 
         return response()->json([
             'player' => ['id' => $player->id, 'name' => $player->name],
