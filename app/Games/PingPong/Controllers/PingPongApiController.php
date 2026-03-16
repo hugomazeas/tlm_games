@@ -2,6 +2,7 @@
 
 namespace App\Games\PingPong\Controllers;
 
+use App\Games\PingPong\Events\MatchScoreUpdated;
 use App\Games\PingPong\Models\PingPongMatch;
 use App\Games\PingPong\Models\PingPongRating;
 use App\Games\PingPong\Models\PingPongRatingChange;
@@ -270,6 +271,8 @@ class PingPongApiController extends Controller
         }
 
         $match->load(['playerLeft', 'playerRight', 'currentServer', 'winner', 'teamLeftPlayer2', 'teamRightPlayer2']);
+
+        broadcast(new MatchScoreUpdated($match));
 
         $response = $match->toArray();
         $response['duration'] = $match->duration;

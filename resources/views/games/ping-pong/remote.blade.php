@@ -6,6 +6,8 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Ping Pong Remote</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pusher-js@8.4.0/dist/web/pusher.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
@@ -361,7 +363,7 @@
     <script>
         const MATCH_ID = {{ $matchId }};
         const SIDE = '{{ $side }}';
-        const API = @json(rtrim($remoteUrl, '/')) + '/games/ping-pong/api';
+        const API = '/games/ping-pong/api';
         const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 
         let isUpdating = false;
@@ -647,32 +649,33 @@
             }
         }
 
-        async function pollMatch() {
-            if (isComplete) return;
-            try {
-                const res = await fetch(`${API}/matches/${MATCH_ID}`);
-                const data = await res.json();
+        let echoInstance = null;
 
-                if (data.player_left_score !== currentLeftScore ||
-                    data.player_right_score !== currentRightScore ||
-                    data.is_complete) {
-                    renderMatch(data);
-                }
-            } catch (err) {
-                // Silently ignore
-            }
-        }
+        function subscribeToMatch() {
+            echoInstance = new Echo({
+                broadcaster: 'pusher',
+                key: 'games-hub-key',
+                wsHost: window.location.hostname,
+                wsPort: window.location.port || 80,
+                forceTLS: false,
+                disableStats: true,
+                enabledTransports: ['ws', 'wss'],
+                cluster: 'mt1',
+            });
 
-        function startPolling() {
-            stopPolling();
-            pollTimer = setInterval(pollMatch, 1000);
+            echoInstance.channel('ping-pong.match.' + MATCH_ID)
+                .listen('.match.score-updated', function(e) {
+                    const data = e.match;
+                    if (data.player_left_score !== currentLeftScore ||
+                        data.player_right_score !== currentRightScore ||
+                        data.is_complete) {
+                        renderMatch(data);
+                    }
+                });
         }
 
         function stopPolling() {
-            if (pollTimer) {
-                clearInterval(pollTimer);
-                pollTimer = null;
-            }
+            // Kept for compatibility - now a no-op since we use WebSocket
         }
 
         // Register remote connection
@@ -701,7 +704,7 @@
             } catch (err) {
                 playerNames.textContent = 'Error loading match';
             }
-            startPolling();
+            subscribeToMatch();
         }
 
         init();
