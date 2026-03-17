@@ -30,6 +30,46 @@
         overflow: hidden;
     }
 
+    .pp-player-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 16px;
+        overflow-y: auto;
+        flex: 1;
+        min-height: 0;
+    }
+
+    .pp-player-card {
+        background: rgba(255,255,255,0.05);
+        border: 3px solid rgba(255,255,255,0.1);
+        border-radius: 16px;
+        aspect-ratio: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .pp-player-card:hover, .pp-player-card.focused {
+        background: rgba(59, 130, 246, 0.15);
+        border-color: #3b82f6;
+        transform: translateY(-3px);
+    }
+
+    .pp-player-card .name {
+        font-weight: 700;
+        font-size: 1.6rem;
+        margin-bottom: 8px;
+    }
+
+    .pp-player-card .elo {
+        color: rgba(255,255,255,0.5);
+        font-size: 1.15rem;
+    }
+
     .pp-leaderboard-table {
         width: 100%;
         border-collapse: collapse;
@@ -67,6 +107,75 @@
         text-decoration: underline;
     }
 
+    .pp-sides-panel {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        min-height: 0;
+    }
+
+    .pp-side-box {
+        flex: 1;
+        max-width: 450px;
+        padding: 60px 40px;
+        border-radius: 24px;
+        text-align: center;
+        border: 3px solid rgba(255,255,255,0.1);
+    }
+
+    .pp-side-box.left {
+        background: rgba(244, 63, 94, 0.1);
+        border-color: rgba(244, 63, 94, 0.3);
+    }
+
+    .pp-side-box.right {
+        background: rgba(6, 182, 212, 0.1);
+        border-color: rgba(6, 182, 212, 0.3);
+    }
+
+    .pp-side-box .label {
+        font-size: 1.3rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: rgba(255,255,255,0.5);
+        margin-bottom: 12px;
+    }
+
+    .pp-side-box .player-name {
+        font-size: 2.8rem;
+        font-weight: 800;
+    }
+
+    .pp-side-box .player-name-sub {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-top: 4px;
+        opacity: 0.7;
+    }
+
+    .pp-swap-btn {
+        background: rgba(255,255,255,0.1);
+        border: 2px solid rgba(255,255,255,0.2);
+        border-radius: 50%;
+        width: 76px;
+        height: 76px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        color: white;
+        font-size: 2rem;
+        flex-shrink: 0;
+    }
+
+    .pp-swap-btn:hover {
+        background: rgba(59, 130, 246, 0.2);
+        border-color: #3b82f6;
+    }
+
     /* Mode toggle */
     .pp-mode-toggle {
         display: flex;
@@ -97,132 +206,6 @@
     .pp-mode-btn:hover:not(.active) {
         background: rgba(255,255,255,0.1);
         color: rgba(255,255,255,0.8);
-    }
-
-    .pp-start-btn {
-        padding: 16px 48px;
-        border-radius: 16px;
-        font-size: 1.5rem;
-        font-weight: 700;
-        cursor: pointer;
-        border: none;
-        background: #3b82f6;
-        color: white;
-        transition: all 0.2s;
-        margin-top: 24px;
-    }
-
-    .pp-start-btn:hover {
-        background: #2563eb;
-        transform: scale(1.05);
-    }
-
-    .pp-start-btn:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-        transform: none;
-    }
-
-    /* Lobby waiting screen */
-    .pp-lobby-grid {
-        display: grid;
-        grid-template-columns: 1fr auto 1fr;
-        gap: 24px;
-        flex: 1;
-        min-height: 0;
-        align-items: start;
-    }
-
-    .pp-lobby-side {
-        border-radius: 24px;
-        padding: 24px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        border: 3px solid;
-        min-height: 300px;
-    }
-
-    .pp-lobby-side.left {
-        background: rgba(244, 63, 94, 0.08);
-        border-color: rgba(244, 63, 94, 0.25);
-    }
-
-    .pp-lobby-side.right {
-        background: rgba(6, 182, 212, 0.08);
-        border-color: rgba(6, 182, 212, 0.25);
-    }
-
-    .pp-lobby-side .side-label {
-        font-size: 1.5rem;
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        margin-bottom: 20px;
-    }
-
-    .pp-lobby-side.left .side-label { color: #fb7185; }
-    .pp-lobby-side.right .side-label { color: #22d3ee; }
-
-    .pp-lobby-player-card {
-        width: 100%;
-        padding: 16px;
-        border-radius: 12px;
-        background: rgba(255,255,255,0.06);
-        border: 1px solid rgba(255,255,255,0.1);
-        margin-bottom: 10px;
-        text-align: center;
-    }
-
-    .pp-lobby-player-card .name {
-        font-weight: 700;
-        font-size: 1.3rem;
-    }
-
-    .pp-lobby-player-card .elo {
-        color: rgba(255,255,255,0.4);
-        font-size: 0.9rem;
-        margin-top: 2px;
-    }
-
-    .pp-lobby-empty-slot {
-        width: 100%;
-        padding: 16px;
-        border-radius: 12px;
-        border: 2px dashed rgba(255,255,255,0.15);
-        margin-bottom: 10px;
-        text-align: center;
-        color: rgba(255,255,255,0.2);
-        font-size: 0.9rem;
-    }
-
-    .pp-lobby-center {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 24px;
-        padding-top: 20px;
-    }
-
-    .pp-lobby-qr {
-        background: white;
-        border-radius: 16px;
-        padding: 16px;
-    }
-
-    .pp-lobby-code {
-        font-size: 3rem;
-        font-weight: 900;
-        letter-spacing: 0.15em;
-        color: #3b82f6;
-    }
-
-    .pp-lobby-url {
-        font-size: 0.85rem;
-        color: rgba(255,255,255,0.3);
-        word-break: break-all;
-        text-align: center;
-        max-width: 250px;
     }
 
     /* Playing screen */
@@ -307,6 +290,13 @@
         font-weight: 700;
         margin-bottom: 4px;
         color: rgba(255,255,255,0.9);
+    }
+
+    .pp-score-panel .player-name-sub {
+        font-size: 1.6rem;
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: rgba(255,255,255,0.5);
     }
 
     .pp-score-panel .player-name-doubles {
@@ -403,58 +393,140 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
         flex: 1;
-        gap: 28px;
         min-height: 0;
+        padding: 12px 0;
+        gap: 0;
+    }
+
+    /* Top bar: winner + score + duration in one compact row */
+    .pp-gameover-header {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 24px;
+        flex-shrink: 0;
+        margin-bottom: 12px;
     }
 
     .pp-winner-text {
-        font-size: 4.5rem;
+        font-size: 2rem;
         font-weight: 900;
         background: linear-gradient(135deg, #3b82f6, #06b6d4);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
+        white-space: nowrap;
     }
 
     .pp-final-score {
-        font-size: 5rem;
+        font-size: 2.5rem;
         font-weight: 800;
         color: rgba(255,255,255,0.9);
+        white-space: nowrap;
     }
 
+    .pp-duration {
+        font-size: 1.1rem;
+        color: rgba(255,255,255,0.4);
+        white-space: nowrap;
+    }
+
+    /* ELO changes — compact inline row */
     .pp-elo-changes {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 32px;
-        width: 100%;
-        max-width: 700px;
+        display: flex;
+        gap: 16px;
+        flex-shrink: 0;
+        margin-bottom: 12px;
     }
 
     .pp-elo-changes.doubles {
-        grid-template-columns: 1fr 1fr 1fr 1fr;
-        max-width: 1000px;
+        gap: 12px;
     }
 
     .pp-elo-card {
         background: rgba(255,255,255,0.05);
         border: 1px solid rgba(255,255,255,0.1);
-        border-radius: 16px;
-        padding: 28px;
+        border-radius: 10px;
+        padding: 10px 20px;
         text-align: center;
+        display: flex;
+        align-items: center;
+        gap: 12px;
     }
 
-    .pp-elo-card .name { font-weight: 700; margin-bottom: 10px; font-size: 1.5rem; }
-    .pp-elo-card .change { font-size: 2.5rem; font-weight: 800; }
-    .pp-elo-card .detail { font-size: 1.15rem; color: rgba(255,255,255,0.5); margin-top: 6px; }
+    .pp-elo-card .name { font-weight: 700; font-size: 1.05rem; white-space: nowrap; }
+    .pp-elo-card .change { font-size: 1.3rem; font-weight: 800; white-space: nowrap; }
+    .pp-elo-card .detail { font-size: 0.9rem; color: rgba(255,255,255,0.4); white-space: nowrap; }
 
     .pp-elo-positive { color: #22c55e; }
     .pp-elo-negative { color: #ef4444; }
 
+    /* Chart — the hero */
+    .pp-points-chart-wrap {
+        width: 100%;
+        flex: 1;
+        min-height: 0;
+        max-width: 1100px;
+        padding: 0 16px;
+    }
+
+    .pp-gameover-footer {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+        margin-top: 12px;
+    }
+
     .pp-hint {
         color: rgba(255,255,255,0.3);
         font-size: 1.15rem;
-        margin-top: 12px;
+    }
+
+    /* QR Scan screen */
+    .pp-qr-panel {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 120px;
+        min-height: 0;
+    }
+
+    .pp-qr-box {
+        text-align: center;
+    }
+
+    .pp-qr-box .qr-label {
+        font-size: 1.8rem;
+        font-weight: 700;
+        margin-bottom: 16px;
+    }
+
+    .pp-qr-box .qr-canvas {
+        background: white;
+        border-radius: 16px;
+        padding: 16px;
+        display: inline-block;
+    }
+
+    .pp-qr-start-btn {
+        margin-top: 24px;
+        padding: 16px 48px;
+        border-radius: 16px;
+        font-size: 1.5rem;
+        font-weight: 700;
+        cursor: pointer;
+        border: none;
+        background: #3b82f6;
+        color: white;
+        transition: all 0.2s;
+    }
+
+    .pp-qr-start-btn:hover {
+        background: #2563eb;
+        transform: scale(1.05);
     }
 
     .pp-header {
@@ -529,33 +601,36 @@
         color: white;
         border: 1px solid rgba(255,255,255,0.2) !important;
     }
-
-    .pp-duration {
-        color: rgba(255,255,255,0.5);
-        font-size: 1.5rem;
-    }
 </style>
 
 <div class="pp-container" x-data="pingPong()" x-init="init()" @keydown.window="handleKeydown($event)">
 
-    <!-- SCREEN: HOME -->
-    <template x-if="screen === 'home'">
+    <!-- SCREEN: LOBBY -->
+    <template x-if="screen === 'lobby'">
         <div class="pp-grid" style="height: 100%;">
-            <!-- Left: Start Game -->
-            <div class="pp-panel" style="align-items: center; justify-content: center;">
-                <div class="pp-header" style="text-align: center;">
-                    <h2>Ping Pong</h2>
-                    <div class="pp-header-sub">Start a new game</div>
+            <!-- Left: Player Grid -->
+            <div class="pp-panel">
+                <div class="pp-header" style="display: flex; align-items: center; justify-content: space-between;">
+                    <div>
+                        <h2>Select Player</h2>
+                        <div class="pp-header-sub">Choose who's playing</div>
+                    </div>
+                    <div class="pp-mode-toggle">
+                        <button class="pp-mode-btn" :class="{ active: mode === '1v1' }" @click="setMode('1v1')">1v1</button>
+                        <button class="pp-mode-btn" :class="{ active: mode === '2v2' }" @click="setMode('2v2')">2v2</button>
+                    </div>
                 </div>
-                <div class="pp-mode-toggle" style="margin-top: 20px;">
-                    <button class="pp-mode-btn" :class="{ active: mode === '1v1' }" @click="setMode('1v1')">1v1</button>
-                    <button class="pp-mode-btn" :class="{ active: mode === '2v2' }" @click="setMode('2v2')">2v2</button>
+                <div class="pp-player-grid">
+                    <template x-for="(player, index) in players" :key="player.id">
+                        <div class="pp-player-card"
+                             :class="{ 'focused': selectedIndex === index }"
+                             @click="selectPlayer(player)">
+                            <div class="name" x-text="player.name"></div>
+                            <div class="elo" x-text="'ELO ' + player.elo_rating"></div>
+                        </div>
+                    </template>
                 </div>
-                <button class="pp-start-btn" :disabled="loading" @click="createLobby()">
-                    <span x-show="!loading">Start Game</span>
-                    <span x-show="loading">Creating...</span>
-                </button>
-                <div class="pp-hint" style="margin-top: 16px;">Players join via QR code on their phones</div>
+                <div class="pp-hint" style="margin-top: 12px;">Arrow keys to navigate, Enter to select, Backspace for home</div>
             </div>
 
             <!-- Right: Leaderboard -->
@@ -598,59 +673,167 @@
         </div>
     </template>
 
-    <!-- SCREEN: LOBBY WAITING -->
-    <template x-if="screen === 'lobby_waiting'">
-        <div style="display: flex; flex-direction: column; height: 100%;" x-init="setTimeout(() => generateLobbyQr(), 50)">
-            <div class="pp-header" style="text-align: center; padding: 12px 0;">
-                <h2 style="font-size: 2.4rem;">Waiting for Players</h2>
-                <div class="pp-header-sub" x-text="'Mode: ' + mode + ' • Lobby: ' + lobbyCode"></div>
+    <!-- SCREEN: PARTNER (2v2 only) -->
+    <template x-if="screen === 'partner'">
+        <div style="display: flex; flex-direction: column; height: 100%;">
+            <div class="pp-header" style="text-align: center; padding: 16px 0;">
+                <h2 style="font-size: 2.8rem;"><span x-text="player1.name" style="color: #3b82f6;"></span>'s Partner</h2>
+                <div class="pp-header-sub">Pick a teammate</div>
             </div>
-            <div class="pp-lobby-grid" style="flex: 1; padding: 0 24px;">
-                <!-- Left Side -->
-                <div class="pp-lobby-side left">
-                    <div class="side-label">Left</div>
-                    <template x-for="p in lobbyLeftPlayers" :key="p.player_id">
-                        <div class="pp-lobby-player-card">
-                            <div class="name" x-text="p.player_name"></div>
+            <div class="pp-panel" style="flex: 1;">
+                <div class="pp-player-grid">
+                    <template x-for="(player, index) in availableForPartner" :key="player.id">
+                        <div class="pp-player-card"
+                             :class="{ 'focused': selectedIndex === index }"
+                             @click="selectPartner(player)">
+                            <div class="name" x-text="player.name"></div>
+                            <div class="elo" x-text="'ELO ' + player.elo_rating"></div>
                         </div>
                     </template>
-                    <template x-for="i in leftEmptySlots" :key="'left-empty-' + i">
-                        <div class="pp-lobby-empty-slot">Waiting...</div>
-                    </template>
                 </div>
+                <div class="pp-hint" style="margin-top: 12px;">Arrow keys to navigate, Enter to select, Backspace to go back</div>
+            </div>
+        </div>
+    </template>
 
-                <!-- Center: QR + Code -->
-                <div class="pp-lobby-center">
-                    <div class="pp-lobby-qr" id="lobbyQrContainer"></div>
-                    <div class="pp-lobby-code" x-text="lobbyCode"></div>
-                    <div class="pp-lobby-url" x-text="lobbyJoinUrl"></div>
-                    <button class="pp-start-btn"
-                            :disabled="!lobbyReady || loading"
-                            @click="startLobbyMatch()">
-                        <span x-show="!loading">Start Match</span>
-                        <span x-show="loading">Starting...</span>
-                    </button>
-                </div>
-
-                <!-- Right Side -->
-                <div class="pp-lobby-side right">
-                    <div class="side-label">Right</div>
-                    <template x-for="p in lobbyRightPlayers" :key="p.player_id">
-                        <div class="pp-lobby-player-card">
-                            <div class="name" x-text="p.player_name"></div>
+    <!-- SCREEN: OPPONENT -->
+    <template x-if="screen === 'opponent'">
+        <div style="display: flex; flex-direction: column; height: 100%;">
+            <div class="pp-header" style="text-align: center; padding: 16px 0;">
+                <template x-if="mode === '1v1'">
+                    <div>
+                        <h2 style="font-size: 2.8rem;">Ready, <span x-text="player1.name" style="color: #3b82f6;"></span>?</h2>
+                        <div class="pp-header-sub">Pick your opponent</div>
+                    </div>
+                </template>
+                <template x-if="mode === '2v2'">
+                    <div>
+                        <h2 style="font-size: 2.8rem;">Pick Opponent 1</h2>
+                        <div class="pp-header-sub">
+                            Team: <span x-text="player1.name" style="color: #fb7185;"></span> &amp; <span x-text="player1Partner.name" style="color: #fb7185;"></span>
+                        </div>
+                    </div>
+                </template>
+            </div>
+            <div class="pp-panel" style="flex: 1;">
+                <div class="pp-player-grid">
+                    <template x-for="(player, index) in opponents" :key="player.id">
+                        <div class="pp-player-card"
+                             :class="{ 'focused': selectedIndex === index }"
+                             @click="selectOpponent(player)">
+                            <div class="name" x-text="player.name"></div>
+                            <div class="elo" x-text="'ELO ' + player.elo_rating"></div>
                         </div>
                     </template>
-                    <template x-for="i in rightEmptySlots" :key="'right-empty-' + i">
-                        <div class="pp-lobby-empty-slot">Waiting...</div>
+                </div>
+                <div class="pp-hint" style="margin-top: 12px;">Arrow keys to navigate, Enter to select, Backspace to go back</div>
+            </div>
+        </div>
+    </template>
+
+    <!-- SCREEN: OPPONENT2 (2v2 only) -->
+    <template x-if="screen === 'opponent2'">
+        <div style="display: flex; flex-direction: column; height: 100%;">
+            <div class="pp-header" style="text-align: center; padding: 16px 0;">
+                <h2 style="font-size: 2.8rem;"><span x-text="player2.name" style="color: #22d3ee;"></span>'s Partner</h2>
+                <div class="pp-header-sub">Pick the last player</div>
+            </div>
+            <div class="pp-panel" style="flex: 1;">
+                <div class="pp-player-grid">
+                    <template x-for="(player, index) in availableForOpponent2" :key="player.id">
+                        <div class="pp-player-card"
+                             :class="{ 'focused': selectedIndex === index }"
+                             @click="selectOpponent2(player)">
+                            <div class="name" x-text="player.name"></div>
+                            <div class="elo" x-text="'ELO ' + player.elo_rating"></div>
+                        </div>
+                    </template>
+                </div>
+                <div class="pp-hint" style="margin-top: 12px;">Arrow keys to navigate, Enter to select, Backspace to go back</div>
+            </div>
+        </div>
+    </template>
+
+    <!-- SCREEN: SIDES -->
+    <template x-if="screen === 'sides'">
+        <div style="display: flex; flex-direction: column; height: 100%;">
+            <div class="pp-header" style="text-align: center; padding: 16px 0;">
+                <h2 style="font-size: 2.8rem;">Choose Sides</h2>
+                <div class="pp-header-sub">Left/Right arrows to swap, Enter to start</div>
+            </div>
+            <div class="pp-sides-panel">
+                <div class="pp-side-box left">
+                    <div class="label">Left Side</div>
+                    <div class="player-name" style="color: #fb7185;" x-text="leftPlayer.name"></div>
+                    <template x-if="mode === '2v2'">
+                        <div class="player-name-sub" style="color: #fb7185;" x-text="leftPlayer2.name"></div>
+                    </template>
+                </div>
+                <button class="pp-swap-btn" @click="swapSides()">
+                    &#8644;
+                </button>
+                <div class="pp-side-box right">
+                    <div class="label">Right Side</div>
+                    <div class="player-name" style="color: #22d3ee;" x-text="rightPlayer.name"></div>
+                    <template x-if="mode === '2v2'">
+                        <div class="player-name-sub" style="color: #22d3ee;" x-text="rightPlayer2.name"></div>
                     </template>
                 </div>
             </div>
-            <div class="pp-hint" style="text-align: center;">
-                <span x-show="wsStatus === 'connected'" style="color: #22c55e;">&#9679; Live</span>
-                <span x-show="wsStatus === 'connecting'" style="color: #eab308;">&#9679; Connecting...</span>
-                <span x-show="wsStatus === 'error' || wsStatus === 'disconnected'" style="color: #ef4444;">&#9679; Disconnected</span>
-                &nbsp;| Enter to start when ready | Backspace to cancel
+            <div class="pp-hint" style="text-align: center;">Backspace to go back</div>
+        </div>
+    </template>
+
+    <!-- SCREEN: QR SCAN -->
+    <template x-if="screen === 'qrscan'">
+        <div style="display: flex; flex-direction: column; height: 100%;">
+            <div class="pp-header" style="text-align: center; padding: 16px 0;">
+                <h2 style="font-size: 2.8rem;">Scan to Score</h2>
+                <div class="pp-header-sub">
+                    <template x-if="leftRemoteConnected && rightRemoteConnected">
+                        <span style="color: #22c55e; font-weight: 700;">Both players connected! Starting...</span>
+                    </template>
+                    <template x-if="!(leftRemoteConnected && rightRemoteConnected)">
+                        <span>Waiting for players to scan...</span>
+                    </template>
+                </div>
             </div>
+            <div class="pp-qr-panel">
+                <div class="pp-qr-box">
+                    <div class="qr-label" style="color: #fb7185;">
+                        <template x-if="mode === '1v1'">
+                            <span x-text="leftPlayer.name"></span>
+                        </template>
+                        <template x-if="mode === '2v2'">
+                            <span x-text="leftPlayer.name + ' & ' + leftPlayer2.name"></span>
+                        </template>
+                    </div>
+                    <div class="qr-canvas" x-ref="qrLeft"></div>
+                    <div style="margin-top: 12px; font-size: 1.2rem; font-weight: 700;"
+                         :style="leftRemoteConnected ? 'color: #22c55e' : 'color: rgba(255,255,255,0.3)'">
+                        <span x-text="leftRemoteConnected ? 'Connected' : 'Waiting...'"></span>
+                    </div>
+                </div>
+                <div class="pp-qr-box">
+                    <div class="qr-label" style="color: #22d3ee;">
+                        <template x-if="mode === '1v1'">
+                            <span x-text="rightPlayer.name"></span>
+                        </template>
+                        <template x-if="mode === '2v2'">
+                            <span x-text="rightPlayer.name + ' & ' + rightPlayer2.name"></span>
+                        </template>
+                    </div>
+                    <div class="qr-canvas" x-ref="qrRight"></div>
+                    <div style="margin-top: 12px; font-size: 1.2rem; font-weight: 700;"
+                         :style="rightRemoteConnected ? 'color: #22c55e' : 'color: rgba(255,255,255,0.3)'">
+                        <span x-text="rightRemoteConnected ? 'Connected' : 'Waiting...'"></span>
+                    </div>
+                </div>
+            </div>
+            <div style="text-align: center;">
+                <button class="pp-qr-start-btn" @click="beginPlaying()">Start Match</button>
+            </div>
+            <div class="pp-hint" style="text-align: center;">Enter to start | Backspace to go back</div>
         </div>
     </template>
 
@@ -666,16 +849,16 @@
                 <!-- Left Team -->
                 <div class="pp-score-panel left" :class="{ 'serving-active': isServing('left') }">
                     <template x-if="mode === '1v1'">
-                        <div class="player-name" x-text="match.player_left?.name || ''"></div>
+                        <div class="player-name" x-text="match.player_left?.name || leftPlayer.name"></div>
                     </template>
                     <template x-if="mode === '2v2'">
                         <div>
                             <div class="player-name-doubles"
-                                 :class="{ 'serving-player': isPlayerServing(match.player_left_id) }"
-                                 x-text="match.player_left?.name || ''"></div>
+                                 :class="{ 'serving-player': isPlayerServing(match.player_left_id || leftPlayer?.id) }"
+                                 x-text="match.player_left?.name || leftPlayer.name"></div>
                             <div class="player-name-doubles"
-                                 :class="{ 'serving-player': isPlayerServing(match.team_left_player2_id) }"
-                                 x-text="match.team_left_player2?.name || ''"></div>
+                                 :class="{ 'serving-player': isPlayerServing(match.team_left_player2_id || leftPlayer2?.id) }"
+                                 x-text="match.team_left_player2?.name || leftPlayer2?.name"></div>
                         </div>
                     </template>
                     <div class="pp-serve-indicator" :class="{ 'serving': isServing('left') }">
@@ -690,16 +873,16 @@
                 <!-- Right Team -->
                 <div class="pp-score-panel right" :class="{ 'serving-active': isServing('right') }">
                     <template x-if="mode === '1v1'">
-                        <div class="player-name" x-text="match.player_right?.name || ''"></div>
+                        <div class="player-name" x-text="match.player_right?.name || rightPlayer.name"></div>
                     </template>
                     <template x-if="mode === '2v2'">
                         <div>
                             <div class="player-name-doubles"
-                                 :class="{ 'serving-player': isPlayerServing(match.player_right_id) }"
-                                 x-text="match.player_right?.name || ''"></div>
+                                 :class="{ 'serving-player': isPlayerServing(match.player_right_id || rightPlayer?.id) }"
+                                 x-text="match.player_right?.name || rightPlayer.name"></div>
                             <div class="player-name-doubles"
-                                 :class="{ 'serving-player': isPlayerServing(match.team_right_player2_id) }"
-                                 x-text="match.team_right_player2?.name || ''"></div>
+                                 :class="{ 'serving-player': isPlayerServing(match.team_right_player2_id || rightPlayer2?.id) }"
+                                 x-text="match.team_right_player2?.name || rightPlayer2?.name"></div>
                         </div>
                     </template>
                     <div class="pp-serve-indicator" :class="{ 'serving': isServing('right') }">
@@ -721,68 +904,78 @@
     <!-- SCREEN: GAMEOVER -->
     <template x-if="screen === 'gameover'">
         <div class="pp-gameover">
-            <div class="pp-winner-text" x-text="winnerName"></div>
-            <div class="pp-final-score">
-                <span style="color: #fb7185;" x-text="match.player_left_score"></span>
-                <span style="color: rgba(255,255,255,0.3);"> - </span>
-                <span style="color: #22d3ee;" x-text="match.player_right_score"></span>
+            <!-- Compact header: winner, score, duration -->
+            <div class="pp-gameover-header">
+                <div class="pp-winner-text" x-text="winnerName"></div>
+                <div class="pp-final-score">
+                    <span style="color: #fb7185;" x-text="match.player_left_score"></span>
+                    <span style="color: rgba(255,255,255,0.3);"> - </span>
+                    <span style="color: #22d3ee;" x-text="match.player_right_score"></span>
+                </div>
+                <div class="pp-duration" x-text="match.duration_formatted ? match.duration_formatted : ''"></div>
             </div>
-            <div class="pp-duration" x-text="match.duration_formatted ? 'Duration: ' + match.duration_formatted : ''"></div>
 
-            <!-- 1v1 ELO changes -->
+            <!-- 1v1 ELO changes — inline -->
             <template x-if="mode === '1v1' && eloChanges">
                 <div class="pp-elo-changes">
                     <div class="pp-elo-card">
-                        <div class="name" x-text="match.player_left?.name"></div>
+                        <div class="name" x-text="match.player_left?.name || leftPlayer.name"></div>
                         <div class="change" :class="eloChanges?.left?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
                              x-text="(eloChanges?.left?.change >= 0 ? '+' : '') + (eloChanges?.left?.change ?? 0)"></div>
-                        <div class="detail" x-text="(eloChanges?.left?.before ?? '') + ' → ' + (eloChanges?.left?.after ?? '')"></div>
+                        <div class="detail" x-text="(eloChanges?.left?.before ?? '') + ' &rarr; ' + (eloChanges?.left?.after ?? '')"></div>
                     </div>
                     <div class="pp-elo-card">
-                        <div class="name" x-text="match.player_right?.name"></div>
+                        <div class="name" x-text="match.player_right?.name || rightPlayer.name"></div>
                         <div class="change" :class="eloChanges?.right?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
                              x-text="(eloChanges?.right?.change >= 0 ? '+' : '') + (eloChanges?.right?.change ?? 0)"></div>
-                        <div class="detail" x-text="(eloChanges?.right?.before ?? '') + ' → ' + (eloChanges?.right?.after ?? '')"></div>
+                        <div class="detail" x-text="(eloChanges?.right?.before ?? '') + ' &rarr; ' + (eloChanges?.right?.after ?? '')"></div>
                     </div>
                 </div>
             </template>
 
-            <!-- 2v2 ELO changes -->
+            <!-- 2v2 ELO changes — inline -->
             <template x-if="mode === '2v2' && eloChanges">
                 <div class="pp-elo-changes doubles">
                     <div class="pp-elo-card">
-                        <div class="name" x-text="match.player_left?.name"></div>
+                        <div class="name" x-text="match.player_left?.name || leftPlayer.name"></div>
                         <div class="change" :class="eloChanges?.left?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
                              x-text="(eloChanges?.left?.change >= 0 ? '+' : '') + (eloChanges?.left?.change ?? 0)"></div>
-                        <div class="detail" x-text="(eloChanges?.left?.player1?.before ?? '') + ' → ' + (eloChanges?.left?.player1?.after ?? '')"></div>
+                        <div class="detail" x-text="(eloChanges?.left?.player1?.before ?? '') + ' &rarr; ' + (eloChanges?.left?.player1?.after ?? '')"></div>
                     </div>
                     <div class="pp-elo-card">
-                        <div class="name" x-text="match.team_left_player2?.name"></div>
+                        <div class="name" x-text="match.team_left_player2?.name || leftPlayer2?.name"></div>
                         <div class="change" :class="eloChanges?.left?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
                              x-text="(eloChanges?.left?.change >= 0 ? '+' : '') + (eloChanges?.left?.change ?? 0)"></div>
-                        <div class="detail" x-text="(eloChanges?.left?.player2?.before ?? '') + ' → ' + (eloChanges?.left?.player2?.after ?? '')"></div>
+                        <div class="detail" x-text="(eloChanges?.left?.player2?.before ?? '') + ' &rarr; ' + (eloChanges?.left?.player2?.after ?? '')"></div>
                     </div>
                     <div class="pp-elo-card">
-                        <div class="name" x-text="match.player_right?.name"></div>
+                        <div class="name" x-text="match.player_right?.name || rightPlayer.name"></div>
                         <div class="change" :class="eloChanges?.right?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
                              x-text="(eloChanges?.right?.change >= 0 ? '+' : '') + (eloChanges?.right?.change ?? 0)"></div>
-                        <div class="detail" x-text="(eloChanges?.right?.player1?.before ?? '') + ' → ' + (eloChanges?.right?.player1?.after ?? '')"></div>
+                        <div class="detail" x-text="(eloChanges?.right?.player1?.before ?? '') + ' &rarr; ' + (eloChanges?.right?.player1?.after ?? '')"></div>
                     </div>
                     <div class="pp-elo-card">
-                        <div class="name" x-text="match.team_right_player2?.name"></div>
+                        <div class="name" x-text="match.team_right_player2?.name || rightPlayer2?.name"></div>
                         <div class="change" :class="eloChanges?.right?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
                              x-text="(eloChanges?.right?.change >= 0 ? '+' : '') + (eloChanges?.right?.change ?? 0)"></div>
-                        <div class="detail" x-text="(eloChanges?.right?.player2?.before ?? '') + ' → ' + (eloChanges?.right?.player2?.after ?? '')"></div>
+                        <div class="detail" x-text="(eloChanges?.right?.player2?.before ?? '') + ' &rarr; ' + (eloChanges?.right?.player2?.after ?? '')"></div>
                     </div>
                 </div>
             </template>
 
-            <div style="display: flex; gap: 16px; margin-top: 8px;">
-                <button class="pp-start-btn" style="background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.2);"
-                        @click="goToHome()">New Game</button>
-                <button class="pp-start-btn" @click="rematch()">Rematch</button>
+            <!-- Point-by-point chart — hero element -->
+            <div class="pp-points-chart-wrap">
+                <canvas id="pointsChart"></canvas>
             </div>
-            <div class="pp-hint">Enter for rematch | Backspace for new game</div>
+
+            <div class="pp-gameover-footer">
+                <div style="display: flex; gap: 16px;">
+                    <button class="pp-start-btn" style="background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.2);"
+                            @click="goToHome()">New Game</button>
+                    <button class="pp-start-btn" @click="rematch()">Rematch</button>
+                </div>
+                <div class="pp-hint">Enter for rematch | Backspace for new game</div>
+            </div>
         </div>
     </template>
 
@@ -801,31 +994,36 @@
     </template>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/pusher-js@8.4.0/dist/web/pusher.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
 <script>
 function pingPong() {
     return {
         API: '/games/ping-pong/api',
         csrf: document.querySelector('meta[name="csrf-token"]').content,
 
-        screen: 'home',
+        screen: 'lobby',
         mode: '1v1',
+        players: [],
         leaderboard: [],
+        opponents: [],
+        availableForPartner: [],
+        availableForOpponent2: [],
+        selectedIndex: 0,
 
-        // Lobby state
-        lobbyCode: '',
-        hostToken: '',
-        lobbyParticipants: [],
-        lobbyJoinUrl: '',
+        player1: null,
+        player1Partner: null,
+        player2: null,
+        player2Partner: null,
+        leftPlayer: null,
+        leftPlayer2: null,
+        rightPlayer: null,
+        rightPlayer2: null,
 
-        // Match state
         match: {},
         eloChanges: null,
         winnerName: '',
 
-        // Timer
         timerDisplay: '00:00',
         clockDisplay: '',
         timerInterval: null,
@@ -834,6 +1032,7 @@ function pingPong() {
 
         showAbandonConfirm: false,
         loading: false,
+        pointsChartInstance: null,
 
         echo: null,
         lobbyChannel: null,
@@ -841,12 +1040,15 @@ function pingPong() {
         wsStatus: 'connecting',
 
         async init() {
+            await this.loadPlayers();
             await this.loadLeaderboard();
             this.startClock();
         },
 
         async setMode(newMode) {
             this.mode = newMode;
+            this.selectedIndex = 0;
+            await this.loadPlayers();
             await this.loadLeaderboard();
         },
 
@@ -879,255 +1081,31 @@ function pingPong() {
             }
         },
 
+        async loadPlayers() {
+            const res = await fetch(`${this.API}/players?mode=${this.mode}`);
+            this.players = await res.json();
+        },
+
         async loadLeaderboard() {
             const res = await fetch(`${this.API}/leaderboard?mode=${this.mode}`);
             this.leaderboard = await res.json();
         },
 
-        // --- LOBBY ---
-
-        async createLobby() {
-            if (this.loading) return;
-            this.loading = true;
-            try {
-                const res = await fetch(`${this.API}/lobbies`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf },
-                    body: JSON.stringify({ mode: this.mode }),
-                });
-                const data = await res.json();
-                this.lobbyCode = data.code;
-                this.hostToken = data.host_token;
-                this.lobbyParticipants = [];
-
-                this.lobbyJoinUrl = `${window.location.origin}/games/ping-pong/lobby/${this.lobbyCode}`;
-
-                this.screen = 'lobby_waiting';
-                this.subscribeToLobby();
-            } catch (err) {
-                console.error('Error creating lobby:', err);
-            }
-            this.loading = false;
+        gridColumns() {
+            const container = document.querySelector('.pp-player-grid');
+            if (!container) return 4;
+            const style = window.getComputedStyle(container);
+            return style.gridTemplateColumns.split(' ').length;
         },
 
-        generateLobbyQr() {
-            const el = document.getElementById('lobbyQrContainer');
-            if (el) {
-                el.innerHTML = '';
-                new QRCode(el, { text: this.lobbyJoinUrl, width: 220, height: 220 });
-            }
+        selectedPlayers() {
+            const ids = [];
+            if (this.player1) ids.push(this.player1.id);
+            if (this.player1Partner) ids.push(this.player1Partner.id);
+            if (this.player2) ids.push(this.player2.id);
+            if (this.player2Partner) ids.push(this.player2Partner.id);
+            return ids;
         },
-
-        subscribeToLobby() {
-            this.unsubscribeAll();
-
-            this.wsStatus = 'connecting';
-
-            this.echo = new Echo({
-                broadcaster: 'pusher',
-                key: 'games-hub-key',
-                wsHost: window.location.hostname,
-                wsPort: window.location.port || 80,
-                forceTLS: false,
-                disableStats: true,
-                enabledTransports: ['ws', 'wss'],
-                cluster: 'mt1',
-            });
-
-            this.echo.connector.pusher.connection.bind('connected', () => {
-                console.log('[WS] Connected to Reverb');
-                this.wsStatus = 'connected';
-            });
-            this.echo.connector.pusher.connection.bind('error', (err) => {
-                console.error('[WS] Connection error:', err);
-                this.wsStatus = 'error';
-            });
-            this.echo.connector.pusher.connection.bind('disconnected', () => {
-                console.warn('[WS] Disconnected');
-                this.wsStatus = 'disconnected';
-            });
-
-            this.lobbyChannel = this.echo.channel('ping-pong.lobby.' + this.lobbyCode);
-            this.lobbyChannel.listen('.lobby.updated', (e) => {
-                console.log('[WS] Lobby updated:', e);
-                this.lobbyParticipants = e.lobby.participants || [];
-            }).listen('.lobby.match-started', (e) => {
-                console.log('[WS] Match started:', e);
-                this.loadAndStartMatch(e.matchId);
-            });
-        },
-
-        subscribeToMatch(matchId) {
-            if (!this.echo) {
-                this.echo = new Echo({
-                    broadcaster: 'pusher',
-                    key: 'games-hub-key',
-                    wsHost: window.location.hostname,
-                    wsPort: window.location.port || 80,
-                    forceTLS: false,
-                    disableStats: true,
-                    enabledTransports: ['ws', 'wss'],
-                    cluster: 'mt1',
-                });
-            }
-
-            if (this.matchChannel) {
-                this.echo.leave(this.matchChannel.name);
-            }
-
-            this.matchChannel = this.echo.channel('ping-pong.match.' + matchId);
-            this.matchChannel.listen('.match.score-updated', (e) => {
-                const data = e.match;
-                if (data.player_left_score !== this.match.player_left_score ||
-                    data.player_right_score !== this.match.player_right_score ||
-                    data.is_complete !== this.match.is_complete) {
-                    this.match = data;
-
-                    if (data.is_complete && this.screen === 'playing') {
-                        this.stopTimer();
-                        this.eloChanges = data.elo_changes || null;
-                        this.setWinnerName(data);
-                        this.screen = 'gameover';
-                    }
-                }
-            });
-        },
-
-        unsubscribeAll() {
-            if (this.echo) {
-                if (this.lobbyChannel) {
-                    this.echo.leave(this.lobbyChannel.name);
-                    this.lobbyChannel = null;
-                }
-                if (this.matchChannel) {
-                    this.echo.leave(this.matchChannel.name);
-                    this.matchChannel = null;
-                }
-            }
-        },
-
-        get lobbyLeftPlayers() {
-            return this.lobbyParticipants.filter(p => p.side === 'left');
-        },
-
-        get lobbyRightPlayers() {
-            return this.lobbyParticipants.filter(p => p.side === 'right');
-        },
-
-        get leftEmptySlots() {
-            const needed = this.mode === '2v2' ? 2 : 1;
-            return Math.max(0, needed - this.lobbyLeftPlayers.length);
-        },
-
-        get rightEmptySlots() {
-            const needed = this.mode === '2v2' ? 2 : 1;
-            return Math.max(0, needed - this.lobbyRightPlayers.length);
-        },
-
-        get lobbyReady() {
-            const needed = this.mode === '2v2' ? 2 : 1;
-            return this.lobbyLeftPlayers.length === needed && this.lobbyRightPlayers.length === needed;
-        },
-
-        async startLobbyMatch() {
-            if (this.loading || !this.lobbyReady) return;
-            this.loading = true;
-            try {
-                const res = await fetch(`${this.API}/lobbies/${this.lobbyCode}/start`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf },
-                    body: JSON.stringify({ host_token: this.hostToken }),
-                });
-                const data = await res.json();
-                this.match = data.match;
-                this.eloChanges = null;
-
-                // Subscribe to match channel for score updates
-                this.subscribeToMatch(this.match.id);
-
-                this.startTimer();
-                this.screen = 'playing';
-            } catch (err) {
-                console.error('Error starting match:', err);
-            }
-            this.loading = false;
-        },
-
-        async loadAndStartMatch(matchId) {
-            try {
-                const res = await fetch(`${this.API}/matches/${matchId}`);
-                const data = await res.json();
-                this.match = data;
-                this.eloChanges = null;
-                this.subscribeToMatch(matchId);
-                this.startTimer();
-                this.screen = 'playing';
-            } catch (err) {
-                console.error('Error loading match:', err);
-            }
-        },
-
-        // --- PLAYING ---
-
-        isServing(side) {
-            if (!this.match || !this.match.current_server_id) return false;
-            if (side === 'left') {
-                return this.match.current_server_id === this.match.player_left_id
-                    || this.match.current_server_id === this.match.team_left_player2_id;
-            }
-            return this.match.current_server_id === this.match.player_right_id
-                || this.match.current_server_id === this.match.team_right_player2_id;
-        },
-
-        isPlayerServing(playerId) {
-            if (!this.match || !this.match.current_server_id || !playerId) return false;
-            return this.match.current_server_id === playerId;
-        },
-
-        async updateScore(side, action) {
-            if (this.loading || !this.match.id) return;
-            this.loading = true;
-            try {
-                const res = await fetch(`${this.API}/matches/${this.match.id}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf },
-                    body: JSON.stringify({ side, action }),
-                });
-                const data = await res.json();
-                this.match = data;
-
-                if (data.is_complete) {
-                    this.stopTimer();
-                    this.eloChanges = data.elo_changes || null;
-                    this.setWinnerName(data);
-                    this.screen = 'gameover';
-                }
-            } catch (err) {
-                console.error('Error updating score:', err);
-            }
-            this.loading = false;
-        },
-
-        setWinnerName(data) {
-            const leftWon = data.winner_id === data.player_left_id;
-            if (this.mode === '2v2') {
-                const p1 = leftWon ? (data.player_left?.name || '?') : (data.player_right?.name || '?');
-                const p2 = leftWon ? (data.team_left_player2?.name || '?') : (data.team_right_player2?.name || '?');
-                this.winnerName = p1 + ' & ' + p2 + ' Win!';
-            } else {
-                const name = leftWon ? (data.player_left?.name || '?') : (data.player_right?.name || '?');
-                this.winnerName = name + ' Wins!';
-            }
-        },
-
-        // --- GAMEOVER ---
-
-        async rematch() {
-            // Create a new lobby - phones need to re-scan
-            await this.createLobby();
-        },
-
-        // --- NAVIGATION ---
 
         handleKeydown(e) {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
@@ -1144,35 +1122,141 @@ function pingPong() {
             }
 
             switch (this.screen) {
-                case 'home':
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        this.createLobby();
-                    } else if (e.key === 'Backspace') {
-                        e.preventDefault();
-                        window.location.href = '/';
-                    }
+                case 'lobby':
+                case 'opponent':
+                case 'partner':
+                case 'opponent2':
+                    this.handleGridNav(e);
                     break;
-                case 'lobby_waiting':
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        this.startLobbyMatch();
-                    } else if (e.key === 'Backspace') {
-                        e.preventDefault();
-                        this.cancelLobby();
-                    }
+                case 'sides':
+                    this.handleSidesNav(e);
+                    break;
+                case 'qrscan':
+                    this.handleQrScanNav(e);
                     break;
                 case 'playing':
                     this.handlePlayingNav(e);
                     break;
                 case 'gameover':
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        this.rematch();
-                    } else if (e.key === 'Backspace') {
-                        e.preventDefault();
-                        this.goToHome();
+                    this.handleGameoverNav(e);
+                    break;
+            }
+        },
+
+        currentGridList() {
+            switch (this.screen) {
+                case 'lobby': return this.players;
+                case 'partner': return this.availableForPartner;
+                case 'opponent': return this.opponents;
+                case 'opponent2': return this.availableForOpponent2;
+                default: return [];
+            }
+        },
+
+        handleGridNav(e) {
+            const list = this.currentGridList();
+            if (list.length === 0) return;
+
+            const cols = this.gridColumns();
+
+            switch (e.key) {
+                case 'ArrowRight':
+                    e.preventDefault();
+                    this.selectedIndex = Math.min(this.selectedIndex + 1, list.length - 1);
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    this.selectedIndex = Math.min(this.selectedIndex + cols, list.length - 1);
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    this.selectedIndex = Math.max(this.selectedIndex - cols, 0);
+                    break;
+                case 'Enter':
+                    e.preventDefault();
+                    this.handleGridSelect(list[this.selectedIndex]);
+                    break;
+                case 'Backspace':
+                    e.preventDefault();
+                    this.handleGridBack();
+                    break;
+            }
+        },
+
+        handleGridSelect(player) {
+            switch (this.screen) {
+                case 'lobby': this.selectPlayer(player); break;
+                case 'partner': this.selectPartner(player); break;
+                case 'opponent': this.selectOpponent(player); break;
+                case 'opponent2': this.selectOpponent2(player); break;
+            }
+        },
+
+        handleGridBack() {
+            switch (this.screen) {
+                case 'lobby':
+                    window.location.href = '/';
+                    break;
+                case 'partner':
+                    this.player1 = null;
+                    this.screen = 'lobby';
+                    this.selectedIndex = 0;
+                    break;
+                case 'opponent':
+                    if (this.mode === '2v2') {
+                        this.player1Partner = null;
+                        this.screen = 'partner';
+                    } else {
+                        this.player1 = null;
+                        this.screen = 'lobby';
                     }
+                    this.selectedIndex = 0;
+                    break;
+                case 'opponent2':
+                    this.player2 = null;
+                    this.screen = 'opponent';
+                    this.selectedIndex = 0;
+                    break;
+            }
+        },
+
+        handleSidesNav(e) {
+            switch (e.key) {
+                case 'ArrowLeft':
+                case 'ArrowRight':
+                    e.preventDefault();
+                    this.swapSides();
+                    break;
+                case 'Enter':
+                    e.preventDefault();
+                    this.startMatch();
+                    break;
+                case 'Backspace':
+                    e.preventDefault();
+                    if (this.mode === '2v2') {
+                        this.screen = 'opponent2';
+                    } else {
+                        this.screen = 'opponent';
+                    }
+                    this.selectedIndex = 0;
+                    break;
+            }
+        },
+
+        handleQrScanNav(e) {
+            switch (e.key) {
+                case 'Enter':
+                    e.preventDefault();
+                    this.beginPlaying();
+                    break;
+                case 'Backspace':
+                    e.preventDefault();
+                    this.stopQrPolling();
+                    this.screen = 'sides';
                     break;
             }
         },
@@ -1203,38 +1287,414 @@ function pingPong() {
             }
         },
 
-        async cancelLobby() {
-            if (this.lobbyCode && this.hostToken) {
-                try {
-                    await fetch(`${this.API}/lobbies/${this.lobbyCode}`, {
-                        method: 'DELETE',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf },
-                        body: JSON.stringify({ host_token: this.hostToken }),
-                    });
-                } catch (err) {
-                    // Silently ignore
-                }
+        handleGameoverNav(e) {
+            switch (e.key) {
+                case 'Enter':
+                    e.preventDefault();
+                    this.rematch();
+                    break;
+                case 'Backspace':
+                    e.preventDefault();
+                    this.goToLobby();
+                    break;
             }
-            this.goToHome();
+        },
+
+        selectPlayer(player) {
+            this.player1 = player;
+            this.selectedIndex = 0;
+
+            if (this.mode === '2v2') {
+                this.availableForPartner = this.players.filter(p => p.id !== player.id);
+                this.screen = 'partner';
+            } else {
+                this.opponents = this.players.filter(p => p.id !== player.id);
+                this.screen = 'opponent';
+            }
+        },
+
+        selectPartner(player) {
+            this.player1Partner = player;
+            const taken = [this.player1.id, player.id];
+            this.opponents = this.players.filter(p => !taken.includes(p.id));
+            this.selectedIndex = 0;
+            this.screen = 'opponent';
+        },
+
+        selectOpponent(player) {
+            this.player2 = player;
+            this.selectedIndex = 0;
+
+            if (this.mode === '2v2') {
+                const taken = [this.player1.id, this.player1Partner.id, player.id];
+                this.availableForOpponent2 = this.players.filter(p => !taken.includes(p.id));
+                this.screen = 'opponent2';
+            } else {
+                this.leftPlayer = { ...this.player1 };
+                this.rightPlayer = { ...this.player2 };
+                this.screen = 'sides';
+            }
+        },
+
+        selectOpponent2(player) {
+            this.player2Partner = player;
+            this.leftPlayer = { ...this.player1 };
+            this.leftPlayer2 = { ...this.player1Partner };
+            this.rightPlayer = { ...this.player2 };
+            this.rightPlayer2 = { ...this.player2Partner };
+            this.selectedIndex = 0;
+            this.screen = 'sides';
+        },
+
+        swapSides() {
+            const tmpL = this.leftPlayer;
+            const tmpL2 = this.leftPlayer2;
+            this.leftPlayer = this.rightPlayer;
+            this.leftPlayer2 = this.rightPlayer2;
+            this.rightPlayer = tmpL;
+            this.rightPlayer2 = tmpL2;
+        },
+
+        async startMatch() {
+            this.loading = true;
+            try {
+                const body = {
+                    mode: this.mode,
+                    player_left_id: this.leftPlayer.id,
+                    player_right_id: this.rightPlayer.id,
+                    first_server_id: this.leftPlayer.id,
+                };
+
+                if (this.mode === '2v2') {
+                    body.team_left_player2_id = this.leftPlayer2.id;
+                    body.team_right_player2_id = this.rightPlayer2.id;
+                }
+
+                const res = await fetch(`${this.API}/matches`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf },
+                    body: JSON.stringify(body),
+                });
+                this.match = await res.json();
+                this.eloChanges = null;
+                this.leftRemoteConnected = false;
+                this.rightRemoteConnected = false;
+                this.screen = 'qrscan';
+                this.$nextTick(() => {
+                    this.generateQrCodes();
+                    this.startQrPolling();
+                });
+            } catch (err) {
+                console.error('Error starting match:', err);
+            }
+            this.loading = false;
+        },
+
+        generateQrCodes() {
+            const origin = @json(config('games.remote_url'));
+            const baseUrl = `${origin}/games/ping-pong/remote/${this.match.id}`;
+
+            const leftEl = this.$refs.qrLeft;
+            const rightEl = this.$refs.qrRight;
+            if (leftEl) {
+                leftEl.innerHTML = '';
+                new QRCode(leftEl, { text: `${baseUrl}/left`, width: 200, height: 200 });
+            }
+            if (rightEl) {
+                rightEl.innerHTML = '';
+                new QRCode(rightEl, { text: `${baseUrl}/right`, width: 200, height: 200 });
+            }
+        },
+
+        startQrPolling() {
+            this.stopQrPolling();
+            this.qrPollInterval = setInterval(() => this.pollRemoteConnections(), 1500);
+        },
+
+        stopQrPolling() {
+            if (this.qrPollInterval) {
+                clearInterval(this.qrPollInterval);
+                this.qrPollInterval = null;
+            }
+        },
+
+        async pollRemoteConnections() {
+            if (!this.match.id || this.screen !== 'qrscan') return;
+            try {
+                const res = await fetch(`${this.API}/matches/${this.match.id}`);
+                const data = await res.json();
+                this.leftRemoteConnected = !!data.left_remote_connected;
+                this.rightRemoteConnected = !!data.right_remote_connected;
+
+                if (this.leftRemoteConnected && this.rightRemoteConnected) {
+                    this.stopQrPolling();
+                    // Small delay so user sees "Both connected" message
+                    setTimeout(() => {
+                        if (this.screen === 'qrscan') {
+                            this.beginPlaying();
+                        }
+                    }, 1000);
+                }
+            } catch (err) {
+                // Silently ignore
+            }
+        },
+
+        beginPlaying() {
+            this.stopQrPolling();
+            this.startTimer();
+            this.startPolling();
+            this.screen = 'playing';
+        },
+
+        startPolling() {
+            this.stopPolling();
+            this.pollInterval = setInterval(() => this.pollMatch(), 750);
+        },
+
+        stopPolling() {
+            if (this.pollInterval) {
+                clearInterval(this.pollInterval);
+                this.pollInterval = null;
+            }
+        },
+
+        async pollMatch() {
+            if (!this.match.id) return;
+            try {
+                const res = await fetch(`${this.API}/matches/${this.match.id}`);
+                const data = await res.json();
+
+                if (data.player_left_score !== this.match.player_left_score ||
+                    data.player_right_score !== this.match.player_right_score ||
+                    data.is_complete !== this.match.is_complete) {
+                    this.match = data;
+
+                    if (data.is_complete && this.screen === 'playing') {
+                        this.stopTimer();
+                        this.stopPolling();
+                        this.eloChanges = data.elo_changes || null;
+                        this.setWinnerName(data);
+                        this.screen = 'gameover';
+                        this.$nextTick(() => this.renderPointsChart());
+                    }
+                }
+            } catch (err) {
+                // Silently ignore polling errors
+            }
+        },
+
+        isServing(side) {
+            if (!this.match || !this.match.current_server_id) return false;
+            if (side === 'left') {
+                return this.match.current_server_id === (this.match.player_left_id || this.leftPlayer?.id)
+                    || this.match.current_server_id === (this.match.team_left_player2_id || this.leftPlayer2?.id);
+            }
+            return this.match.current_server_id === (this.match.player_right_id || this.rightPlayer?.id)
+                || this.match.current_server_id === (this.match.team_right_player2_id || this.rightPlayer2?.id);
+        },
+
+        isPlayerServing(playerId) {
+            if (!this.match || !this.match.current_server_id || !playerId) return false;
+            return this.match.current_server_id === playerId;
+        },
+
+        async updateScore(side, action) {
+            if (this.loading || !this.match.id) return;
+            this.loading = true;
+            try {
+                const res = await fetch(`${this.API}/matches/${this.match.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf },
+                    body: JSON.stringify({ side, action }),
+                });
+                const data = await res.json();
+                this.match = data;
+
+                if (data.is_complete) {
+                    this.stopTimer();
+                    this.stopPolling();
+                    this.eloChanges = data.elo_changes || null;
+                    this.setWinnerName(data);
+                    this.screen = 'gameover';
+                    this.$nextTick(() => this.renderPointsChart());
+                }
+            } catch (err) {
+                console.error('Error updating score:', err);
+            }
+            this.loading = false;
+        },
+
+        setWinnerName(data) {
+            const leftWon = data.winner_id === data.player_left_id;
+            if (this.mode === '2v2') {
+                const p1 = leftWon
+                    ? (data.player_left?.name || this.leftPlayer.name)
+                    : (data.player_right?.name || this.rightPlayer.name);
+                const p2 = leftWon
+                    ? (data.team_left_player2?.name || this.leftPlayer2?.name)
+                    : (data.team_right_player2?.name || this.rightPlayer2?.name);
+                this.winnerName = p1 + ' & ' + p2 + ' Win!';
+            } else {
+                const name = leftWon
+                    ? (data.player_left?.name || this.leftPlayer.name)
+                    : (data.player_right?.name || this.rightPlayer.name);
+                this.winnerName = name + ' Wins!';
+            }
+        },
+
+        async renderPointsChart() {
+            if (!this.match.id) return;
+
+            if (this.pointsChartInstance) {
+                this.pointsChartInstance.destroy();
+                this.pointsChartInstance = null;
+            }
+
+            try {
+                const res = await fetch(`${this.API}/matches/${this.match.id}/points`);
+                const data = await res.json();
+
+                const canvas = document.getElementById('pointsChart');
+                if (!canvas || !data.points.length) return;
+
+                const labels = ['0', ...data.points.map(p => String(p.sequence))];
+                const leftScores = [0, ...data.points.map(p => p.player_left_score)];
+                const rightScores = [0, ...data.points.map(p => p.player_right_score)];
+
+                this.pointsChartInstance = new Chart(canvas, {
+                    type: 'line',
+                    data: {
+                        labels,
+                        datasets: [
+                            {
+                                label: data.player_left_name,
+                                data: leftScores,
+                                borderColor: '#fb7185',
+                                backgroundColor: 'rgba(251, 113, 133, 0.08)',
+                                borderWidth: 3,
+                                pointRadius: 3,
+                                pointBackgroundColor: '#fb7185',
+                                pointBorderColor: '#fb7185',
+                                pointHitRadius: 10,
+                                stepped: 'after',
+                                fill: true,
+                            },
+                            {
+                                label: data.player_right_name,
+                                data: rightScores,
+                                borderColor: '#22d3ee',
+                                backgroundColor: 'rgba(34, 211, 238, 0.08)',
+                                borderWidth: 3,
+                                pointRadius: 3,
+                                pointBackgroundColor: '#22d3ee',
+                                pointBorderColor: '#22d3ee',
+                                pointHitRadius: 10,
+                                stepped: 'after',
+                                fill: true,
+                            },
+                        ],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: {
+                                labels: {
+                                    color: 'rgba(255,255,255,0.8)',
+                                    font: { size: 15, weight: 'bold' },
+                                    usePointStyle: true,
+                                    pointStyle: 'circle',
+                                    padding: 20,
+                                },
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                                borderColor: 'rgba(255,255,255,0.1)',
+                                borderWidth: 1,
+                                titleFont: { size: 13 },
+                                bodyFont: { size: 13 },
+                                padding: 12,
+                                callbacks: {
+                                    title: (items) => 'Point ' + items[0].label,
+                                },
+                            },
+                        },
+                        scales: {
+                            x: {
+                                title: { display: true, text: 'Point', color: 'rgba(255,255,255,0.4)', font: { size: 13 } },
+                                ticks: { color: 'rgba(255,255,255,0.4)', font: { size: 12 }, maxTicksLimit: 15 },
+                                grid: { color: 'rgba(255,255,255,0.06)' },
+                            },
+                            y: {
+                                title: { display: true, text: 'Score', color: 'rgba(255,255,255,0.4)', font: { size: 13 } },
+                                ticks: { color: 'rgba(255,255,255,0.4)', font: { size: 12 }, stepSize: 1 },
+                                grid: { color: 'rgba(255,255,255,0.06)' },
+                                beginAtZero: true,
+                            },
+                        },
+                    },
+                });
+            } catch (err) {
+                console.error('Error loading points chart:', err);
+            }
+        },
+
+        // --- GAMEOVER ---
+
+        async rematch() {
+            if (this.loading || !this.match.id) return;
+            this.loading = true;
+            try {
+                const res = await fetch(`${this.API}/matches/${this.match.id}/rematch`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf },
+                });
+                this.match = await res.json();
+                this.eloChanges = null;
+                this.leftRemoteConnected = false;
+                this.rightRemoteConnected = false;
+                this.screen = 'qrscan';
+                this.$nextTick(() => {
+                    this.generateQrCodes();
+                    this.startQrPolling();
+                });
+            } catch (err) {
+                console.error('Error creating rematch:', err);
+            }
+            this.loading = false;
         },
 
         abandonMatch() {
             this.showAbandonConfirm = false;
             this.stopTimer();
-            this.goToHome();
+            this.stopPolling();
+            this.goToLobby();
         },
 
         async goToHome() {
             this.unsubscribeAll();
+            if (this.pointsChartInstance) {
+                this.pointsChartInstance.destroy();
+                this.pointsChartInstance = null;
+            }
             this.match = {};
             this.eloChanges = null;
-            this.lobbyCode = '';
-            this.hostToken = '';
-            this.lobbyParticipants = [];
+            this.player1 = null;
+            this.player1Partner = null;
+            this.player2 = null;
+            this.player2Partner = null;
+            this.leftPlayer = null;
+            this.leftPlayer2 = null;
+            this.rightPlayer = null;
+            this.rightPlayer2 = null;
+            this.selectedIndex = 0;
             this.stopTimer();
             this.timerDisplay = '00:00';
+            await this.loadPlayers();
             await this.loadLeaderboard();
-            this.screen = 'home';
+            this.screen = 'lobby';
         },
     };
 }

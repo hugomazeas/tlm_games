@@ -5,6 +5,7 @@ namespace App\Games\PingPong\Models;
 use App\Models\Player;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PingPongMatch extends Model
 {
@@ -84,6 +85,11 @@ class PingPongMatch extends Model
     public function teamRightPlayer2(): BelongsTo
     {
         return $this->belongsTo(Player::class, 'team_right_player2_id');
+    }
+
+    public function points(): HasMany
+    {
+        return $this->hasMany(PingPongMatchPoint::class, 'match_id')->orderBy('sequence');
     }
 
     public function isDoubles(): bool

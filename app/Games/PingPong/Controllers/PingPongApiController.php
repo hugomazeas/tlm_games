@@ -4,6 +4,7 @@ namespace App\Games\PingPong\Controllers;
 
 use App\Games\PingPong\Events\MatchScoreUpdated;
 use App\Games\PingPong\Models\PingPongMatch;
+use App\Games\PingPong\Models\PingPongMatchPoint;
 use App\Games\PingPong\Models\PingPongRating;
 use App\Games\PingPong\Models\PingPongRatingChange;
 use App\Games\PingPong\Services\EloService;
@@ -252,8 +253,25 @@ class PingPongApiController extends Controller
 
         if ($validated['action'] === 'increment') {
             $match->$scoreField += 1;
+
+            $sequence = PingPongMatchPoint::where('match_id', $match->id)->max('sequence') ?? 0;
+            PingPongMatchPoint::create([
+                'match_id' => $match->id,
+                'sequence' => $sequence + 1,
+                'scoring_side' => $validated['side'],
+                'player_left_score' => $match->player_left_score,
+                'player_right_score' => $match->player_right_score,
+                'server_id' => $match->current_server_id,
+                'scored_at' => now(),
+            ]);
         } else {
             $match->$scoreField = max(0, $match->$scoreField - 1);
+
+            // Remove the last recorded point when decrementing
+            PingPongMatchPoint::where('match_id', $match->id)
+                ->orderByDesc('sequence')
+                ->limit(1)
+                ->delete();
         }
 
         $match->updateServer();
@@ -563,6 +581,21 @@ class PingPongApiController extends Controller
         return response()->json([
             'player' => ['id' => $player->id, 'name' => $player->name],
             'matches' => $matches,
+        ]);
+    }
+
+    public function getMatchPoints(int $id): JsonResponse
+    {
+        $match = PingPongMatch::with(['playerLeft', 'playerRight'])->findOrFail($id);
+
+        $points = PingPongMatchPoint::where('match_id', $id)
+            ->orderBy('sequence')
+            ->get(['sequence', 'scoring_side', 'player_left_score', 'player_right_score', 'scored_at']);
+
+        return response()->json([
+            'player_left_name' => $match->playerLeft->name,
+            'player_right_name' => $match->playerRight->name,
+            'points' => $points,
         ]);
     }
 

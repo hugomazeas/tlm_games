@@ -20,6 +20,7 @@ Route::get('/games/ping-pong/api/players/{id}/elo-history', [PingPongApiControll
 Route::get('/games/ping-pong/api/players/{id}/matches', [PingPongApiController::class, 'playerMatches']);
 Route::get('/games/ping-pong/api/players/{id}/head-to-head', [PingPongApiController::class, 'headToHead']);
 Route::get('/games/ping-pong/api/matches/{id}', [PingPongApiController::class, 'getMatch']);
+Route::get('/games/ping-pong/api/matches/{id}/points', [PingPongApiController::class, 'getMatchPoints']);
 Route::get('/games/ping-pong/remote/{id}/{side}', [PingPongController::class, 'remote']);
 
 // Lobby API
