@@ -58,6 +58,10 @@ class MatchScoreUpdated implements ShouldBroadcastNow
             }
         }
 
+        if ($match->is_complete) {
+            $data['points'] = $match->points()->get()->toArray();
+        }
+
         $this->match = $data;
     }
 
