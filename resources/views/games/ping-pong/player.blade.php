@@ -256,6 +256,7 @@
 
     .pps .elo-tooltip .tooltip-date { color: rgba(255,255,255,0.7); font-size: 0.8rem; }
     .pps .elo-tooltip .tooltip-rating { color: #3b82f6; font-weight: 700; font-size: 1.1rem; }
+
 </style>
 
 <div class="pps" x-data="playerStats()" x-init="init()">
@@ -297,7 +298,7 @@
         </div>
     </div>
 
-    <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+    <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr);">
         <div class="stat-card">
             <div class="stat-value" x-text="stats.avg_duration ?? '-'"></div>
             <div class="stat-label">Avg Game Duration</div>
@@ -309,6 +310,15 @@
         <div class="stat-card">
             <div class="stat-value" x-text="stats.highest_elo ?? '-'"></div>
             <div class="stat-label">Highest ELO</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" x-text="getBestSideDisplay()"></div>
+            <div class="stat-label">
+                Best Side
+                <template x-if="(stats.left_wins || 0) + (stats.right_wins || 0) > 0">
+                    <span x-text="' (Left: ' + (stats.left_wins ?? 0) + ' · Right: ' + (stats.right_wins ?? 0) + ')'"></span>
+                </template>
+            </div>
         </div>
     </div>
 
@@ -395,6 +405,14 @@ function playerStats() {
                 this.loadEloHistory(),
             ]);
             window.addEventListener('resize', () => { if (this.eloHistory.length > 0) this.renderEloChart(); });
+        },
+
+        getBestSideDisplay() {
+            const side = this.stats?.best_side;
+            if (side === 'left') return 'Left';
+            if (side === 'right') return 'Right';
+            if (side === 'tie') return 'Tie';
+            return '-';
         },
 
         async loadStats() {
