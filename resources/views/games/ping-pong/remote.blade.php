@@ -327,6 +327,25 @@
             border: 1px solid rgba(59, 130, 246, 0.3);
             box-shadow: 0 0 12px rgba(59, 130, 246, 0.1);
         }
+
+        .leaderboard-row .streak-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            margin-left: 6px;
+        }
+
+        .leaderboard-row .streak-badge.W {
+            background: rgba(34, 197, 94, 0.15);
+            color: #22c55e;
+        }
+
+        .leaderboard-row .streak-badge.L {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+        }
     </style>
 </head>
 <body>
@@ -630,7 +649,13 @@
                     html += '<div class="leaderboard-row' + highlightClass + '">';
                     html += '<span class="lb-rank">#' + (index + 1) + '</span>';
                     html += '<span class="lb-name">' + entry.player_name + '</span>';
-                    html += '<span class="lb-record">' + entry.wins + 'W ' + entry.losses + 'L (' + entry.win_rate + '%)</span>';
+                    let recordHtml = entry.wins + 'W ' + entry.losses + 'L (' + entry.win_rate + '%)';
+                    if (entry.win_streak > 0) {
+                        recordHtml += ' <span class="streak-badge W">W' + entry.win_streak + '</span>';
+                    } else if (entry.losing_streak > 0) {
+                        recordHtml += ' <span class="streak-badge L">L' + entry.losing_streak + '</span>';
+                    }
+                    html += '<span class="lb-record">' + recordHtml + '</span>';
                     html += '<span class="lb-elo">' + entry.elo_rating + '</span>';
 
                     if (eloChange !== null) {

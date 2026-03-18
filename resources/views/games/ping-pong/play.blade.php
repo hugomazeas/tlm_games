@@ -32,8 +32,14 @@
 
     .pp-leaderboard-table {
         width: 100%;
+        table-layout: fixed;
         border-collapse: collapse;
         font-size: 1.2rem;
+    }
+
+    .pp-leaderboard-table th,
+    .pp-leaderboard-table td {
+        width: 14.286%;
     }
 
     .pp-leaderboard-table th {
@@ -65,6 +71,24 @@
 
     .pp-leaderboard-table a:hover {
         text-decoration: underline;
+    }
+
+    .pp-leaderboard-table .streak-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-weight: 700;
+        font-size: 0.85rem;
+    }
+
+    .pp-leaderboard-table .streak-badge.W {
+        background: rgba(34, 197, 94, 0.15);
+        color: #22c55e;
+    }
+
+    .pp-leaderboard-table .streak-badge.L {
+        background: rgba(239, 68, 68, 0.15);
+        color: #ef4444;
     }
 
     /* Mode toggle */
@@ -596,6 +620,7 @@
                                 <th>W</th>
                                 <th>L</th>
                                 <th>Win %</th>
+                                <th>Streak</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -609,6 +634,17 @@
                                     <td style="color: #22c55e;" x-text="entry.wins"></td>
                                     <td style="color: #ef4444;" x-text="entry.losses"></td>
                                     <td style="color: rgba(255,255,255,0.7);" x-text="entry.win_rate + '%'"></td>
+                                    <td>
+                                        <template x-if="entry.win_streak > 0">
+                                            <span class="streak-badge W"><span>W</span><span x-text="entry.win_streak"></span></span>
+                                        </template>
+                                        <template x-if="entry.win_streak === 0 && entry.losing_streak > 0">
+                                            <span class="streak-badge L"><span>L</span><span x-text="entry.losing_streak"></span></span>
+                                        </template>
+                                        <template x-if="entry.win_streak === 0 && !entry.losing_streak">
+                                            <span style="color: rgba(255,255,255,0.3);">-</span>
+                                        </template>
+                                    </td>
                                 </tr>
                             </template>
                         </tbody>
