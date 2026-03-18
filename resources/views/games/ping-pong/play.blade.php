@@ -405,12 +405,13 @@
         align-items: center;
         justify-content: center;
         flex: 1;
-        gap: 28px;
+        gap: 12px;
         min-height: 0;
+        padding: 8px 0;
     }
 
     .pp-winner-text {
-        font-size: 4.5rem;
+        font-size: 3rem;
         font-weight: 900;
         background: linear-gradient(135deg, #3b82f6, #06b6d4);
         -webkit-background-clip: text;
@@ -418,7 +419,7 @@
     }
 
     .pp-final-score {
-        font-size: 5rem;
+        font-size: 3rem;
         font-weight: 800;
         color: rgba(255,255,255,0.9);
     }
@@ -450,6 +451,28 @@
 
     .pp-elo-positive { color: #22c55e; }
     .pp-elo-negative { color: #ef4444; }
+
+    .pp-chart-container {
+        width: 100%;
+        max-width: 900px;
+        flex: 1;
+        min-height: 0;
+        position: relative;
+    }
+
+    .pp-gameover-top {
+        display: flex;
+        align-items: baseline;
+        gap: 24px;
+    }
+
+    .pp-gameover-bottom {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
 
     .pp-hint {
         color: rgba(255,255,255,0.3);
@@ -721,66 +744,75 @@
     <!-- SCREEN: GAMEOVER -->
     <template x-if="screen === 'gameover'">
         <div class="pp-gameover">
-            <div class="pp-winner-text" x-text="winnerName"></div>
-            <div class="pp-final-score">
-                <span style="color: #fb7185;" x-text="match.player_left_score"></span>
-                <span style="color: rgba(255,255,255,0.3);"> - </span>
-                <span style="color: #22d3ee;" x-text="match.player_right_score"></span>
+            <div class="pp-gameover-top">
+                <div class="pp-winner-text" x-text="winnerName"></div>
+                <div class="pp-final-score">
+                    <span style="color: #fb7185;" x-text="match.player_left_score"></span>
+                    <span style="color: rgba(255,255,255,0.3);"> - </span>
+                    <span style="color: #22d3ee;" x-text="match.player_right_score"></span>
+                </div>
+                <div class="pp-duration" x-text="match.duration_formatted ? match.duration_formatted : ''"></div>
             </div>
-            <div class="pp-duration" x-text="match.duration_formatted ? 'Duration: ' + match.duration_formatted : ''"></div>
 
-            <!-- 1v1 ELO changes -->
-            <template x-if="mode === '1v1' && eloChanges">
-                <div class="pp-elo-changes">
-                    <div class="pp-elo-card">
-                        <div class="name" x-text="match.player_left?.name"></div>
-                        <div class="change" :class="eloChanges?.left?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
-                             x-text="(eloChanges?.left?.change >= 0 ? '+' : '') + (eloChanges?.left?.change ?? 0)"></div>
-                        <div class="detail" x-text="(eloChanges?.left?.before ?? '') + ' → ' + (eloChanges?.left?.after ?? '')"></div>
+            <!-- Points progression chart -->
+            <div class="pp-chart-container">
+                <canvas id="pointsChart" x-init="$nextTick(() => renderPointsChart())"></canvas>
+            </div>
+
+            <div class="pp-gameover-bottom">
+                <!-- 1v1 ELO changes -->
+                <template x-if="mode === '1v1' && eloChanges">
+                    <div class="pp-elo-changes" style="gap: 16px; max-width: 500px;">
+                        <div class="pp-elo-card" style="padding: 16px;">
+                            <div class="name" style="font-size: 1.2rem;" x-text="match.player_left?.name"></div>
+                            <div class="change" style="font-size: 1.8rem;" :class="eloChanges?.left?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
+                                 x-text="(eloChanges?.left?.change >= 0 ? '+' : '') + (eloChanges?.left?.change ?? 0)"></div>
+                            <div class="detail" x-text="(eloChanges?.left?.before ?? '') + ' → ' + (eloChanges?.left?.after ?? '')"></div>
+                        </div>
+                        <div class="pp-elo-card" style="padding: 16px;">
+                            <div class="name" style="font-size: 1.2rem;" x-text="match.player_right?.name"></div>
+                            <div class="change" style="font-size: 1.8rem;" :class="eloChanges?.right?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
+                                 x-text="(eloChanges?.right?.change >= 0 ? '+' : '') + (eloChanges?.right?.change ?? 0)"></div>
+                            <div class="detail" x-text="(eloChanges?.right?.before ?? '') + ' → ' + (eloChanges?.right?.after ?? '')"></div>
+                        </div>
                     </div>
-                    <div class="pp-elo-card">
-                        <div class="name" x-text="match.player_right?.name"></div>
-                        <div class="change" :class="eloChanges?.right?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
-                             x-text="(eloChanges?.right?.change >= 0 ? '+' : '') + (eloChanges?.right?.change ?? 0)"></div>
-                        <div class="detail" x-text="(eloChanges?.right?.before ?? '') + ' → ' + (eloChanges?.right?.after ?? '')"></div>
+                </template>
+
+                <!-- 2v2 ELO changes -->
+                <template x-if="mode === '2v2' && eloChanges">
+                    <div class="pp-elo-changes doubles" style="gap: 12px; max-width: 700px;">
+                        <div class="pp-elo-card" style="padding: 14px;">
+                            <div class="name" style="font-size: 1.1rem;" x-text="match.player_left?.name"></div>
+                            <div class="change" style="font-size: 1.5rem;" :class="eloChanges?.left?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
+                                 x-text="(eloChanges?.left?.change >= 0 ? '+' : '') + (eloChanges?.left?.change ?? 0)"></div>
+                            <div class="detail" x-text="(eloChanges?.left?.player1?.before ?? '') + ' → ' + (eloChanges?.left?.player1?.after ?? '')"></div>
+                        </div>
+                        <div class="pp-elo-card" style="padding: 14px;">
+                            <div class="name" style="font-size: 1.1rem;" x-text="match.team_left_player2?.name"></div>
+                            <div class="change" style="font-size: 1.5rem;" :class="eloChanges?.left?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
+                                 x-text="(eloChanges?.left?.change >= 0 ? '+' : '') + (eloChanges?.left?.change ?? 0)"></div>
+                            <div class="detail" x-text="(eloChanges?.left?.player2?.before ?? '') + ' → ' + (eloChanges?.left?.player2?.after ?? '')"></div>
+                        </div>
+                        <div class="pp-elo-card" style="padding: 14px;">
+                            <div class="name" style="font-size: 1.1rem;" x-text="match.player_right?.name"></div>
+                            <div class="change" style="font-size: 1.5rem;" :class="eloChanges?.right?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
+                                 x-text="(eloChanges?.right?.change >= 0 ? '+' : '') + (eloChanges?.right?.change ?? 0)"></div>
+                            <div class="detail" x-text="(eloChanges?.right?.player1?.before ?? '') + ' → ' + (eloChanges?.right?.player1?.after ?? '')"></div>
+                        </div>
+                        <div class="pp-elo-card" style="padding: 14px;">
+                            <div class="name" style="font-size: 1.1rem;" x-text="match.team_right_player2?.name"></div>
+                            <div class="change" style="font-size: 1.5rem;" :class="eloChanges?.right?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
+                                 x-text="(eloChanges?.right?.change >= 0 ? '+' : '') + (eloChanges?.right?.change ?? 0)"></div>
+                            <div class="detail" x-text="(eloChanges?.right?.player2?.before ?? '') + ' → ' + (eloChanges?.right?.player2?.after ?? '')"></div>
+                        </div>
                     </div>
+                </template>
+
+                <div style="display: flex; gap: 16px;">
+                    <button class="pp-start-btn" style="background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.2);"
+                            @click="goToHome()">New Game</button>
+                    <button class="pp-start-btn" @click="rematch()">Rematch</button>
                 </div>
-            </template>
-
-            <!-- 2v2 ELO changes -->
-            <template x-if="mode === '2v2' && eloChanges">
-                <div class="pp-elo-changes doubles">
-                    <div class="pp-elo-card">
-                        <div class="name" x-text="match.player_left?.name"></div>
-                        <div class="change" :class="eloChanges?.left?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
-                             x-text="(eloChanges?.left?.change >= 0 ? '+' : '') + (eloChanges?.left?.change ?? 0)"></div>
-                        <div class="detail" x-text="(eloChanges?.left?.player1?.before ?? '') + ' → ' + (eloChanges?.left?.player1?.after ?? '')"></div>
-                    </div>
-                    <div class="pp-elo-card">
-                        <div class="name" x-text="match.team_left_player2?.name"></div>
-                        <div class="change" :class="eloChanges?.left?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
-                             x-text="(eloChanges?.left?.change >= 0 ? '+' : '') + (eloChanges?.left?.change ?? 0)"></div>
-                        <div class="detail" x-text="(eloChanges?.left?.player2?.before ?? '') + ' → ' + (eloChanges?.left?.player2?.after ?? '')"></div>
-                    </div>
-                    <div class="pp-elo-card">
-                        <div class="name" x-text="match.player_right?.name"></div>
-                        <div class="change" :class="eloChanges?.right?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
-                             x-text="(eloChanges?.right?.change >= 0 ? '+' : '') + (eloChanges?.right?.change ?? 0)"></div>
-                        <div class="detail" x-text="(eloChanges?.right?.player1?.before ?? '') + ' → ' + (eloChanges?.right?.player1?.after ?? '')"></div>
-                    </div>
-                    <div class="pp-elo-card">
-                        <div class="name" x-text="match.team_right_player2?.name"></div>
-                        <div class="change" :class="eloChanges?.right?.change >= 0 ? 'pp-elo-positive' : 'pp-elo-negative'"
-                             x-text="(eloChanges?.right?.change >= 0 ? '+' : '') + (eloChanges?.right?.change ?? 0)"></div>
-                        <div class="detail" x-text="(eloChanges?.right?.player2?.before ?? '') + ' → ' + (eloChanges?.right?.player2?.after ?? '')"></div>
-                    </div>
-                </div>
-            </template>
-
-            <div style="display: flex; gap: 16px; margin-top: 8px;">
-                <button class="pp-start-btn" style="background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.2);"
-                        @click="goToHome()">New Game</button>
-                <button class="pp-start-btn" @click="rematch()">Rematch</button>
             </div>
             <div class="pp-hint">Enter for rematch | Backspace for new game</div>
         </div>
@@ -801,6 +833,7 @@
     </template>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pusher-js@8.4.0/dist/web/pusher.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
@@ -824,6 +857,7 @@ function pingPong() {
         match: {},
         eloChanges: null,
         winnerName: '',
+        pointsChart: null,
 
         // Timer
         timerDisplay: '00:00',
@@ -981,6 +1015,10 @@ function pingPong() {
                 if (data.player_left_score !== this.match.player_left_score ||
                     data.player_right_score !== this.match.player_right_score ||
                     data.is_complete !== this.match.is_complete) {
+                    // Preserve points data if WS event doesn't include it
+                    if (!data.points && this.match.points) {
+                        data.points = this.match.points;
+                    }
                     this.match = data;
 
                     if (data.is_complete && this.screen === 'playing') {
@@ -1122,6 +1160,128 @@ function pingPong() {
 
         // --- GAMEOVER ---
 
+        renderPointsChart() {
+            if (this.pointsChart) {
+                this.pointsChart.destroy();
+                this.pointsChart = null;
+            }
+
+            const canvas = document.getElementById('pointsChart');
+            if (!canvas) return;
+
+            const points = this.match.points || [];
+            const leftName = this.match.player_left?.name || 'Left';
+            const rightName = this.match.player_right?.name || 'Right';
+
+            // Build data: start at 0-0, then each point
+            const labels = ['0'];
+            const leftScores = [0];
+            const rightScores = [0];
+
+            points.forEach((p, i) => {
+                labels.push(String(i + 1));
+                leftScores.push(p.left_score_after);
+                rightScores.push(p.right_score_after);
+            });
+
+            const maxScore = Math.max(
+                leftScores[leftScores.length - 1],
+                rightScores[rightScores.length - 1],
+                11
+            );
+
+            this.pointsChart = new Chart(canvas, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: leftName,
+                            data: leftScores,
+                            borderColor: '#fb7185',
+                            backgroundColor: 'rgba(251, 113, 133, 0.1)',
+                            borderWidth: 3,
+                            pointRadius: 4,
+                            pointBackgroundColor: '#fb7185',
+                            pointBorderColor: '#fb7185',
+                            tension: 0.1,
+                            fill: false,
+                        },
+                        {
+                            label: rightName,
+                            data: rightScores,
+                            borderColor: '#22d3ee',
+                            backgroundColor: 'rgba(34, 211, 238, 0.1)',
+                            borderWidth: 3,
+                            pointRadius: 4,
+                            pointBackgroundColor: '#22d3ee',
+                            pointBorderColor: '#22d3ee',
+                            tension: 0.1,
+                            fill: false,
+                        },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: 'rgba(255,255,255,0.8)',
+                                font: { size: 14, weight: '600' },
+                                usePointStyle: true,
+                                pointStyle: 'circle',
+                            },
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                            titleColor: 'rgba(255,255,255,0.9)',
+                            bodyColor: 'rgba(255,255,255,0.8)',
+                            borderColor: 'rgba(255,255,255,0.1)',
+                            borderWidth: 1,
+                            padding: 12,
+                            titleFont: { size: 13 },
+                            bodyFont: { size: 13 },
+                            callbacks: {
+                                title: (items) => items[0].label === '0' ? 'Start' : 'Point ' + items[0].label,
+                            },
+                        },
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Point #',
+                                color: 'rgba(255,255,255,0.5)',
+                                font: { size: 13 },
+                            },
+                            ticks: { color: 'rgba(255,255,255,0.4)' },
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Score',
+                                color: 'rgba(255,255,255,0.5)',
+                                font: { size: 13 },
+                            },
+                            min: 0,
+                            max: maxScore + 1,
+                            ticks: {
+                                stepSize: 1,
+                                color: 'rgba(255,255,255,0.4)',
+                            },
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                        },
+                    },
+                },
+            });
+        },
+
         async rematch() {
             // Create a new lobby - phones need to re-scan
             await this.createLobby();
@@ -1226,6 +1386,10 @@ function pingPong() {
 
         async goToHome() {
             this.unsubscribeAll();
+            if (this.pointsChart) {
+                this.pointsChart.destroy();
+                this.pointsChart = null;
+            }
             this.match = {};
             this.eloChanges = null;
             this.lobbyCode = '';

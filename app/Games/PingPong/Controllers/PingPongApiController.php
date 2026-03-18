@@ -4,6 +4,7 @@ namespace App\Games\PingPong\Controllers;
 
 use App\Games\PingPong\Events\MatchScoreUpdated;
 use App\Games\PingPong\Models\PingPongMatch;
+use App\Games\PingPong\Models\PingPongPoint;
 use App\Games\PingPong\Models\PingPongRating;
 use App\Games\PingPong\Models\PingPongRatingChange;
 use App\Games\PingPong\Services\EloService;
@@ -141,7 +142,7 @@ class PingPongApiController extends Controller
 
     public function getMatch(int $id): JsonResponse
     {
-        $match = PingPongMatch::with(['playerLeft', 'playerRight', 'currentServer', 'winner', 'teamLeftPlayer2', 'teamRightPlayer2'])
+        $match = PingPongMatch::with(['playerLeft', 'playerRight', 'currentServer', 'winner', 'teamLeftPlayer2', 'teamRightPlayer2', 'points'])
             ->findOrFail($id);
 
         $response = $match->toArray();
@@ -252,8 +253,23 @@ class PingPongApiController extends Controller
 
         if ($validated['action'] === 'increment') {
             $match->$scoreField += 1;
+
+            $pointNumber = $match->points()->count() + 1;
+            PingPongPoint::create([
+                'match_id' => $match->id,
+                'scoring_side' => $validated['side'],
+                'point_number' => $pointNumber,
+                'left_score_after' => $match->player_left_score,
+                'right_score_after' => $match->player_right_score,
+            ]);
         } else {
             $match->$scoreField = max(0, $match->$scoreField - 1);
+
+            // Remove the last recorded point if it exists
+            $lastPoint = $match->points()->orderByDesc('point_number')->first();
+            if ($lastPoint) {
+                $lastPoint->delete();
+            }
         }
 
         $match->updateServer();
@@ -281,6 +297,10 @@ class PingPongApiController extends Controller
 
         if ($eloChanges) {
             $response['elo_changes'] = $eloChanges;
+        }
+
+        if ($match->is_complete) {
+            $response['points'] = $match->points()->get()->toArray();
         }
 
         return response()->json($response);
