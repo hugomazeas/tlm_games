@@ -467,6 +467,31 @@ class PingPongApiController extends Controller
             return null;
         })->filter()->max();
 
+        // Best side: left or right with most wins
+        $leftWins = PingPongMatch::whereNotNull('ended_at')
+            ->where('mode', $mode)
+            ->whereNotNull('winner_id')
+            ->whereColumn('winner_id', 'player_left_id')
+            ->where(function ($q) use ($id) {
+                $q->where('player_left_id', $id)->orWhere('team_left_player2_id', $id);
+            })
+            ->count();
+
+        $rightWins = PingPongMatch::whereNotNull('ended_at')
+            ->where('mode', $mode)
+            ->whereNotNull('winner_id')
+            ->whereColumn('winner_id', 'player_right_id')
+            ->where(function ($q) use ($id) {
+                $q->where('player_right_id', $id)->orWhere('team_right_player2_id', $id);
+            })
+            ->count();
+
+        $bestSide = match (true) {
+            $leftWins > $rightWins => 'left',
+            $rightWins > $leftWins => 'right',
+            default => 'tie',
+        };
+
         return response()->json([
             'player' => ['id' => $player->id, 'name' => $player->name],
             'elo_rating' => $elo,
@@ -478,6 +503,9 @@ class PingPongApiController extends Controller
             'avg_duration' => $avgDurationFormatted,
             'streak' => $streak,
             'streak_type' => $streakType,
+            'best_side' => $bestSide,
+            'left_wins' => $leftWins,
+            'right_wins' => $rightWins,
         ]);
     }
 
