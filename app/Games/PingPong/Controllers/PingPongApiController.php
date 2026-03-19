@@ -123,6 +123,9 @@ class PingPongApiController extends Controller
             $losses = $totalGames - $wins;
             $winRate = $totalGames > 0 ? round(($wins / $totalGames) * 100) : 0;
 
+            $winStreak = $this->getCurrentWinStreak($playerId, $mode);
+            $losingStreak = $this->getCurrentLosingStreak($playerId, $mode);
+
             return [
                 'player_id' => $playerId,
                 'player_name' => $player->name,
@@ -130,6 +133,8 @@ class PingPongApiController extends Controller
                 'wins' => $wins,
                 'losses' => $losses,
                 'win_rate' => $winRate,
+                'win_streak' => $winStreak,
+                'losing_streak' => $losingStreak,
                 'games_played' => $totalGames,
             ];
         })
@@ -138,6 +143,70 @@ class PingPongApiController extends Controller
         ->values();
 
         return response()->json($entries);
+    }
+
+    /**
+     * Get current win streak (consecutive wins from most recent match).
+     */
+    private function getCurrentWinStreak(int $playerId, string $mode): int
+    {
+        $matches = PingPongMatch::whereNotNull('ended_at')
+            ->where('mode', $mode)
+            ->where(function ($q) use ($playerId) {
+                $q->where('player_left_id', $playerId)
+                  ->orWhere('player_right_id', $playerId)
+                  ->orWhere('team_left_player2_id', $playerId)
+                  ->orWhere('team_right_player2_id', $playerId);
+            })
+            ->orderBy('ended_at', 'desc')
+            ->get();
+
+        $streak = 0;
+        foreach ($matches as $match) {
+            $won = $mode === '1v1'
+                ? $match->winner_id === $playerId
+                : (($match->winner_id === $match->player_left_id && in_array($playerId, [$match->player_left_id, $match->team_left_player2_id], true))
+                    || ($match->winner_id === $match->player_right_id && in_array($playerId, [$match->player_right_id, $match->team_right_player2_id], true)));
+            if ($won) {
+                $streak++;
+            } else {
+                break;
+            }
+        }
+
+        return $streak;
+    }
+
+    /**
+     * Get current losing streak (consecutive losses from most recent match).
+     */
+    private function getCurrentLosingStreak(int $playerId, string $mode): int
+    {
+        $matches = PingPongMatch::whereNotNull('ended_at')
+            ->where('mode', $mode)
+            ->where(function ($q) use ($playerId) {
+                $q->where('player_left_id', $playerId)
+                  ->orWhere('player_right_id', $playerId)
+                  ->orWhere('team_left_player2_id', $playerId)
+                  ->orWhere('team_right_player2_id', $playerId);
+            })
+            ->orderBy('ended_at', 'desc')
+            ->get();
+
+        $streak = 0;
+        foreach ($matches as $match) {
+            $won = $mode === '1v1'
+                ? $match->winner_id === $playerId
+                : (($match->winner_id === $match->player_left_id && in_array($playerId, [$match->player_left_id, $match->team_left_player2_id], true))
+                    || ($match->winner_id === $match->player_right_id && in_array($playerId, [$match->player_right_id, $match->team_right_player2_id], true)));
+            if (!$won) {
+                $streak++;
+            } else {
+                break;
+            }
+        }
+
+        return $streak;
     }
 
     public function getMatch(int $id): JsonResponse
