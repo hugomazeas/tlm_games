@@ -487,7 +487,13 @@ class PingPongApiController extends Controller
             $avgDurationFormatted = sprintf('%d:%02d', floor($avgSeconds / 60), $avgSeconds % 60);
         }
 
-        // Current streak
+        // Current streak (using existing helper methods)
+        $winStreak = $this->getCurrentWinStreak($id, $mode);
+        $loseStreak = $this->getCurrentLosingStreak($id, $mode);
+        $streak = max($winStreak, $loseStreak);
+        $streakType = $winStreak >= $loseStreak ? ($winStreak > 0 ? 'W' : null) : 'L';
+
+        // Fetch recent matches for highest streak calculation
         $recentMatches = PingPongMatch::whereNotNull('ended_at')
             ->where('mode', $mode)
             ->where(function ($q) use ($id) {
@@ -499,20 +505,104 @@ class PingPongApiController extends Controller
             ->orderBy('ended_at', 'desc')
             ->get();
 
-        $streak = 0;
-        $streakType = null;
-        foreach ($recentMatches as $match) {
+        // Avg duration when winning vs losing
+        $playerMatchesQuery = fn () => PingPongMatch::whereNotNull('ended_at')
+            ->where('mode', $mode)
+            ->where(function ($q) use ($id) {
+                $q->where('player_left_id', $id)
+                  ->orWhere('player_right_id', $id)
+                  ->orWhere('team_left_player2_id', $id)
+                  ->orWhere('team_right_player2_id', $id);
+            });
+
+        $winMatchIds = $playerMatchesQuery()
+            ->whereNotNull('winner_id')
+            ->get()
+            ->filter(function ($m) use ($id) {
+                $onLeft = $m->player_left_id === $id || $m->team_left_player2_id === $id;
+                $leftWon = $m->winner_id === $m->player_left_id;
+                return ($onLeft && $leftWon) || (!$onLeft && !$leftWon);
+            })
+            ->pluck('id');
+
+        $lossMatchIds = $playerMatchesQuery()
+            ->whereNotNull('winner_id')
+            ->get()
+            ->filter(function ($m) use ($id) {
+                $onLeft = $m->player_left_id === $id || $m->team_left_player2_id === $id;
+                $leftWon = $m->winner_id === $m->player_left_id;
+                return !(($onLeft && $leftWon) || (!$onLeft && !$leftWon));
+            })
+            ->pluck('id');
+
+        $formatDuration = function ($avg) {
+            if (!$avg) return null;
+            $s = (int) round($avg);
+            return sprintf('%d:%02d', floor($s / 60), $s % 60);
+        };
+
+        $avgDurationWin = $winMatchIds->isNotEmpty()
+            ? PingPongMatch::whereIn('id', $winMatchIds)
+                ->selectRaw('AVG(CAST((julianday(ended_at) - julianday(started_at)) * 86400 AS INTEGER)) as avg_duration')
+                ->value('avg_duration')
+            : null;
+
+        $avgDurationLoss = $lossMatchIds->isNotEmpty()
+            ? PingPongMatch::whereIn('id', $lossMatchIds)
+                ->selectRaw('AVG(CAST((julianday(ended_at) - julianday(started_at)) * 86400 AS INTEGER)) as avg_duration')
+                ->value('avg_duration')
+            : null;
+
+        // Avg points scored when winning vs losing
+        $avgPlayerScore = function ($matchIds) use ($id) {
+            if ($matchIds->isEmpty()) return null;
+            $matches = PingPongMatch::whereIn('id', $matchIds)->get();
+            $total = 0;
+            foreach ($matches as $m) {
+                $onLeft = $m->player_left_id === $id || $m->team_left_player2_id === $id;
+                $total += $onLeft ? $m->player_left_score : $m->player_right_score;
+            }
+            return round($total / $matches->count(), 1);
+        };
+
+        $avgPointsWin = $avgPlayerScore($winMatchIds);
+        $avgPointsLoss = $avgPlayerScore($lossMatchIds);
+
+        // Biggest score difference when winning and losing
+        $scoreDiff = function ($matchIds) use ($id) {
+            if ($matchIds->isEmpty()) return null;
+            $matches = PingPongMatch::whereIn('id', $matchIds)->get();
+            $maxDiff = 0;
+            foreach ($matches as $m) {
+                $onLeft = $m->player_left_id === $id || $m->team_left_player2_id === $id;
+                $playerScore = $onLeft ? $m->player_left_score : $m->player_right_score;
+                $oppScore = $onLeft ? $m->player_right_score : $m->player_left_score;
+                $maxDiff = max($maxDiff, abs($playerScore - $oppScore));
+            }
+            return $maxDiff;
+        };
+
+        $biggestDiffWin = $scoreDiff($winMatchIds);
+        $biggestDiffLoss = $scoreDiff($lossMatchIds);
+
+        // Highest win streak and lose streak ever
+        $highestWinStreak = 0;
+        $highestLoseStreak = 0;
+        $currentWinRun = 0;
+        $currentLoseRun = 0;
+        foreach ($recentMatches->reverse() as $match) {
             $onLeftTeam = $match->player_left_id === $id || $match->team_left_player2_id === $id;
             $leftWon = $match->winner_id === $match->player_left_id;
             $won = ($onLeftTeam && $leftWon) || (!$onLeftTeam && !$leftWon);
 
-            if ($streakType === null) {
-                $streakType = $won ? 'W' : 'L';
-            }
-            if (($streakType === 'W' && $won) || ($streakType === 'L' && !$won)) {
-                $streak++;
+            if ($won) {
+                $currentWinRun++;
+                $currentLoseRun = 0;
+                $highestWinStreak = max($highestWinStreak, $currentWinRun);
             } else {
-                break;
+                $currentLoseRun++;
+                $currentWinRun = 0;
+                $highestLoseStreak = max($highestLoseStreak, $currentLoseRun);
             }
         }
 
@@ -570,11 +660,19 @@ class PingPongApiController extends Controller
             'win_rate' => $winRate,
             'games_played' => $totalGames,
             'avg_duration' => $avgDurationFormatted,
+            'avg_duration_win' => $formatDuration($avgDurationWin),
+            'avg_duration_loss' => $formatDuration($avgDurationLoss),
             'streak' => $streak,
             'streak_type' => $streakType,
             'best_side' => $bestSide,
             'left_wins' => $leftWins,
             'right_wins' => $rightWins,
+            'highest_win_streak' => $highestWinStreak,
+            'highest_lose_streak' => $highestLoseStreak,
+            'avg_points_win' => $avgPointsWin,
+            'avg_points_loss' => $avgPointsLoss,
+            'biggest_diff_win' => $biggestDiffWin,
+            'biggest_diff_loss' => $biggestDiffLoss,
         ]);
     }
 
