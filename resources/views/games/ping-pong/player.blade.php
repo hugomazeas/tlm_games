@@ -36,31 +36,90 @@
         color: white;
     }
 
+    .pps .stats-hero {
+        display: grid;
+        grid-template-columns: 1fr 2fr;
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+
+    .pps .elo-hero {
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(59, 130, 246, 0.05));
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        border-radius: 16px;
+        padding: 32px 24px;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .pps .elo-hero-value {
+        font-size: 3.5rem;
+        font-weight: 900;
+        color: #3b82f6;
+        line-height: 1;
+    }
+
+    .pps .elo-hero-label {
+        color: rgba(255,255,255,0.5);
+        font-size: 0.9rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-top: 6px;
+    }
+
+    .pps .elo-hero-peak {
+        margin-top: 12px;
+        padding: 4px 14px;
+        background: rgba(255,255,255,0.06);
+        border-radius: 999px;
+        font-size: 0.85rem;
+        color: rgba(255,255,255,0.5);
+    }
+
+    .pps .elo-hero-peak span {
+        color: #3b82f6;
+        font-weight: 700;
+    }
+
+    .pps .elo-hero-streak {
+        margin-top: 14px;
+        font-size: 0.9rem;
+    }
+
     .pps .stats-grid {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(2, 1fr);
         gap: 12px;
-        margin-bottom: 24px;
     }
 
     .pps .stat-card {
         background: rgba(255,255,255,0.05);
         border: 1px solid rgba(255,255,255,0.1);
         border-radius: 12px;
-        padding: 20px;
+        padding: 16px 20px;
         text-align: center;
     }
 
     .pps .stat-value {
-        font-size: 2rem;
+        font-size: 1.6rem;
         font-weight: 800;
         color: #3b82f6;
     }
 
     .pps .stat-label {
         color: rgba(255,255,255,0.5);
-        font-size: 0.85rem;
-        margin-top: 4px;
+        font-size: 0.8rem;
+        margin-top: 2px;
+    }
+
+    .pps .stat-sub {
+        font-size: 0.75rem;
+        color: rgba(255,255,255,0.35);
+        margin-top: 2px;
     }
 
     .pps .section {
@@ -265,59 +324,86 @@
         <a href="{{ url('/games/ping-pong') }}" class="back-link">&larr; Back to Game</a>
     </div>
 
-    <!-- Stats Grid -->
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-value" x-text="stats.elo_rating ?? '-'"></div>
-            <div class="stat-label">ELO Rating</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value" x-text="stats.games_played ?? '-'"></div>
-            <div class="stat-label">Games Played</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">
-                <span style="color: #22c55e;" x-text="stats.wins ?? 0"></span>
-                <span style="color: rgba(255,255,255,0.3);">/</span>
-                <span style="color: #ef4444;" x-text="stats.losses ?? 0"></span>
+    <!-- Stats -->
+    <div class="stats-hero">
+        <!-- ELO Hero Card -->
+        <div class="elo-hero">
+            <div class="elo-hero-value" x-text="stats.elo_rating ?? '-'"></div>
+            <div class="elo-hero-label">ELO Rating</div>
+            <div class="elo-hero-peak">
+                Peak: <span x-text="stats.highest_elo ?? '-'"></span>
             </div>
-            <div class="stat-label">Wins / Losses (<span x-text="stats.win_rate ?? 0"></span>%)</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">
+            <div class="elo-hero-streak">
                 <template x-if="stats.streak > 0">
-                    <span class="streak-badge" :class="stats.streak_type">
-                        <span x-text="stats.streak_type"></span><span x-text="stats.streak"></span>
+                    <span :style="'color:' + (stats.streak_type === 'W' ? '#22c55e' : '#ef4444')">
+                        Streak: <span x-text="stats.streak"></span>
                     </span>
                 </template>
                 <template x-if="!stats.streak || stats.streak === 0">
-                    <span style="color: rgba(255,255,255,0.3);">-</span>
+                    <span style="color: rgba(255,255,255,0.3);">No streak</span>
                 </template>
             </div>
-            <div class="stat-label">Current Streak</div>
         </div>
-    </div>
 
-    <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr);">
-        <div class="stat-card">
-            <div class="stat-value" x-text="stats.avg_duration ?? '-'"></div>
-            <div class="stat-label">Avg Game Duration</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value" x-text="stats.win_rate ? stats.win_rate + '%' : '-'"></div>
-            <div class="stat-label">Win Rate</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value" x-text="stats.highest_elo ?? '-'"></div>
-            <div class="stat-label">Highest ELO</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value" x-text="getBestSideDisplay()"></div>
-            <div class="stat-label">
-                Best Side
-                <template x-if="(stats.left_wins || 0) + (stats.right_wins || 0) > 0">
-                    <span x-text="' (Left: ' + (stats.left_wins ?? 0) + ' · Right: ' + (stats.right_wins ?? 0) + ')'"></span>
-                </template>
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" x-text="stats.games_played ?? '-'"></div>
+                <div class="stat-label">Games Played</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" x-text="stats.avg_duration ?? '-'"></div>
+                <div class="stat-label">Avg Duration</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">
+                    <span style="color: #22c55e;" x-text="stats.wins ?? 0"></span>
+                    <span style="color: rgba(255,255,255,0.3);"> / </span>
+                    <span style="color: #ef4444;" x-text="stats.losses ?? 0"></span>
+                </div>
+                <div class="stat-label">W / L</div>
+                <div class="stat-sub" x-text="(stats.win_rate ?? 0) + '% win rate'"></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">
+                    <span style="color: #22c55e;" x-text="stats.avg_duration_win ?? '-'"></span>
+                    <span style="color: rgba(255,255,255,0.15);"> / </span>
+                    <span style="color: #ef4444;" x-text="stats.avg_duration_loss ?? '-'"></span>
+                </div>
+                <div class="stat-label">Avg Time W / L</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">
+                    <span style="color: #22c55e;" x-text="stats.highest_win_streak ?? 0"></span>
+                    <span style="color: rgba(255,255,255,0.15);"> / </span>
+                    <span style="color: #ef4444;" x-text="stats.highest_lose_streak ?? 0"></span>
+                </div>
+                <div class="stat-label">Best Winstreak / Worst Losestreak</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">
+                    <span style="color: #22c55e;" x-text="stats.avg_points_win ?? '-'"></span>
+                    <span style="color: rgba(255,255,255,0.15);"> / </span>
+                    <span style="color: #ef4444;" x-text="stats.avg_points_loss ?? '-'"></span>
+                </div>
+                <div class="stat-label">Avg Points W / L</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">
+                    <span style="color: #22c55e;" x-text="stats.biggest_diff_win ?? '-'"></span>
+                    <span style="color: rgba(255,255,255,0.15);"> / </span>
+                    <span style="color: #ef4444;" x-text="stats.biggest_diff_loss ?? '-'"></span>
+                </div>
+                <div class="stat-label">Biggest Diff W / L</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" x-text="getBestSideDisplay()"></div>
+                <div class="stat-label">
+                    Best Side
+                    <template x-if="(stats.left_wins || 0) + (stats.right_wins || 0) > 0">
+                        <span x-text="' (Left: ' + (stats.left_wins ?? 0) + ' · Right: ' + (stats.right_wins ?? 0) + ')'"></span>
+                    </template>
+                </div>
             </div>
         </div>
     </div>
