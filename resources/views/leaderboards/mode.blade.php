@@ -7,12 +7,38 @@
         <a href="{{ url('/leaderboards/' . $gameType->slug) }}" class="text-sm text-white/50 hover:text-white/70 transition">&larr; {{ $gameType->name }} Modes</a>
     </div>
 
-    <div class="flex items-center gap-3 mb-6 sm:mb-8">
-        <span class="text-3xl sm:text-4xl">{{ $gameType->icon }}</span>
-        <div>
-            <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight" style="color: {{ $gameType->color }}">{{ $gameType->name }}</h1>
-            <p class="text-white/50 text-sm">{{ $gameMode->name }}</p>
+    <div class="flex items-center justify-between mb-6 sm:mb-8">
+        <div class="flex items-center gap-3">
+            <span class="text-3xl sm:text-4xl">{{ $gameType->icon }}</span>
+            <div>
+                <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight" style="color: {{ $gameType->color }}">{{ $gameType->name }}</h1>
+                <p class="text-white/50 text-sm">{{ $gameMode->name }}</p>
+            </div>
         </div>
+        @if(!$entries->isEmpty())
+            <button
+                x-data="{ copied: false }"
+                x-on:click="
+                    const medal = ['🥇', '🥈', '🥉'];
+                    let text = '{{ $gameType->icon }} *{{ $gameType->name }} — {{ $gameMode->name }}*\n\n';
+                    document.querySelectorAll('#leaderboard-table tbody tr').forEach((row, i) => {
+                        const cells = row.querySelectorAll('td');
+                        const rank = medal[i] || `${i + 1}.`;
+                        const name = cells[1].textContent.trim();
+                        const stats = [];
+                        @foreach($columns as $col)
+                            stats.push('{{ $col['label'] }}: ' + cells[{{ $loop->index }} + 2].textContent.trim());
+                        @endforeach
+                        text += `${rank} *${name}* — ${stats.join(' | ')}\n`;
+                    });
+                    navigator.clipboard.writeText(text);
+                    copied = true;
+                    setTimeout(() => copied = false, 2000);
+                "
+                x-text="copied ? 'Copied! ✅' : '📋 Copy for Slack'"
+                class="px-3 py-1.5 text-xs sm:text-sm font-medium bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg transition cursor-pointer whitespace-nowrap"
+            ></button>
+        @endif
     </div>
 
     @if($entries->isEmpty())
@@ -24,7 +50,7 @@
         <div class="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
             {{-- Scrollable wrapper for mobile --}}
             <div class="overflow-x-auto">
-                <table class="w-full text-sm min-w-[480px]">
+                <table id="leaderboard-table" class="w-full text-sm min-w-[480px]">
                     <thead>
                         <tr class="border-b border-white/10">
                             <th class="text-left px-3 sm:px-5 py-3 text-xs font-semibold text-white/50 uppercase tracking-wider w-10">#</th>
