@@ -1388,33 +1388,38 @@ function pingPong() {
 
             this.liveChannel = this.echo.channel('ping-pong.live');
             this.liveChannel.listen('.match.started', (e) => {
-                // Add new match if not already in the list
                 if (!this.liveMatches.find(m => m.id === e.match.id)) {
-                    this.liveMatches.unshift(e.match);
+                    this.liveMatches = [e.match, ...this.liveMatches];
                 }
             }).listen('.match.score-updated', (e) => {
                 const data = e.match;
                 const idx = this.liveMatches.findIndex(m => m.id === data.id);
-                if (idx !== -1) {
-                    if (data.is_complete) {
-                        // Remove completed match after a short delay
-                        this.liveMatches[idx] = { ...this.liveMatches[idx], ...data, _flash: true };
+                if (data.is_complete) {
+                    if (idx !== -1) {
+                        this.liveMatches = this.liveMatches.map((m, i) =>
+                            i === idx ? { ...m, ...data, _flash: true } : m
+                        );
                         setTimeout(() => {
                             this.liveMatches = this.liveMatches.filter(m => m.id !== data.id);
-                            // Refresh leaderboard when a match completes
                             if (this.screen === 'home') this.loadLeaderboard();
                         }, 3000);
-                    } else {
-                        // Flash effect on score update
-                        this.liveMatches[idx] = { ...this.liveMatches[idx], ...data, _flash: true };
-                        setTimeout(() => {
-                            const i = this.liveMatches.findIndex(m => m.id === data.id);
-                            if (i !== -1) {
-                                this.liveMatches[i] = { ...this.liveMatches[i], _flash: false };
-                            }
-                        }, 600);
                     }
+                    return;
                 }
+                // In-list update, or re-add after idle prune (new score = fresh last_score_activity_at)
+                const entry = idx !== -1
+                    ? { ...this.liveMatches[idx], ...data, _flash: true }
+                    : { ...data, _flash: true };
+                if (idx !== -1) {
+                    this.liveMatches = this.liveMatches.map((m, i) => (i === idx ? entry : m));
+                } else {
+                    this.liveMatches = [entry, ...this.liveMatches.filter(m => m.id !== data.id)];
+                }
+                setTimeout(() => {
+                    this.liveMatches = this.liveMatches.map((m) =>
+                        m.id === data.id ? { ...m, _flash: false } : m
+                    );
+                }, 600);
             });
         },
 

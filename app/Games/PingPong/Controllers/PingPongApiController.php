@@ -2,6 +2,7 @@
 
 namespace App\Games\PingPong\Controllers;
 
+use App\Games\PingPong\Events\LiveMatchStarted;
 use App\Games\PingPong\Events\MatchScoreUpdated;
 use App\Games\PingPong\Models\PingPongMatch;
 use App\Games\PingPong\Models\PingPongPoint;
@@ -340,6 +341,8 @@ class PingPongApiController extends Controller
 
         $match->load(['playerLeft', 'playerRight', 'currentServer', 'teamLeftPlayer2', 'teamRightPlayer2']);
 
+        broadcast(new LiveMatchStarted($match));
+
         return response()->json($match, 201);
     }
 
@@ -465,6 +468,8 @@ class PingPongApiController extends Controller
         $match = PingPongMatch::create($matchData);
 
         $match->load(['playerLeft', 'playerRight', 'currentServer', 'teamLeftPlayer2', 'teamRightPlayer2']);
+
+        broadcast(new LiveMatchStarted($match));
 
         return response()->json($match, 201);
     }
