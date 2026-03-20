@@ -1,5 +1,9 @@
 .PHONY: build up down restart shell logs migrate seed fresh test tinker status
 
+# Host uid/gid so bind-mounted files stay owned by the clone user (Makefile exports for compose build args).
+export LOCAL_UID := $(shell id -u)
+export LOCAL_GID := $(shell id -g)
+
 build:
 	docker compose build
 

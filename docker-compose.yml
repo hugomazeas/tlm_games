@@ -3,6 +3,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        USER_ID: ${LOCAL_UID:-1000}
+        GROUP_ID: ${LOCAL_GID:-1000}
     container_name: games-hub
     restart: unless-stopped
     ports:
@@ -19,7 +22,7 @@ services:
              cp -n .env.example .env || true &&
              php artisan key:generate --force &&
              touch /var/www/database/database.sqlite &&
-             chown -R www-data:www-data /var/www/database /var/www/storage /var/www/bootstrap/cache &&
+             chown -R www-data:www-data /var/www/vendor /var/www/database /var/www/storage /var/www/bootstrap/cache &&
              chmod -R 775 /var/www/storage /var/www/bootstrap/cache &&
              php artisan migrate --force &&
              php artisan db:seed --force &&
