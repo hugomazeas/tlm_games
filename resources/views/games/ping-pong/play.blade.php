@@ -582,17 +582,56 @@
         font-size: 1.5rem;
     }
 
-    .pp-lb-stack {
+    .pp-lb-panel-body {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .pp-lb-tabs-row {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 6px;
+        margin-bottom: 16px;
+        flex-shrink: 0;
+        overflow-x: auto;
+        padding-bottom: 6px;
+        scrollbar-width: thin;
+    }
+
+    .pp-lb-tab {
+        padding: 6px 14px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 1rem;
+        cursor: pointer;
+        border: none;
+        background: rgba(255,255,255,0.06);
+        color: rgba(255,255,255,0.55);
+        transition: background 0.2s, color 0.2s;
+        flex-shrink: 0;
+        white-space: nowrap;
+        max-width: 220px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .pp-lb-tab.active {
+        background: #3b82f6;
+        color: white;
+    }
+
+    .pp-lb-tab:hover:not(.active) {
+        background: rgba(255,255,255,0.12);
+        color: rgba(255,255,255,0.85);
+    }
+
+    .pp-lb-tab-content {
         overflow-y: auto;
         flex: 1;
         min-height: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 32px;
-    }
-
-    .pp-lb-section:last-child {
-        padding-bottom: 8px;
     }
 </style>
 
@@ -618,10 +657,18 @@
                 <div class="pp-hint" style="margin-top: 16px;">Players join via QR code on their phones</div>
             </div>
 
-            <!-- Right: Leaderboards (all players + per office) -->
-            <div class="pp-panel" style="overflow: hidden;">
-                <div class="pp-lb-stack">
-                    <div class="pp-lb-section">
+            <!-- Right: Leaderboards (tabs: all players + per office) -->
+            <div class="pp-panel pp-lb-panel-body">
+                <div class="pp-lb-tabs-row">
+                    <button type="button" class="pp-lb-tab" :class="{ active: leaderboardTab === 'all' }" @click="leaderboardTab = 'all'">
+                        All players
+                    </button>
+                    <template x-for="block in officeLeaderboards" :key="'tab-' + block.id">
+                        <button type="button" class="pp-lb-tab" :class="{ active: leaderboardTab === block.id }" @click="leaderboardTab = block.id" x-text="block.name"></button>
+                    </template>
+                </div>
+                <div class="pp-lb-tab-content">
+                    <div x-show="leaderboardTab === 'all'">
                         <div class="pp-header">
                             <h2 x-text="mode === '2v2' ? '2v2 ELO Leaderboard' : 'ELO Leaderboard'"></h2>
                         </div>
@@ -667,9 +714,8 @@
                             No matches played yet
                         </div>
                     </div>
-
-                    <template x-for="block in officeLeaderboards" :key="block.id">
-                        <div class="pp-lb-section">
+                    <template x-for="block in officeLeaderboards" :key="'panel-' + block.id">
+                        <div x-show="leaderboardTab === block.id">
                             <div class="pp-header">
                                 <h2 x-text="officeLeaderboardTitle(block)"></h2>
                             </div>
@@ -948,6 +994,7 @@ function pingPong() {
         leaderboard: [],
         offices: [],
         officeLeaderboards: [],
+        leaderboardTab: 'all',
 
         // Lobby state
         lobbyCode: '',
@@ -1039,6 +1086,9 @@ function pingPong() {
                     return { id: office.id, name: office.name, entries };
                 })
             );
+            if (this.leaderboardTab !== 'all' && !this.officeLeaderboards.some((b) => b.id === this.leaderboardTab)) {
+                this.leaderboardTab = 'all';
+            }
         },
 
         // --- LOBBY ---
@@ -1520,6 +1570,7 @@ function pingPong() {
             this.lobbyParticipants = [];
             this.stopTimer();
             this.timerDisplay = '00:00';
+            this.leaderboardTab = 'all';
             await this.loadLeaderboard();
             this.screen = 'home';
         },
