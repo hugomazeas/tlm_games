@@ -18,13 +18,8 @@ class OfficeSeeder extends Seeder
             return;
         }
 
-        $now = now();
-        Office::query()->insert(
-            collect($this->names)->map(fn (string $name) => [
-                'name' => $name,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ])->all()
-        );
+        foreach ($this->names as $name) {
+            Office::firstOrCreate(['name' => $name]);
+        }
     }
 }

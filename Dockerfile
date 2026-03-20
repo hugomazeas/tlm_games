@@ -40,6 +40,15 @@ COPY docker/nginx/default.conf /etc/nginx/http.d/default.conf
 # Copy supervisor configuration
 COPY docker/supervisor/supervisord.conf /etc/supervisord.conf
 
+# Match www-data to the host user for bind mounts (default 1000:1000). Build with:
+#   docker compose build --build-arg USER_ID=$(id -u) --build-arg GROUP_ID=$(id -g)
+ARG USER_ID=1000
+ARG GROUP_ID=1000
+RUN deluser www-data 2>/dev/null || true \
+    && delgroup www-data 2>/dev/null || true \
+    && addgroup -g ${GROUP_ID} www-data \
+    && adduser -u ${USER_ID} -S -H -G www-data www-data
+
 # Create necessary directories and set permissions
 RUN mkdir -p /var/www/database /var/www/storage/logs /var/www/bootstrap/cache /var/log/supervisor \
     && chown -R www-data:www-data /var/www
