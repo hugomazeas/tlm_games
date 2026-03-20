@@ -9,6 +9,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pusher-js@8.4.0/dist/web/pusher.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
+    @include('partials.games-hub-echo-config')
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
@@ -468,16 +469,7 @@
             },
 
             subscribeToLobby() {
-                this.echo = new Echo({
-                    broadcaster: 'pusher',
-                    key: 'games-hub-key',
-                    wsHost: window.location.hostname,
-                    wsPort: window.location.port || 80,
-                    forceTLS: false,
-                    disableStats: true,
-                    enabledTransports: ['ws', 'wss'],
-                    cluster: 'mt1',
-                });
+                this.echo = gamesHubEcho();
 
                 this.echo.channel('ping-pong.lobby.' + this.lobbyCode)
                     .listen('.lobby.updated', (e) => {

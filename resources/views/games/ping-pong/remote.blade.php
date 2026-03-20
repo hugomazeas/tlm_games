@@ -8,6 +8,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/pusher-js@8.4.0/dist/web/pusher.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
+    @include('partials.games-hub-echo-config')
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
@@ -431,16 +432,7 @@
         let echoInstance = null;
 
         function subscribeToMatch() {
-            echoInstance = new Echo({
-                broadcaster: 'pusher',
-                key: 'games-hub-key',
-                wsHost: window.location.hostname,
-                wsPort: window.location.port || 80,
-                forceTLS: false,
-                disableStats: true,
-                enabledTransports: ['ws', 'wss'],
-                cluster: 'mt1',
-            });
+            echoInstance = gamesHubEcho();
 
             echoInstance.channel('ping-pong.match.' + MATCH_ID)
                 .listen('.match.score-updated', function(e) {
@@ -478,6 +470,7 @@
                 renderMatch(data);
             } catch (err) {
                 leftNames.textContent = 'Error loading match';
+                console.error('Remote init failed:', err);
             }
             subscribeToMatch();
         }

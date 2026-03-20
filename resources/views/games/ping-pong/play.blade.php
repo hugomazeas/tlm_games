@@ -1235,6 +1235,7 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pusher-js@8.4.0/dist/web/pusher.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
+@include('partials.games-hub-echo-config')
 <script>
 function pingPong() {
     return {
@@ -1374,16 +1375,7 @@ function pingPong() {
 
         subscribeLive() {
             if (!this.echo) {
-                this.echo = new Echo({
-                    broadcaster: 'pusher',
-                    key: 'games-hub-key',
-                    wsHost: window.location.hostname,
-                    wsPort: window.location.port || 80,
-                    forceTLS: false,
-                    disableStats: true,
-                    enabledTransports: ['ws', 'wss'],
-                    cluster: 'mt1',
-                });
+                this.echo = gamesHubEcho();
             }
 
             this.liveChannel = this.echo.channel('ping-pong.live');
@@ -1439,6 +1431,19 @@ function pingPong() {
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf },
                     body: JSON.stringify({ mode: this.mode }),
                 });
+                if (!res.ok) {
+                    let msg = 'Could not create lobby.';
+                    try {
+                        const err = await res.json();
+                        msg = err.message || err.error || msg;
+                    } catch (e) {
+                        if (res.status === 419) {
+                            msg = 'Session expired. Refresh the page and try again.';
+                        }
+                    }
+                    alert(msg);
+                    return;
+                }
                 const data = await res.json();
                 this.lobbyCode = data.code;
                 this.hostToken = data.host_token;
@@ -1473,16 +1478,7 @@ function pingPong() {
 
             this.wsStatus = 'connecting';
 
-            this.echo = new Echo({
-                broadcaster: 'pusher',
-                key: 'games-hub-key',
-                wsHost: window.location.hostname,
-                wsPort: window.location.port || 80,
-                forceTLS: false,
-                disableStats: true,
-                enabledTransports: ['ws', 'wss'],
-                cluster: 'mt1',
-            });
+            this.echo = gamesHubEcho();
 
             this.echo.connector.pusher.connection.bind('connected', () => {
                 console.log('[WS] Connected to Reverb');
@@ -1509,16 +1505,7 @@ function pingPong() {
 
         subscribeToMatch(matchId) {
             if (!this.echo) {
-                this.echo = new Echo({
-                    broadcaster: 'pusher',
-                    key: 'games-hub-key',
-                    wsHost: window.location.hostname,
-                    wsPort: window.location.port || 80,
-                    forceTLS: false,
-                    disableStats: true,
-                    enabledTransports: ['ws', 'wss'],
-                    cluster: 'mt1',
-                });
+                this.echo = gamesHubEcho();
             }
 
             if (this.matchChannel) {
@@ -1596,6 +1583,19 @@ function pingPong() {
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf },
                     body: JSON.stringify({ host_token: this.hostToken }),
                 });
+                if (!res.ok) {
+                    let msg = 'Could not start match.';
+                    try {
+                        const err = await res.json();
+                        msg = err.error || err.message || msg;
+                    } catch (e) {
+                        if (res.status === 419) {
+                            msg = 'Session expired. Refresh the page and try again.';
+                        }
+                    }
+                    alert(msg);
+                    return;
+                }
                 const data = await res.json();
                 this.match = data.match;
                 this.eloChanges = null;
@@ -1614,6 +1614,15 @@ function pingPong() {
         async loadAndStartMatch(matchId) {
             try {
                 const res = await fetch(`${this.API}/matches/${matchId}`);
+                if (!res.ok) {
+                    let msg = 'Could not load match.';
+                    try {
+                        const err = await res.json();
+                        msg = err.message || err.error || msg;
+                    } catch (e) { /* use default */ }
+                    alert(msg);
+                    return;
+                }
                 const data = await res.json();
                 this.match = data;
                 this.eloChanges = null;
