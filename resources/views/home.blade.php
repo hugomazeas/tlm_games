@@ -104,7 +104,7 @@
                             View Full Leaderboard &rarr;
                         </a>
                         <a href="{{ url('/games/' . $game->slug) }}"
-                           class="hidden sm:inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm font-semibold transition hover:opacity-90"
+                           class="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm font-semibold transition hover:opacity-90"
                            style="background-color: {{ $game->color }}; color: #fff;">
                             Play &rarr;
                         </a>

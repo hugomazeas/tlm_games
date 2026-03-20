@@ -9,6 +9,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pusher-js@8.4.0/dist/web/pusher.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -131,21 +132,19 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 12px;
-            padding: 16px;
-            flex: 1;
-            min-height: 0;
+            padding: 8px 16px;
+            flex-shrink: 0;
         }
 
         .side-panel {
-            border-radius: 16px;
-            padding: 16px;
+            border-radius: 12px;
+            padding: 10px 12px;
             display: flex;
             flex-direction: column;
             align-items: center;
             cursor: pointer;
             transition: all 0.2s;
             border: 3px solid;
-            min-height: 200px;
         }
 
         .side-panel.left {
@@ -175,11 +174,11 @@
         }
 
         .side-label {
-            font-size: 1rem;
+            font-size: 0.85rem;
             font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 0.1em;
-            margin-bottom: 12px;
+            margin-bottom: 6px;
         }
 
         .side-panel.left .side-label { color: #fb7185; }
@@ -229,6 +228,41 @@
 
         .reselect-player:active {
             background: rgba(59, 130, 246, 0.2);
+        }
+
+        .qr-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            padding: 16px;
+        }
+
+        .qr-container {
+            background: white;
+            border-radius: 12px;
+            padding: 12px;
+        }
+
+        .qr-lobby-code {
+            font-size: 2rem;
+            font-weight: 900;
+            letter-spacing: 0.15em;
+            color: #3b82f6;
+        }
+
+        .qr-join-url {
+            font-size: 0.75rem;
+            color: rgba(255,255,255,0.3);
+            word-break: break-all;
+            text-align: center;
+            max-width: 250px;
+        }
+
+        .qr-label {
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.5);
+            font-weight: 600;
         }
     </style>
 </head>
@@ -281,6 +315,13 @@
                     <div style="font-size: 0.8rem; color: rgba(255,255,255,0.4); margin-top: 2px;">Tap your name to change player · Tap a side to switch</div>
                 </div>
 
+                <div class="qr-section" x-init="$nextTick(() => generateQr())">
+                    <div class="qr-label">Share with opponent</div>
+                    <div class="qr-container" id="joinQrContainer"></div>
+                    <div class="qr-lobby-code" x-text="lobbyCode"></div>
+                    <div class="qr-join-url" x-text="joinUrl"></div>
+                </div>
+
                 <div class="side-panels">
                     <div class="side-panel left" :class="{ 'selected': mySide === 'left' }" @click="switchSide('left')">
                         <div class="side-label">Left</div>
@@ -328,6 +369,7 @@
             lobbyCode: @json($lobbyCode),
             lobbyMode: @json($lobbyMode),
             remoteUrl: window.location.origin,
+            joinUrl: window.location.origin + '/games/ping-pong/lobby/' + @json($lobbyCode),
             API: '/games/ping-pong/api',
             csrf: document.querySelector('meta[name="csrf-token"]').content,
 
@@ -633,6 +675,14 @@
                 this.myPlayerId = null;
                 this.myPlayerName = '';
                 this.mySide = null;
+            },
+
+            generateQr() {
+                const el = document.getElementById('joinQrContainer');
+                if (el) {
+                    el.innerHTML = '';
+                    new QRCode(el, { text: this.joinUrl, width: 180, height: 180 });
+                }
             },
 
             showError(title, message) {

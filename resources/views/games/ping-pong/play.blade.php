@@ -20,6 +20,22 @@
         min-height: 0;
     }
 
+    @media (max-width: 768px) {
+        .pp-grid {
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+
+        .pp-grid .pp-panel:last-child {
+            display: none;
+        }
+
+        .pp-container {
+            height: auto;
+            min-height: calc(100vh - 80px);
+        }
+    }
+
     .pp-panel {
         background: rgba(255,255,255,0.05);
         border: 1px solid rgba(255,255,255,0.1);
@@ -1108,6 +1124,12 @@ function pingPong() {
                 this.lobbyParticipants = [];
 
                 this.lobbyJoinUrl = `${window.location.origin}/games/ping-pong/lobby/${this.lobbyCode}`;
+
+                // On mobile, redirect to join page for unified phone experience
+                if (window.innerWidth < 768) {
+                    window.location.href = '/games/ping-pong/lobby/' + this.lobbyCode;
+                    return;
+                }
 
                 this.screen = 'lobby_waiting';
                 this.subscribeToLobby();
