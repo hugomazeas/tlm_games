@@ -226,6 +226,23 @@ class PingPongApiController extends Controller
         return $streak;
     }
 
+    public function liveMatches(): JsonResponse
+    {
+        $matches = PingPongMatch::whereNotNull('started_at')
+            ->whereNull('ended_at')
+            ->where('started_at', '>=', now()->subHour())
+            ->with(['playerLeft', 'playerRight', 'currentServer', 'teamLeftPlayer2', 'teamRightPlayer2'])
+            ->orderBy('started_at', 'desc')
+            ->get()
+            ->map(function ($match) {
+                $data = $match->toArray();
+                $data['is_complete'] = false;
+                return $data;
+            });
+
+        return response()->json($matches);
+    }
+
     public function getMatch(int $id): JsonResponse
     {
         $match = PingPongMatch::with(['playerLeft', 'playerRight', 'currentServer', 'winner', 'teamLeftPlayer2', 'teamRightPlayer2', 'points'])
