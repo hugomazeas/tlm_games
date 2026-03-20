@@ -26,13 +26,68 @@
             gap: 12px;
         }
 
-        .pp-grid .pp-panel:last-child {
-            display: none;
-        }
-
         .pp-container {
             height: auto;
             min-height: calc(100vh - 80px);
+            overflow: auto;
+        }
+
+        .pp-panel {
+            overflow: visible !important;
+        }
+
+        .pp-lb-tabs-row {
+            scrollbar-width: none;
+        }
+
+        .pp-grid .pp-panel.pp-start-panel {
+            padding: 12px 16px;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        .pp-grid .pp-start-panel .pp-header,
+        .pp-grid .pp-start-panel .pp-hint {
+            display: none;
+        }
+
+        .pp-grid .pp-start-panel .pp-mode-toggle {
+            margin-top: 0;
+        }
+
+        .pp-grid .pp-start-panel .pp-mode-btn {
+            padding: 8px 16px;
+            font-size: 1rem;
+        }
+
+        .pp-grid .pp-start-panel .pp-start-btn {
+            margin-top: 0;
+            padding: 10px 20px;
+            font-size: 1rem;
+            border-radius: 12px;
+            white-space: nowrap;
+        }
+
+        .pp-leaderboard-table {
+            font-size: 0.95rem;
+        }
+
+        .pp-leaderboard-table th,
+        .pp-leaderboard-table td {
+            padding: 8px 6px;
+        }
+
+        .pp-leaderboard-table {
+            table-layout: auto;
+        }
+
+        .pp-leaderboard-table th:nth-child(6),
+        .pp-leaderboard-table td:nth-child(6),
+        .pp-leaderboard-table th:nth-child(7),
+        .pp-leaderboard-table td:nth-child(7) {
+            display: none;
         }
     }
 
@@ -628,7 +683,7 @@
         background: rgba(255,255,255,0.04);
         border: 1px solid rgba(255,255,255,0.1);
         border-radius: 12px;
-        padding: 10px 16px;
+        padding: 14px 18px;
         display: grid;
         grid-template-columns: 1fr auto 1fr;
         align-items: center;
@@ -658,7 +713,7 @@
 
     .pp-live-player {
         font-weight: 700;
-        font-size: 1rem;
+        font-size: 1.3rem;
         color: rgba(255,255,255,0.9);
     }
 
@@ -693,10 +748,10 @@
     }
 
     .pp-live-score {
-        font-size: 1.6rem;
+        font-size: 2.2rem;
         font-weight: 900;
         font-family: monospace;
-        min-width: 30px;
+        min-width: 38px;
         text-align: center;
     }
 
@@ -793,8 +848,8 @@
     <!-- SCREEN: HOME -->
     <template x-if="screen === 'home'">
         <div class="pp-grid" style="height: 100%;">
-            <!-- Left: Start Game -->
-            <div class="pp-panel" style="align-items: center; justify-content: center;">
+            <!-- Left / Top: Start Game -->
+            <div class="pp-panel pp-start-panel" style="align-items: center; justify-content: center;">
                 <div class="pp-header" style="text-align: center;">
                     <h2>Ping Pong</h2>
                     <div class="pp-header-sub">Start a new game</div>
