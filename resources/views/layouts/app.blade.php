@@ -39,6 +39,7 @@
             {{-- Desktop nav --}}
             <div class="hidden sm:flex items-center gap-6 text-sm font-medium">
                 <a href="{{ url('/') }}" class="text-white/70 hover:text-white transition {{ request()->is('/') ? 'text-white' : '' }}">Home</a>
+                <a href="{{ url('/offices') }}" class="text-white/70 hover:text-white transition {{ request()->is('offices*') ? 'text-white' : '' }}">Offices</a>
                 <a href="{{ url('/players') }}" class="text-white/70 hover:text-white transition {{ request()->is('players*') ? 'text-white' : '' }}">Players</a>
                 <a href="{{ url('/leaderboards') }}" class="text-white/70 hover:text-white transition {{ request()->is('leaderboards*') ? 'text-white' : '' }}">Leaderboards</a>
             </div>
@@ -65,6 +66,7 @@
              class="sm:hidden border-t border-white/10 bg-white/5">
             <div class="px-4 py-3 space-y-1">
                 <a href="{{ url('/') }}" class="block px-3 py-2.5 rounded-lg text-sm font-medium transition {{ request()->is('/') ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white' }}">Home</a>
+                <a href="{{ url('/offices') }}" class="block px-3 py-2.5 rounded-lg text-sm font-medium transition {{ request()->is('offices*') ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white' }}">Offices</a>
                 <a href="{{ url('/players') }}" class="block px-3 py-2.5 rounded-lg text-sm font-medium transition {{ request()->is('players*') ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white' }}">Players</a>
                 <a href="{{ url('/leaderboards') }}" class="block px-3 py-2.5 rounded-lg text-sm font-medium transition {{ request()->is('leaderboards*') ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white' }}">Leaderboards</a>
             </div>
