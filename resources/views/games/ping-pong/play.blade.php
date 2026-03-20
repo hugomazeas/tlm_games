@@ -581,6 +581,19 @@
         color: rgba(255,255,255,0.5);
         font-size: 1.5rem;
     }
+
+    .pp-lb-stack {
+        overflow-y: auto;
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 32px;
+    }
+
+    .pp-lb-section:last-child {
+        padding-bottom: 8px;
+    }
 </style>
 
 <div class="pp-container" x-data="pingPong()" x-init="init()" @keydown.window="handleKeydown($event)">
@@ -605,53 +618,104 @@
                 <div class="pp-hint" style="margin-top: 16px;">Players join via QR code on their phones</div>
             </div>
 
-            <!-- Right: Leaderboard -->
-            <div class="pp-panel">
-                <div class="pp-header">
-                    <h2 x-text="mode === '2v2' ? '2v2 ELO Leaderboard' : 'ELO Leaderboard'"></h2>
-                </div>
-                <div style="overflow-y: auto; flex: 1; min-height: 0;">
-                    <table class="pp-leaderboard-table" x-show="leaderboard.length > 0">
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>Player</th>
-                                <th>ELO</th>
-                                <th>W</th>
-                                <th>L</th>
-                                <th>Win %</th>
-                                <th>Streak</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <template x-for="(entry, i) in leaderboard" :key="entry.player_id">
+            <!-- Right: Leaderboards (all players + per office) -->
+            <div class="pp-panel" style="overflow: hidden;">
+                <div class="pp-lb-stack">
+                    <div class="pp-lb-section">
+                        <div class="pp-header">
+                            <h2 x-text="mode === '2v2' ? '2v2 ELO Leaderboard' : 'ELO Leaderboard'"></h2>
+                        </div>
+                        <table class="pp-leaderboard-table" x-show="leaderboard.length > 0">
+                            <thead>
                                 <tr>
-                                    <td style="color: rgba(255,255,255,0.4); font-family: monospace;" x-text="i + 1"></td>
-                                    <td>
-                                        <a :href="'/games/ping-pong/players/' + entry.player_id" x-text="entry.player_name"></a>
-                                    </td>
-                                    <td style="font-weight: 700;" x-text="entry.elo_rating"></td>
-                                    <td style="color: #22c55e;" x-text="entry.wins"></td>
-                                    <td style="color: #ef4444;" x-text="entry.losses"></td>
-                                    <td style="color: rgba(255,255,255,0.7);" x-text="entry.win_rate + '%'"></td>
-                                    <td>
-                                        <template x-if="entry.win_streak > 0">
-                                            <span class="streak-badge W"><span>W</span><span x-text="entry.win_streak"></span></span>
-                                        </template>
-                                        <template x-if="entry.win_streak === 0 && entry.losing_streak > 0">
-                                            <span class="streak-badge L"><span>L</span><span x-text="entry.losing_streak"></span></span>
-                                        </template>
-                                        <template x-if="entry.win_streak === 0 && !entry.losing_streak">
-                                            <span style="color: rgba(255,255,255,0.3);">-</span>
-                                        </template>
-                                    </td>
+                                    <th>#</th>
+                                    <th>Player</th>
+                                    <th>ELO</th>
+                                    <th>W</th>
+                                    <th>L</th>
+                                    <th>Win %</th>
+                                    <th>Streak</th>
                                 </tr>
-                            </template>
-                        </tbody>
-                    </table>
-                    <div x-show="leaderboard.length === 0" style="text-align: center; padding: 40px; color: rgba(255,255,255,0.4);">
-                        No matches played yet
+                            </thead>
+                            <tbody>
+                                <template x-for="(entry, i) in leaderboard" :key="entry.player_id">
+                                    <tr>
+                                        <td style="color: rgba(255,255,255,0.4); font-family: monospace;" x-text="i + 1"></td>
+                                        <td>
+                                            <a :href="'/games/ping-pong/players/' + entry.player_id" x-text="entry.player_name"></a>
+                                        </td>
+                                        <td style="font-weight: 700;" x-text="entry.elo_rating"></td>
+                                        <td style="color: #22c55e;" x-text="entry.wins"></td>
+                                        <td style="color: #ef4444;" x-text="entry.losses"></td>
+                                        <td style="color: rgba(255,255,255,0.7);" x-text="entry.win_rate + '%'"></td>
+                                        <td>
+                                            <template x-if="entry.win_streak > 0">
+                                                <span class="streak-badge W"><span>W</span><span x-text="entry.win_streak"></span></span>
+                                            </template>
+                                            <template x-if="entry.win_streak === 0 && entry.losing_streak > 0">
+                                                <span class="streak-badge L"><span>L</span><span x-text="entry.losing_streak"></span></span>
+                                            </template>
+                                            <template x-if="entry.win_streak === 0 && !entry.losing_streak">
+                                                <span style="color: rgba(255,255,255,0.3);">-</span>
+                                            </template>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                        <div x-show="leaderboard.length === 0" style="text-align: center; padding: 40px; color: rgba(255,255,255,0.4);">
+                            No matches played yet
+                        </div>
                     </div>
+
+                    <template x-for="block in officeLeaderboards" :key="block.id">
+                        <div class="pp-lb-section">
+                            <div class="pp-header">
+                                <h2 x-text="officeLeaderboardTitle(block)"></h2>
+                            </div>
+                            <table class="pp-leaderboard-table" x-show="block.entries.length > 0">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Player</th>
+                                        <th>ELO</th>
+                                        <th>W</th>
+                                        <th>L</th>
+                                        <th>Win %</th>
+                                        <th>Streak</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-for="(entry, i) in block.entries" :key="entry.player_id">
+                                        <tr>
+                                            <td style="color: rgba(255,255,255,0.4); font-family: monospace;" x-text="i + 1"></td>
+                                            <td>
+                                                <a :href="'/games/ping-pong/players/' + entry.player_id" x-text="entry.player_name"></a>
+                                            </td>
+                                            <td style="font-weight: 700;" x-text="entry.elo_rating"></td>
+                                            <td style="color: #22c55e;" x-text="entry.wins"></td>
+                                            <td style="color: #ef4444;" x-text="entry.losses"></td>
+                                            <td style="color: rgba(255,255,255,0.7);" x-text="entry.win_rate + '%'"></td>
+                                            <td>
+                                                <template x-if="entry.win_streak > 0">
+                                                    <span class="streak-badge W"><span>W</span><span x-text="entry.win_streak"></span></span>
+                                                </template>
+                                                <template x-if="entry.win_streak === 0 && entry.losing_streak > 0">
+                                                    <span class="streak-badge L"><span>L</span><span x-text="entry.losing_streak"></span></span>
+                                                </template>
+                                                <template x-if="entry.win_streak === 0 && !entry.losing_streak">
+                                                    <span style="color: rgba(255,255,255,0.3);">-</span>
+                                                </template>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                            <div x-show="block.entries.length === 0" style="text-align: center; padding: 40px; color: rgba(255,255,255,0.4);">
+                                No players from this office yet
+                            </div>
+                        </div>
+                    </template>
                 </div>
             </div>
         </div>
@@ -882,6 +946,8 @@ function pingPong() {
         screen: 'home',
         mode: '1v1',
         leaderboard: [],
+        offices: [],
+        officeLeaderboards: [],
 
         // Lobby state
         lobbyCode: '',
@@ -949,9 +1015,30 @@ function pingPong() {
             }
         },
 
+        officeLeaderboardTitle(block) {
+            const suffix = this.mode === '2v2' ? '2v2 ELO Leaderboard' : 'ELO Leaderboard';
+            return `${block.name} — ${suffix}`;
+        },
+
+        async loadOffices() {
+            const res = await fetch(`${this.API}/offices`);
+            this.offices = await res.json();
+        },
+
         async loadLeaderboard() {
-            const res = await fetch(`${this.API}/leaderboard?mode=${this.mode}`);
+            if (!this.offices.length) {
+                await this.loadOffices();
+            }
+            const mode = this.mode;
+            const res = await fetch(`${this.API}/leaderboard?mode=${mode}`);
             this.leaderboard = await res.json();
+            this.officeLeaderboards = await Promise.all(
+                this.offices.map(async (office) => {
+                    const r = await fetch(`${this.API}/leaderboard?mode=${mode}&office_id=${office.id}`);
+                    const entries = await r.json();
+                    return { id: office.id, name: office.name, entries };
+                })
+            );
         },
 
         // --- LOBBY ---

@@ -10,6 +10,7 @@ Route::get('/games/ping-pong/players/{id}', [PingPongController::class, 'playerS
 Route::get('/games/ping-pong/lobby/{code}', [PingPongController::class, 'lobbyJoin']);
 
 Route::get('/games/ping-pong/api/players', [PingPongApiController::class, 'players']);
+Route::get('/games/ping-pong/api/offices', [PingPongApiController::class, 'offices']);
 Route::get('/games/ping-pong/api/leaderboard', [PingPongApiController::class, 'leaderboard']);
 Route::post('/games/ping-pong/api/matches', [PingPongApiController::class, 'createMatch']);
 Route::patch('/games/ping-pong/api/matches/{id}', [PingPongApiController::class, 'updateScore']);

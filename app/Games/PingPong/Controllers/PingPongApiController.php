@@ -9,6 +9,7 @@ use App\Games\PingPong\Models\PingPongRating;
 use App\Games\PingPong\Models\PingPongRatingChange;
 use App\Games\PingPong\Services\EloService;
 use App\Http\Controllers\Controller;
+use App\Models\Office;
 use App\Models\Player;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,6 +20,13 @@ class PingPongApiController extends Controller
     public function __construct(
         private EloService $eloService
     ) {}
+
+    public function offices(): JsonResponse
+    {
+        return response()->json(
+            Office::orderBy('name')->get(['id', 'name'])
+        );
+    }
 
     public function players(Request $request): JsonResponse
     {
@@ -76,6 +84,15 @@ class PingPongApiController extends Controller
         }
 
         $playerIds = $playerIds->unique();
+
+        if ($request->filled('office_id')) {
+            $office = Office::find($request->query('office_id'));
+            if (! $office) {
+                return response()->json([]);
+            }
+            $allowedIds = Player::where('office_id', $office->id)->pluck('id');
+            $playerIds = $playerIds->intersect($allowedIds)->values();
+        }
 
         $entries = $playerIds->map(function ($playerId) use ($mode) {
             $player = Player::find($playerId);

@@ -23,6 +23,22 @@
                 @enderror
             </div>
 
+            <div class="mb-6">
+                <label for="office_id" class="block text-sm font-medium text-white/70 mb-2">Office</label>
+                <select id="office_id" name="office_id"
+                        class="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                    <option value="">No office</option>
+                    @foreach($offices as $office)
+                        <option value="{{ $office->id }}" @selected((string) old('office_id', $player->office_id) === (string) $office->id)>
+                            {{ $office->name }}
+                        </option>
+                    @endforeach
+                </select>
+                @error('office_id')
+                    <p class="text-red-400 text-xs mt-2">{{ $message }}</p>
+                @enderror
+            </div>
+
             <div class="flex gap-3">
                 <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold px-6 py-2 rounded-lg transition">
                     Save Changes

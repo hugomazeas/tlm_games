@@ -10,6 +10,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             GameTypeSeeder::class,
+            OfficeSeeder::class,
         ]);
     }
 }
