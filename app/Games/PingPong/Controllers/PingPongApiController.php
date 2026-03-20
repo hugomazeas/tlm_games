@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\DB;
 
 class PingPongApiController extends Controller
 {
-    private const LIVE_MATCH_MAX_IDLE_SECONDS = 60;
+    private const LIVE_MATCH_MAX_IDLE_SECONDS = 120;
 
     public function __construct(
         private EloService $eloService
