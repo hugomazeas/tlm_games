@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\GameType;
+use App\Models\Office;
 use App\Models\Player;
 use App\Services\LeaderboardService;
 use Illuminate\Http\Request;
@@ -56,13 +57,17 @@ class PlayerController extends Controller
 
     public function edit(Player $player)
     {
-        return view('players.edit', ['player' => $player]);
+        return view('players.edit', [
+            'player' => $player,
+            'offices' => Office::orderBy('name')->get(),
+        ]);
     }
 
     public function update(Request $request, Player $player)
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255|unique:players,name,' . $player->id,
+            'office_id' => 'nullable|exists:offices,id',
         ]);
 
         $player->update($validated);

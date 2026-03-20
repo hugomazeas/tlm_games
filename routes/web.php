@@ -2,10 +2,16 @@
 
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\LeaderboardController;
+use App\Http\Controllers\OfficeController;
 use App\Http\Controllers\PlayerController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [HomeController::class, 'index']);
+
+Route::get('/offices', [OfficeController::class, 'index']);
+Route::post('/offices', [OfficeController::class, 'store']);
+Route::get('/offices/{office}/edit', [OfficeController::class, 'edit']);
+Route::put('/offices/{office}', [OfficeController::class, 'update']);
 
 Route::get('/players', [PlayerController::class, 'index']);
 Route::post('/players', [PlayerController::class, 'store']);
