@@ -23,6 +23,7 @@ class PingPongMatch extends Model
         'current_server_id',
         'serve_count',
         'started_at',
+        'last_score_activity_at',
         'ended_at',
         'player_left_elo_before',
         'player_right_elo_before',
@@ -40,6 +41,7 @@ class PingPongMatch extends Model
     {
         return [
             'started_at' => 'datetime',
+            'last_score_activity_at' => 'datetime',
             'ended_at' => 'datetime',
             'left_remote_connected_at' => 'datetime',
             'right_remote_connected_at' => 'datetime',

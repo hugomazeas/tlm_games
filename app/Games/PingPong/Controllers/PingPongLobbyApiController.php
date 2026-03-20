@@ -223,6 +223,7 @@ class PingPongLobbyApiController extends Controller
             'current_server_id' => $leftParticipants[0]->player_id,
             'serve_count' => 0,
             'started_at' => now(),
+            'last_score_activity_at' => now(),
         ];
 
         if ($lobby->mode === '2v2') {
