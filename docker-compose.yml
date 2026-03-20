@@ -8,6 +8,8 @@ services:
         GROUP_ID: ${LOCAL_GID:-1000}
     container_name: games-hub
     restart: unless-stopped
+    networks:
+      - proxy
     ports:
       - "8081:80"
     volumes:
@@ -27,3 +29,9 @@ services:
              php artisan migrate --force &&
              php artisan db:seed --force &&
              /usr/bin/supervisord -c /etc/supervisord.conf"
+
+networks:
+  proxy:
+    name: proxy
+    driver: bridge
+
