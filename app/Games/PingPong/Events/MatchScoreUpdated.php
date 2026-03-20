@@ -67,7 +67,10 @@ class MatchScoreUpdated implements ShouldBroadcastNow
 
     public function broadcastOn(): array
     {
-        return [new Channel('ping-pong.match.' . $this->match['id'])];
+        return [
+            new Channel('ping-pong.match.' . $this->match['id']),
+            new Channel('ping-pong.live'),
+        ];
     }
 
     public function broadcastAs(): string

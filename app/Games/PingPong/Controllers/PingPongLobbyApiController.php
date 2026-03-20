@@ -2,6 +2,7 @@
 
 namespace App\Games\PingPong\Controllers;
 
+use App\Games\PingPong\Events\LiveMatchStarted;
 use App\Games\PingPong\Events\LobbyMatchStarted;
 use App\Games\PingPong\Events\LobbyUpdated;
 use App\Games\PingPong\Models\PingPongLobby;
@@ -238,6 +239,7 @@ class PingPongLobbyApiController extends Controller
         ]);
 
         broadcast(new LobbyMatchStarted($lobby->fresh()));
+        broadcast(new LiveMatchStarted($match));
 
         return response()->json([
             'match' => $match,

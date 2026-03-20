@@ -26,13 +26,68 @@
             gap: 12px;
         }
 
-        .pp-grid .pp-panel:last-child {
-            display: none;
-        }
-
         .pp-container {
             height: auto;
             min-height: calc(100vh - 80px);
+            overflow: auto;
+        }
+
+        .pp-panel {
+            overflow: visible !important;
+        }
+
+        .pp-lb-tabs-row {
+            scrollbar-width: none;
+        }
+
+        .pp-grid .pp-panel.pp-start-panel {
+            padding: 12px 16px;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        .pp-grid .pp-start-panel .pp-header,
+        .pp-grid .pp-start-panel .pp-hint {
+            display: none;
+        }
+
+        .pp-grid .pp-start-panel .pp-mode-toggle {
+            margin-top: 0;
+        }
+
+        .pp-grid .pp-start-panel .pp-mode-btn {
+            padding: 8px 16px;
+            font-size: 1rem;
+        }
+
+        .pp-grid .pp-start-panel .pp-start-btn {
+            margin-top: 0;
+            padding: 10px 20px;
+            font-size: 1rem;
+            border-radius: 12px;
+            white-space: nowrap;
+        }
+
+        .pp-leaderboard-table {
+            font-size: 0.95rem;
+        }
+
+        .pp-leaderboard-table th,
+        .pp-leaderboard-table td {
+            padding: 8px 6px;
+        }
+
+        .pp-leaderboard-table {
+            table-layout: auto;
+        }
+
+        .pp-leaderboard-table th:nth-child(6),
+        .pp-leaderboard-table td:nth-child(6),
+        .pp-leaderboard-table th:nth-child(7),
+        .pp-leaderboard-table td:nth-child(7) {
+            display: none;
         }
     }
 
@@ -582,6 +637,143 @@
         font-size: 1.3rem;
     }
 
+    /* Live Games */
+    .pp-live-banner {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+        flex-shrink: 0;
+    }
+
+    .pp-live-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #ef4444;
+        animation: pulse-live 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse-live {
+        0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+        50% { opacity: 0.7; box-shadow: 0 0 8px 4px rgba(239, 68, 68, 0.3); }
+    }
+
+    .pp-live-title {
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: #ef4444;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .pp-live-count {
+        font-size: 0.9rem;
+        color: rgba(255,255,255,0.4);
+        font-weight: 600;
+    }
+
+    .pp-live-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .pp-live-card {
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 12px;
+        padding: 14px 18px;
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: center;
+        gap: 12px;
+        transition: border-color 0.3s, background 0.3s;
+        cursor: pointer;
+    }
+
+    .pp-live-card:hover {
+        border-color: rgba(255,255,255,0.2);
+        background: rgba(255,255,255,0.07);
+    }
+
+    .pp-live-card.just-scored {
+        border-color: rgba(59, 130, 246, 0.5);
+        background: rgba(59, 130, 246, 0.08);
+    }
+
+    .pp-live-side {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .pp-live-side.left { text-align: right; }
+    .pp-live-side.right { text-align: left; }
+
+    .pp-live-player {
+        font-weight: 700;
+        font-size: 1.3rem;
+        color: rgba(255,255,255,0.9);
+    }
+
+    .pp-live-player.serving {
+        position: relative;
+    }
+
+    .pp-live-player.serving::after {
+        content: '●';
+        font-size: 0.6rem;
+        color: #fbbf24;
+        margin-left: 6px;
+        vertical-align: middle;
+    }
+
+    .pp-live-side.left .pp-live-player.serving::after {
+        content: none;
+    }
+
+    .pp-live-side.left .pp-live-player.serving::before {
+        content: '●';
+        font-size: 0.6rem;
+        color: #fbbf24;
+        margin-right: 6px;
+        vertical-align: middle;
+    }
+
+    .pp-live-score-center {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .pp-live-score {
+        font-size: 2.2rem;
+        font-weight: 900;
+        font-family: monospace;
+        min-width: 38px;
+        text-align: center;
+    }
+
+    .pp-live-score.left-score { color: #fb7185; }
+    .pp-live-score.right-score { color: #22d3ee; }
+
+    .pp-live-dash {
+        color: rgba(255,255,255,0.2);
+        font-size: 1.5rem;
+        font-weight: 300;
+    }
+
+    .pp-live-mode {
+        font-size: 0.75rem;
+        color: rgba(255,255,255,0.3);
+        text-transform: uppercase;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-align: center;
+        margin-top: 2px;
+    }
+
     .pp-btn-danger {
         background: #ef4444;
         color: white;
@@ -656,8 +848,8 @@
     <!-- SCREEN: HOME -->
     <template x-if="screen === 'home'">
         <div class="pp-grid" style="height: 100%;">
-            <!-- Left: Start Game -->
-            <div class="pp-panel" style="align-items: center; justify-content: center;">
+            <!-- Left / Top: Start Game -->
+            <div class="pp-panel pp-start-panel" style="align-items: center; justify-content: center;">
                 <div class="pp-header" style="text-align: center;">
                     <h2>Ping Pong</h2>
                     <div class="pp-header-sub">Start a new game</div>
@@ -673,8 +865,52 @@
                 <div class="pp-hint" style="margin-top: 16px;">Players join via QR code on their phones</div>
             </div>
 
-            <!-- Right: Leaderboards (tabs: all players + per office) -->
+            <!-- Right: Live Games + Leaderboards -->
             <div class="pp-panel pp-lb-panel-body">
+                <!-- Live Games (compact, above leaderboard) -->
+                <div x-show="liveMatches.length > 0" style="flex-shrink: 0; margin-bottom: 16px;">
+                    <div class="pp-live-banner">
+                        <div class="pp-live-dot"></div>
+                        <span class="pp-live-title">Live</span>
+                        <span class="pp-live-count" x-text="liveMatches.length + ' match' + (liveMatches.length !== 1 ? 'es' : '')"></span>
+                    </div>
+                    <div class="pp-live-list">
+                        <template x-for="lm in liveMatches" :key="lm.id">
+                            <div class="pp-live-card"
+                                 :class="{ 'just-scored': lm._flash }"
+                                 @click="spectateMatch(lm.id)">
+                                <div class="pp-live-side left">
+                                    <div class="pp-live-player"
+                                         :class="{ serving: lm.current_server_id === lm.player_left_id }"
+                                         x-text="lm.player_left?.name || '?'"></div>
+                                    <template x-if="lm.mode === '2v2' && lm.team_left_player2">
+                                        <div class="pp-live-player"
+                                             :class="{ serving: lm.current_server_id === lm.team_left_player2_id }"
+                                             x-text="lm.team_left_player2?.name || '?'"></div>
+                                    </template>
+                                </div>
+                                <div>
+                                    <div class="pp-live-score-center">
+                                        <span class="pp-live-score left-score" x-text="lm.player_left_score ?? 0"></span>
+                                        <span class="pp-live-dash">-</span>
+                                        <span class="pp-live-score right-score" x-text="lm.player_right_score ?? 0"></span>
+                                    </div>
+                                    <div class="pp-live-mode" x-text="lm.mode"></div>
+                                </div>
+                                <div class="pp-live-side right">
+                                    <div class="pp-live-player"
+                                         :class="{ serving: lm.current_server_id === lm.player_right_id }"
+                                         x-text="lm.player_right?.name || '?'"></div>
+                                    <template x-if="lm.mode === '2v2' && lm.team_right_player2">
+                                        <div class="pp-live-player"
+                                             :class="{ serving: lm.current_server_id === lm.team_right_player2_id }"
+                                             x-text="lm.team_right_player2?.name || '?'"></div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
                 <div class="pp-lb-tabs-row">
                     <button type="button" class="pp-lb-tab" :class="{ active: leaderboardTab === 'all' }" @click="leaderboardTab = 'all'">
                         All players
@@ -1018,6 +1254,10 @@ function pingPong() {
         lobbyParticipants: [],
         lobbyJoinUrl: '',
 
+        // Live matches
+        liveMatches: [],
+        liveChannel: null,
+
         // Match state
         match: {},
         eloChanges: null,
@@ -1041,6 +1281,8 @@ function pingPong() {
 
         async init() {
             await this.loadLeaderboard();
+            await this.loadLiveMatches();
+            this.subscribeLive();
             this.startClock();
         },
 
@@ -1105,6 +1347,68 @@ function pingPong() {
             if (this.leaderboardTab !== 'all' && !this.officeLeaderboards.some((b) => b.id === this.leaderboardTab)) {
                 this.leaderboardTab = 'all';
             }
+        },
+
+        // --- LIVE MATCHES ---
+
+        async loadLiveMatches() {
+            try {
+                const res = await fetch(`${this.API}/matches/live`);
+                this.liveMatches = await res.json();
+            } catch (err) {
+                console.error('Error loading live matches:', err);
+            }
+        },
+
+        subscribeLive() {
+            if (!this.echo) {
+                this.echo = new Echo({
+                    broadcaster: 'pusher',
+                    key: 'games-hub-key',
+                    wsHost: window.location.hostname,
+                    wsPort: window.location.port || 80,
+                    forceTLS: false,
+                    disableStats: true,
+                    enabledTransports: ['ws', 'wss'],
+                    cluster: 'mt1',
+                });
+            }
+
+            this.liveChannel = this.echo.channel('ping-pong.live');
+            this.liveChannel.listen('.match.started', (e) => {
+                // Add new match if not already in the list
+                if (!this.liveMatches.find(m => m.id === e.match.id)) {
+                    this.liveMatches.unshift(e.match);
+                }
+            }).listen('.match.score-updated', (e) => {
+                const data = e.match;
+                const idx = this.liveMatches.findIndex(m => m.id === data.id);
+                if (idx !== -1) {
+                    if (data.is_complete) {
+                        // Remove completed match after a short delay
+                        this.liveMatches[idx] = { ...this.liveMatches[idx], ...data, _flash: true };
+                        setTimeout(() => {
+                            this.liveMatches = this.liveMatches.filter(m => m.id !== data.id);
+                            // Refresh leaderboard when a match completes
+                            if (this.screen === 'home') this.loadLeaderboard();
+                        }, 3000);
+                    } else {
+                        // Flash effect on score update
+                        this.liveMatches[idx] = { ...this.liveMatches[idx], ...data, _flash: true };
+                        setTimeout(() => {
+                            const i = this.liveMatches.findIndex(m => m.id === data.id);
+                            if (i !== -1) {
+                                this.liveMatches[i] = { ...this.liveMatches[i], _flash: false };
+                            }
+                        }, 600);
+                    }
+                }
+            });
+        },
+
+        spectateMatch(matchId) {
+            // Load the match and show the playing screen in spectate mode
+            this.loadAndStartMatch(matchId);
         },
 
         // --- LOBBY ---
@@ -1235,6 +1539,10 @@ function pingPong() {
                 if (this.matchChannel) {
                     this.echo.leave(this.matchChannel.name);
                     this.matchChannel = null;
+                }
+                if (this.liveChannel) {
+                    this.echo.leave(this.liveChannel.name);
+                    this.liveChannel = null;
                 }
             }
         },
@@ -1594,6 +1902,8 @@ function pingPong() {
             this.timerDisplay = '00:00';
             this.leaderboardTab = 'all';
             await this.loadLeaderboard();
+            await this.loadLiveMatches();
+            this.subscribeLive();
             this.screen = 'home';
         },
     };
