@@ -17,6 +17,8 @@ use Illuminate\Support\Facades\DB;
 
 class PingPongApiController extends Controller
 {
+    private const LIVE_MATCH_MAX_IDLE_SECONDS = 60;
+
     public function __construct(
         private EloService $eloService
     ) {}
@@ -231,6 +233,7 @@ class PingPongApiController extends Controller
         $matches = PingPongMatch::whereNotNull('started_at')
             ->whereNull('ended_at')
             ->where('started_at', '>=', now()->subHour())
+            ->where('last_score_activity_at', '>=', now()->subSeconds(self::LIVE_MATCH_MAX_IDLE_SECONDS))
             ->with(['playerLeft', 'playerRight', 'currentServer', 'teamLeftPlayer2', 'teamRightPlayer2'])
             ->orderBy('started_at', 'desc')
             ->get()
@@ -325,6 +328,7 @@ class PingPongApiController extends Controller
             'current_server_id' => $validated['first_server_id'],
             'serve_count' => 0,
             'started_at' => now(),
+            'last_score_activity_at' => now(),
         ];
 
         if ($mode === '2v2') {
@@ -351,6 +355,8 @@ class PingPongApiController extends Controller
             'side' => 'required|in:left,right',
             'action' => 'required|in:increment,decrement',
         ]);
+
+        $match->last_score_activity_at = now();
 
         $scoreField = $validated['side'] === 'left' ? 'player_left_score' : 'player_right_score';
 
@@ -448,6 +454,7 @@ class PingPongApiController extends Controller
             'current_server_id' => $previousMatch->player_left_id,
             'serve_count' => 0,
             'started_at' => now(),
+            'last_score_activity_at' => now(),
         ];
 
         if ($previousMatch->isDoubles()) {

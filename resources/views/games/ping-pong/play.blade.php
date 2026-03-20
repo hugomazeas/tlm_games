@@ -1299,6 +1299,18 @@ function pingPong() {
         updateClock() {
             const now = new Date();
             this.clockDisplay = now.toLocaleTimeString('en-US', { hour12: false });
+            this.pruneStaleLiveMatches();
+        },
+
+        // Must match PingPongApiController::LIVE_MATCH_MAX_IDLE_SECONDS (60s)
+        pruneStaleLiveMatches() {
+            const staleMs = 60_000;
+            const cutoff = Date.now() - staleMs;
+            this.liveMatches = this.liveMatches.filter((m) => {
+                const raw = m.last_score_activity_at || m.started_at;
+                if (!raw) return true;
+                return new Date(raw).getTime() >= cutoff;
+            });
         },
 
         startTimer() {
