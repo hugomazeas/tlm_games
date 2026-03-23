@@ -157,6 +157,37 @@
         color: rgba(255,255,255,0.4);
     }
 
+    .md .countdown-bar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 10px 16px;
+        margin-bottom: 20px;
+        background: rgba(59, 130, 246, 0.1);
+        border: 1px solid rgba(59, 130, 246, 0.25);
+        border-radius: 10px;
+        font-size: 0.9rem;
+        color: rgba(255,255,255,0.7);
+    }
+    .md .countdown-bar .timer {
+        font-weight: 700;
+        color: #3b82f6;
+        font-variant-numeric: tabular-nums;
+    }
+    .md .countdown-bar .go-now {
+        padding: 4px 12px;
+        background: #3b82f6;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+    .md .countdown-bar .go-now:hover { background: #2563eb; }
+
     @media (max-width: 640px) {
         .md .stats-grid { grid-template-columns: repeat(2, 1fr); }
         .md .elo-grid { grid-template-columns: 1fr; }
@@ -168,7 +199,12 @@
 <div class="md" x-data="matchDetail()" x-init="init()">
     <div class="header">
         <h1>Match Detail</h1>
-        <a href="javascript:history.back()" class="back-link">&larr; Back</a>
+        <a :href="fromGame ? '/games/ping-pong' : 'javascript:history.back()'" class="back-link">&larr; Back</a>
+    </div>
+
+    <div class="countdown-bar" x-show="fromGame" x-cloak>
+        Returning to lobby in <span class="timer" x-text="countdown + 's'"></span>
+        <button class="go-now" @click="window.location.href='/games/ping-pong'">Go now</button>
     </div>
 
     <div class="loading" x-show="loading">Loading match data...</div>
@@ -313,6 +349,11 @@ function matchDetail() {
         matchId: {{ $matchId }},
         match: null,
         loading: true,
+        scoreChartInstance: null,
+        diffChartInstance: null,
+        fromGame: new URLSearchParams(window.location.search).has('from'),
+        countdown: 30,
+        countdownTimer: null,
 
         async init() {
             try {
@@ -326,6 +367,16 @@ function matchDetail() {
                 console.error('Error loading match:', err);
             }
             this.loading = false;
+
+            if (this.fromGame) {
+                this.countdownTimer = setInterval(() => {
+                    this.countdown--;
+                    if (this.countdown <= 0) {
+                        clearInterval(this.countdownTimer);
+                        window.location.href = '/games/ping-pong';
+                    }
+                }, 1000);
+            }
         },
 
         leftName() {
@@ -408,6 +459,7 @@ function matchDetail() {
         },
 
         renderScoreChart() {
+            if (this.scoreChartInstance) { this.scoreChartInstance.destroy(); this.scoreChartInstance = null; }
             const canvas = document.getElementById('scoreChart');
             if (!canvas || !this.match) return;
             const points = this.match.points || [];
@@ -423,7 +475,7 @@ function matchDetail() {
             });
             const maxScore = Math.max(leftScores[leftScores.length - 1], rightScores[rightScores.length - 1], 11);
 
-            new Chart(canvas, {
+            this.scoreChartInstance = new Chart(canvas, {
                 type: 'line',
                 data: {
                     labels,
@@ -495,6 +547,7 @@ function matchDetail() {
         },
 
         renderDiffChart() {
+            if (this.diffChartInstance) { this.diffChartInstance.destroy(); this.diffChartInstance = null; }
             const canvas = document.getElementById('diffChart');
             if (!canvas || !this.match) return;
             const points = this.match.points || [];
@@ -509,7 +562,7 @@ function matchDetail() {
 
             const maxAbs = Math.max(1, ...diffs.map(Math.abs));
 
-            new Chart(canvas, {
+            this.diffChartInstance = new Chart(canvas, {
                 type: 'bar',
                 data: {
                     labels,

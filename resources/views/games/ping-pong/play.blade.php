@@ -769,29 +769,63 @@
 
 <div class="pp-container" x-data="pingPong()" x-init="init()" @keydown.window="handleKeydown($event)">
 
-    <!-- SCREEN: HOME -->
+    <!-- SCREEN: HOME (lobby + leaderboard) -->
     <template x-if="screen === 'home'">
         <div class="pp-grid" style="height: 100%;">
-            <!-- Left / Top: Start Game -->
+            <!-- Left: Lobby Panel -->
             <div class="pp-panel pp-start-panel" style="align-items: center; justify-content: center;">
-                <div class="pp-header" style="text-align: center;">
-                    <h2>Ping Pong</h2>
-                    <div class="pp-header-sub">Start a new game</div>
+                <div style="display:flex;flex-direction:column;align-items:center;width:100%;gap:8px;">
+                    <div class="pp-header" style="text-align: center; padding: 8px 0;">
+                        <h2>Ping Pong</h2>
+                    </div>
+                    <div class="pp-mode-toggle">
+                        <button class="pp-mode-btn" :class="{ active: mode === '1v1' }" @click="setMode('1v1')">1v1</button>
+                        <button class="pp-mode-btn" :class="{ active: mode === '2v2' }" @click="setMode('2v2')">2v2</button>
+                    </div>
+                    <template x-if="lobbyCode">
+                        <div style="display:flex;flex-direction:column;align-items:center;width:100%;gap:8px;">
+                            <div class="pp-lobby-qr" id="lobbyQrContainer"></div>
+                            <div class="pp-lobby-code" x-text="lobbyCode"></div>
+                            <div class="pp-lobby-url" x-text="lobbyJoinUrl"></div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;padding:0 12px;">
+                                <div class="pp-lobby-side left">
+                                    <div class="side-label">Left</div>
+                                    <template x-for="p in lobbyLeftPlayers" :key="p.player_id">
+                                        <div class="pp-lobby-player-card"><div class="name" x-text="p.player_name"></div></div>
+                                    </template>
+                                    <template x-for="i in leftEmptySlots" :key="'left-empty-' + i">
+                                        <div class="pp-lobby-empty-slot">Waiting...</div>
+                                    </template>
+                                </div>
+                                <div class="pp-lobby-side right">
+                                    <div class="side-label">Right</div>
+                                    <template x-for="p in lobbyRightPlayers" :key="p.player_id">
+                                        <div class="pp-lobby-player-card"><div class="name" x-text="p.player_name"></div></div>
+                                    </template>
+                                    <template x-for="i in rightEmptySlots" :key="'right-empty-' + i">
+                                        <div class="pp-lobby-empty-slot">Waiting...</div>
+                                    </template>
+                                </div>
+                            </div>
+                            <button class="pp-start-btn" :disabled="!lobbyReady || loading" @click="startLobbyMatch()">
+                                <span x-show="!loading">Start Match</span>
+                                <span x-show="loading">Starting...</span>
+                            </button>
+                            <div class="pp-hint" style="text-align: center;">
+                                <span x-show="wsStatus === 'connected'" style="color: #22c55e;">&#9679; Live</span>
+                                <span x-show="wsStatus === 'connecting'" style="color: #eab308;">&#9679; Connecting...</span>
+                                <span x-show="wsStatus === 'error' || wsStatus === 'disconnected'" style="color: #ef4444;">&#9679; Disconnected</span>
+                            </div>
+                        </div>
+                    </template>
+                    <template x-if="!lobbyCode">
+                        <div class="pp-hint">Creating lobby...</div>
+                    </template>
                 </div>
-                <div class="pp-mode-toggle" style="margin-top: 20px;">
-                    <button class="pp-mode-btn" :class="{ active: mode === '1v1' }" @click="setMode('1v1')">1v1</button>
-                    <button class="pp-mode-btn" :class="{ active: mode === '2v2' }" @click="setMode('2v2')">2v2</button>
-                </div>
-                <button class="pp-start-btn" :disabled="loading" @click="createLobby()">
-                    <span x-show="!loading">Start Game</span>
-                    <span x-show="loading">Creating...</span>
-                </button>
-                <div class="pp-hint" style="margin-top: 16px;">Players join via QR code on their phones</div>
             </div>
 
             <!-- Right: Live Games + Leaderboards -->
             <div class="pp-panel pp-lb-panel-body">
-                <!-- Live Games (compact, above leaderboard) -->
                 <div x-show="liveMatches.length > 0" style="flex-shrink: 0; margin-bottom: 16px;">
                     <div class="pp-live-banner">
                         <div class="pp-live-dot"></div>
@@ -943,62 +977,6 @@
         </div>
     </template>
 
-    <!-- SCREEN: LOBBY WAITING -->
-    <template x-if="screen === 'lobby_waiting'">
-        <div style="display: flex; flex-direction: column; height: 100%;" x-init="setTimeout(() => generateLobbyQr(), 50)">
-            <div class="pp-header" style="text-align: center; padding: 12px 0;">
-                <h2 style="font-size: 2.4rem;">Waiting for Players</h2>
-                <div class="pp-header-sub" x-text="'Mode: ' + mode + ' • Lobby: ' + lobbyCode"></div>
-            </div>
-            <div class="pp-lobby-grid" style="flex: 1; padding: 0 24px;">
-                <!-- Left Side -->
-                <div class="pp-lobby-side left">
-                    <div class="side-label">Left</div>
-                    <template x-for="p in lobbyLeftPlayers" :key="p.player_id">
-                        <div class="pp-lobby-player-card">
-                            <div class="name" x-text="p.player_name"></div>
-                        </div>
-                    </template>
-                    <template x-for="i in leftEmptySlots" :key="'left-empty-' + i">
-                        <div class="pp-lobby-empty-slot">Waiting...</div>
-                    </template>
-                </div>
-
-                <!-- Center: QR + Code -->
-                <div class="pp-lobby-center">
-                    <div class="pp-lobby-qr" id="lobbyQrContainer"></div>
-                    <div class="pp-lobby-code" x-text="lobbyCode"></div>
-                    <div class="pp-lobby-url" x-text="lobbyJoinUrl"></div>
-                    <button class="pp-start-btn"
-                            :disabled="!lobbyReady || loading"
-                            @click="startLobbyMatch()">
-                        <span x-show="!loading">Start Match</span>
-                        <span x-show="loading">Starting...</span>
-                    </button>
-                </div>
-
-                <!-- Right Side -->
-                <div class="pp-lobby-side right">
-                    <div class="side-label">Right</div>
-                    <template x-for="p in lobbyRightPlayers" :key="p.player_id">
-                        <div class="pp-lobby-player-card">
-                            <div class="name" x-text="p.player_name"></div>
-                        </div>
-                    </template>
-                    <template x-for="i in rightEmptySlots" :key="'right-empty-' + i">
-                        <div class="pp-lobby-empty-slot">Waiting...</div>
-                    </template>
-                </div>
-            </div>
-            <div class="pp-hint" style="text-align: center;">
-                <span x-show="wsStatus === 'connected'" style="color: #22c55e;">&#9679; Live</span>
-                <span x-show="wsStatus === 'connecting'" style="color: #eab308;">&#9679; Connecting...</span>
-                <span x-show="wsStatus === 'error' || wsStatus === 'disconnected'" style="color: #ef4444;">&#9679; Disconnected</span>
-                &nbsp;| Enter to start when ready | Backspace to cancel
-            </div>
-        </div>
-    </template>
-
     <!-- SCREEN: PLAYING -->
     <template x-if="screen === 'playing'">
         <div style="display: flex; flex-direction: column; height: 100%;">
@@ -1127,11 +1105,14 @@ function pingPong() {
             await this.loadLiveMatches();
             this.subscribeLive();
             this.startClock();
+            await this.createLobby();
         },
 
         async setMode(newMode) {
             this.mode = newMode;
             await this.loadLeaderboard();
+            // Re-create lobby with new mode
+            await this.createLobby();
         },
 
         startClock() {
@@ -1278,8 +1259,9 @@ function pingPong() {
                     return;
                 }
 
-                this.screen = 'lobby_waiting';
                 this.subscribeToLobby();
+                // Wait for x-if to render the QR container
+                this.$nextTick(() => setTimeout(() => this.generateLobbyQr(), 100));
             } catch (err) {
                 console.error('Error creating lobby:', err);
             }
@@ -1365,7 +1347,7 @@ function pingPong() {
 
                     if (data.is_complete && this.screen === 'playing') {
                         this.stopTimer();
-                        window.location.href = '/games/ping-pong/matches/' + data.id;
+                        window.location.href = '/games/ping-pong/matches/' + data.id + '?from=game';
                     }
                 }
             });
@@ -1480,7 +1462,7 @@ function pingPong() {
 
                 if (data.is_complete) {
                     this.stopTimer();
-                    window.location.href = '/games/ping-pong/matches/' + data.id;
+                    window.location.href = '/games/ping-pong/matches/' + data.id + '?from=game';
                 }
             } catch (err) {
                 console.error('Error updating score:', err);
@@ -1508,19 +1490,10 @@ function pingPong() {
                 case 'home':
                     if (e.key === 'Enter') {
                         e.preventDefault();
-                        this.createLobby();
-                    } else if (e.key === 'Backspace') {
-                        e.preventDefault();
-                        window.location.href = '/';
-                    }
-                    break;
-                case 'lobby_waiting':
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
                         this.startLobbyMatch();
                     } else if (e.key === 'Backspace') {
                         e.preventDefault();
-                        this.cancelLobby();
+                        window.location.href = '/';
                     }
                     break;
                 case 'playing':
@@ -1589,6 +1562,7 @@ function pingPong() {
             await this.loadLiveMatches();
             this.subscribeLive();
             this.screen = 'home';
+            await this.createLobby();
         },
     };
 }

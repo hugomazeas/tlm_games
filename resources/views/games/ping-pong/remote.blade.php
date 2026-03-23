@@ -381,7 +381,7 @@
             renderServing(data);
 
             if (data.is_complete) {
-                window.location.href = '/games/ping-pong/matches/' + MATCH_ID;
+                window.location.href = '/games/ping-pong/matches/' + MATCH_ID + '?from=game';
                 return;
             }
         }
