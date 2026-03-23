@@ -32,16 +32,16 @@ class PingPongController extends Controller
         return view('games.ping-pong.player', compact('player'));
     }
 
-    public function gameover(int $id)
+    public function matchDetail(int $id)
     {
         $match = PingPongMatch::findOrFail($id);
 
-        return view('games.ping-pong.gameover', [
+        return view('games.ping-pong.match-detail', [
             'matchId' => $match->id,
         ]);
     }
 
-    public function remote(int $id, string $side)
+public function remote(int $id, string $side)
     {
         abort_unless(in_array($side, ['left', 'right']), 404);
 

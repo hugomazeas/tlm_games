@@ -316,6 +316,25 @@
     .pps .elo-tooltip .tooltip-date { color: rgba(255,255,255,0.7); font-size: 0.8rem; }
     .pps .elo-tooltip .tooltip-rating { color: #3b82f6; font-weight: 700; font-size: 1.1rem; }
 
+    /* Match row clickable */
+    .pps .match-row {
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s;
+    }
+    .pps .match-row:hover {
+        background: rgba(59, 130, 246, 0.08);
+        border-color: rgba(59, 130, 246, 0.2);
+    }
+    .pps .match-row .match-arrow {
+        color: rgba(255,255,255,0.2);
+        font-size: 1.1rem;
+        transition: color 0.15s, transform 0.15s;
+    }
+    .pps .match-row:hover .match-arrow {
+        color: #3b82f6;
+        transform: translateX(2px);
+    }
+
 </style>
 
 <div class="pps" x-data="playerStats()" x-init="init()">
@@ -453,20 +472,21 @@
         <h2>Match History</h2>
         <div class="match-list" x-show="matches.length > 0">
             <template x-for="m in matches" :key="m.id">
-                <div class="match-row">
+                <a class="match-row" :href="'/games/ping-pong/matches/' + m.id" style="text-decoration:none;color:inherit;">
                     <div class="match-result" :class="m.won ? 'win' : 'loss'" x-text="m.won ? 'W' : 'L'"></div>
                     <div class="match-opponent" x-text="'vs ' + m.opponent.name"></div>
                     <div class="match-score" x-text="m.player_score + ' - ' + m.opponent_score"></div>
                     <div class="match-duration" x-text="m.duration_formatted || '-'"></div>
                     <div class="match-time" x-text="m.ended_at_human"></div>
-                </div>
+                    <div class="match-arrow">&rsaquo;</div>
+                </a>
             </template>
         </div>
         <div class="empty" x-show="matches.length === 0 && !loadingMatches">No matches yet</div>
         <div class="loading" x-show="loadingMatches">Loading...</div>
     </div>
-</div>
 
+</div>
 <script>
 function playerStats() {
     return {

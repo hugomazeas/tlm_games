@@ -381,7 +381,7 @@
             renderServing(data);
 
             if (data.is_complete) {
-                window.location.href = '/games/ping-pong/match/' + MATCH_ID + '/gameover';
+                window.location.href = '/games/ping-pong/matches/' + MATCH_ID;
                 return;
             }
         }
