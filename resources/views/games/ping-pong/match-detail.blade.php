@@ -359,10 +359,10 @@ function matchDetail() {
             try {
                 const res = await fetch(`${this.API}/matches/${this.matchId}`);
                 this.match = await res.json();
-                this.$nextTick(() => {
+                this.$nextTick(() => setTimeout(() => {
                     this.renderScoreChart();
                     this.renderDiffChart();
-                });
+                }, 100));
             } catch (err) {
                 console.error('Error loading match:', err);
             }
