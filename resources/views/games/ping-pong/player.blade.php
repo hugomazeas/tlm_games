@@ -415,6 +415,10 @@
             <button class="elo-mode-tab" :class="{ active: eloMode === '1v1' }" @click="eloMode = '1v1'; loadEloHistory();">1v1</button>
             <button class="elo-mode-tab" :class="{ active: eloMode === '2v2' }" @click="eloMode = '2v2'; loadEloHistory();">2v2</button>
         </div>
+        <div class="elo-mode-tabs" style="margin-top: 4px;">
+            <button type="button" class="elo-mode-tab" :class="{ active: eloChartView === 'line' }" @click="setEloChartView('line')">Line</button>
+            <button type="button" class="elo-mode-tab" :class="{ active: eloChartView === 'candle' }" @click="setEloChartView('candle')">Candles</button>
+        </div>
         <div class="elo-chart-container" x-show="eloHistory.length > 0" x-ref="eloChartContainer"
              @mousemove="onEloChartMouseMove($event)"
              @mouseleave="eloTooltip.show = false">
@@ -422,7 +426,15 @@
             <div class="elo-tooltip" x-show="eloTooltip.show" x-cloak
                  :style="'left: ' + eloTooltip.x + 'px; top: ' + eloTooltip.y + 'px;'">
                 <div class="tooltip-date" x-text="eloTooltip.date"></div>
-                <div class="tooltip-rating" x-text="eloTooltip.rating ? 'ELO ' + eloTooltip.rating : ''"></div>
+                <template x-if="eloChartView === 'line'">
+                    <div class="tooltip-rating" x-text="eloTooltip.rating ? 'ELO ' + eloTooltip.rating : ''"></div>
+                </template>
+                <template x-if="eloChartView === 'candle'">
+                    <div style="margin-top: 6px; font-size: 0.8rem; line-height: 1.45; color: rgba(255,255,255,0.85);">
+                        <div x-text="'O ' + eloTooltip.o + ' · H ' + eloTooltip.h"></div>
+                        <div x-text="'L ' + eloTooltip.l + ' · C ' + eloTooltip.c"></div>
+                    </div>
+                </template>
             </div>
         </div>
         <div class="empty" x-show="eloHistory.length === 0 && !loadingEloHistory">No ELO history yet</div>
@@ -476,8 +488,10 @@ function playerStats() {
         h2h: [],
         matches: [],
         eloHistory: [],
+        eloCandles: [],
         eloMode: '1v1',
-        eloTooltip: { show: false, date: '', rating: '', x: 0, y: 0 },
+        eloChartView: 'line',
+        eloTooltip: { show: false, date: '', rating: '', o: '', h: '', l: '', c: '', x: 0, y: 0 },
         eloChartData: null,
         loadingH2h: true,
         loadingMatches: true,
@@ -491,6 +505,13 @@ function playerStats() {
                 this.loadEloHistory(),
             ]);
             window.addEventListener('resize', () => { if (this.eloHistory.length > 0) this.renderEloChart(); });
+        },
+
+        setEloChartView(view) {
+            if (this.eloChartView === view) return;
+            this.eloChartView = view;
+            this.eloTooltip.show = false;
+            this.$nextTick(() => this.renderEloChart());
         },
 
         getBestSideDisplay() {
@@ -539,10 +560,12 @@ function playerStats() {
                 const res = await fetch(`${this.API}/players/${this.playerId}/elo-history?mode=${this.eloMode}`);
                 const data = await res.json();
                 this.eloHistory = data.history || [];
+                this.eloCandles = data.candles || [];
                 this.$nextTick(() => this.renderEloChart());
             } catch (err) {
                 console.error('Error loading ELO history:', err);
                 this.eloHistory = [];
+                this.eloCandles = [];
             }
             this.loadingEloHistory = false;
         },
@@ -562,10 +585,24 @@ function playerStats() {
             const ctx = canvas.getContext('2d');
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             const pts = this.eloHistory;
+            const candles = this.eloCandles.length === pts.length ? this.eloCandles : pts.map((p, i) => ({
+                date: p.created_at,
+                open: p.rating_after,
+                high: p.rating_after,
+                low: p.rating_after,
+                close: p.rating_after,
+                created_at: p.created_at,
+            }));
             const values = pts.map(p => p.rating_after);
-            const rawMin = Math.min(1200, ...values);
-            const rawMax = Math.max(1200, ...values);
-            const range = Math.max(rawMax - rawMin, 80);
+            let rawMin;
+            let rawMax;
+            if (this.eloChartView === 'line') {
+                rawMin = Math.min(1200, ...values);
+                rawMax = Math.max(1200, ...values);
+            } else {
+                rawMin = Math.min(1200, ...candles.map(c => c.low));
+                rawMax = Math.max(1200, ...candles.map(c => c.high));
+            }
             const minY = Math.floor((rawMin - 40) / 50) * 50;
             const maxY = Math.ceil((rawMax + 40) / 50) * 50;
             const targetTicks = 6;
@@ -581,12 +618,11 @@ function playerStats() {
             const pad = { left: 48, right: 24, top: 16, bottom: 44 };
             const chartW = w - pad.left - pad.right;
             const chartH = h - pad.top - pad.bottom;
-            const toX = (i) => pad.left + (i / Math.max(1, values.length - 1)) * chartW;
             const yRange = chartMaxY - chartMinY || 100;
             const toY = (v) => pad.top + chartH - ((v - chartMinY) / yRange) * chartH;
+            const toXLine = (i) => pad.left + (i / Math.max(1, values.length - 1)) * chartW;
             ctx.clearRect(0, 0, w, h);
             ctx.font = '11px Outfit, sans-serif';
-            ctx.fillStyle = 'rgba(255,255,255,0.5)';
             yTicks.forEach((v) => {
                 const y = toY(v);
                 ctx.beginPath();
@@ -604,60 +640,115 @@ function playerStats() {
             const xIndices = [];
             for (let i = 0; i < pts.length; i += xStep) xIndices.push(i);
             if (pts.length > 0 && xIndices[xIndices.length - 1] !== pts.length - 1) xIndices.push(pts.length - 1);
+            const xAtIndex = (i) => this.eloChartView === 'line'
+                ? toXLine(i)
+                : pad.left + (i + 0.5) * (chartW / Math.max(1, candles.length));
             xIndices.forEach((i) => {
-                const x = toX(i);
+                const x = xAtIndex(i);
                 const d = pts[i]?.created_at ? new Date(pts[i].created_at) : null;
                 const label = d ? (d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: pts.length > 30 ? '2-digit' : undefined })) : (i + 1);
                 ctx.fillStyle = 'rgba(255,255,255,0.6)';
                 ctx.textAlign = i === 0 ? 'left' : (i === pts.length - 1 ? 'right' : 'center');
                 ctx.fillText(label, x, pad.top + chartH + 20);
             });
-            ctx.beginPath();
-            ctx.moveTo(toX(0), toY(values[0]));
-            for (let i = 1; i < values.length; i++) ctx.lineTo(toX(i), toY(values[i]));
-            ctx.lineTo(toX(values.length - 1), pad.top + chartH);
-            ctx.lineTo(toX(0), pad.top + chartH);
-            ctx.closePath();
-            ctx.fillStyle = 'rgba(59, 130, 246, 0.15)';
-            ctx.fill();
-            ctx.beginPath();
-            ctx.moveTo(toX(0), toY(values[0]));
-            for (let i = 1; i < values.length; i++) ctx.lineTo(toX(i), toY(values[i]));
-            ctx.strokeStyle = 'rgba(59, 130, 246, 0.9)';
-            ctx.lineWidth = 2;
-            ctx.stroke();
+            if (this.eloChartView === 'line') {
+                ctx.beginPath();
+                ctx.moveTo(toXLine(0), toY(values[0]));
+                for (let i = 1; i < values.length; i++) ctx.lineTo(toXLine(i), toY(values[i]));
+                ctx.lineTo(toXLine(values.length - 1), pad.top + chartH);
+                ctx.lineTo(toXLine(0), pad.top + chartH);
+                ctx.closePath();
+                ctx.fillStyle = 'rgba(59, 130, 246, 0.15)';
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(toXLine(0), toY(values[0]));
+                for (let i = 1; i < values.length; i++) ctx.lineTo(toXLine(i), toY(values[i]));
+                ctx.strokeStyle = 'rgba(59, 130, 246, 0.9)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                this.eloChartData = { view: 'line', pts, values, pad, chartW, chartH, n: values.length };
+            } else {
+                const n = candles.length;
+                const slotW = chartW / Math.max(1, n);
+                const bodyW = Math.min(slotW * 0.72, 12);
+                for (let i = 0; i < n; i++) {
+                    const c = candles[i];
+                    const cx = pad.left + (i + 0.5) * slotW;
+                    const yHi = toY(c.high);
+                    const yLo = toY(c.low);
+                    const yO = toY(c.open);
+                    const yC = toY(c.close);
+                    ctx.beginPath();
+                    ctx.moveTo(cx, yHi);
+                    ctx.lineTo(cx, yLo);
+                    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                    const bull = c.close >= c.open;
+                    const top = Math.min(yO, yC);
+                    const bodyH = Math.max(Math.abs(yC - yO), 1);
+                    ctx.fillStyle = bull ? 'rgba(34, 197, 94, 0.45)' : 'rgba(239, 68, 68, 0.45)';
+                    ctx.strokeStyle = bull ? '#22c55e' : '#ef4444';
+                    ctx.fillRect(cx - bodyW / 2, top, bodyW, bodyH);
+                    ctx.strokeRect(cx - bodyW / 2, top, bodyW, bodyH);
+                }
+                this.eloChartData = { view: 'candle', candles, pts, pad, chartW, chartH, n };
+            }
             ctx.setTransform(1, 0, 0, 1, 0, 0);
-            this.eloChartData = { pts, values, pad, chartW, chartH, n: values.length };
         },
 
         onEloChartMouseMove(e) {
             if (!this.eloChartData || this.eloHistory.length === 0) return;
-            const { pts, pad, chartW, n } = this.eloChartData;
+            const { pad, chartW, n } = this.eloChartData;
             const rect = this.$refs.eloChartContainer?.getBoundingClientRect();
             if (!rect) return;
             const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
             if (mouseX < pad.left || mouseX > pad.left + chartW) {
                 this.eloTooltip.show = false;
                 return;
             }
+            const offset = 12;
+            let tx = e.clientX + offset;
+            let ty = e.clientY + offset;
+            if (tx + 140 > window.innerWidth) tx = e.clientX - 150;
+            if (ty + 72 > window.innerHeight) ty = e.clientY - 68;
+            if (this.eloChartData.view === 'candle') {
+                const { candles } = this.eloChartData;
+                const slotW = chartW / Math.max(1, n);
+                let best = 0;
+                let bestDist = Infinity;
+                for (let i = 0; i < n; i++) {
+                    const cx = pad.left + (i + 0.5) * slotW;
+                    const dist = Math.abs(mouseX - cx);
+                    if (dist < bestDist) { bestDist = dist; best = i; }
+                }
+                const c = candles[best];
+                const d = c?.created_at ? new Date(c.created_at) : null;
+                const dateStr = d ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+                this.eloTooltip = {
+                    show: true, date: dateStr, rating: '',
+                    o: String(c.open), h: String(c.high), l: String(c.low), c: String(c.close),
+                    x: tx, y: ty,
+                };
+                return;
+            }
+            const { pts, values } = this.eloChartData;
             const toX = (i) => pad.left + (i / Math.max(1, n - 1)) * chartW;
             let best = 0;
             let bestDist = Infinity;
             for (let i = 0; i < n; i++) {
-                const d = Math.abs(mouseX - toX(i));
-                if (d < bestDist) { bestDist = d; best = i; }
+                const dist = Math.abs(mouseX - toX(i));
+                if (dist < bestDist) { bestDist = dist; best = i; }
             }
             const pt = pts[best];
             const d = pt?.created_at ? new Date(pt.created_at) : null;
             const dateStr = d ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
             const ratingStr = pt ? String(pt.rating_after) : '';
-            const offset = 12;
-            let x = e.clientX + offset;
-            let y = e.clientY + offset;
-            if (x + 120 > window.innerWidth) x = e.clientX - 130;
-            if (y + 60 > window.innerHeight) y = e.clientY - 55;
-            this.eloTooltip = { show: true, date: dateStr, rating: ratingStr, x, y };
+            this.eloTooltip = {
+                show: true, date: dateStr, rating: ratingStr,
+                o: '', h: '', l: '', c: '',
+                x: tx, y: ty,
+            };
         },
     };
 }

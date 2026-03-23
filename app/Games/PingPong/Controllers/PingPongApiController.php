@@ -732,37 +732,57 @@ class PingPongApiController extends Controller
             ->orderBy('created_at')
             ->get();
 
-        // Build map of date -> rating_after (last rating at end of each day with games)
-        $cumulative = 1200;
-        $ratingByDate = [];
+        $changesByDay = [];
         foreach ($changes as $change) {
-            $cumulative += $change->rating_change;
-            $day = $change->created_at->startOfDay()->toDateString();
-            $ratingByDate[$day] = $cumulative;
+            $dayStr = $change->created_at->copy()->startOfDay()->toDateString();
+            $changesByDay[$dayStr][] = (int) $change->rating_change;
         }
 
-        // One point per day from first ELO change to today
         $firstChange = $changes->first();
         if (!$firstChange) {
             return response()->json([
                 'player' => ['id' => $player->id, 'name' => $player->name],
                 'mode' => $mode,
                 'history' => [],
+                'candles' => [],
             ]);
         }
-        $startDate = $firstChange->created_at->startOfDay();
+        $startDate = $firstChange->created_at->copy()->startOfDay();
         $endDate = now()->startOfDay();
         $history = [];
+        $candles = [];
         $current = $startDate->copy();
-        $lastRating = 1200;
+        $running = 1200;
 
         while ($current->lte($endDate)) {
             $dayStr = $current->toDateString();
-            if (isset($ratingByDate[$dayStr])) {
-                $lastRating = $ratingByDate[$dayStr];
+            $open = $running;
+            $deltas = $changesByDay[$dayStr] ?? [];
+
+            if (! empty($deltas)) {
+                $high = $open;
+                $low = $open;
+                foreach ($deltas as $delta) {
+                    $running += $delta;
+                    $high = max($high, $running);
+                    $low = min($low, $running);
+                }
+                $close = $running;
+            } else {
+                $close = $open;
+                $high = $low = $open;
             }
+
             $history[] = [
-                'rating_after' => $lastRating,
+                'rating_after' => $close,
+                'created_at' => $current->toIso8601String(),
+            ];
+            $candles[] = [
+                'date' => $dayStr,
+                'open' => $open,
+                'high' => $high,
+                'low' => $low,
+                'close' => $close,
                 'created_at' => $current->toIso8601String(),
             ];
             $current->addDay();
@@ -772,6 +792,7 @@ class PingPongApiController extends Controller
             'player' => ['id' => $player->id, 'name' => $player->name],
             'mode' => $mode,
             'history' => $history,
+            'candles' => $candles,
         ]);
     }
 
