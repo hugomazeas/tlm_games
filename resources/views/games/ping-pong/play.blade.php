@@ -451,6 +451,7 @@ function pingPong() {
             const padTop = 14;
             const padBot = 24;
             const dotR = 14;
+            const nameLabelOffsetY = dotR + 4;
 
             // Chart area
             const chartL = padL;
@@ -554,6 +555,42 @@ function pingPong() {
             const sorted = [...players].sort((a, b) => a.elo - b.elo);
             const positions = sorted.map(p => ({ ...p, x: xScale(p.elo), y: yScale(p.streak) }));
 
+            // Name labels: hide when bounding boxes would overlap (leaderboard order wins)
+            const nameLabelFontSize = 22;
+            ctx.font = `600 ${nameLabelFontSize}px "Outfit", system-ui, sans-serif`;
+            const nameLabelPad = 3;
+            const nameLabelLineH = nameLabelFontSize * 1.2;
+            const nameLabelRect = (pos) => {
+                const w = ctx.measureText(pos.name).width;
+                const bottom = pos.y - nameLabelOffsetY;
+                return {
+                    left: pos.x - w / 2 - nameLabelPad,
+                    right: pos.x + w / 2 + nameLabelPad,
+                    top: bottom - nameLabelLineH - nameLabelPad,
+                    bottom: bottom + nameLabelPad,
+                };
+            };
+            const nameRectsOverlap = (a, b) =>
+                !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+            const keptNameRects = [];
+            const showNameLabel = new Set();
+            for (const entry of this.leaderboard) {
+                const pos = positions.find((pp) => pp.id === entry.player_id);
+                if (!pos) continue;
+                const r = nameLabelRect(pos);
+                let clash = false;
+                for (const k of keptNameRects) {
+                    if (nameRectsOverlap(r, k)) {
+                        clash = true;
+                        break;
+                    }
+                }
+                if (!clash) {
+                    keptNameRects.push(r);
+                    showNameLabel.add(pos.id);
+                }
+            }
+
             // --- Vertical drop lines from dot to X axis ---
             for (const p of positions) {
                 if (p.streak === 0) continue;
@@ -629,9 +666,11 @@ function pingPong() {
 
             // --- Draw name labels + clickable dot overlays ---
             const container = canvas.parentElement;
-            container.querySelectorAll('.elo-name-label, .elo-dot-hit').forEach(el => el.remove());
-            const fontSize = 22;
-            const offsetAbove = dotR + 4;
+            container.querySelectorAll('.elo-name-label, .elo-dot-hit, .elo-dist-player').forEach(el => el.remove());
+            const fontSize = nameLabelFontSize;
+            const labelLineH = nameLabelFontSize * 1.2;
+            ctx.font = `600 ${fontSize}px "Outfit", system-ui, sans-serif`;
+
             for (let i = 0; i < positions.length; i++) {
                 const p = positions[i];
                 const rank = players.findIndex(pl => pl.id === p.id);
@@ -639,27 +678,65 @@ function pingPong() {
                 const brightness = 0.5 + t * 0.5;
                 const labelAlpha = 0.55 + brightness * 0.45;
                 const url = '/games/ping-pong/players/' + p.id;
+                const peekLabel = !showNameLabel.has(p.id);
 
-                // Dot overlay with hover animation
                 const [cR, cG, cB] = p.color;
-                const dot = document.createElement('a');
-                dot.className = 'elo-dot-hit';
-                dot.href = url;
                 const dotSize = dotR * 2;
-                dot.style.cssText = `position:absolute; left:${p.x - dotSize/2}px; top:${p.y - dotSize/2}px; width:${dotSize}px; height:${dotSize}px; border-radius:50%; cursor:pointer; z-index:3; background:rgba(${cR},${cG},${cB},0.85); border:1.5px solid rgba(${Math.min(255,cR+40)},${Math.min(255,cG+40)},${Math.min(255,cB+40)},0.4); transition: transform 0.2s, box-shadow 0.2s;`;
-                dot.addEventListener('mouseenter', () => { dot.style.transform = 'scale(1.45)'; dot.style.boxShadow = `0 0 18px 6px rgba(${cR},${cG},${cB},0.55)`; label.style.color = 'rgba(96,165,250,1)'; label.style.transform = 'translateX(-50%) translateY(-100%) scale(1.1)'; label.style.zIndex = '20'; });
-                dot.addEventListener('mouseleave', () => { dot.style.transform = 'scale(1)'; dot.style.boxShadow = 'none'; label.style.color = `rgba(191,219,254,${labelAlpha})`; label.style.transform = 'translateX(-50%) translateY(-100%) scale(1)'; label.style.zIndex = '2'; });
-                container.appendChild(dot);
+                const labelW = ctx.measureText(p.name).width;
+                const stackW = Math.max(dotSize, labelW) + 12;
+                const stackH = labelLineH + nameLabelOffsetY + dotSize / 2;
+                const stackLeft = p.x - stackW / 2;
+                const stackTop = p.y - nameLabelOffsetY - labelLineH;
 
-                // Name label
+                const stack = document.createElement('div');
+                stack.className = 'elo-dist-player';
+                stack.style.cssText = `position:absolute;left:${stackLeft}px;top:${stackTop}px;width:${stackW}px;height:${stackH}px;z-index:3;`;
+
+                const labelColor = `rgba(191,219,254,${labelAlpha})`;
                 const label = document.createElement('a');
                 label.className = 'elo-name-label';
                 label.href = url;
                 label.textContent = p.name;
-                label.style.cssText = `position:absolute; left:${p.x}px; top:${p.y - offsetAbove}px; transform:translateX(-50%) translateY(-100%); font-family:"Outfit",system-ui,sans-serif; font-size:${fontSize}px; font-weight:600; color:rgba(191,219,254,${labelAlpha}); white-space:nowrap; text-decoration:none; pointer-events:auto; line-height:1; letter-spacing:-0.01em; transition:color 0.2s, transform 0.2s, z-index 0s; cursor:pointer; z-index:2;`;
-                label.addEventListener('mouseenter', () => { label.style.color = 'rgba(96,165,250,1)'; label.style.transform = 'translateX(-50%) translateY(-100%) scale(1.08)'; label.style.zIndex = '20'; dot.style.transform = 'scale(1.35)'; dot.style.boxShadow = `0 0 16px 4px rgba(59,130,246,0.5)`; });
-                label.addEventListener('mouseleave', () => { label.style.color = `rgba(191,219,254,${labelAlpha})`; label.style.transform = 'translateX(-50%) translateY(-100%) scale(1)'; label.style.zIndex = '2'; dot.style.transform = 'scale(1)'; dot.style.boxShadow = 'none'; });
-                container.appendChild(label);
+                const baseTf = 'translateX(-50%)';
+                label.style.cssText = [
+                    `position:absolute;left:50%;top:0;transform:${baseTf}`,
+                    `font-family:"Outfit",system-ui,sans-serif;font-size:${fontSize}px;font-weight:600;color:${labelColor}`,
+                    'white-space:nowrap;text-decoration:none;line-height:1;letter-spacing:-0.01em;cursor:pointer;z-index:2',
+                    'transition:color 0.2s,transform 0.2s,opacity 0.15s',
+                    peekLabel ? 'opacity:0;pointer-events:none' : 'opacity:1;pointer-events:auto',
+                ].join(';') + ';';
+
+                const dot = document.createElement('a');
+                dot.className = 'elo-dot-hit';
+                dot.href = url;
+                dot.style.cssText = `position:absolute;left:50%;bottom:0;width:${dotSize}px;height:${dotSize}px;transform:translateX(-50%);border-radius:50%;cursor:pointer;z-index:3;background:rgba(${cR},${cG},${cB},0.85);border:1.5px solid rgba(${Math.min(255,cR+40)},${Math.min(255,cG+40)},${Math.min(255,cB+40)},0.4);transition:transform 0.2s,box-shadow 0.2s;`;
+
+                stack.appendChild(label);
+                stack.appendChild(dot);
+                container.appendChild(stack);
+
+                stack.addEventListener('mouseenter', () => {
+                    stack.style.zIndex = '50';
+                    dot.style.transform = 'translateX(-50%) scale(1.45)';
+                    dot.style.boxShadow = `0 0 18px 6px rgba(${cR},${cG},${cB},0.55)`;
+                    label.style.color = 'rgba(96,165,250,1)';
+                    label.style.transform = `${baseTf} scale(${peekLabel ? 1.1 : 1.08})`;
+                    if (peekLabel) {
+                        label.style.opacity = '1';
+                        label.style.pointerEvents = 'auto';
+                    }
+                });
+                stack.addEventListener('mouseleave', () => {
+                    stack.style.zIndex = '3';
+                    dot.style.transform = 'translateX(-50%) scale(1)';
+                    dot.style.boxShadow = 'none';
+                    label.style.color = labelColor;
+                    label.style.transform = `${baseTf} scale(1)`;
+                    if (peekLabel) {
+                        label.style.opacity = '0';
+                        label.style.pointerEvents = 'none';
+                    }
+                });
             }
         },
 
