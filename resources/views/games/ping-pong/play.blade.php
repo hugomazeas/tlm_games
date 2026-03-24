@@ -108,6 +108,14 @@
                         </template>
                     </div>
                 </div>
+
+                <!-- ELO Distribution Chart -->
+                <div x-show="leaderboard.length > 0" class="pp-elo-distribution" style="flex-shrink: 0; margin-bottom: 8px;">
+                    <div style="position: relative; overflow: visible;">
+                        <canvas id="eloDistCanvas" height="50" style="width: 100%;"></canvas>
+                    </div>
+                </div>
+
                 <div class="pp-lb-tabs-row">
                     <button type="button" class="pp-lb-tab" :class="{ active: leaderboardTab === 'all' }" @click="leaderboardTab = 'all'">
                         All players
@@ -409,6 +417,117 @@ function pingPong() {
             );
             if (this.leaderboardTab !== 'all' && !this.officeLeaderboards.some((b) => b.id === this.leaderboardTab)) {
                 this.leaderboardTab = 'all';
+            }
+            this.$nextTick(() => this.renderEloDistribution());
+        },
+
+        renderEloDistribution() {
+            const canvas = document.getElementById('eloDistCanvas');
+            if (!canvas || !this.leaderboard.length) return;
+
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            const W = rect.width;
+            const H = rect.height;
+
+            const players = this.leaderboard.map(e => ({ name: e.player_name, elo: e.elo_rating, id: e.player_id }));
+            const elos = players.map(p => p.elo);
+            const minElo = Math.min(...elos);
+            const maxElo = Math.max(...elos);
+            const range = maxElo - minElo || 100;
+            const pad = 30;
+            const dotR = 12;
+            const axisY = H - 18;
+
+            // Clear
+            ctx.clearRect(0, 0, W, H);
+
+            // Axis line
+            ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(pad, axisY);
+            ctx.lineTo(W - pad, axisY);
+            ctx.stroke();
+
+            // Tick marks & ELO labels
+            const nTicks = 5;
+            ctx.fillStyle = 'rgba(255,255,255,0.3)';
+            ctx.font = '13px system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+            for (let i = 0; i <= nTicks; i++) {
+                const val = Math.round(minElo - range * 0.1 + (range * 1.2) * i / nTicks);
+                const x = pad + (W - 2 * pad) * i / nTicks;
+                ctx.fillText(val, x, axisY + 4);
+                ctx.beginPath();
+                ctx.moveTo(x, axisY - 2);
+                ctx.lineTo(x, axisY + 2);
+                ctx.stroke();
+            }
+
+            // Position dots on axis
+            const xScale = (elo) => pad + (elo - (minElo - range * 0.1)) / (range * 1.2) * (W - 2 * pad);
+            const sorted = [...players].sort((a, b) => a.elo - b.elo);
+            const positions = [];
+            for (const p of sorted) {
+                const x = xScale(p.elo);
+                positions.push({ ...p, x });
+            }
+
+            // Draw dots
+            const dotY = axisY - dotR - 2;
+            for (const p of positions) {
+                const rank = players.findIndex(pl => pl.id === p.id);
+                const t = players.length > 1 ? rank / (players.length - 1) : 0.5;
+                const r = Math.round(34 + t * (239 - 34));
+                const g = Math.round(197 + t * (68 - 197));
+                const b = Math.round(94 + t * (68 - 94));
+
+                ctx.beginPath();
+                ctx.arc(p.x, dotY, dotR, 0, Math.PI * 2);
+                ctx.fillStyle = `rgb(${r},${g},${b})`;
+                ctx.fill();
+            }
+
+            // Draw names above dots, staggered to avoid overlap
+            const container = canvas.parentElement;
+            container.querySelectorAll('.elo-name-label').forEach(el => el.remove());
+            const fontSize = 26;
+            const labelBaseBottom = H - dotY + dotR + 2;
+            const staggerStep = fontSize + 6;
+            // Track placed label positions to detect collisions
+            const placed = [];
+            for (const p of positions) {
+                const rank = players.findIndex(pl => pl.id === p.id);
+                const t = players.length > 1 ? rank / (players.length - 1) : 0.5;
+                const r = Math.round(34 + t * (239 - 34));
+                const g = Math.round(197 + t * (68 - 197));
+                const b = Math.round(94 + t * (68 - 94));
+
+                // Check how many stagger levels needed to avoid overlap
+                const charWidth = fontSize * 0.55;
+                const labelWidth = p.name.length * charWidth;
+                let level = 0;
+                for (const prev of placed) {
+                    if (prev.level === level && Math.abs(p.x - prev.x) < (labelWidth + prev.width) / 2 + 8) {
+                        level = prev.level + 1;
+                    }
+                }
+                placed.push({ x: p.x, width: labelWidth, level });
+
+                const bottomOffset = labelBaseBottom + level * staggerStep;
+                const label = document.createElement('a');
+                label.className = 'elo-name-label';
+                label.href = '/games/ping-pong/players/' + p.id;
+                label.textContent = p.name;
+                label.style.cssText = `position:absolute; left:${p.x}px; bottom:${bottomOffset}px; transform:translateX(-50%); font-size:${fontSize}px; font-weight:600; color:rgb(${r},${g},${b}); white-space:nowrap; text-decoration:none; pointer-events:auto; line-height:1;`;
+                container.appendChild(label);
             }
         },
 
