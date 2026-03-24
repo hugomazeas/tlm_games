@@ -248,7 +248,7 @@
             <!-- Score Progression Chart -->
             <div class="section">
                 <h2>Score Progression</h2>
-                <div class="chart-container">
+                <div class="chart-container" x-init="requestAnimationFrame(() => renderScoreChart())">
                     <canvas id="scoreChart"></canvas>
                 </div>
             </div>
@@ -332,7 +332,7 @@
             <!-- Score Difference Over Time Chart -->
             <div class="section">
                 <h2>Score Difference Over Time</h2>
-                <div class="chart-container">
+                <div class="chart-container" x-init="requestAnimationFrame(() => renderDiffChart())">
                     <canvas id="diffChart"></canvas>
                 </div>
             </div>
@@ -359,10 +359,6 @@ function matchDetail() {
             try {
                 const res = await fetch(`${this.API}/matches/${this.matchId}`);
                 this.match = await res.json();
-                this.$nextTick(() => setTimeout(() => {
-                    this.renderScoreChart();
-                    this.renderDiffChart();
-                }, 100));
             } catch (err) {
                 console.error('Error loading match:', err);
             }
