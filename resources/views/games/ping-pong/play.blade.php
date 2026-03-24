@@ -492,19 +492,36 @@ function pingPong() {
 
                 this.lobbyJoinUrl = `${window.location.origin}/games/ping-pong/lobby/${this.lobbyCode}`;
 
-                // On mobile, redirect to join page for unified phone experience
-                if (window.innerWidth < 768) {
-                    window.location.href = '/games/ping-pong/lobby/' + this.lobbyCode;
-                    return;
-                }
-
                 this.subscribeToLobby();
                 // Wait for x-if to render the QR container
                 this.$nextTick(() => setTimeout(() => this.generateLobbyQr(), 100));
+
+                // On mobile, auto-join with cached player
+                if (window.innerWidth < 768) {
+                    this.autoJoinCachedPlayer();
+                }
             } catch (err) {
                 console.error('Error creating lobby:', err);
             }
             this.loading = false;
+        },
+
+        async autoJoinCachedPlayer() {
+            try {
+                const stored = localStorage.getItem('ping_pong_last_player');
+                if (!stored) return;
+                const last = JSON.parse(stored);
+                if (!last?.player_id) return;
+
+                const res = await fetch(`${this.API}/lobbies/${this.lobbyCode}/join`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf },
+                    body: JSON.stringify({ player_id: last.player_id }),
+                });
+                if (!res.ok) return;
+            } catch (e) {
+                console.warn('Auto-join failed:', e);
+            }
         },
 
         generateLobbyQr() {
