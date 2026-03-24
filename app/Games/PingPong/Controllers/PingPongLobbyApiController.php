@@ -28,7 +28,7 @@ class PingPongLobbyApiController extends Controller
             'mode' => $validated['mode'],
             'host_token' => Str::random(64),
             'status' => 'waiting',
-            'expires_at' => now()->addMinutes(30),
+            'expires_at' => now()->addYears(10),
         ]);
 
         return response()->json([
