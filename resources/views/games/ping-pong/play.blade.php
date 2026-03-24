@@ -112,7 +112,7 @@
                 <!-- ELO Distribution Chart -->
                 <div x-show="leaderboard.length > 0" class="pp-elo-distribution" style="flex-shrink: 0; margin-bottom: 8px;">
                     <div style="position: relative; overflow: visible;">
-                        <canvas id="eloDistCanvas" height="50" style="width: 100%;"></canvas>
+                        <canvas id="eloDistCanvas" height="100" style="width: 100%;"></canvas>
                     </div>
                 </div>
 
@@ -434,99 +434,231 @@ function pingPong() {
             const W = rect.width;
             const H = rect.height;
 
-            const players = this.leaderboard.map(e => ({ name: e.player_name, elo: e.elo_rating, id: e.player_id }));
+            const players = this.leaderboard.map(e => ({
+                name: e.player_name, elo: e.elo_rating, id: e.player_id,
+                streak: e.win_streak > 0 ? e.win_streak : -(e.losing_streak || 0)
+            }));
             const elos = players.map(p => p.elo);
+            const streaks = players.map(p => p.streak);
             const minElo = Math.min(...elos);
             const maxElo = Math.max(...elos);
-            const range = maxElo - minElo || 100;
-            const pad = 30;
-            const dotR = 12;
-            const axisY = H - 18;
+            const eloRange = maxElo - minElo || 100;
+            const maxStreak = Math.max(1, Math.max(...streaks));
+            const minStreak = Math.min(-1, Math.min(...streaks));
 
-            // Clear
+            const padL = 50;  // left padding for Y-axis labels
+            const padR = 36;
+            const padTop = 14;
+            const padBot = 24;
+            const dotR = 14;
+
+            // Chart area
+            const chartL = padL;
+            const chartR = W - padR;
+            const chartT = padTop;
+            const chartB = H - padBot;
+            const chartH = chartB - chartT;
+            const chartW = chartR - chartL;
+
+            // Y=0 line position (proportional split between positive and negative streak range)
+            const totalStreakRange = maxStreak - minStreak;
+            const zeroY = chartT + (maxStreak / totalStreakRange) * chartH;
+
             ctx.clearRect(0, 0, W, H);
 
-            // Axis line
-            ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+            // --- Horizontal grid lines for streak values ---
+            ctx.font = '500 20px "Outfit", system-ui, sans-serif';
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'right';
+            const yTicks = [];
+            for (let v = minStreak; v <= maxStreak; v++) {
+                yTicks.push(v);
+            }
+            for (const v of yTicks) {
+                const y = chartT + ((maxStreak - v) / totalStreakRange) * chartH;
+                // Grid line
+                ctx.strokeStyle = v === 0 ? 'rgba(59,130,246,0.2)' : 'rgba(148,163,184,0.06)';
+                ctx.lineWidth = v === 0 ? 1 : 0.5;
+                ctx.beginPath();
+                ctx.moveTo(chartL, y);
+                ctx.lineTo(chartR, y);
+                ctx.stroke();
+                // Label
+                if (v === 0) continue; // skip 0 label to keep it clean
+                const label = v > 0 ? `W${v}` : `L${Math.abs(v)}`;
+                ctx.fillStyle = v > 0 ? 'rgba(52,211,153,0.45)' : 'rgba(248,113,113,0.45)';
+                ctx.fillText(label, chartL - 8, y);
+            }
+
+            // --- X axis gradient line at Y=0 ---
+            const axisGrad = ctx.createLinearGradient(chartL, 0, chartR, 0);
+            axisGrad.addColorStop(0, 'rgba(59,130,246,0.0)');
+            axisGrad.addColorStop(0.15, 'rgba(59,130,246,0.22)');
+            axisGrad.addColorStop(0.5, 'rgba(59,130,246,0.3)');
+            axisGrad.addColorStop(0.85, 'rgba(59,130,246,0.22)');
+            axisGrad.addColorStop(1, 'rgba(59,130,246,0.0)');
+            ctx.strokeStyle = axisGrad;
             ctx.lineWidth = 1;
             ctx.beginPath();
-            ctx.moveTo(pad, axisY);
-            ctx.lineTo(W - pad, axisY);
+            ctx.moveTo(chartL, zeroY);
+            ctx.lineTo(chartR, zeroY);
             ctx.stroke();
 
-            // Tick marks & ELO labels
+            // --- X axis tick marks & ELO labels ---
             const nTicks = 5;
-            ctx.fillStyle = 'rgba(255,255,255,0.3)';
-            ctx.font = '13px system-ui, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
-            ctx.strokeStyle = 'rgba(255,255,255,0.08)';
             for (let i = 0; i <= nTicks; i++) {
-                const val = Math.round(minElo - range * 0.1 + (range * 1.2) * i / nTicks);
-                const x = pad + (W - 2 * pad) * i / nTicks;
-                ctx.fillText(val, x, axisY + 4);
+                const val = Math.round(minElo - eloRange * 0.1 + (eloRange * 1.2) * i / nTicks);
+                const x = chartL + chartW * i / nTicks;
+                ctx.fillStyle = 'rgba(148,163,184,0.35)';
+                ctx.font = '500 20px "Outfit", system-ui, sans-serif';
+                ctx.fillText(val, x, chartB + 2);
+                ctx.strokeStyle = 'rgba(148,163,184,0.12)';
+                ctx.lineWidth = 1;
                 ctx.beginPath();
-                ctx.moveTo(x, axisY - 2);
-                ctx.lineTo(x, axisY + 2);
+                ctx.moveTo(x, zeroY - 3);
+                ctx.lineTo(x, zeroY + 3);
                 ctx.stroke();
             }
 
-            // Position dots on axis
-            const xScale = (elo) => pad + (elo - (minElo - range * 0.1)) / (range * 1.2) * (W - 2 * pad);
-            const sorted = [...players].sort((a, b) => a.elo - b.elo);
-            const positions = [];
-            for (const p of sorted) {
-                const x = xScale(p.elo);
-                positions.push({ ...p, x });
+            // --- Vertical line at ELO 1200 (starting point) ---
+            const startElo = 1200;
+            const startX = chartL + (startElo - (minElo - eloRange * 0.1)) / (eloRange * 1.2) * chartW;
+            if (startX >= chartL && startX <= chartR) {
+                const startLineGrad = ctx.createLinearGradient(0, chartT, 0, chartB);
+                startLineGrad.addColorStop(0, 'rgba(148,163,184,0)');
+                startLineGrad.addColorStop(0.2, 'rgba(148,163,184,0.18)');
+                startLineGrad.addColorStop(0.5, 'rgba(148,163,184,0.25)');
+                startLineGrad.addColorStop(0.8, 'rgba(148,163,184,0.18)');
+                startLineGrad.addColorStop(1, 'rgba(148,163,184,0)');
+                ctx.strokeStyle = startLineGrad;
+                ctx.lineWidth = 1;
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath();
+                ctx.moveTo(startX, chartT);
+                ctx.lineTo(startX, chartB);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                // Label
+                ctx.fillStyle = 'rgba(148,163,184,0.5)';
+                ctx.font = '500 10px "Outfit", system-ui, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                ctx.fillText('1200', startX, chartT - 2);
             }
 
-            // Draw dots
-            const dotY = axisY - dotR - 2;
+            // --- Position dots ---
+            const xScale = (elo) => chartL + (elo - (minElo - eloRange * 0.1)) / (eloRange * 1.2) * chartW;
+            const yScale = (streak) => chartT + ((maxStreak - streak) / totalStreakRange) * chartH;
+            const sorted = [...players].sort((a, b) => a.elo - b.elo);
+            const positions = sorted.map(p => ({ ...p, x: xScale(p.elo), y: yScale(p.streak) }));
+
+            // --- Vertical drop lines from dot to X axis ---
             for (const p of positions) {
+                if (p.streak === 0) continue;
+                const grad = ctx.createLinearGradient(0, p.y, 0, zeroY);
+                if (p.streak > 0) {
+                    grad.addColorStop(0, 'rgba(52,211,153,0.25)');
+                    grad.addColorStop(1, 'rgba(52,211,153,0.0)');
+                } else {
+                    grad.addColorStop(0, 'rgba(248,113,113,0.25)');
+                    grad.addColorStop(1, 'rgba(248,113,113,0.0)');
+                }
+                ctx.strokeStyle = grad;
+                ctx.lineWidth = 1;
+                ctx.setLineDash([3, 3]);
+                ctx.beginPath();
+                ctx.moveTo(p.x, p.y);
+                ctx.lineTo(p.x, zeroY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // --- Draw dots with glow ---
+            for (let i = 0; i < positions.length; i++) {
+                const p = positions[i];
                 const rank = players.findIndex(pl => pl.id === p.id);
                 const t = players.length > 1 ? rank / (players.length - 1) : 0.5;
-                const r = Math.round(34 + t * (239 - 34));
-                const g = Math.round(197 + t * (68 - 197));
-                const b = Math.round(94 + t * (68 - 94));
+                const brightness = 0.5 + t * 0.5;
 
+                // Pick color based on streak: green for win, red for lose, blue for neutral
+                let baseR, baseG, baseB;
+                if (p.streak > 0) {
+                    baseR = 52; baseG = 211; baseB = 153;  // emerald
+                } else if (p.streak < 0) {
+                    baseR = 248; baseG = 113; baseB = 113; // red
+                } else {
+                    baseR = 59; baseG = 130; baseB = 246;  // blue
+                }
+                p.color = [baseR, baseG, baseB];
+
+                // Outer glow
+                const glow = ctx.createRadialGradient(p.x, p.y, dotR * 0.3, p.x, p.y, dotR * 2.2);
+                glow.addColorStop(0, `rgba(${baseR},${baseG},${baseB},${0.25 * brightness})`);
+                glow.addColorStop(1, `rgba(${baseR},${baseG},${baseB},0)`);
+                ctx.fillStyle = glow;
                 ctx.beginPath();
-                ctx.arc(p.x, dotY, dotR, 0, Math.PI * 2);
-                ctx.fillStyle = `rgb(${r},${g},${b})`;
+                ctx.arc(p.x, p.y, dotR * 2.2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Dot fill
+                const dotGrad = ctx.createRadialGradient(p.x - dotR * 0.25, p.y - dotR * 0.25, 0, p.x, p.y, dotR);
+                const alpha = 0.65 + brightness * 0.35;
+                const lighter = [Math.min(255, baseR + 40), Math.min(255, baseG + 40), Math.min(255, baseB + 40)];
+                dotGrad.addColorStop(0, `rgba(${lighter[0]},${lighter[1]},${lighter[2]},${alpha})`);
+                dotGrad.addColorStop(1, `rgba(${baseR},${baseG},${baseB},${alpha})`);
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, dotR, 0, Math.PI * 2);
+                ctx.fillStyle = dotGrad;
+                ctx.fill();
+
+                // Ring
+                ctx.strokeStyle = `rgba(${lighter[0]},${lighter[1]},${lighter[2]},${0.25 + brightness * 0.3})`;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, dotR, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Specular highlight
+                ctx.beginPath();
+                ctx.arc(p.x - dotR * 0.28, p.y - dotR * 0.28, dotR * 0.3, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255,255,255,${0.12 + brightness * 0.13})`;
                 ctx.fill();
             }
 
-            // Draw names above dots, staggered to avoid overlap
+            // --- Draw name labels + clickable dot overlays ---
             const container = canvas.parentElement;
-            container.querySelectorAll('.elo-name-label').forEach(el => el.remove());
-            const fontSize = 26;
-            const labelBaseBottom = H - dotY + dotR + 2;
-            const staggerStep = fontSize + 6;
-            // Track placed label positions to detect collisions
-            const placed = [];
-            for (const p of positions) {
+            container.querySelectorAll('.elo-name-label, .elo-dot-hit').forEach(el => el.remove());
+            const fontSize = 22;
+            const offsetAbove = dotR + 4;
+            for (let i = 0; i < positions.length; i++) {
+                const p = positions[i];
                 const rank = players.findIndex(pl => pl.id === p.id);
                 const t = players.length > 1 ? rank / (players.length - 1) : 0.5;
-                const r = Math.round(34 + t * (239 - 34));
-                const g = Math.round(197 + t * (68 - 197));
-                const b = Math.round(94 + t * (68 - 94));
+                const brightness = 0.5 + t * 0.5;
+                const labelAlpha = 0.55 + brightness * 0.45;
+                const url = '/games/ping-pong/players/' + p.id;
 
-                // Check how many stagger levels needed to avoid overlap
-                const charWidth = fontSize * 0.55;
-                const labelWidth = p.name.length * charWidth;
-                let level = 0;
-                for (const prev of placed) {
-                    if (prev.level === level && Math.abs(p.x - prev.x) < (labelWidth + prev.width) / 2 + 8) {
-                        level = prev.level + 1;
-                    }
-                }
-                placed.push({ x: p.x, width: labelWidth, level });
+                // Dot overlay with hover animation
+                const [cR, cG, cB] = p.color;
+                const dot = document.createElement('a');
+                dot.className = 'elo-dot-hit';
+                dot.href = url;
+                const dotSize = dotR * 2;
+                dot.style.cssText = `position:absolute; left:${p.x - dotSize/2}px; top:${p.y - dotSize/2}px; width:${dotSize}px; height:${dotSize}px; border-radius:50%; cursor:pointer; z-index:3; background:rgba(${cR},${cG},${cB},0.85); border:1.5px solid rgba(${Math.min(255,cR+40)},${Math.min(255,cG+40)},${Math.min(255,cB+40)},0.4); transition: transform 0.2s, box-shadow 0.2s;`;
+                dot.addEventListener('mouseenter', () => { dot.style.transform = 'scale(1.45)'; dot.style.boxShadow = `0 0 18px 6px rgba(${cR},${cG},${cB},0.55)`; label.style.color = 'rgba(96,165,250,1)'; label.style.transform = 'translateX(-50%) translateY(-100%) scale(1.1)'; label.style.zIndex = '20'; });
+                dot.addEventListener('mouseleave', () => { dot.style.transform = 'scale(1)'; dot.style.boxShadow = 'none'; label.style.color = `rgba(191,219,254,${labelAlpha})`; label.style.transform = 'translateX(-50%) translateY(-100%) scale(1)'; label.style.zIndex = '2'; });
+                container.appendChild(dot);
 
-                const bottomOffset = labelBaseBottom + level * staggerStep;
+                // Name label
                 const label = document.createElement('a');
                 label.className = 'elo-name-label';
-                label.href = '/games/ping-pong/players/' + p.id;
+                label.href = url;
                 label.textContent = p.name;
-                label.style.cssText = `position:absolute; left:${p.x}px; bottom:${bottomOffset}px; transform:translateX(-50%); font-size:${fontSize}px; font-weight:600; color:rgb(${r},${g},${b}); white-space:nowrap; text-decoration:none; pointer-events:auto; line-height:1;`;
+                label.style.cssText = `position:absolute; left:${p.x}px; top:${p.y - offsetAbove}px; transform:translateX(-50%) translateY(-100%); font-family:"Outfit",system-ui,sans-serif; font-size:${fontSize}px; font-weight:600; color:rgba(191,219,254,${labelAlpha}); white-space:nowrap; text-decoration:none; pointer-events:auto; line-height:1; letter-spacing:-0.01em; transition:color 0.2s, transform 0.2s, z-index 0s; cursor:pointer; z-index:2;`;
+                label.addEventListener('mouseenter', () => { label.style.color = 'rgba(96,165,250,1)'; label.style.transform = 'translateX(-50%) translateY(-100%) scale(1.08)'; label.style.zIndex = '20'; dot.style.transform = 'scale(1.35)'; dot.style.boxShadow = `0 0 16px 4px rgba(59,130,246,0.5)`; });
+                label.addEventListener('mouseleave', () => { label.style.color = `rgba(191,219,254,${labelAlpha})`; label.style.transform = 'translateX(-50%) translateY(-100%) scale(1)'; label.style.zIndex = '2'; dot.style.transform = 'scale(1)'; dot.style.boxShadow = 'none'; });
                 container.appendChild(label);
             }
         },
