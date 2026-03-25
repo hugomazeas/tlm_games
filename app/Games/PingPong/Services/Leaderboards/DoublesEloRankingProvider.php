@@ -73,13 +73,36 @@ class DoublesEloRankingProvider implements LeaderboardProviderInterface
             $losses = $totalGames - $wins;
             $winRate = $totalGames > 0 ? round(($wins / $totalGames) * 100) : 0;
 
+            $last10Matches = PingPongMatch::whereNotNull('ended_at')
+                ->where('mode', '2v2')
+                ->where(function ($q) use ($playerId) {
+                    $q->where('player_left_id', $playerId)
+                      ->orWhere('player_right_id', $playerId)
+                      ->orWhere('team_left_player2_id', $playerId)
+                      ->orWhere('team_right_player2_id', $playerId);
+                })
+                ->orderBy('ended_at', 'desc')
+                ->limit(10)
+                ->get();
+
+            $last10 = [];
+            foreach ($last10Matches as $match) {
+                $won = ($match->winner_id === $match->player_left_id && in_array($playerId, [$match->player_left_id, $match->team_left_player2_id], true))
+                    || ($match->winner_id === $match->player_right_id && in_array($playerId, [$match->player_right_id, $match->team_right_player2_id], true));
+                $last10[] = $won ? 'W' : 'L';
+            }
+            $last10 = array_reverse($last10);
+            $last10Wins = count(array_filter($last10, fn($r) => $r === 'W'));
+            $last10Losses = count($last10) - $last10Wins;
+
             return [
                 'player_id' => $playerId,
                 'player_name' => $player->name,
                 'elo_rating' => $elo,
-                'wins' => $wins,
-                'losses' => $losses,
+                'record' => $wins . '-' . $losses,
                 'win_rate' => $winRate . '%',
+                'last_10' => $last10,
+                'last_10_record' => $last10Wins . '-' . $last10Losses,
                 'games_played' => $totalGames,
             ];
         })

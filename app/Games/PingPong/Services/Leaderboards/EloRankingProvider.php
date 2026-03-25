@@ -61,13 +61,32 @@ class EloRankingProvider implements LeaderboardProviderInterface
             $losses = $totalGames - $wins;
             $winRate = $totalGames > 0 ? round(($wins / $totalGames) * 100) : 0;
 
+            $last10Matches = PingPongMatch::whereNotNull('ended_at')
+                ->where('mode', '1v1')
+                ->where(function ($q) use ($playerId) {
+                    $q->where('player_left_id', $playerId)
+                      ->orWhere('player_right_id', $playerId);
+                })
+                ->orderBy('ended_at', 'desc')
+                ->limit(10)
+                ->get();
+
+            $last10 = [];
+            foreach ($last10Matches as $match) {
+                $last10[] = $match->winner_id === $playerId ? 'W' : 'L';
+            }
+            $last10 = array_reverse($last10);
+            $last10Wins = count(array_filter($last10, fn($r) => $r === 'W'));
+            $last10Losses = count($last10) - $last10Wins;
+
             return [
                 'player_id' => $playerId,
                 'player_name' => $player->name,
                 'elo_rating' => $elo,
-                'wins' => $wins,
-                'losses' => $losses,
+                'record' => $wins . '-' . $losses,
                 'win_rate' => $winRate . '%',
+                'last_10' => $last10,
+                'last_10_record' => $last10Wins . '-' . $last10Losses,
                 'games_played' => $totalGames,
             ];
         })
