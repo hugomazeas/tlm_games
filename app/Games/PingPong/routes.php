@@ -6,6 +6,7 @@ use App\Games\PingPong\Controllers\PingPongLobbyApiController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/games/ping-pong', [PingPongController::class, 'play']);
+Route::get('/games/ping-pong/stats', [PingPongController::class, 'stats']);
 Route::get('/games/ping-pong/players/{id}', [PingPongController::class, 'playerStats']);
 Route::get('/games/ping-pong/lobby/{code}', [PingPongController::class, 'lobbyJoin']);
 

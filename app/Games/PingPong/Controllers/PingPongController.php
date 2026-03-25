@@ -32,6 +32,11 @@ class PingPongController extends Controller
         return view('games.ping-pong.player', compact('player'));
     }
 
+    public function stats()
+    {
+        return view('games.ping-pong.stats');
+    }
+
     public function matchDetail(int $id)
     {
         $match = PingPongMatch::findOrFail($id);
