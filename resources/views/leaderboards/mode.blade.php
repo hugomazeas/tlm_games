@@ -56,7 +56,7 @@
                             <th class="text-left px-3 sm:px-5 py-3 text-xs font-semibold text-white/50 uppercase tracking-wider w-10">#</th>
                             <th class="text-left px-3 sm:px-5 py-3 text-xs font-semibold text-white/50 uppercase tracking-wider">Player</th>
                             @foreach($columns as $col)
-                                <th class="text-left px-3 sm:px-5 py-3 text-xs font-semibold text-white/50 uppercase tracking-wider">{{ $col['label'] }}</th>
+                                <th class="{{ ($col['type'] ?? null) === 'last_10' ? 'text-center' : 'text-left' }} px-3 sm:px-5 py-3 text-xs font-semibold text-white/50 uppercase tracking-wider">{{ $col['label'] }}</th>
                             @endforeach
                         </tr>
                     </thead>
@@ -70,7 +70,42 @@
                                     </a>
                                 </td>
                                 @foreach($columns as $col)
-                                    <td class="px-3 sm:px-5 py-3 text-white/70 whitespace-nowrap">{{ $entry[$col['key']] ?? '—' }}</td>
+                                    @if(($col['type'] ?? null) === 'last_10' && is_array($entry[$col['key']] ?? null))
+                                        @php
+                                            $results = $entry[$col['key']];
+                                            $w = count(array_filter($results, fn($r) => $r === 'W'));
+                                            $l = count($results) - $w;
+                                        @endphp
+                                        <td class="px-3 sm:px-5 py-3 text-center whitespace-nowrap">
+                                            @if(count($results) > 0)
+                                                <div class="flex flex-col items-center gap-1">
+                                                    <span class="text-sm font-semibold text-white/80">{{ $w }}-{{ $l }}</span>
+                                                    <div class="flex items-center gap-[3px]">
+                                                        @foreach($results as $r)
+                                                            <span class="inline-block w-[7px] h-[7px] rounded-full {{ $r === 'W' ? 'bg-green-500' : 'bg-red-500' }}"></span>
+                                                        @endforeach
+                                                        <span class="text-[9px] text-white/25 ml-0.5">&#9656;</span>
+                                                    </div>
+                                                </div>
+                                            @else
+                                                <span class="text-white/30">—</span>
+                                            @endif
+                                        </td>
+                                    @elseif(($col['type'] ?? null) === 'record')
+                                        <td class="px-3 sm:px-5 py-3 whitespace-nowrap">
+                                            <div class="flex flex-col items-center">
+                                                <span class="text-[15px] font-semibold">
+                                                    @php $parts = explode('-', $entry[$col['key']] ?? '0-0'); @endphp
+                                                    <span class="text-green-500">{{ $parts[0] }}</span><span class="text-white/30">-</span><span class="text-red-500">{{ $parts[1] ?? 0 }}</span>
+                                                </span>
+                                                @if(isset($entry['win_rate']))
+                                                    <span class="text-[11px] text-white/40">{{ $entry['win_rate'] }}</span>
+                                                @endif
+                                            </div>
+                                        </td>
+                                    @else
+                                        <td class="px-3 sm:px-5 py-3 text-white/70 whitespace-nowrap">{{ $entry[$col['key']] ?? '—' }}</td>
+                                    @endif
                                 @endforeach
                             </tr>
                         @endforeach

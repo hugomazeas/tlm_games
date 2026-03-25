@@ -145,6 +145,7 @@ class PingPongApiController extends Controller
 
             $winStreak = $this->getCurrentWinStreak($playerId, $mode);
             $losingStreak = $this->getCurrentLosingStreak($playerId, $mode);
+            $last10 = $this->getLast10Results($playerId, $mode);
 
             return [
                 'player_id' => $playerId,
@@ -156,6 +157,7 @@ class PingPongApiController extends Controller
                 'win_streak' => $winStreak,
                 'losing_streak' => $losingStreak,
                 'games_played' => $totalGames,
+                'last_10' => $last10,
             ];
         })
         ->filter()
@@ -227,6 +229,32 @@ class PingPongApiController extends Controller
         }
 
         return $streak;
+    }
+
+    private function getLast10Results(int $playerId, string $mode): array
+    {
+        $matches = PingPongMatch::whereNotNull('ended_at')
+            ->where('mode', $mode)
+            ->where(function ($q) use ($playerId) {
+                $q->where('player_left_id', $playerId)
+                  ->orWhere('player_right_id', $playerId)
+                  ->orWhere('team_left_player2_id', $playerId)
+                  ->orWhere('team_right_player2_id', $playerId);
+            })
+            ->orderBy('ended_at', 'desc')
+            ->limit(10)
+            ->get();
+
+        $results = [];
+        foreach ($matches as $match) {
+            $won = $mode === '1v1'
+                ? $match->winner_id === $playerId
+                : (($match->winner_id === $match->player_left_id && in_array($playerId, [$match->player_left_id, $match->team_left_player2_id], true))
+                    || ($match->winner_id === $match->player_right_id && in_array($playerId, [$match->player_right_id, $match->team_right_player2_id], true)));
+            $results[] = $won ? 'W' : 'L';
+        }
+
+        return array_reverse($results);
     }
 
     public function liveMatches(): JsonResponse

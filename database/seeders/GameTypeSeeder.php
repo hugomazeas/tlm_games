@@ -63,9 +63,8 @@ class GameTypeSeeder extends Seeder
                 'sort_order' => 0,
                 'leaderboard_columns' => [
                     ['key' => 'elo_rating', 'label' => 'ELO', 'sortable' => true],
-                    ['key' => 'wins', 'label' => 'Wins', 'sortable' => true],
-                    ['key' => 'losses', 'label' => 'Losses', 'sortable' => true],
-                    ['key' => 'win_rate', 'label' => 'Win %', 'sortable' => true],
+                    ['key' => 'record', 'label' => 'W-L', 'sortable' => true, 'type' => 'record'],
+                    ['key' => 'last_10', 'label' => 'Last 10', 'type' => 'last_10'],
                     ['key' => 'games_played', 'label' => 'Games', 'sortable' => true],
                 ],
             ]
@@ -80,9 +79,8 @@ class GameTypeSeeder extends Seeder
                 'sort_order' => 1,
                 'leaderboard_columns' => [
                     ['key' => 'elo_rating', 'label' => 'ELO', 'sortable' => true],
-                    ['key' => 'wins', 'label' => 'Wins', 'sortable' => true],
-                    ['key' => 'losses', 'label' => 'Losses', 'sortable' => true],
-                    ['key' => 'win_rate', 'label' => 'Win %', 'sortable' => true],
+                    ['key' => 'record', 'label' => 'W-L', 'sortable' => true, 'type' => 'record'],
+                    ['key' => 'last_10', 'label' => 'Last 10', 'type' => 'last_10'],
                     ['key' => 'games_played', 'label' => 'Games', 'sortable' => true],
                 ],
             ]

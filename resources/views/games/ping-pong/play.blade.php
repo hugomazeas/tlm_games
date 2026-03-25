@@ -109,33 +109,28 @@
                     </div>
                 </div>
 
-                <!-- Stats link -->
-                <div x-show="leaderboard.length > 0" style="flex-shrink: 0; margin-bottom: 12px; text-align: center;">
-                    <a href="/games/ping-pong/stats" style="display: inline-block; padding: 10px 28px; background: rgba(59,130,246,0.12); border: 1.5px solid rgba(59,130,246,0.35); border-radius: 10px; color: #60a5fa; font-size: 1rem; font-weight: 700; text-decoration: none; letter-spacing: 0.02em; transition: all 0.2s;" onmouseenter="this.style.background='rgba(59,130,246,0.22)';this.style.borderColor='#3b82f6';this.style.color='#93c5fd'" onmouseleave="this.style.background='rgba(59,130,246,0.12)';this.style.borderColor='rgba(59,130,246,0.35)';this.style.color='#60a5fa'">View Stats &rarr;</a>
-                </div>
-
-                <div class="pp-lb-tabs-row">
-                    <button type="button" class="pp-lb-tab" :class="{ active: leaderboardTab === 'all' }" @click="leaderboardTab = 'all'">
-                        All players
-                    </button>
-                    <template x-for="block in officeLeaderboards" :key="'tab-' + block.id">
-                        <button type="button" class="pp-lb-tab" :class="{ active: leaderboardTab === block.id }" @click="leaderboardTab = block.id" x-text="block.name"></button>
-                    </template>
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; flex-shrink: 0;">
+                    <h2 style="font-size: 1.2rem; font-weight: 700; color: #fff; margin: 0; white-space: nowrap;" x-text="mode === '2v2' ? '2v2 ELO Leaderboard' : 'ELO Leaderboard'"></h2>
+                    <div class="pp-lb-tabs-row" style="margin-bottom: 0; flex: 1; justify-content: center;">
+                        <button type="button" class="pp-lb-tab" :class="{ active: leaderboardTab === 'all' }" @click="leaderboardTab = 'all'">
+                            All players
+                        </button>
+                        <template x-for="block in officeLeaderboards" :key="'tab-' + block.id">
+                            <button type="button" class="pp-lb-tab" :class="{ active: leaderboardTab === block.id }" @click="leaderboardTab = block.id" x-text="block.name"></button>
+                        </template>
+                    </div>
+                    <a x-show="leaderboard.length > 0" href="/games/ping-pong/stats" style="padding: 6px 16px; background: #3b82f6; border-radius: 8px; color: #fff; font-size: 0.85rem; font-weight: 700; text-decoration: none; white-space: nowrap; transition: all 0.2s;" onmouseenter="this.style.background='#2563eb'" onmouseleave="this.style.background='#3b82f6'">Stats &rarr;</a>
                 </div>
                 <div class="pp-lb-tab-content">
                     <div x-show="leaderboardTab === 'all'">
-                        <div class="pp-header">
-                            <h2 x-text="mode === '2v2' ? '2v2 ELO Leaderboard' : 'ELO Leaderboard'"></h2>
-                        </div>
                         <table class="pp-leaderboard-table" x-show="leaderboard.length > 0">
                             <thead>
                                 <tr>
                                     <th>#</th>
                                     <th>Player</th>
                                     <th>ELO</th>
-                                    <th>W</th>
-                                    <th>L</th>
-                                    <th>Win %</th>
+                                    <th style="text-align: center;">W-L</th>
+                                    <th style="text-align: center;">Last 10</th>
                                     <th>Streak</th>
                                 </tr>
                             </thead>
@@ -147,9 +142,28 @@
                                             <a :href="'/games/ping-pong/players/' + entry.player_id" x-text="entry.player_name"></a>
                                         </td>
                                         <td style="font-weight: 700;" x-text="entry.elo_rating"></td>
-                                        <td style="color: #22c55e;" x-text="entry.wins"></td>
-                                        <td style="color: #ef4444;" x-text="entry.losses"></td>
-                                        <td style="color: rgba(255,255,255,0.7);" x-text="entry.win_rate + '%'"></td>
+                                        <td style="white-space: nowrap;">
+                                            <div style="display: flex; flex-direction: column; align-items: center;">
+                                                <span><span style="color: #22c55e; font-size: 15px; font-weight: 600;" x-text="entry.wins"></span><span style="color: rgba(255,255,255,0.3); font-size: 15px;">-</span><span style="color: #ef4444; font-size: 15px; font-weight: 600;" x-text="entry.losses"></span></span>
+                                                <span style="font-size: 13px; color: rgba(255,255,255,0.4);" x-text="entry.win_rate + '%'"></span>
+                                            </div>
+                                        </td>
+                                        <td style="text-align: center;">
+                                            <template x-if="entry.last_10 && entry.last_10.length > 0">
+                                                <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                                                    <span style="font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.8);" x-text="entry.last_10.filter(r => r === 'W').length + '-' + entry.last_10.filter(r => r === 'L').length"></span>
+                                                    <div style="display: flex; align-items: center; gap: 3px;">
+                                                        <template x-for="(r, j) in entry.last_10" :key="j">
+                                                            <span :style="'width: 7px; height: 7px; border-radius: 50%; background:' + (r === 'W' ? '#22c55e' : '#ef4444')"></span>
+                                                        </template>
+                                                        <span style="font-size: 9px; color: rgba(255,255,255,0.25); margin-left: 1px;">&#9656;</span>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                            <template x-if="!entry.last_10 || entry.last_10.length === 0">
+                                                <span style="color: rgba(255,255,255,0.3);">-</span>
+                                            </template>
+                                        </td>
                                         <td>
                                             <template x-if="entry.win_streak > 0">
                                                 <span class="streak-badge W"><span>W</span><span x-text="entry.win_streak"></span></span>
@@ -171,18 +185,14 @@
                     </div>
                     <template x-for="block in officeLeaderboards" :key="'panel-' + block.id">
                         <div x-show="leaderboardTab === block.id">
-                            <div class="pp-header">
-                                <h2 x-text="officeLeaderboardTitle(block)"></h2>
-                            </div>
                             <table class="pp-leaderboard-table" x-show="block.entries.length > 0">
                                 <thead>
                                     <tr>
                                         <th>#</th>
                                         <th>Player</th>
                                         <th>ELO</th>
-                                        <th>W</th>
-                                        <th>L</th>
-                                        <th>Win %</th>
+                                        <th style="text-align: center;">W-L</th>
+                                        <th style="text-align: center;">Last 10</th>
                                         <th>Streak</th>
                                     </tr>
                                 </thead>
@@ -194,9 +204,28 @@
                                                 <a :href="'/games/ping-pong/players/' + entry.player_id" x-text="entry.player_name"></a>
                                             </td>
                                             <td style="font-weight: 700;" x-text="entry.elo_rating"></td>
-                                            <td style="color: #22c55e;" x-text="entry.wins"></td>
-                                            <td style="color: #ef4444;" x-text="entry.losses"></td>
-                                            <td style="color: rgba(255,255,255,0.7);" x-text="entry.win_rate + '%'"></td>
+                                            <td style="white-space: nowrap;">
+                                                <div style="display: flex; flex-direction: column; align-items: center;">
+                                                    <span><span style="color: #22c55e; font-size: 15px; font-weight: 600;" x-text="entry.wins"></span><span style="color: rgba(255,255,255,0.3); font-size: 15px;">-</span><span style="color: #ef4444; font-size: 15px; font-weight: 600;" x-text="entry.losses"></span></span>
+                                                    <span style="font-size: 13px; color: rgba(255,255,255,0.4);" x-text="entry.win_rate + '%'"></span>
+                                                </div>
+                                            </td>
+                                            <td style="text-align: center;">
+                                                <template x-if="entry.last_10 && entry.last_10.length > 0">
+                                                    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                                                        <span style="font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.8);" x-text="entry.last_10.filter(r => r === 'W').length + '-' + entry.last_10.filter(r => r === 'L').length"></span>
+                                                        <div style="display: flex; align-items: center; gap: 3px;">
+                                                            <template x-for="(r, j) in entry.last_10" :key="j">
+                                                                <span :style="'width: 7px; height: 7px; border-radius: 50%; background:' + (r === 'W' ? '#22c55e' : '#ef4444')"></span>
+                                                            </template>
+                                                            <span style="font-size: 9px; color: rgba(255,255,255,0.25); margin-left: 1px;">&#9656;</span>
+                                                        </div>
+                                                    </div>
+                                                </template>
+                                                <template x-if="!entry.last_10 || entry.last_10.length === 0">
+                                                    <span style="color: rgba(255,255,255,0.3);">-</span>
+                                                </template>
+                                            </td>
                                             <td>
                                                 <template x-if="entry.win_streak > 0">
                                                     <span class="streak-badge W"><span>W</span><span x-text="entry.win_streak"></span></span>
