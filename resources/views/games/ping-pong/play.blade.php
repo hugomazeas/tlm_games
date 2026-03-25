@@ -108,6 +108,12 @@
                         </template>
                     </div>
                 </div>
+
+                <!-- Stats link -->
+                <div x-show="leaderboard.length > 0" style="flex-shrink: 0; margin-bottom: 12px; text-align: center;">
+                    <a href="/games/ping-pong/stats" style="display: inline-block; padding: 10px 28px; background: rgba(59,130,246,0.12); border: 1.5px solid rgba(59,130,246,0.35); border-radius: 10px; color: #60a5fa; font-size: 1rem; font-weight: 700; text-decoration: none; letter-spacing: 0.02em; transition: all 0.2s;" onmouseenter="this.style.background='rgba(59,130,246,0.22)';this.style.borderColor='#3b82f6';this.style.color='#93c5fd'" onmouseleave="this.style.background='rgba(59,130,246,0.12)';this.style.borderColor='rgba(59,130,246,0.35)';this.style.color='#60a5fa'">View Stats &rarr;</a>
+                </div>
+
                 <div class="pp-lb-tabs-row">
                     <button type="button" class="pp-lb-tab" :class="{ active: leaderboardTab === 'all' }" @click="leaderboardTab = 'all'">
                         All players
