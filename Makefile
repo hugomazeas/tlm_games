@@ -1,4 +1,4 @@
-.PHONY: build up down restart shell logs migrate seed fresh test tinker status
+.PHONY: build up down restart shell logs migrate seed fresh test tinker status cache
 
 # Host uid/gid so bind-mounted files stay owned by the clone user (Makefile exports for compose build args).
 export LOCAL_UID := $(shell id -u)
@@ -39,3 +39,9 @@ tinker:
 
 status:
 	docker compose ps
+
+cache:
+	docker compose exec app php artisan cache:clear
+	docker compose exec app php artisan config:clear
+	docker compose exec app php artisan route:clear
+	docker compose exec app php artisan view:clear
