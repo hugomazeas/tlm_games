@@ -169,6 +169,16 @@
     .pps .h2h-losses { color: #ef4444; }
     .pps .h2h-sep { color: rgba(255,255,255,0.3); }
 
+    .pps .h2h-chart-wrap {
+        display: flex;
+        justify-content: center;
+        position: relative;
+    }
+
+    .pps .h2h-chart-wrap canvas {
+        display: block;
+    }
+
     .pps .match-list {
         display: flex;
         flex-direction: column;
@@ -463,17 +473,8 @@
     <!-- Head to Head -->
     <div class="section">
         <h2>Head-to-Head</h2>
-        <div class="h2h-grid" x-show="h2h.length > 0">
-            <template x-for="record in h2h" :key="record.opponent.id">
-                <div class="h2h-card">
-                    <div class="h2h-name" x-text="record.opponent.name"></div>
-                    <div class="h2h-record">
-                        <span class="h2h-wins" x-text="record.wins"></span>
-                        <span class="h2h-sep">-</span>
-                        <span class="h2h-losses" x-text="record.losses"></span>
-                    </div>
-                </div>
-            </template>
+        <div class="h2h-chart-wrap" x-ref="h2hContainer" x-show="h2h.length > 0">
+            <canvas x-ref="h2hCanvas"></canvas>
         </div>
         <div class="empty" x-show="h2h.length === 0 && !loadingH2h">No matches yet</div>
         <div class="loading" x-show="loadingH2h">Loading...</div>
@@ -504,6 +505,7 @@ function playerStats() {
     return {
         API: '/games/ping-pong/api',
         playerId: {{ $player->id }},
+        playerName: '{{ $player->name }}',
         stats: {},
         h2h: [],
         matches: [],
@@ -524,7 +526,10 @@ function playerStats() {
                 this.loadMatches(),
                 this.loadEloHistory(),
             ]);
-            window.addEventListener('resize', () => { if (this.eloHistory.length > 0) this.renderEloChart(); });
+            window.addEventListener('resize', () => {
+                if (this.eloHistory.length > 0) this.renderEloChart();
+                if (this.h2h.length > 0) this.renderH2hChart();
+            });
         },
 
         setEloChartView(view) {
@@ -557,6 +562,7 @@ function playerStats() {
                 const res = await fetch(`${this.API}/players/${this.playerId}/head-to-head`);
                 const data = await res.json();
                 this.h2h = data.records;
+                this.$nextTick(() => this.renderH2hChart());
             } catch (err) {
                 console.error('Error loading h2h:', err);
             }
@@ -588,6 +594,220 @@ function playerStats() {
                 this.eloCandles = [];
             }
             this.loadingEloHistory = false;
+        },
+
+        renderH2hChart() {
+            const canvas = this.$refs.h2hCanvas;
+            const container = this.$refs.h2hContainer;
+            if (!canvas || !container || this.h2h.length === 0) return;
+            const rect = container.getBoundingClientRect();
+            if (rect.width <= 0) return;
+
+            const dpr = window.devicePixelRatio || 1;
+            const w = rect.width;
+            const h = 480;
+            canvas.width = Math.floor(w * dpr);
+            canvas.height = Math.floor(h * dpr);
+            canvas.style.width = w + 'px';
+            canvas.style.height = h + 'px';
+
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+
+            const cx = w / 2;
+            const cy = h / 2;
+            const records = this.h2h;
+            const n = records.length;
+            const maxGames = Math.max(...records.map(r => r.wins + r.losses));
+            const centerR = 38;
+            const outerR = Math.min(w / 2, h / 2) - 80;
+            const nodeR = 26;
+
+            // Background grid circles
+            for (let r = 1; r <= 3; r++) {
+                ctx.beginPath();
+                ctx.arc(cx, cy, (outerR / 3) * r, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+
+            // Background spoke lines
+            for (let i = 0; i < n; i++) {
+                const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+                ctx.beginPath();
+                ctx.moveTo(cx + Math.cos(a) * (centerR + 2), cy + Math.sin(a) * (centerR + 2));
+                ctx.lineTo(cx + Math.cos(a) * outerR, cy + Math.sin(a) * outerR);
+                ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+
+            // Outer polygon
+            if (n > 2) {
+                ctx.beginPath();
+                for (let i = 0; i < n; i++) {
+                    const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+                    const px = cx + Math.cos(a) * outerR;
+                    const py = cy + Math.sin(a) * outerR;
+                    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+                ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+
+            // Dominance-filled polygon (win rate distance from center)
+            if (n > 2) {
+                ctx.beginPath();
+                for (let i = 0; i < n; i++) {
+                    const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+                    const total = records[i].wins + records[i].losses;
+                    const wr = total > 0 ? records[i].wins / total : 0.5;
+                    const dist = centerR + (outerR - centerR) * wr;
+                    const px = cx + Math.cos(a) * dist;
+                    const py = cy + Math.sin(a) * dist;
+                    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+                ctx.fillStyle = 'rgba(59, 130, 246, 0.06)';
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(59, 130, 246, 0.2)';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+
+            // Each spoke + node
+            records.forEach((record, i) => {
+                const angle = (i / n) * Math.PI * 2 - Math.PI / 2;
+                const total = record.wins + record.losses;
+                const winRate = total > 0 ? record.wins / total : 0.5;
+                const name = record.opponent?.name || String(record.opponent);
+
+                const ox = cx + Math.cos(angle) * outerR;
+                const oy = cy + Math.sin(angle) * outerR;
+
+                // Spoke line
+                const lineW = 2 + (total / maxGames) * 5;
+                const sx = cx + Math.cos(angle) * (centerR + 4);
+                const sy = cy + Math.sin(angle) * (centerR + 4);
+                const ex = ox - Math.cos(angle) * (nodeR + 6);
+                const ey = oy - Math.sin(angle) * (nodeR + 6);
+
+                const grad = ctx.createLinearGradient(sx, sy, ex, ey);
+                grad.addColorStop(0, 'rgba(59, 130, 246, 0.4)');
+                const endColor = winRate >= 0.5
+                    ? `rgba(34, 197, 94, ${0.3 + winRate * 0.5})`
+                    : `rgba(239, 68, 68, ${0.3 + (1 - winRate) * 0.5})`;
+                grad.addColorStop(1, endColor);
+
+                ctx.save();
+                ctx.shadowColor = winRate >= 0.5 ? 'rgba(34, 197, 94, 0.25)' : 'rgba(239, 68, 68, 0.25)';
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.moveTo(sx, sy);
+                ctx.lineTo(ex, ey);
+                ctx.strokeStyle = grad;
+                ctx.lineWidth = lineW;
+                ctx.stroke();
+                ctx.restore();
+
+                // Dominance ring
+                const ringR = nodeR + 5;
+                const startA = -Math.PI / 2;
+                const winArc = winRate * Math.PI * 2;
+                ctx.lineCap = 'round';
+                if (record.wins > 0) {
+                    ctx.beginPath();
+                    ctx.arc(ox, oy, ringR, startA, startA + winArc);
+                    ctx.strokeStyle = '#22c55e';
+                    ctx.lineWidth = 3.5;
+                    ctx.stroke();
+                }
+                if (record.losses > 0) {
+                    ctx.beginPath();
+                    ctx.arc(ox, oy, ringR, startA + winArc, startA + Math.PI * 2);
+                    ctx.strokeStyle = '#ef4444';
+                    ctx.lineWidth = 3.5;
+                    ctx.stroke();
+                }
+                ctx.lineCap = 'butt';
+
+                // Node circle
+                ctx.beginPath();
+                ctx.arc(ox, oy, nodeR, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                // Initial
+                ctx.fillStyle = winRate >= 0.5 ? '#22c55e' : '#ef4444';
+                ctx.font = 'bold 16px Outfit, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(name.charAt(0).toUpperCase(), ox, oy);
+
+                // Labels — positioned on the outer side of the node
+                const cosA = Math.cos(angle);
+                const sinA = Math.sin(angle);
+                const labelOff = nodeR + 18;
+                let lx, nameY, wlY, align;
+
+                if (Math.abs(sinA) > Math.abs(cosA)) {
+                    // Top or bottom
+                    lx = ox;
+                    align = 'center';
+                    if (sinA < 0) { nameY = oy - labelOff - 14; wlY = oy - labelOff; }
+                    else { nameY = oy + labelOff; wlY = nameY + 14; }
+                } else {
+                    // Left or right
+                    lx = cosA > 0 ? ox + labelOff : ox - labelOff;
+                    align = cosA > 0 ? 'left' : 'right';
+                    nameY = oy - 7;
+                    wlY = oy + 7;
+                }
+
+                ctx.textAlign = align;
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = 'rgba(255,255,255,0.85)';
+                ctx.font = '600 12px Outfit, sans-serif';
+                ctx.fillText(name, lx, nameY);
+                ctx.fillStyle = 'rgba(255,255,255,0.45)';
+                ctx.font = '11px Outfit, sans-serif';
+                ctx.fillText(record.wins + 'W \u2013 ' + record.losses + 'L', lx, wlY);
+            });
+
+            // Center glow
+            const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, centerR * 2.8);
+            glow.addColorStop(0, 'rgba(59, 130, 246, 0.2)');
+            glow.addColorStop(0.4, 'rgba(59, 130, 246, 0.08)');
+            glow.addColorStop(1, 'rgba(59, 130, 246, 0)');
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.arc(cx, cy, centerR * 2.8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Center circle
+            ctx.beginPath();
+            ctx.arc(cx, cy, centerR, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(59, 130, 246, 0.12)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(59, 130, 246, 0.6)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Player name
+            ctx.fillStyle = '#3b82f6';
+            ctx.font = 'bold 15px Outfit, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(this.playerName, cx, cy);
+
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
         },
 
         renderEloChart() {
