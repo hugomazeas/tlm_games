@@ -129,7 +129,24 @@ class VideoRecordingService
 
     public function getActiveRecording(): ?PingPongRecording
     {
-        return PingPongRecording::where('status', 'recording')->first();
+        $recording = PingPongRecording::where('status', 'recording')->first();
+
+        if ($recording && $recording->ffmpeg_pid && !$this->isProcessRunning($recording->ffmpeg_pid)) {
+            Log::warning('Clearing stale recording with dead FFmpeg process', [
+                'recording_id' => $recording->id,
+                'match_id' => $recording->match_id,
+                'pid' => $recording->ffmpeg_pid,
+            ]);
+            $recording->update([
+                'status' => 'failed',
+                'ffmpeg_pid' => null,
+                'error_message' => 'FFmpeg process died (likely container restart)',
+            ]);
+            $this->cleanupHlsDir($recording->match_id);
+            return null;
+        }
+
+        return $recording;
     }
 
     public function cleanupOrphans(): array
