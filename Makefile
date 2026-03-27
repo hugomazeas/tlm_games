@@ -4,17 +4,23 @@
 export LOCAL_UID := $(shell id -u)
 export LOCAL_GID := $(shell id -g)
 
+# Auto-detect USB camera and include override if present
+COMPOSE_FILES := -f docker-compose.yml
+ifneq (,$(wildcard /dev/video0))
+  COMPOSE_FILES += -f docker-compose.camera.yml
+endif
+
 build:
-	docker compose build
+	docker compose $(COMPOSE_FILES) build
 
 up:
-	docker compose up -d
+	docker compose $(COMPOSE_FILES) up -d
 
 down:
-	docker compose down
+	docker compose $(COMPOSE_FILES) down
 
 restart:
-	docker compose restart
+	docker compose $(COMPOSE_FILES) restart
 
 shell:
 	docker compose exec app sh

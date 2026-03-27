@@ -1,0 +1,7 @@
+services:
+  app:
+    devices:
+      - "/dev/video0:/dev/video0"
+    group_add:
+      - "video"
+      - "44"

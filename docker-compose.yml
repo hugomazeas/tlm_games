@@ -14,11 +14,6 @@ services:
       - "8081:80"
     volumes:
       - .:/var/www
-    devices:
-      - "/dev/video0:/dev/video0"
-    group_add:
-      - "video"
-      - "44"
     environment:
       - APP_ENV=local
       - APP_DEBUG=true
