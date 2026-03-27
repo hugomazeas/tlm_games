@@ -763,3 +763,17 @@
     flex: 1;
     min-height: 0;
 }
+
+/* Recording indicators */
+.pp-rec-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ef4444;
+    animation: pp-pulse 1.5s infinite;
+}
+
+@keyframes pp-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
