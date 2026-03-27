@@ -21,4 +21,5 @@ jobs:
           script: |
             cd /home/tlm/tlm_games
             git pull
+            make migrate
             make cache
