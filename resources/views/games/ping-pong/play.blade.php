@@ -471,10 +471,6 @@ function pingPong() {
             }
         },
 
-        officeLeaderboardTitle(block) {
-            const suffix = this.mode === '2v2' ? '2v2 ELO Leaderboard' : 'ELO Leaderboard';
-            return `${block.name} — ${suffix}`;
-        },
 
         async loadOffices() {
             const res = await fetch(`${this.API}/offices`);
@@ -582,10 +578,6 @@ function pingPong() {
             });
         },
 
-        spectateMatch(matchId) {
-            // Load the match and show the playing screen in spectate mode
-            this.loadAndStartMatch(matchId);
-        },
 
         // --- LOBBY ---
 

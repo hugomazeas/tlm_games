@@ -511,24 +511,6 @@ class PingPongApiController extends Controller
         ]);
     }
 
-    public function matchRecording(int $id): JsonResponse
-    {
-        $match = PingPongMatch::findOrFail($id);
-        $recording = $match->recording;
-
-        if (!$recording) {
-            return response()->json(['error' => 'No recording for this match'], 404);
-        }
-
-        return response()->json([
-            'status' => $recording->status,
-            'video_url' => $recording->video_url,
-            'hls_url' => $recording->hls_url,
-            'file_size' => $recording->file_size,
-            'duration_seconds' => $recording->duration_seconds,
-        ]);
-    }
-
     public function startRecording(Request $request): JsonResponse
     {
         $validated = $request->validate([

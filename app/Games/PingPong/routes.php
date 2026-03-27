@@ -34,7 +34,6 @@ Route::post('/games/ping-pong/api/recordings/start', [PingPongApiController::cla
 Route::post('/games/ping-pong/api/recordings/stop', [PingPongApiController::class, 'stopRecording']);
 Route::get('/games/ping-pong/api/recordings', [PingPongApiController::class, 'listRecordings']);
 Route::delete('/games/ping-pong/api/recordings/{id}', [PingPongApiController::class, 'deleteRecording']);
-Route::get('/games/ping-pong/api/matches/{id}/recording', [PingPongApiController::class, 'matchRecording']);
 
 // Lobby API
 Route::post('/games/ping-pong/api/lobbies', [PingPongLobbyApiController::class, 'createLobby']);

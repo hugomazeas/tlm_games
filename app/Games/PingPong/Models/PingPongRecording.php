@@ -52,13 +52,4 @@ class PingPongRecording extends Model
         return '/recordings/live/' . $this->match_id . '/stream.m3u8';
     }
 
-    public function getIsRecordingAttribute(): bool
-    {
-        return $this->status === 'recording';
-    }
-
-    public function getIsCompletedAttribute(): bool
-    {
-        return $this->status === 'completed';
-    }
 }
