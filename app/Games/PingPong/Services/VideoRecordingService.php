@@ -45,8 +45,8 @@ class VideoRecordingService
 
         $cmd = sprintf(
             'nohup ffmpeg -f v4l2 -video_size 1280x720 -framerate 30 -input_format mjpeg '
-            . '-i %s -c:v libx264 -preset ultrafast -tune zerolatency -g 60 '
-            . '-f hls -hls_time 2 -hls_list_size 10 -hls_flags delete_segments+append_list '
+            . '-i %s -c:v libx264 -pix_fmt yuv420p -preset ultrafast -tune zerolatency -g 60 '
+            . '-f hls -hls_time 2 -hls_list_size 10 -hls_delete_threshold 5 -hls_flags delete_segments+append_list '
             . '-hls_segment_filename %s %s '
             . '> /dev/null 2>&1 & echo $!',
             escapeshellarg($this->videoDevice),

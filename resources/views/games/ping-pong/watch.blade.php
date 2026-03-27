@@ -6,7 +6,7 @@
 @section('content')
 <link rel="stylesheet" href="{{ asset('css/ping-pong-play.css') }}">
 
-<div x-data="watchLive()" x-init="init()" style="width:100%;height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a0a;">
+<div x-data="watchLive()" x-init="init()" style="width:100%;height:100vh;max-height:calc(100dvh - 60px);display:flex;align-items:center;justify-content:center;background:#0a0a0a;">
 
     <!-- No live match -->
     <template x-if="!matchActive">
@@ -24,11 +24,9 @@
     <!-- Match active (with or without video) -->
     <template x-if="matchActive">
         <div style="position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
-            <!-- Video player (only when HLS stream available) -->
-            <template x-if="hasVideo">
-                <video id="watchPlayer" muted autoplay playsinline
-                       style="width:100%;height:100%;object-fit:contain;background:#000;position:absolute;inset:0;"></video>
-            </template>
+            <!-- Video player (always in DOM, hidden when no video) -->
+            <video x-show="hasVideo" id="watchPlayer" muted autoplay playsinline
+                   style="width:100%;height:100%;object-fit:contain;background:#000;position:absolute;inset:0;"></video>
 
             <!-- Score-only mode (no video) -->
             <template x-if="!hasVideo">
@@ -222,24 +220,32 @@ function watchLive() {
             const video = document.getElementById('watchPlayer');
             if (!video) return;
 
+            this.destroyPlayer();
+
             if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-                this.hlsInstance = new Hls({
+                const hls = new Hls({
                     liveSyncDuration: 3,
                     liveMaxLatencyDuration: 6,
                     enableWorker: true,
                 });
-                this.hlsInstance.loadSource(hlsUrl);
-                this.hlsInstance.attachMedia(video);
-                this.hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => video.play());
-                this.hlsInstance.on(Hls.Events.ERROR, (event, data) => {
-                    if (data.fatal) {
+                this.hlsInstance = hls;
+                hls.loadSource(hlsUrl);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+                hls.on(Hls.Events.ERROR, (event, data) => {
+                    if (!data.fatal) return;
+                    if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                        hls.startLoad();
+                    } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                        hls.recoverMediaError();
+                    } else {
                         this.hasVideo = false;
                         this.destroyPlayer();
                     }
                 });
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                 video.src = hlsUrl;
-                video.play();
+                video.play().catch(() => {});
             }
         },
 
