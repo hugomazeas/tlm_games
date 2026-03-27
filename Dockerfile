@@ -15,6 +15,8 @@ RUN apk add --no-cache \
     sqlite-dev \
     nginx \
     supervisor \
+    ffmpeg \
+    v4l-utils \
     autoconf \
     g++ \
     make

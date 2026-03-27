@@ -245,6 +245,18 @@
                 </div>
             </div>
 
+            <!-- Match Recording -->
+            <template x-if="match.recording && match.recording.status === 'completed' && match.recording.video_url">
+                <div class="section">
+                    <h2>Match Recording</h2>
+                    <div style="position:relative;width:100%;max-width:720px;margin:0 auto;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden;">
+                        <video controls playsinline preload="metadata"
+                               :src="match.recording.video_url"
+                               style="width:100%;height:100%;object-fit:contain;"></video>
+                    </div>
+                </div>
+            </template>
+
             <!-- Score Progression Chart -->
             <div class="section">
                 <h2>Score Progression</h2>

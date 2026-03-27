@@ -7,8 +7,10 @@ use App\Games\PingPong\Events\MatchScoreUpdated;
 use App\Games\PingPong\Models\PingPongMatch;
 use App\Games\PingPong\Models\PingPongPoint;
 use App\Games\PingPong\Models\PingPongRating;
+use App\Games\PingPong\Models\PingPongRecording;
 use App\Games\PingPong\Models\PingPongRatingChange;
 use App\Games\PingPong\Services\EloService;
+use App\Games\PingPong\Services\VideoRecordingService;
 use App\Http\Controllers\Controller;
 use App\Models\Office;
 use App\Models\Player;
@@ -21,7 +23,8 @@ class PingPongApiController extends Controller
     private const LIVE_MATCH_MAX_IDLE_SECONDS = 120;
 
     public function __construct(
-        private EloService $eloService
+        private EloService $eloService,
+        private VideoRecordingService $videoRecordingService,
     ) {}
 
     public function offices(): JsonResponse
@@ -263,12 +266,16 @@ class PingPongApiController extends Controller
             ->whereNull('ended_at')
             ->where('started_at', '>=', now()->subHour())
             ->where('last_score_activity_at', '>=', now()->subSeconds(self::LIVE_MATCH_MAX_IDLE_SECONDS))
-            ->with(['playerLeft', 'playerRight', 'currentServer', 'teamLeftPlayer2', 'teamRightPlayer2'])
+            ->with(['playerLeft', 'playerRight', 'currentServer', 'teamLeftPlayer2', 'teamRightPlayer2', 'recording'])
             ->orderBy('started_at', 'desc')
             ->get()
             ->map(function ($match) {
                 $data = $match->toArray();
                 $data['is_complete'] = false;
+                $data['recording'] = $match->recording ? [
+                    'status' => $match->recording->status,
+                    'hls_url' => $match->recording->hls_url,
+                ] : null;
                 return $data;
             });
 
@@ -277,7 +284,7 @@ class PingPongApiController extends Controller
 
     public function getMatch(int $id): JsonResponse
     {
-        $match = PingPongMatch::with(['playerLeft', 'playerRight', 'currentServer', 'winner', 'teamLeftPlayer2', 'teamRightPlayer2', 'points'])
+        $match = PingPongMatch::with(['playerLeft', 'playerRight', 'currentServer', 'winner', 'teamLeftPlayer2', 'teamRightPlayer2', 'points', 'recording'])
             ->findOrFail($id);
 
         $response = $match->toArray();
@@ -286,6 +293,14 @@ class PingPongApiController extends Controller
         $response['is_complete'] = $match->is_complete;
         $response['left_remote_connected'] = $match->left_remote_connected_at !== null;
         $response['right_remote_connected'] = $match->right_remote_connected_at !== null;
+
+        if ($match->recording) {
+            $response['recording'] = [
+                'status' => $match->recording->status,
+                'video_url' => $match->recording->video_url,
+                'hls_url' => $match->recording->hls_url,
+            ];
+        }
 
         if ($match->is_complete && $match->player_left_elo_before !== null) {
             if ($match->isDoubles()) {
@@ -369,6 +384,18 @@ class PingPongApiController extends Controller
 
         $match->load(['playerLeft', 'playerRight', 'currentServer', 'teamLeftPlayer2', 'teamRightPlayer2']);
 
+        if ($request->boolean('record')) {
+            try {
+                $this->videoRecordingService->startRecording($match);
+            } catch (\Throwable $e) {
+                // Don't fail match creation if recording fails
+                \Illuminate\Support\Facades\Log::warning('Failed to start recording', [
+                    'match_id' => $match->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         broadcast(new LiveMatchStarted($match));
 
         return response()->json($match, 201);
@@ -422,6 +449,19 @@ class PingPongApiController extends Controller
             $match->ended_at = now();
             $match->save();
             $eloChanges = $this->eloService->applyMatchResult($match);
+
+            // Stop recording if active
+            $recording = $match->recording;
+            if ($recording && $recording->status === 'recording') {
+                try {
+                    $this->videoRecordingService->stopRecording($match);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('Failed to stop recording', [
+                        'match_id' => $match->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
         } else {
             $match->save();
         }
@@ -441,9 +481,136 @@ class PingPongApiController extends Controller
 
         if ($match->is_complete) {
             $response['points'] = $match->points()->get()->toArray();
+            $recording = $match->recording()->first();
+            if ($recording) {
+                $response['recording'] = [
+                    'status' => $recording->status,
+                    'video_url' => $recording->video_url,
+                ];
+            }
         }
 
         return response()->json($response);
+    }
+
+    public function liveRecording(): JsonResponse
+    {
+        $recording = $this->videoRecordingService->getActiveRecording();
+
+        if (!$recording) {
+            return response()->json(['active' => false]);
+        }
+
+        $match = $recording->match()->with(['playerLeft', 'playerRight', 'teamLeftPlayer2', 'teamRightPlayer2'])->first();
+
+        return response()->json([
+            'active' => true,
+            'match_id' => $recording->match_id,
+            'hls_url' => $recording->hls_url,
+            'match' => $match,
+        ]);
+    }
+
+    public function matchRecording(int $id): JsonResponse
+    {
+        $match = PingPongMatch::findOrFail($id);
+        $recording = $match->recording;
+
+        if (!$recording) {
+            return response()->json(['error' => 'No recording for this match'], 404);
+        }
+
+        return response()->json([
+            'status' => $recording->status,
+            'video_url' => $recording->video_url,
+            'hls_url' => $recording->hls_url,
+            'file_size' => $recording->file_size,
+            'duration_seconds' => $recording->duration_seconds,
+        ]);
+    }
+
+    public function startRecording(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'match_id' => 'required|integer|exists:ping_pong_matches,id',
+        ]);
+
+        $match = PingPongMatch::findOrFail($validated['match_id']);
+
+        if ($match->is_complete) {
+            return response()->json(['error' => 'Match is already complete'], 422);
+        }
+
+        if ($match->recording && $match->recording->status === 'recording') {
+            return response()->json(['error' => 'Already recording'], 422);
+        }
+
+        try {
+            $recording = $this->videoRecordingService->startRecording($match);
+            return response()->json(['status' => $recording->status, 'match_id' => $match->id]);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function stopRecording(Request $request): JsonResponse
+    {
+        $active = $this->videoRecordingService->getActiveRecording();
+
+        if (!$active) {
+            return response()->json(['error' => 'No active recording'], 404);
+        }
+
+        try {
+            $recording = $this->videoRecordingService->stopRecording($active->match);
+            return response()->json(['status' => $recording->status, 'video_url' => $recording->video_url]);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function listRecordings(): JsonResponse
+    {
+        $recordings = PingPongRecording::with(['match.playerLeft', 'match.playerRight', 'match.winner'])
+            ->whereIn('status', ['completed', 'recording'])
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(function ($rec) {
+                return [
+                    'id' => $rec->id,
+                    'match_id' => $rec->match_id,
+                    'status' => $rec->status,
+                    'video_url' => $rec->video_url,
+                    'file_size' => $rec->file_size,
+                    'duration_seconds' => $rec->duration_seconds,
+                    'created_at' => $rec->created_at,
+                    'player_left' => $rec->match?->playerLeft?->name,
+                    'player_right' => $rec->match?->playerRight?->name,
+                    'player_left_score' => $rec->match?->player_left_score,
+                    'player_right_score' => $rec->match?->player_right_score,
+                    'winner' => $rec->match?->winner?->name,
+                    'mode' => $rec->match?->mode,
+                ];
+            });
+
+        return response()->json($recordings);
+    }
+
+    public function deleteRecording(int $id): JsonResponse
+    {
+        $recording = PingPongRecording::findOrFail($id);
+
+        // Delete the MP4 file if it exists
+        if ($recording->video_path) {
+            $fullPath = storage_path('app/public/' . $recording->video_path);
+            if (file_exists($fullPath)) {
+                unlink($fullPath);
+            }
+        }
+
+        $recording->delete();
+
+        return response()->json(['deleted' => true]);
     }
 
     public function connectRemote(Request $request, int $id): JsonResponse

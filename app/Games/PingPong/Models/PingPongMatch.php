@@ -6,6 +6,7 @@ use App\Models\Player;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class PingPongMatch extends Model
 {
@@ -92,6 +93,11 @@ class PingPongMatch extends Model
     public function points(): HasMany
     {
         return $this->hasMany(PingPongPoint::class, 'match_id')->orderBy('point_number');
+    }
+
+    public function recording(): HasOne
+    {
+        return $this->hasOne(PingPongRecording::class, 'match_id');
     }
 
     public function isDoubles(): bool

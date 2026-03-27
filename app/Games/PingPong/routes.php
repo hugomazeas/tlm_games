@@ -24,7 +24,17 @@ Route::get('/games/ping-pong/api/players/{id}/head-to-head', [PingPongApiControl
 Route::get('/games/ping-pong/api/matches/live', [PingPongApiController::class, 'liveMatches']);
 Route::get('/games/ping-pong/api/matches/{id}', [PingPongApiController::class, 'getMatch']);
 Route::get('/games/ping-pong/matches/{id}', [PingPongController::class, 'matchDetail']);
+Route::get('/games/ping-pong/watch', [PingPongController::class, 'watch']);
+Route::get('/games/ping-pong/recordings', [PingPongController::class, 'recordings']);
 Route::get('/games/ping-pong/remote/{id}/{side}', [PingPongController::class, 'remote']);
+
+// Recording API
+Route::get('/games/ping-pong/api/recordings/live', [PingPongApiController::class, 'liveRecording']);
+Route::post('/games/ping-pong/api/recordings/start', [PingPongApiController::class, 'startRecording']);
+Route::post('/games/ping-pong/api/recordings/stop', [PingPongApiController::class, 'stopRecording']);
+Route::get('/games/ping-pong/api/recordings', [PingPongApiController::class, 'listRecordings']);
+Route::delete('/games/ping-pong/api/recordings/{id}', [PingPongApiController::class, 'deleteRecording']);
+Route::get('/games/ping-pong/api/matches/{id}/recording', [PingPongApiController::class, 'matchRecording']);
 
 // Lobby API
 Route::post('/games/ping-pong/api/lobbies', [PingPongLobbyApiController::class, 'createLobby']);

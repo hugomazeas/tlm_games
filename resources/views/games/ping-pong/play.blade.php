@@ -21,6 +21,18 @@
                         <button class="pp-mode-btn" :class="{ active: mode === '1v1' }" @click="setMode('1v1')">1v1</button>
                         <button class="pp-mode-btn" :class="{ active: mode === '2v2' }" @click="setMode('2v2')">2v2</button>
                     </div>
+                    <div style="display:flex;align-items:center;gap:8px;margin:4px 0;">
+                        <label style="color:rgba(255,255,255,0.7);font-size:0.85rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;"
+                               @click="recordMatch = !recordMatch; localStorage.setItem('pp_record', recordMatch)">
+                            <span style="width:36px;height:20px;border-radius:10px;position:relative;display:inline-block;transition:background 0.2s;"
+                                  :style="recordMatch ? 'background:#ef4444' : 'background:rgba(255,255,255,0.15)'">
+                                <span style="width:16px;height:16px;border-radius:50%;background:white;position:absolute;top:2px;transition:left 0.2s;"
+                                      :style="recordMatch ? 'left:18px' : 'left:2px'"></span>
+                            </span>
+                            <span x-text="recordMatch ? 'Recording ON' : 'Record Match'"
+                                  :style="recordMatch ? 'color:#ef4444' : ''"></span>
+                        </label>
+                    </div>
                     <template x-if="lobbyCode">
                         <div style="display:flex;flex-direction:column;align-items:center;width:100%;gap:8px;">
                             <div class="pp-lobby-qr" id="lobbyQrContainer"></div>
@@ -75,7 +87,14 @@
                         <template x-for="lm in liveMatches" :key="lm.id">
                             <div class="pp-live-card"
                                  :class="{ 'just-scored': lm._flash }"
-                                 @click="spectateMatch(lm.id)">
+                                 style="position:relative;"
+                                 @click="window.location.href='/games/ping-pong/watch'">
+                                <template x-if="lm.recording && lm.recording.status === 'recording'">
+                                    <div style="position:absolute;top:4px;right:4px;display:flex;align-items:center;gap:3px;background:rgba(239,68,68,0.2);padding:2px 6px;border-radius:4px;">
+                                        <span class="pp-rec-dot" style="width:6px;height:6px;"></span>
+                                        <span style="font-size:0.65rem;color:#ef4444;font-weight:600;">REC</span>
+                                    </div>
+                                </template>
                                 <div class="pp-live-side left">
                                     <div class="pp-live-player"
                                          :class="{ serving: lm.current_server_id === lm.player_left_id }"
@@ -119,7 +138,10 @@
                             <button type="button" class="pp-lb-tab" :class="{ active: leaderboardTab === block.id }" @click="leaderboardTab = block.id" x-text="block.name"></button>
                         </template>
                     </div>
-                    <a x-show="leaderboard.length > 0" href="/games/ping-pong/stats" style="padding: 6px 16px; background: #3b82f6; border-radius: 8px; color: #fff; font-size: 0.85rem; font-weight: 700; text-decoration: none; white-space: nowrap; transition: all 0.2s;" onmouseenter="this.style.background='#2563eb'" onmouseleave="this.style.background='#3b82f6'">Stats &rarr;</a>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <a x-show="leaderboard.length > 0" href="/games/ping-pong/stats" style="padding: 6px 16px; background: #3b82f6; border-radius: 8px; color: #fff; font-size: 0.85rem; font-weight: 700; text-decoration: none; white-space: nowrap; transition: all 0.2s;" onmouseenter="this.style.background='#2563eb'" onmouseleave="this.style.background='#3b82f6'">Stats &rarr;</a>
+                        <a href="/games/ping-pong/recordings" style="padding: 6px 16px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: rgba(255,255,255,0.7); font-size: 0.85rem; font-weight: 600; text-decoration: none; white-space: nowrap; transition: all 0.2s;" onmouseenter="this.style.background='rgba(255,255,255,0.12)';this.style.color='#fff'" onmouseleave="this.style.background='rgba(255,255,255,0.08)';this.style.color='rgba(255,255,255,0.7)'">Recordings</a>
+                    </div>
                 </div>
                 <div class="pp-lb-tab-content">
                     <div x-show="leaderboardTab === 'all'">
@@ -259,6 +281,22 @@
                 <span class="pp-clock" x-text="clockDisplay"></span>
                 <span class="pp-timer" x-text="timerDisplay"></span>
             </div>
+            <div x-show="hlsInstance"
+                 style="display:flex;justify-content:center;margin:0 0 8px;">
+                <div style="position:relative;width:100%;max-width:480px;aspect-ratio:16/9;background:#000;border-radius:8px;overflow:hidden;">
+                    <video id="livePlayer" muted autoplay playsinline
+                           style="width:100%;height:100%;object-fit:cover;"></video>
+                    <div style="position:absolute;top:8px;left:8px;display:flex;align-items:center;gap:4px;background:rgba(0,0,0,0.6);padding:2px 8px;border-radius:4px;">
+                        <span class="pp-rec-dot"></span>
+                        <span style="color:white;font-size:0.75rem;font-weight:600;">LIVE</span>
+                    </div>
+                    <a :href="'/games/ping-pong/watch'" target="_blank"
+                       style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.6);padding:2px 8px;border-radius:4px;color:white;font-size:0.7rem;text-decoration:none;">
+                        Full Screen &rarr;
+                    </a>
+                </div>
+            </div>
+
             <div class="pp-game-area">
                 <!-- Left Team -->
                 <div class="pp-score-panel left" :class="{ 'serving-active': isServing('left') }">
@@ -331,6 +369,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pusher-js@8.4.0/dist/web/pusher.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
 <script>
@@ -368,6 +407,8 @@ function pingPong() {
 
         showAbandonConfirm: false,
         loading: false,
+        recordMatch: localStorage.getItem('pp_record') === 'true',
+        hlsInstance: null,
 
         echo: null,
         lobbyChannel: null,
@@ -400,9 +441,9 @@ function pingPong() {
             this.pruneStaleLiveMatches();
         },
 
-        // Must match PingPongApiController::LIVE_MATCH_MAX_IDLE_SECONDS (60s)
+        // Must match PingPongApiController::LIVE_MATCH_MAX_IDLE_SECONDS (120s)
         pruneStaleLiveMatches() {
-            const staleMs = 60_000;
+            const staleMs = 120_000;
             const cutoff = Date.now() - staleMs;
             this.liveMatches = this.liveMatches.filter((m) => {
                 const raw = m.last_score_activity_at || m.started_at;
@@ -470,7 +511,7 @@ function pingPong() {
             }
         },
 
-        subscribeLive() {
+        ensureEcho() {
             if (!this.echo) {
                 this.echo = new Echo({
                     broadcaster: 'pusher',
@@ -482,8 +523,28 @@ function pingPong() {
                     enabledTransports: ['ws', 'wss'],
                     cluster: 'mt1',
                 });
+                this.echo.connector.pusher.connection.bind('connected', () => {
+                    console.log('[WS] Connected to Reverb');
+                    this.wsStatus = 'connected';
+                });
+                this.echo.connector.pusher.connection.bind('error', (err) => {
+                    console.error('[WS] Connection error:', err);
+                    this.wsStatus = 'error';
+                });
+                this.echo.connector.pusher.connection.bind('disconnected', () => {
+                    console.warn('[WS] Disconnected');
+                    this.wsStatus = 'disconnected';
+                });
             }
+            return this.echo;
+        },
 
+        subscribeLive() {
+            this.ensureEcho();
+
+            if (this.liveChannel) {
+                this.echo.leave(this.liveChannel.name);
+            }
             this.liveChannel = this.echo.channel('ping-pong.live');
             this.liveChannel.listen('.match.started', (e) => {
                 if (!this.liveMatches.find(m => m.id === e.match.id)) {
@@ -585,33 +646,17 @@ function pingPong() {
         },
 
         subscribeToLobby() {
-            this.unsubscribeAll();
+            // Leave old lobby/match channels but keep live channel
+            if (this.echo && this.lobbyChannel) {
+                this.echo.leave(this.lobbyChannel.name);
+                this.lobbyChannel = null;
+            }
+            if (this.echo && this.matchChannel) {
+                this.echo.leave(this.matchChannel.name);
+                this.matchChannel = null;
+            }
 
-            this.wsStatus = 'connecting';
-
-            this.echo = new Echo({
-                broadcaster: 'pusher',
-                key: 'games-hub-key',
-                wsHost: window.location.hostname,
-                wsPort: window.location.port || 80,
-                forceTLS: false,
-                disableStats: true,
-                enabledTransports: ['ws', 'wss'],
-                cluster: 'mt1',
-            });
-
-            this.echo.connector.pusher.connection.bind('connected', () => {
-                console.log('[WS] Connected to Reverb');
-                this.wsStatus = 'connected';
-            });
-            this.echo.connector.pusher.connection.bind('error', (err) => {
-                console.error('[WS] Connection error:', err);
-                this.wsStatus = 'error';
-            });
-            this.echo.connector.pusher.connection.bind('disconnected', () => {
-                console.warn('[WS] Disconnected');
-                this.wsStatus = 'disconnected';
-            });
+            this.ensureEcho();
 
             this.lobbyChannel = this.echo.channel('ping-pong.lobby.' + this.lobbyCode);
             this.lobbyChannel.listen('.lobby.updated', (e) => {
@@ -621,21 +666,15 @@ function pingPong() {
                 console.log('[WS] Match started:', e);
                 this.loadAndStartMatch(e.matchId);
             });
+
+            // Re-subscribe to live channel if it was lost
+            if (!this.liveChannel) {
+                this.subscribeLive();
+            }
         },
 
         subscribeToMatch(matchId) {
-            if (!this.echo) {
-                this.echo = new Echo({
-                    broadcaster: 'pusher',
-                    key: 'games-hub-key',
-                    wsHost: window.location.hostname,
-                    wsPort: window.location.port || 80,
-                    forceTLS: false,
-                    disableStats: true,
-                    enabledTransports: ['ws', 'wss'],
-                    cluster: 'mt1',
-                });
-            }
+            this.ensureEcho();
 
             if (this.matchChannel) {
                 this.echo.leave(this.matchChannel.name);
@@ -708,7 +747,7 @@ function pingPong() {
                 const res = await fetch(`${this.API}/lobbies/${this.lobbyCode}/start`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf },
-                    body: JSON.stringify({ host_token: this.hostToken }),
+                    body: JSON.stringify({ host_token: this.hostToken, record: this.recordMatch }),
                 });
                 const data = await res.json();
                 this.match = data.match;
@@ -719,6 +758,11 @@ function pingPong() {
 
                 this.startTimer();
                 this.screen = 'playing';
+
+                // Start live player if recording
+                if (this.recordMatch) {
+                    this.initLivePlayer('/recordings/live/' + this.match.id + '/stream.m3u8');
+                }
             } catch (err) {
                 console.error('Error starting match:', err);
             }
@@ -854,10 +898,12 @@ function pingPong() {
         abandonMatch() {
             this.showAbandonConfirm = false;
             this.stopTimer();
+            this.destroyLivePlayer();
             this.goToHome();
         },
 
         async goToHome() {
+            this.destroyLivePlayer();
             this.unsubscribeAll();
             this.match = {};
             this.lobbyCode = '';
@@ -871,6 +917,33 @@ function pingPong() {
             this.subscribeLive();
             this.screen = 'home';
             await this.createLobby();
+        },
+
+        initLivePlayer(hlsUrl) {
+            this.$nextTick(() => {
+                const video = document.getElementById('livePlayer');
+                if (!video) return;
+                if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+                    this.hlsInstance = new Hls({
+                        liveSyncDuration: 3,
+                        liveMaxLatencyDuration: 6,
+                        enableWorker: true,
+                    });
+                    this.hlsInstance.loadSource(hlsUrl);
+                    this.hlsInstance.attachMedia(video);
+                    this.hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => video.play());
+                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                    video.src = hlsUrl;
+                    video.play();
+                }
+            });
+        },
+
+        destroyLivePlayer() {
+            if (this.hlsInstance) {
+                this.hlsInstance.destroy();
+                this.hlsInstance = null;
+            }
         },
     };
 }

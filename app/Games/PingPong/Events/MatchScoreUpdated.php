@@ -12,7 +12,7 @@ class MatchScoreUpdated implements ShouldBroadcastNow
 
     public function __construct(PingPongMatch $match)
     {
-        $match->load(['playerLeft', 'playerRight', 'currentServer', 'winner', 'teamLeftPlayer2', 'teamRightPlayer2']);
+        $match->load(['playerLeft', 'playerRight', 'currentServer', 'winner', 'teamLeftPlayer2', 'teamRightPlayer2', 'recording']);
 
         $data = $match->toArray();
         $data['duration'] = $match->duration;
@@ -60,6 +60,14 @@ class MatchScoreUpdated implements ShouldBroadcastNow
 
         if ($match->is_complete) {
             $data['points'] = $match->points()->get()->toArray();
+        }
+
+        if ($match->recording) {
+            $data['recording'] = [
+                'status' => $match->recording->status,
+                'video_url' => $match->recording->video_url,
+                'hls_url' => $match->recording->hls_url,
+            ];
         }
 
         $this->match = $data;

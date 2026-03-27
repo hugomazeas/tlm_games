@@ -9,6 +9,7 @@ use App\Games\PingPong\Models\PingPongLobby;
 use App\Games\PingPong\Models\PingPongLobbyParticipant;
 use App\Games\PingPong\Models\PingPongMatch;
 use App\Games\PingPong\Models\PingPongRating;
+use App\Games\PingPong\Services\VideoRecordingService;
 use App\Http\Controllers\Controller;
 use App\Models\Player;
 use Illuminate\Http\JsonResponse;
@@ -186,6 +187,7 @@ class PingPongLobbyApiController extends Controller
         $validated = $request->validate([
             'host_token' => 'nullable|string',
             'session_token' => 'nullable|string',
+            'record' => 'sometimes|boolean',
         ]);
 
         $authorized = false;
@@ -233,6 +235,17 @@ class PingPongLobbyApiController extends Controller
 
         $match = PingPongMatch::create($matchData);
         $match->load(['playerLeft', 'playerRight', 'currentServer', 'teamLeftPlayer2', 'teamRightPlayer2']);
+
+        if ($request->boolean('record')) {
+            try {
+                app(VideoRecordingService::class)->startRecording($match);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Failed to start recording', [
+                    'match_id' => $match->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         $lobby->update([
             'status' => 'started',

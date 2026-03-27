@@ -12,9 +12,18 @@ class LiveMatchStarted implements ShouldBroadcastNow
 
     public function __construct(PingPongMatch $match)
     {
-        $match->load(['playerLeft', 'playerRight', 'teamLeftPlayer2', 'teamRightPlayer2']);
+        $match->load(['playerLeft', 'playerRight', 'teamLeftPlayer2', 'teamRightPlayer2', 'recording']);
 
-        $this->match = $match->toArray();
+        $data = $match->toArray();
+
+        if ($match->recording) {
+            $data['recording'] = [
+                'status' => $match->recording->status,
+                'hls_url' => $match->recording->hls_url,
+            ];
+        }
+
+        $this->match = $data;
     }
 
     public function broadcastOn(): array

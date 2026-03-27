@@ -37,6 +37,16 @@ class PingPongController extends Controller
         return view('games.ping-pong.stats');
     }
 
+    public function watch()
+    {
+        return view('games.ping-pong.watch');
+    }
+
+    public function recordings()
+    {
+        return view('games.ping-pong.recordings');
+    }
+
     public function matchDetail(int $id)
     {
         $match = PingPongMatch::findOrFail($id);

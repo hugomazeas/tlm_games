@@ -14,18 +14,26 @@ services:
       - "8081:80"
     volumes:
       - .:/var/www
+    devices:
+      - "/dev/video0:/dev/video0"
+    group_add:
+      - "video"
+      - "44"
     environment:
       - APP_ENV=local
       - APP_DEBUG=true
       - DB_CONNECTION=sqlite
       - DB_DATABASE=/var/www/database/database.sqlite
     command: >
-      sh -c "composer install --no-interaction &&
+      sh -c "chmod 666 /dev/video0 2>/dev/null || true &&
+             composer install --no-interaction &&
              cp -n .env.example .env || true &&
              php artisan key:generate --force &&
              touch /var/www/database/database.sqlite &&
+             mkdir -p /var/www/storage/app/recordings/live /var/www/storage/app/public/recordings/matches &&
              chown -R www-data:www-data /var/www/vendor /var/www/database /var/www/storage /var/www/bootstrap/cache &&
              chmod -R 775 /var/www/storage /var/www/bootstrap/cache &&
+             php artisan storage:link --force 2>/dev/null || true &&
              php artisan migrate --force &&
              php artisan db:seed --force &&
              /usr/bin/supervisord -c /etc/supervisord.conf"
