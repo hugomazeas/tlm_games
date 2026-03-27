@@ -183,6 +183,7 @@ class VideoRecordingService
     {
         $hlsDir = $this->hlsBasePath . '/' . $match->id;
         $m3u8Path = $hlsDir . '/stream.m3u8';
+        $rawPath = $this->videoBasePath . '/' . $match->id . '_raw.mp4';
         $mp4Path = $this->videoBasePath . '/' . $match->id . '.mp4';
 
         if (!file_exists($m3u8Path)) {
@@ -193,10 +194,11 @@ class VideoRecordingService
             mkdir($this->videoBasePath, 0775, true);
         }
 
+        // Step 1: Remux HLS segments into a single raw MP4
         $cmd = sprintf(
-            'ffmpeg -i %s -c copy %s 2>&1',
+            'ffmpeg -y -i %s -c copy %s 2>&1',
             escapeshellarg($m3u8Path),
-            escapeshellarg($mp4Path)
+            escapeshellarg($rawPath)
         );
 
         $output = [];
@@ -204,7 +206,27 @@ class VideoRecordingService
         exec($cmd, $output, $returnCode);
 
         if ($returnCode !== 0) {
-            throw new \RuntimeException('FFmpeg finalization failed: ' . implode("\n", $output));
+            throw new \RuntimeException('FFmpeg remux failed: ' . implode("\n", $output));
+        }
+
+        // Step 2: Re-encode with compression (CRF 28, medium preset, 720p)
+        $cmd = sprintf(
+            'ffmpeg -y -i %s -c:v libx264 -preset medium -crf 28 -vf scale=-2:720 -an %s 2>&1',
+            escapeshellarg($rawPath),
+            escapeshellarg($mp4Path)
+        );
+
+        $output = [];
+        $returnCode = 0;
+        exec($cmd, $output, $returnCode);
+
+        // Clean up raw file
+        if (file_exists($rawPath)) {
+            unlink($rawPath);
+        }
+
+        if ($returnCode !== 0) {
+            throw new \RuntimeException('FFmpeg compression failed: ' . implode("\n", $output));
         }
 
         $fileSize = file_exists($mp4Path) ? filesize($mp4Path) : null;
