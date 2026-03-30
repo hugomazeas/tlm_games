@@ -82,62 +82,6 @@
         </div>
     </template>
 
-    @if(config('app.debug'))
-    <!-- Dev controls -->
-    <div style="position:fixed;bottom:16px;right:16px;background:rgba(0,0,0,0.85);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;z-index:100;min-width:220px;max-height:80vh;overflow-y:auto;">
-        <div style="color:rgba(255,255,255,0.4);font-size:0.65rem;text-transform:uppercase;letter-spacing:1px;">Dev Controls</div>
-        <div style="display:flex;align-items:center;gap:6px;">
-            <span style="width:8px;height:8px;border-radius:50%;" :style="hasVideo ? 'background:#22c55e' : 'background:#ef4444'"></span>
-            <span style="color:rgba(255,255,255,0.6);font-size:0.75rem;" x-text="hasVideo ? 'Stream active' : (matchActive ? 'Score only' : 'No stream')"></span>
-        </div>
-        <div style="display:flex;gap:4px;flex-wrap:wrap;">
-            <template x-if="matchActive && !hasVideo">
-                <button @click="devStartStream()" style="padding:5px 10px;background:#22c55e;border:none;border-radius:6px;color:white;font-size:0.7rem;font-weight:600;cursor:pointer;">
-                    Start Stream
-                </button>
-            </template>
-            <template x-if="hasVideo">
-                <button @click="devStopStream()" style="padding:5px 10px;background:#ef4444;border:none;border-radius:6px;color:white;font-size:0.7rem;font-weight:600;cursor:pointer;">
-                    Stop Stream
-                </button>
-            </template>
-            <template x-if="!matchActive">
-                <button @click="devQuickMatch()" style="padding:5px 10px;background:#3b82f6;border:none;border-radius:6px;color:white;font-size:0.7rem;font-weight:600;cursor:pointer;">
-                    Quick Match + Stream
-                </button>
-            </template>
-            <button @click="devLoadRecordings()" style="padding:5px 10px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:6px;color:white;font-size:0.7rem;font-weight:600;cursor:pointer;">
-                Refresh
-            </button>
-        </div>
-        <span x-show="devStatus" style="color:#eab308;font-size:0.7rem;" x-text="devStatus"></span>
-
-        <!-- Recordings list -->
-        <div x-show="devRecordings.length > 0" style="border-top:1px solid rgba(255,255,255,0.1);padding-top:8px;margin-top:4px;">
-            <div style="color:rgba(255,255,255,0.4);font-size:0.6rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">
-                Recordings (<span x-text="devRecordings.length"></span>)
-            </div>
-            <div style="display:flex;flex-direction:column;gap:4px;">
-                <template x-for="rec in devRecordings" :key="rec.id">
-                    <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:rgba(255,255,255,0.05);border-radius:4px;">
-                        <span style="width:6px;height:6px;border-radius:50%;flex-shrink:0;"
-                              :style="rec.status === 'recording' ? 'background:#22c55e' : 'background:#6b7280'"></span>
-                        <div style="flex:1;min-width:0;">
-                            <div style="color:rgba(255,255,255,0.8);font-size:0.7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
-                                 x-text="(rec.player_left || '?') + ' vs ' + (rec.player_right || '?')"></div>
-                            <div style="color:rgba(255,255,255,0.35);font-size:0.6rem;"
-                                 x-text="rec.status + (rec.file_size ? ' · ' + (rec.file_size / 1048576).toFixed(1) + ' MB' : '') + (rec.duration_seconds ? ' · ' + Math.floor(rec.duration_seconds / 60) + ':' + String(rec.duration_seconds % 60).padStart(2, '0') : '')">
-                            </div>
-                        </div>
-                        <template x-if="rec.status === 'completed' && rec.video_url">
-                            <a :href="rec.video_url" target="_blank" style="color:#3b82f6;font-size:0.65rem;font-weight:600;text-decoration:none;flex-shrink:0;">Play</a>
-                        </template>
-                    </div>
-                </template>
-            </div>
-        </div>
-    </div>
-    @endif
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
@@ -160,7 +104,6 @@ function watchLive() {
             if (!this.matchActive) {
                 this.startPolling();
             }
-            this.devLoadRecordings();
         },
 
         async checkForLiveMatch() {
@@ -248,77 +191,6 @@ function watchLive() {
                 this.hlsInstance.destroy();
                 this.hlsInstance = null;
             }
-        },
-
-        devStatus: '',
-        devRecordings: [],
-        csrf: document.querySelector('meta[name="csrf-token"]')?.content,
-
-        async devLoadRecordings() {
-            try {
-                const res = await fetch('/games/ping-pong/api/recordings');
-                if (res.ok) this.devRecordings = await res.json();
-            } catch (e) { console.error('Failed to load recordings:', e); }
-        },
-
-        async devStartStream() {
-            if (!this.matchId) return;
-            this.devStatus = 'Starting...';
-            try {
-                const res = await fetch('/games/ping-pong/api/recordings/start', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf, 'Accept': 'application/json' },
-                    body: JSON.stringify({ match_id: this.matchId }),
-                });
-                const data = await res.json();
-                if (!res.ok) { this.devStatus = data.error; return; }
-                this.devStatus = 'Started! Loading...';
-                await new Promise(r => setTimeout(r, 3000));
-                await this.checkForLiveMatch();
-                this.devLoadRecordings();
-                this.devStatus = '';
-            } catch (e) { this.devStatus = e.message; }
-        },
-
-        async devStopStream() {
-            this.devStatus = 'Stopping...';
-            try {
-                const res = await fetch('/games/ping-pong/api/recordings/stop', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf, 'Accept': 'application/json' },
-                });
-                const data = await res.json();
-                if (!res.ok) { this.devStatus = data.error; return; }
-                this.hasVideo = false;
-                this.destroyPlayer();
-                this.devStatus = 'Stopped: ' + data.status;
-                this.devLoadRecordings();
-                setTimeout(() => this.devStatus = '', 3000);
-            } catch (e) { this.devStatus = e.message; }
-        },
-
-        async devQuickMatch() {
-            this.devStatus = 'Creating match...';
-            try {
-                const playersRes = await fetch('/games/ping-pong/api/players');
-                const players = await playersRes.json();
-                if (players.length < 2) { this.devStatus = 'Need 2+ players'; return; }
-                const res = await fetch('/games/ping-pong/api/matches', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf, 'Accept': 'application/json' },
-                    body: JSON.stringify({
-                        player_left_id: players[0].id, player_right_id: players[1].id,
-                        mode: '1v1', first_server_id: players[0].id, record: true,
-                    }),
-                });
-                const data = await res.json();
-                if (!res.ok) { this.devStatus = data.message || data.error; return; }
-                this.devStatus = 'Match #' + data.id + ' created, loading...';
-                await new Promise(r => setTimeout(r, 3000));
-                await this.checkForLiveMatch();
-                this.devLoadRecordings();
-                this.devStatus = '';
-            } catch (e) { this.devStatus = e.message; }
         },
 
         subscribeToScores() {

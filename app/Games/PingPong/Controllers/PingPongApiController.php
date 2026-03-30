@@ -384,16 +384,14 @@ class PingPongApiController extends Controller
 
         $match->load(['playerLeft', 'playerRight', 'currentServer', 'teamLeftPlayer2', 'teamRightPlayer2']);
 
-        if ($request->boolean('record')) {
-            try {
-                $this->videoRecordingService->startRecording($match);
-            } catch (\Throwable $e) {
-                // Don't fail match creation if recording fails
-                \Illuminate\Support\Facades\Log::warning('Failed to start recording', [
-                    'match_id' => $match->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+        try {
+            $this->videoRecordingService->startRecording($match);
+        } catch (\Throwable $e) {
+            // Don't fail match creation if recording fails
+            \Illuminate\Support\Facades\Log::warning('Failed to start recording', [
+                'match_id' => $match->id,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         broadcast(new LiveMatchStarted($match));
