@@ -21,18 +21,6 @@
                         <button class="pp-mode-btn" :class="{ active: mode === '1v1' }" @click="setMode('1v1')">1v1</button>
                         <button class="pp-mode-btn" :class="{ active: mode === '2v2' }" @click="setMode('2v2')">2v2</button>
                     </div>
-                    <div style="display:flex;align-items:center;gap:8px;margin:4px 0;">
-                        <label style="color:rgba(255,255,255,0.7);font-size:0.85rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;"
-                               @click="recordMatch = !recordMatch; localStorage.setItem('pp_record', recordMatch)">
-                            <span style="width:36px;height:20px;border-radius:10px;position:relative;display:inline-block;transition:background 0.2s;"
-                                  :style="recordMatch ? 'background:#ef4444' : 'background:rgba(255,255,255,0.15)'">
-                                <span style="width:16px;height:16px;border-radius:50%;background:white;position:absolute;top:2px;transition:left 0.2s;"
-                                      :style="recordMatch ? 'left:18px' : 'left:2px'"></span>
-                            </span>
-                            <span x-text="recordMatch ? 'Recording ON' : 'Record Match'"
-                                  :style="recordMatch ? 'color:#ef4444' : ''"></span>
-                        </label>
-                    </div>
                     <template x-if="lobbyCode">
                         <div style="display:flex;flex-direction:column;align-items:center;width:100%;gap:8px;">
                             <div class="pp-lobby-qr" id="lobbyQrContainer"></div>
@@ -407,7 +395,6 @@ function pingPong() {
 
         showAbandonConfirm: false,
         loading: false,
-        recordMatch: localStorage.getItem('pp_record') === 'true',
         hlsInstance: null,
 
         echo: null,
@@ -739,7 +726,7 @@ function pingPong() {
                 const res = await fetch(`${this.API}/lobbies/${this.lobbyCode}/start`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf },
-                    body: JSON.stringify({ host_token: this.hostToken, record: this.recordMatch }),
+                    body: JSON.stringify({ host_token: this.hostToken }),
                 });
                 const data = await res.json();
                 this.match = data.match;
@@ -751,10 +738,8 @@ function pingPong() {
                 this.startTimer();
                 this.screen = 'playing';
 
-                // Start live player if recording
-                if (this.recordMatch) {
-                    this.initLivePlayer('/recordings/live/' + this.match.id + '/stream.m3u8');
-                }
+                // Start live player for recording
+                this.initLivePlayer('/recordings/live/' + this.match.id + '/stream.m3u8');
             } catch (err) {
                 console.error('Error starting match:', err);
             }
