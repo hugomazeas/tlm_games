@@ -4,6 +4,7 @@ namespace App\Games\PingPong\Services;
 
 use App\Games\PingPong\Models\PingPongMatch;
 use App\Games\PingPong\Models\PingPongRecording;
+use App\Jobs\FinalizeRecordingJob;
 use Illuminate\Support\Facades\Log;
 
 class VideoRecordingService
@@ -46,7 +47,7 @@ class VideoRecordingService
         $cmd = sprintf(
             'nohup ffmpeg -f v4l2 -video_size 1280x720 -framerate 30 -input_format mjpeg '
             . '-i %s -c:v libx264 -preset ultrafast -tune zerolatency -g 60 '
-            . '-f hls -hls_time 2 -hls_list_size 10 -hls_flags delete_segments+append_list '
+            . '-f hls -hls_time 2 -hls_list_size 0 -hls_flags append_list '
             . '-hls_segment_filename %s %s '
             . '> /dev/null 2>&1 & echo $!',
             escapeshellarg($this->videoDevice),
@@ -87,9 +88,9 @@ class VideoRecordingService
             return $recording;
         }
 
-        // Stop FFmpeg with SIGINT for clean shutdown
+        // Stop FFmpeg with SIGTERM for graceful shutdown (properly releases camera)
         if ($recording->ffmpeg_pid && $this->isProcessRunning($recording->ffmpeg_pid)) {
-            posix_kill($recording->ffmpeg_pid, SIGINT);
+            posix_kill($recording->ffmpeg_pid, SIGTERM);
 
             // Wait for FFmpeg to exit (max 10 seconds)
             $waited = 0;
@@ -107,22 +108,8 @@ class VideoRecordingService
 
         $recording->update(['status' => 'finalizing', 'ffmpeg_pid' => null]);
 
-        // Concatenate HLS segments into MP4
-        try {
-            $this->finalizeRecording($recording, $match);
-        } catch (\Throwable $e) {
-            $recording->update([
-                'status' => 'failed',
-                'error_message' => 'Finalization failed: ' . $e->getMessage(),
-            ]);
-            Log::error('Recording finalization failed', [
-                'match_id' => $match->id,
-                'error' => $e->getMessage(),
-            ]);
-        }
-
-        // Clean up HLS directory
-        $this->cleanupHlsDir($match->id);
+        // Dispatch finalization to a queued job (remux + compress)
+        FinalizeRecordingJob::dispatch($recording->id, $match->id);
 
         return $recording->fresh();
     }
@@ -161,29 +148,19 @@ class VideoRecordingService
                 continue; // Still running, not orphaned
             }
 
-            // Try to salvage by finalizing
-            try {
-                $this->finalizeRecording($recording, $recording->match);
-                $cleaned['salvaged']++;
-            } catch (\Throwable $e) {
-                $recording->update([
-                    'status' => 'failed',
-                    'ffmpeg_pid' => null,
-                    'error_message' => 'Orphaned recording: ' . $e->getMessage(),
-                ]);
-                $cleaned['failed']++;
-            }
-
-            $this->cleanupHlsDir($recording->match_id);
+            // Try to salvage by dispatching finalization job
+            $recording->update(['status' => 'finalizing', 'ffmpeg_pid' => null]);
+            FinalizeRecordingJob::dispatch($recording->id, $recording->match_id);
+            $cleaned['salvaged']++;
         }
 
-        // Clean up stale HLS directories with no matching active recording
+        // Clean up stale HLS directories with no matching active or finalizing recording
         if (is_dir($this->hlsBasePath)) {
             $dirs = glob($this->hlsBasePath . '/*', GLOB_ONLYDIR);
             foreach ($dirs as $dir) {
                 $matchId = basename($dir);
                 $hasActive = PingPongRecording::where('match_id', $matchId)
-                    ->where('status', 'recording')
+                    ->whereIn('status', ['recording', 'finalizing'])
                     ->exists();
 
                 if (!$hasActive) {
@@ -194,75 +171,6 @@ class VideoRecordingService
         }
 
         return $cleaned;
-    }
-
-    private function finalizeRecording(PingPongRecording $recording, PingPongMatch $match): void
-    {
-        $hlsDir = $this->hlsBasePath . '/' . $match->id;
-        $m3u8Path = $hlsDir . '/stream.m3u8';
-        $rawPath = $this->videoBasePath . '/' . $match->id . '_raw.mp4';
-        $mp4Path = $this->videoBasePath . '/' . $match->id . '.mp4';
-
-        if (!file_exists($m3u8Path)) {
-            throw new \RuntimeException('HLS manifest not found: ' . $m3u8Path);
-        }
-
-        if (!is_dir($this->videoBasePath)) {
-            mkdir($this->videoBasePath, 0775, true);
-        }
-
-        // Step 1: Remux HLS segments into a single raw MP4
-        $cmd = sprintf(
-            'ffmpeg -y -i %s -c copy %s 2>&1',
-            escapeshellarg($m3u8Path),
-            escapeshellarg($rawPath)
-        );
-
-        $output = [];
-        $returnCode = 0;
-        exec($cmd, $output, $returnCode);
-
-        if ($returnCode !== 0) {
-            throw new \RuntimeException('FFmpeg remux failed: ' . implode("\n", $output));
-        }
-
-        // Step 2: Re-encode with compression (CRF 28, medium preset, 720p)
-        $cmd = sprintf(
-            'ffmpeg -y -i %s -c:v libx264 -preset medium -crf 28 -vf scale=-2:720 -an %s 2>&1',
-            escapeshellarg($rawPath),
-            escapeshellarg($mp4Path)
-        );
-
-        $output = [];
-        $returnCode = 0;
-        exec($cmd, $output, $returnCode);
-
-        // Clean up raw file
-        if (file_exists($rawPath)) {
-            unlink($rawPath);
-        }
-
-        if ($returnCode !== 0) {
-            throw new \RuntimeException('FFmpeg compression failed: ' . implode("\n", $output));
-        }
-
-        $fileSize = file_exists($mp4Path) ? filesize($mp4Path) : null;
-        $durationSeconds = $match->ended_at && $match->started_at
-            ? $match->started_at->diffInSeconds($match->ended_at)
-            : null;
-
-        $recording->update([
-            'status' => 'completed',
-            'video_path' => 'recordings/matches/' . $match->id . '.mp4',
-            'file_size' => $fileSize,
-            'duration_seconds' => $durationSeconds,
-        ]);
-
-        Log::info('Recording finalized', [
-            'match_id' => $match->id,
-            'file_size' => $fileSize,
-            'duration' => $durationSeconds,
-        ]);
     }
 
     private function cleanupHlsDir(int $matchId): void
