@@ -287,7 +287,7 @@ class PingPongApiController extends Controller
         $matches = PingPongMatch::whereNotNull('ended_at')
             ->with(['playerLeft', 'playerRight', 'winner', 'teamLeftPlayer2', 'teamRightPlayer2'])
             ->orderByDesc('ended_at')
-            ->limit(10)
+            ->limit(50)
             ->get()
             ->map(function (PingPongMatch $match) {
                 $leftLabel = $match->isDoubles()
