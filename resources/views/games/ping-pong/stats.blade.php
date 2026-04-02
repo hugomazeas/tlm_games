@@ -57,6 +57,82 @@
         position: relative;
         overflow: visible;
     }
+
+    .ppst .recent-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .ppst .recent-row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px 14px;
+        padding: 12px 16px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 10px;
+        text-decoration: none;
+        color: inherit;
+        transition: background 0.15s, border-color 0.15s;
+    }
+
+    .ppst .recent-row:hover {
+        background: rgba(59,130,246,0.08);
+        border-color: rgba(59,130,246,0.25);
+    }
+
+    .ppst .recent-mode {
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: rgba(148,163,184,0.85);
+        padding: 2px 8px;
+        background: rgba(255,255,255,0.06);
+        border-radius: 6px;
+        flex-shrink: 0;
+    }
+
+    .ppst .recent-names {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px 12px;
+        flex: 1;
+        min-width: 0;
+        font-weight: 600;
+        font-size: 0.95rem;
+    }
+
+    .ppst .recent-name-won { color: #34d399; }
+    .ppst .recent-name-lost { color: rgba(248,113,113,0.75); }
+
+    .ppst .recent-score {
+        font-variant-numeric: tabular-nums;
+        font-weight: 800;
+        color: rgba(255,255,255,0.9);
+        flex-shrink: 0;
+    }
+
+    .ppst .recent-meta {
+        margin-left: auto;
+        font-size: 0.82rem;
+        color: rgba(148,163,184,0.85);
+        flex-shrink: 0;
+    }
+
+    .ppst .recent-arrow {
+        color: rgba(59,130,246,0.7);
+        font-size: 1.1rem;
+        flex-shrink: 0;
+    }
+
+    .ppst .recent-empty {
+        color: rgba(148,163,184,0.65);
+        font-size: 0.95rem;
+    }
 </style>
 
 <div class="ppst" x-data="ppStats()" x-init="init()">
@@ -64,6 +140,26 @@
     <div class="header">
         <h1><span>Ping Pong</span> Stats</h1>
         <a href="/games/ping-pong" class="back-link">&larr; Back to Play</a>
+    </div>
+
+    <!-- Recent games -->
+    <div class="section" x-show="recentGamesLoaded">
+        <div class="section-title">Recent games</div>
+        <p class="recent-empty" x-show="recentGames.length === 0">No completed matches yet.</p>
+        <div class="recent-list" x-show="recentGames.length > 0">
+            <template x-for="g in recentGames" :key="g.id">
+                <a class="recent-row" :href="'/games/ping-pong/matches/' + g.id">
+                    <span class="recent-mode" x-text="g.mode === '2v2' ? '2v2' : '1v1'"></span>
+                    <div class="recent-names">
+                        <span :class="g.left_won ? 'recent-name-won' : 'recent-name-lost'" x-text="g.left_label"></span>
+                        <span class="recent-score" x-text="g.player_left_score + ' – ' + g.player_right_score"></span>
+                        <span :class="g.left_won ? 'recent-name-lost' : 'recent-name-won'" x-text="g.right_label"></span>
+                    </div>
+                    <span class="recent-meta" x-text="g.ended_at_human"></span>
+                    <span class="recent-arrow">&rsaquo;</span>
+                </a>
+            </template>
+        </div>
     </div>
 
     <!-- ELO Distribution Chart -->
@@ -80,10 +176,17 @@ function ppStats() {
     return {
         API: '/games/ping-pong/api',
         leaderboard: [],
+        recentGames: [],
+        recentGamesLoaded: false,
 
         async init() {
-            const res = await fetch(`${this.API}/leaderboard?mode=1v1`);
-            this.leaderboard = await res.json();
+            const [lbRes, recentRes] = await Promise.all([
+                fetch(`${this.API}/leaderboard?mode=1v1`),
+                fetch(`${this.API}/matches/recent`),
+            ]);
+            this.leaderboard = await lbRes.json();
+            this.recentGames = await recentRes.json();
+            this.recentGamesLoaded = true;
             this.$nextTick(() => this.renderEloDistribution());
         },
 

@@ -282,6 +282,40 @@ class PingPongApiController extends Controller
         return response()->json($matches);
     }
 
+    public function recentMatches(): JsonResponse
+    {
+        $matches = PingPongMatch::whereNotNull('ended_at')
+            ->with(['playerLeft', 'playerRight', 'winner', 'teamLeftPlayer2', 'teamRightPlayer2'])
+            ->orderByDesc('ended_at')
+            ->limit(10)
+            ->get()
+            ->map(function (PingPongMatch $match) {
+                $leftLabel = $match->isDoubles()
+                    ? $match->playerLeft->name.' & '.($match->teamLeftPlayer2->name ?? '')
+                    : $match->playerLeft->name;
+                $rightLabel = $match->isDoubles()
+                    ? $match->playerRight->name.' & '.($match->teamRightPlayer2->name ?? '')
+                    : $match->playerRight->name;
+
+                $leftWon = $match->winner_id === $match->player_left_id;
+
+                return [
+                    'id' => $match->id,
+                    'mode' => $match->mode,
+                    'left_label' => $leftLabel,
+                    'right_label' => $rightLabel,
+                    'player_left_score' => $match->player_left_score,
+                    'player_right_score' => $match->player_right_score,
+                    'left_won' => $leftWon,
+                    'ended_at' => $match->ended_at->toIso8601String(),
+                    'ended_at_human' => $match->ended_at->diffForHumans(),
+                    'duration_formatted' => $match->duration_formatted,
+                ];
+            });
+
+        return response()->json($matches);
+    }
+
     public function getMatch(int $id): JsonResponse
     {
         $match = PingPongMatch::with(['playerLeft', 'playerRight', 'currentServer', 'winner', 'teamLeftPlayer2', 'teamRightPlayer2', 'points', 'recording'])
