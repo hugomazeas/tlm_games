@@ -58,6 +58,28 @@
         overflow: visible;
     }
 
+    .ppst .recent-list-wrap {
+        max-height: min(70vh, 720px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding-right: 4px;
+        margin-right: -4px;
+    }
+
+    .ppst .recent-list-wrap::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .ppst .recent-list-wrap::-webkit-scrollbar-track {
+        background: rgba(255,255,255,0.04);
+        border-radius: 8px;
+    }
+
+    .ppst .recent-list-wrap::-webkit-scrollbar-thumb {
+        background: rgba(59,130,246,0.35);
+        border-radius: 8px;
+    }
+
     .ppst .recent-list {
         display: flex;
         flex-direction: column;
@@ -146,19 +168,21 @@
     <div class="section" x-show="recentGamesLoaded">
         <div class="section-title">Recent games</div>
         <p class="recent-empty" x-show="recentGames.length === 0">No completed matches yet.</p>
-        <div class="recent-list" x-show="recentGames.length > 0">
-            <template x-for="g in recentGames" :key="g.id">
-                <a class="recent-row" :href="'/games/ping-pong/matches/' + g.id">
-                    <span class="recent-mode" x-text="g.mode === '2v2' ? '2v2' : '1v1'"></span>
-                    <div class="recent-names">
-                        <span :class="g.left_won ? 'recent-name-won' : 'recent-name-lost'" x-text="g.left_label"></span>
-                        <span class="recent-score" x-text="g.player_left_score + ' – ' + g.player_right_score"></span>
-                        <span :class="g.left_won ? 'recent-name-lost' : 'recent-name-won'" x-text="g.right_label"></span>
-                    </div>
-                    <span class="recent-meta" x-text="g.ended_at_human"></span>
-                    <span class="recent-arrow">&rsaquo;</span>
-                </a>
-            </template>
+        <div class="recent-list-wrap" x-show="recentGames.length > 0">
+            <div class="recent-list">
+                <template x-for="g in recentGames" :key="g.id">
+                    <a class="recent-row" :href="'/games/ping-pong/matches/' + g.id">
+                        <span class="recent-mode" x-text="g.mode === '2v2' ? '2v2' : '1v1'"></span>
+                        <div class="recent-names">
+                            <span :class="g.left_won ? 'recent-name-won' : 'recent-name-lost'" x-text="g.left_label"></span>
+                            <span class="recent-score" x-text="g.player_left_score + ' – ' + g.player_right_score"></span>
+                            <span :class="g.left_won ? 'recent-name-lost' : 'recent-name-won'" x-text="g.right_label"></span>
+                        </div>
+                        <span class="recent-meta" x-text="g.ended_at_human"></span>
+                        <span class="recent-arrow">&rsaquo;</span>
+                    </a>
+                </template>
+            </div>
         </div>
     </div>
 
