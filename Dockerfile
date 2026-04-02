@@ -27,8 +27,9 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg
 # Install PHP extensions
 RUN docker-php-ext-install pdo_mysql pdo_sqlite mbstring exif pcntl bcmath gd
 
-# Clean up build dependencies
-RUN apk del autoconf g++ make
+# Clean up build dependencies (keep libstdc++ — ffmpeg needs it)
+RUN apk del autoconf make \
+    && apk add --no-cache libstdc++
 
 # Get Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
