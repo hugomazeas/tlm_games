@@ -22,6 +22,7 @@ Route::get('/games/ping-pong/api/players/{id}/elo-history', [PingPongApiControll
 Route::get('/games/ping-pong/api/players/{id}/matches', [PingPongApiController::class, 'playerMatches']);
 Route::get('/games/ping-pong/api/players/{id}/head-to-head', [PingPongApiController::class, 'headToHead']);
 Route::get('/games/ping-pong/api/matches/live', [PingPongApiController::class, 'liveMatches']);
+Route::get('/games/ping-pong/api/matches/recent', [PingPongApiController::class, 'recentMatches']);
 Route::get('/games/ping-pong/api/matches/{id}', [PingPongApiController::class, 'getMatch']);
 Route::get('/games/ping-pong/matches/{id}', [PingPongController::class, 'matchDetail']);
 Route::get('/games/ping-pong/watch', [PingPongController::class, 'watch']);
