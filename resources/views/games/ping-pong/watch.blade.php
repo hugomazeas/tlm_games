@@ -5,6 +5,12 @@
 
 @section('content')
 <link rel="stylesheet" href="{{ asset('css/ping-pong-play.css') }}">
+<style>
+@keyframes watch-serve-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+</style>
 
 <div x-data="watchLive()" x-init="init()" style="width:100%;height:100vh;max-height:calc(100dvh - 60px);display:flex;align-items:center;justify-content:center;background:#0a0a0a;">
 
@@ -31,26 +37,33 @@
             <!-- Score-only mode (no video) -->
             <template x-if="!hasVideo">
                 <div style="display:flex;flex-direction:column;align-items:center;gap:24px;">
-                    <div style="display:flex;align-items:center;gap:32px;">
+                    <div style="display:flex;align-items:center;gap:48px;">
                         <div style="text-align:center;">
-                            <div style="color:#fb7185;font-size:1.6rem;font-weight:700;" x-text="match?.player_left?.name || 'Left'"></div>
+                            <div :style="'color:#fb7185;font-size:1.6rem;font-weight:700;' + (match?.current_server_id && (match.current_server_id === match.player_left_id || match.current_server_id === match.team_left_player2_id) ? 'animation:watch-serve-pulse 1.5s ease-in-out infinite;' : '')" x-text="match?.player_left?.name || 'Left'"></div>
                             <template x-if="match?.mode === '2v2' && match?.team_left_player2">
                                 <div style="color:#fb7185;font-size:1rem;font-weight:500;opacity:0.7;" x-text="match.team_left_player2.name"></div>
                             </template>
+                            <div style="color:white;font-size:8rem;font-weight:900;line-height:1.1;" x-text="match?.player_left_score ?? 0"></div>
+                            <div x-show="match?.current_server_id && (match.current_server_id === match.player_left_id || match.current_server_id === match.team_left_player2_id)"
+                                 style="margin-top:8px;color:#facc15;font-size:0.85rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;justify-content:center;gap:5px;animation:watch-serve-pulse 1.5s ease-in-out infinite;">
+                                <span style="display:inline-block;width:7px;height:7px;background:#facc15;border-radius:50%;box-shadow:0 0 6px 2px rgba(250,204,21,0.5);"></span>
+                                Serving
+                            </div>
                         </div>
-                        <div style="display:flex;align-items:center;gap:12px;">
-                            <span style="color:white;font-size:5rem;font-weight:800;" x-text="match?.player_left_score ?? 0"></span>
-                            <span style="color:rgba(255,255,255,0.2);font-size:3rem;">-</span>
-                            <span style="color:white;font-size:5rem;font-weight:800;" x-text="match?.player_right_score ?? 0"></span>
-                        </div>
+                        <div style="color:rgba(255,255,255,0.15);font-size:4rem;font-weight:300;">-</div>
                         <div style="text-align:center;">
-                            <div style="color:#22d3ee;font-size:1.6rem;font-weight:700;" x-text="match?.player_right?.name || 'Right'"></div>
+                            <div :style="'color:#22d3ee;font-size:1.6rem;font-weight:700;' + (match?.current_server_id && (match.current_server_id === match.player_right_id || match.current_server_id === match.team_right_player2_id) ? 'animation:watch-serve-pulse 1.5s ease-in-out infinite;' : '')" x-text="match?.player_right?.name || 'Right'"></div>
                             <template x-if="match?.mode === '2v2' && match?.team_right_player2">
                                 <div style="color:#22d3ee;font-size:1rem;font-weight:500;opacity:0.7;" x-text="match.team_right_player2.name"></div>
                             </template>
+                            <div style="color:white;font-size:8rem;font-weight:900;line-height:1.1;" x-text="match?.player_right_score ?? 0"></div>
+                            <div x-show="match?.current_server_id && (match.current_server_id === match.player_right_id || match.current_server_id === match.team_right_player2_id)"
+                                 style="margin-top:8px;color:#facc15;font-size:0.85rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;justify-content:center;gap:5px;animation:watch-serve-pulse 1.5s ease-in-out infinite;">
+                                <span style="display:inline-block;width:7px;height:7px;background:#facc15;border-radius:50%;box-shadow:0 0 6px 2px rgba(250,204,21,0.5);"></span>
+                                Serving
+                            </div>
                         </div>
                     </div>
-                    <div style="color:rgba(255,255,255,0.3);font-size:0.9rem;" x-text="match?.mode?.toUpperCase()"></div>
                 </div>
             </template>
 
@@ -60,16 +73,35 @@
                 <span style="color:white;font-size:0.9rem;font-weight:700;">LIVE</span>
             </div>
 
-            <!-- Overlay: Score (only on top of video) -->
+            <!-- Overlay: Left score (corner) -->
             <template x-if="hasVideo && match">
-                <div style="position:absolute;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);padding:8px 24px;border-radius:12px;display:flex;align-items:center;gap:16px;">
-                    <span style="color:#fb7185;font-size:1.1rem;font-weight:700;" x-text="match?.player_left?.name || 'Left'"></span>
-                    <span style="color:white;font-size:2rem;font-weight:800;letter-spacing:2px;">
-                        <span x-text="match?.player_left_score ?? 0"></span>
-                        <span style="color:rgba(255,255,255,0.3);margin:0 4px;">-</span>
-                        <span x-text="match?.player_right_score ?? 0"></span>
-                    </span>
-                    <span style="color:#22d3ee;font-size:1.1rem;font-weight:700;" x-text="match?.player_right?.name || 'Right'"></span>
+                <div style="position:absolute;bottom:32px;left:32px;background:rgba(0,0,0,0.8);padding:24px 40px;border-radius:20px;display:flex;flex-direction:column;align-items:center;gap:8px;min-width:200px;">
+                    <div :style="'color:#fb7185;font-size:3rem;font-weight:700;white-space:nowrap;' + (match?.current_server_id && (match.current_server_id === match.player_left_id || match.current_server_id === match.team_left_player2_id) ? 'animation:watch-serve-pulse 1.5s ease-in-out infinite;' : '')" x-text="match?.player_left?.name || 'Left'"></div>
+                    <template x-if="match?.mode === '2v2' && match?.team_left_player2">
+                        <div style="color:#fb7185;font-size:1.6rem;font-weight:500;opacity:0.7;" x-text="match.team_left_player2.name"></div>
+                    </template>
+                    <div style="color:white;font-size:10rem;font-weight:900;line-height:1;" x-text="match?.player_left_score ?? 0"></div>
+                    <div x-show="match?.current_server_id && (match.current_server_id === match.player_left_id || match.current_server_id === match.team_left_player2_id)"
+                         style="color:#facc15;font-size:2rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:8px;animation:watch-serve-pulse 1.5s ease-in-out infinite;">
+                        <span style="display:inline-block;width:10px;height:10px;background:#facc15;border-radius:50%;box-shadow:0 0 10px 4px rgba(250,204,21,0.5);"></span>
+                        Serving
+                    </div>
+                </div>
+            </template>
+
+            <!-- Overlay: Right score (corner) -->
+            <template x-if="hasVideo && match">
+                <div style="position:absolute;bottom:32px;right:32px;background:rgba(0,0,0,0.8);padding:24px 40px;border-radius:20px;display:flex;flex-direction:column;align-items:center;gap:8px;min-width:200px;">
+                    <div :style="'color:#22d3ee;font-size:3rem;font-weight:700;white-space:nowrap;' + (match?.current_server_id && (match.current_server_id === match.player_right_id || match.current_server_id === match.team_right_player2_id) ? 'animation:watch-serve-pulse 1.5s ease-in-out infinite;' : '')" x-text="match?.player_right?.name || 'Right'"></div>
+                    <template x-if="match?.mode === '2v2' && match?.team_right_player2">
+                        <div style="color:#22d3ee;font-size:1.6rem;font-weight:500;opacity:0.7;" x-text="match.team_right_player2.name"></div>
+                    </template>
+                    <div style="color:white;font-size:10rem;font-weight:900;line-height:1;" x-text="match?.player_right_score ?? 0"></div>
+                    <div x-show="match?.current_server_id && (match.current_server_id === match.player_right_id || match.current_server_id === match.team_right_player2_id)"
+                         style="color:#facc15;font-size:2rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:8px;animation:watch-serve-pulse 1.5s ease-in-out infinite;">
+                        <span style="display:inline-block;width:10px;height:10px;background:#facc15;border-radius:50%;box-shadow:0 0 10px 4px rgba(250,204,21,0.5);"></span>
+                        Serving
+                    </div>
                 </div>
             </template>
 

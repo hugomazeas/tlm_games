@@ -731,15 +731,8 @@ function pingPong() {
                 const data = await res.json();
                 this.match = data.match;
 
-
-                // Subscribe to match channel for score updates
-                this.subscribeToMatch(this.match.id);
-
-                this.startTimer();
-                this.screen = 'playing';
-
-                // Start live player for recording
-                this.initLivePlayer('/recordings/live/' + this.match.id + '/stream.m3u8');
+                // Redirect desktop to livestream page
+                window.location.href = '/games/ping-pong/watch';
             } catch (err) {
                 console.error('Error starting match:', err);
             }
@@ -747,17 +740,8 @@ function pingPong() {
         },
 
         async loadAndStartMatch(matchId) {
-            try {
-                const res = await fetch(`${this.API}/matches/${matchId}`);
-                const data = await res.json();
-                this.match = data;
-
-                this.subscribeToMatch(matchId);
-                this.startTimer();
-                this.screen = 'playing';
-            } catch (err) {
-                console.error('Error loading match:', err);
-            }
+            // Redirect desktop to livestream page
+            window.location.href = '/games/ping-pong/watch';
         },
 
         // --- PLAYING ---
