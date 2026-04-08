@@ -67,10 +67,22 @@
                 </div>
             </template>
 
-            <!-- Overlay: LIVE badge -->
-            <div style="position:absolute;top:16px;left:16px;display:flex;align-items:center;gap:6px;background:rgba(0,0,0,0.7);padding:4px 12px;border-radius:6px;">
-                <span class="pp-rec-dot"></span>
-                <span style="color:white;font-size:0.9rem;font-weight:700;">LIVE</span>
+            <!-- Overlay: LIVE badge + viewer count -->
+            <div style="position:absolute;top:16px;left:16px;display:flex;align-items:center;gap:10px;">
+                <div style="display:flex;align-items:center;gap:6px;background:rgba(0,0,0,0.7);padding:4px 12px;border-radius:6px;">
+                    <span class="pp-rec-dot"></span>
+                    <span style="color:white;font-size:0.9rem;font-weight:700;">LIVE</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:5px;background:rgba(0,0,0,0.7);padding:4px 12px;border-radius:6px;">
+                    <span style="font-size:0.85rem;">👁</span>
+                    <span style="color:white;font-size:0.9rem;font-weight:600;" x-text="viewerCount"></span>
+                </div>
+            </div>
+
+            <!-- Overlay: Current time + game timer (top center) -->
+            <div style="position:absolute;top:24px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;">
+                <div style="color:white;font-size:4rem;font-weight:800;letter-spacing:2px;text-shadow:0 2px 8px rgba(0,0,0,0.6);" x-text="currentTime"></div>
+                <div x-show="gameTimer" style="color:rgba(255,255,255,0.6);font-size:1.5rem;font-weight:600;letter-spacing:1px;" x-text="gameTimer"></div>
             </div>
 
             <!-- Overlay: Left score (corner) -->
@@ -128,11 +140,30 @@ function watchLive() {
         countdown: 10,
         countdownTimer: null,
         echo: null,
+        currentTime: '',
+        gameTimer: '',
+        clockTimer: null,
+        viewerCount: 0,
+        presenceChannel: null,
 
         async init() {
+            this.updateClock();
+            this.clockTimer = setInterval(() => this.updateClock(), 1000);
             await this.checkForLiveMatch();
             if (!this.matchActive) {
                 this.startPolling();
+            }
+        },
+
+        updateClock() {
+            const now = new Date();
+            this.currentTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            if (this.match?.started_at) {
+                const start = new Date(this.match.started_at);
+                const diff = Math.max(0, Math.floor((now - start) / 1000));
+                const m = Math.floor(diff / 60);
+                const s = diff % 60;
+                this.gameTimer = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
             }
         },
 
@@ -234,6 +265,7 @@ function watchLive() {
         subscribeToScores() {
             if (!this.matchId) return;
 
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
             this.echo = new Echo({
                 broadcaster: 'pusher',
                 key: 'games-hub-key',
@@ -243,6 +275,12 @@ function watchLive() {
                 disableStats: true,
                 enabledTransports: ['ws', 'wss'],
                 cluster: 'mt1',
+                authEndpoint: '/broadcasting/auth',
+                auth: {
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                },
             });
 
             this.echo.channel('ping-pong.match.' + this.matchId)
@@ -254,11 +292,22 @@ function watchLive() {
                                 this.matchActive = false;
                                 this.hasVideo = false;
                                 this.destroyPlayer();
+                                if (this.presenceChannel) {
+                                    this.echo.leave('ping-pong.watch.' + this.matchId);
+                                    this.presenceChannel = null;
+                                }
+                                this.viewerCount = 0;
                                 this.startPolling();
                             }, 3000);
                         }
                     }
                 });
+
+            // Join presence channel to track viewers
+            this.presenceChannel = this.echo.join('ping-pong.watch.' + this.matchId)
+                .here((users) => { this.viewerCount = users.length; })
+                .joining(() => { this.viewerCount++; })
+                .leaving(() => { this.viewerCount = Math.max(0, this.viewerCount - 1); });
         },
     };
 }
