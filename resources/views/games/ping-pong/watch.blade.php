@@ -5,6 +5,12 @@
 
 @section('content')
 <link rel="stylesheet" href="{{ asset('css/ping-pong-play.css') }}">
+<style>
+@keyframes watch-serve-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+</style>
 
 <div x-data="watchLive()" x-init="init()" style="width:100%;height:100vh;max-height:calc(100dvh - 60px);display:flex;align-items:center;justify-content:center;background:#0a0a0a;">
 
@@ -31,45 +37,83 @@
             <!-- Score-only mode (no video) -->
             <template x-if="!hasVideo">
                 <div style="display:flex;flex-direction:column;align-items:center;gap:24px;">
-                    <div style="display:flex;align-items:center;gap:32px;">
+                    <div style="display:flex;align-items:center;gap:48px;">
                         <div style="text-align:center;">
-                            <div style="color:#fb7185;font-size:1.6rem;font-weight:700;" x-text="match?.player_left?.name || 'Left'"></div>
+                            <div :style="'color:#fb7185;font-size:1.6rem;font-weight:700;' + (match?.current_server_id && (match.current_server_id === match.player_left_id || match.current_server_id === match.team_left_player2_id) ? 'animation:watch-serve-pulse 1.5s ease-in-out infinite;' : '')" x-text="match?.player_left?.name || 'Left'"></div>
                             <template x-if="match?.mode === '2v2' && match?.team_left_player2">
                                 <div style="color:#fb7185;font-size:1rem;font-weight:500;opacity:0.7;" x-text="match.team_left_player2.name"></div>
                             </template>
+                            <div style="color:white;font-size:8rem;font-weight:900;line-height:1.1;" x-text="match?.player_left_score ?? 0"></div>
+                            <div x-show="match?.current_server_id && (match.current_server_id === match.player_left_id || match.current_server_id === match.team_left_player2_id)"
+                                 style="margin-top:8px;color:#facc15;font-size:0.85rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;justify-content:center;gap:5px;animation:watch-serve-pulse 1.5s ease-in-out infinite;">
+                                <span style="display:inline-block;width:7px;height:7px;background:#facc15;border-radius:50%;box-shadow:0 0 6px 2px rgba(250,204,21,0.5);"></span>
+                                Serving
+                            </div>
                         </div>
-                        <div style="display:flex;align-items:center;gap:12px;">
-                            <span style="color:white;font-size:5rem;font-weight:800;" x-text="match?.player_left_score ?? 0"></span>
-                            <span style="color:rgba(255,255,255,0.2);font-size:3rem;">-</span>
-                            <span style="color:white;font-size:5rem;font-weight:800;" x-text="match?.player_right_score ?? 0"></span>
-                        </div>
+                        <div style="color:rgba(255,255,255,0.15);font-size:4rem;font-weight:300;">-</div>
                         <div style="text-align:center;">
-                            <div style="color:#22d3ee;font-size:1.6rem;font-weight:700;" x-text="match?.player_right?.name || 'Right'"></div>
+                            <div :style="'color:#22d3ee;font-size:1.6rem;font-weight:700;' + (match?.current_server_id && (match.current_server_id === match.player_right_id || match.current_server_id === match.team_right_player2_id) ? 'animation:watch-serve-pulse 1.5s ease-in-out infinite;' : '')" x-text="match?.player_right?.name || 'Right'"></div>
                             <template x-if="match?.mode === '2v2' && match?.team_right_player2">
                                 <div style="color:#22d3ee;font-size:1rem;font-weight:500;opacity:0.7;" x-text="match.team_right_player2.name"></div>
                             </template>
+                            <div style="color:white;font-size:8rem;font-weight:900;line-height:1.1;" x-text="match?.player_right_score ?? 0"></div>
+                            <div x-show="match?.current_server_id && (match.current_server_id === match.player_right_id || match.current_server_id === match.team_right_player2_id)"
+                                 style="margin-top:8px;color:#facc15;font-size:0.85rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;justify-content:center;gap:5px;animation:watch-serve-pulse 1.5s ease-in-out infinite;">
+                                <span style="display:inline-block;width:7px;height:7px;background:#facc15;border-radius:50%;box-shadow:0 0 6px 2px rgba(250,204,21,0.5);"></span>
+                                Serving
+                            </div>
                         </div>
                     </div>
-                    <div style="color:rgba(255,255,255,0.3);font-size:0.9rem;" x-text="match?.mode?.toUpperCase()"></div>
                 </div>
             </template>
 
-            <!-- Overlay: LIVE badge -->
-            <div style="position:absolute;top:16px;left:16px;display:flex;align-items:center;gap:6px;background:rgba(0,0,0,0.7);padding:4px 12px;border-radius:6px;">
-                <span class="pp-rec-dot"></span>
-                <span style="color:white;font-size:0.9rem;font-weight:700;">LIVE</span>
+            <!-- Overlay: LIVE badge + viewer count -->
+            <div style="position:absolute;top:16px;left:16px;display:flex;align-items:center;gap:10px;">
+                <div style="display:flex;align-items:center;gap:6px;background:rgba(0,0,0,0.7);padding:4px 12px;border-radius:6px;">
+                    <span class="pp-rec-dot"></span>
+                    <span style="color:white;font-size:0.9rem;font-weight:700;">LIVE</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:5px;background:rgba(0,0,0,0.7);padding:4px 12px;border-radius:6px;">
+                    <span style="font-size:0.85rem;">👁</span>
+                    <span style="color:white;font-size:0.9rem;font-weight:600;" x-text="viewerCount"></span>
+                </div>
             </div>
 
-            <!-- Overlay: Score (only on top of video) -->
+            <!-- Overlay: Current time + game timer (top center) -->
+            <div style="position:absolute;top:24px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;">
+                <div style="color:white;font-size:4rem;font-weight:800;letter-spacing:2px;text-shadow:0 2px 8px rgba(0,0,0,0.6);" x-text="currentTime"></div>
+                <div x-show="gameTimer" style="color:rgba(255,255,255,0.6);font-size:1.5rem;font-weight:600;letter-spacing:1px;" x-text="gameTimer"></div>
+            </div>
+
+            <!-- Overlay: Left score (corner) -->
             <template x-if="hasVideo && match">
-                <div style="position:absolute;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);padding:8px 24px;border-radius:12px;display:flex;align-items:center;gap:16px;">
-                    <span style="color:#fb7185;font-size:1.1rem;font-weight:700;" x-text="match?.player_left?.name || 'Left'"></span>
-                    <span style="color:white;font-size:2rem;font-weight:800;letter-spacing:2px;">
-                        <span x-text="match?.player_left_score ?? 0"></span>
-                        <span style="color:rgba(255,255,255,0.3);margin:0 4px;">-</span>
-                        <span x-text="match?.player_right_score ?? 0"></span>
-                    </span>
-                    <span style="color:#22d3ee;font-size:1.1rem;font-weight:700;" x-text="match?.player_right?.name || 'Right'"></span>
+                <div style="position:absolute;bottom:32px;left:32px;background:rgba(0,0,0,0.8);padding:24px 40px;border-radius:20px;display:flex;flex-direction:column;align-items:center;gap:8px;min-width:200px;">
+                    <div :style="'color:#fb7185;font-size:3rem;font-weight:700;white-space:nowrap;' + (match?.current_server_id && (match.current_server_id === match.player_left_id || match.current_server_id === match.team_left_player2_id) ? 'animation:watch-serve-pulse 1.5s ease-in-out infinite;' : '')" x-text="match?.player_left?.name || 'Left'"></div>
+                    <template x-if="match?.mode === '2v2' && match?.team_left_player2">
+                        <div style="color:#fb7185;font-size:1.6rem;font-weight:500;opacity:0.7;" x-text="match.team_left_player2.name"></div>
+                    </template>
+                    <div style="color:white;font-size:10rem;font-weight:900;line-height:1;" x-text="match?.player_left_score ?? 0"></div>
+                    <div x-show="match?.current_server_id && (match.current_server_id === match.player_left_id || match.current_server_id === match.team_left_player2_id)"
+                         style="color:#facc15;font-size:2rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:8px;animation:watch-serve-pulse 1.5s ease-in-out infinite;">
+                        <span style="display:inline-block;width:10px;height:10px;background:#facc15;border-radius:50%;box-shadow:0 0 10px 4px rgba(250,204,21,0.5);"></span>
+                        Serving
+                    </div>
+                </div>
+            </template>
+
+            <!-- Overlay: Right score (corner) -->
+            <template x-if="hasVideo && match">
+                <div style="position:absolute;bottom:32px;right:32px;background:rgba(0,0,0,0.8);padding:24px 40px;border-radius:20px;display:flex;flex-direction:column;align-items:center;gap:8px;min-width:200px;">
+                    <div :style="'color:#22d3ee;font-size:3rem;font-weight:700;white-space:nowrap;' + (match?.current_server_id && (match.current_server_id === match.player_right_id || match.current_server_id === match.team_right_player2_id) ? 'animation:watch-serve-pulse 1.5s ease-in-out infinite;' : '')" x-text="match?.player_right?.name || 'Right'"></div>
+                    <template x-if="match?.mode === '2v2' && match?.team_right_player2">
+                        <div style="color:#22d3ee;font-size:1.6rem;font-weight:500;opacity:0.7;" x-text="match.team_right_player2.name"></div>
+                    </template>
+                    <div style="color:white;font-size:10rem;font-weight:900;line-height:1;" x-text="match?.player_right_score ?? 0"></div>
+                    <div x-show="match?.current_server_id && (match.current_server_id === match.player_right_id || match.current_server_id === match.team_right_player2_id)"
+                         style="color:#facc15;font-size:2rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:8px;animation:watch-serve-pulse 1.5s ease-in-out infinite;">
+                        <span style="display:inline-block;width:10px;height:10px;background:#facc15;border-radius:50%;box-shadow:0 0 10px 4px rgba(250,204,21,0.5);"></span>
+                        Serving
+                    </div>
                 </div>
             </template>
 
@@ -96,11 +140,30 @@ function watchLive() {
         countdown: 10,
         countdownTimer: null,
         echo: null,
+        currentTime: '',
+        gameTimer: '',
+        clockTimer: null,
+        viewerCount: 0,
+        presenceChannel: null,
 
         async init() {
+            this.updateClock();
+            this.clockTimer = setInterval(() => this.updateClock(), 1000);
             await this.checkForLiveMatch();
             if (!this.matchActive) {
                 this.startPolling();
+            }
+        },
+
+        updateClock() {
+            const now = new Date();
+            this.currentTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            if (this.match?.started_at) {
+                const start = new Date(this.match.started_at);
+                const diff = Math.max(0, Math.floor((now - start) / 1000));
+                const m = Math.floor(diff / 60);
+                const s = diff % 60;
+                this.gameTimer = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
             }
         },
 
@@ -202,6 +265,7 @@ function watchLive() {
         subscribeToScores() {
             if (!this.matchId) return;
 
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
             this.echo = new Echo({
                 broadcaster: 'pusher',
                 key: 'games-hub-key',
@@ -211,6 +275,12 @@ function watchLive() {
                 disableStats: true,
                 enabledTransports: ['ws', 'wss'],
                 cluster: 'mt1',
+                authEndpoint: '/broadcasting/auth',
+                auth: {
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                },
             });
 
             this.echo.channel('ping-pong.match.' + this.matchId)
@@ -222,11 +292,22 @@ function watchLive() {
                                 this.matchActive = false;
                                 this.hasVideo = false;
                                 this.destroyPlayer();
+                                if (this.presenceChannel) {
+                                    this.echo.leave('ping-pong.watch.' + this.matchId);
+                                    this.presenceChannel = null;
+                                }
+                                this.viewerCount = 0;
                                 this.startPolling();
                             }, 3000);
                         }
                     }
                 });
+
+            // Join presence channel to track viewers
+            this.presenceChannel = this.echo.join('ping-pong.watch.' + this.matchId)
+                .here((users) => { this.viewerCount = users.length; })
+                .joining(() => { this.viewerCount++; })
+                .leaving(() => { this.viewerCount = Math.max(0, this.viewerCount - 1); });
         },
     };
 }
