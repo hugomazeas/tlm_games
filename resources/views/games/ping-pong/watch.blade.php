@@ -32,7 +32,7 @@
         <div style="position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
             <!-- Video player (always in DOM, hidden when no video) -->
             <video x-show="hasVideo" id="watchPlayer" muted autoplay playsinline
-                   style="width:100%;height:100%;object-fit:contain;background:#000;position:absolute;inset:0;"></video>
+                   style="width:100%;height:100%;object-fit:contain;background:#000;position:absolute;inset:0;transform:scaleX(-1);"></video>
 
             <!-- Score-only mode (no video) -->
             <template x-if="!hasVideo">
@@ -241,7 +241,7 @@ function watchLive() {
                 hls.on(Hls.Events.ERROR, (event, data) => {
                     if (!data.fatal) return;
                     if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-                        hls.startLoad();
+                        setTimeout(() => hls.startLoad(), 2000);
                     } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
                         hls.recoverMediaError();
                     } else {
