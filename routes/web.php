@@ -1,10 +1,13 @@
 <?php
 
+use App\Http\Controllers\BroadcastAuthController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\LeaderboardController;
 use App\Http\Controllers\OfficeController;
 use App\Http\Controllers\PlayerController;
 use Illuminate\Support\Facades\Route;
+
+Route::post('/broadcasting/auth', [BroadcastAuthController::class, 'authenticate']);
 
 Route::get('/', [HomeController::class, 'index']);
 
