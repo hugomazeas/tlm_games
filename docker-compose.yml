@@ -33,6 +33,29 @@ services:
              php artisan db:seed --force &&
              /usr/bin/supervisord -c /etc/supervisord.conf"
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USER_ID: ${LOCAL_UID:-1000}
+        GROUP_ID: ${LOCAL_GID:-1000}
+    container_name: games-hub-worker
+    restart: unless-stopped
+    networks:
+      - proxy
+    volumes:
+      - .:/var/www
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_CONNECTION=sqlite
+      - DB_DATABASE=/var/www/database/database.sqlite
+    depends_on:
+      - app
+    command: php artisan queue:work --sleep=3 --tries=1 --timeout=600
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+
 networks:
   proxy:
     name: proxy
