@@ -60,16 +60,21 @@
                 <span style="color:white;font-size:0.9rem;font-weight:700;">LIVE</span>
             </div>
 
-            <!-- Overlay: Score (only on top of video) -->
+            <!-- Overlay: Corner scores (on top of video) -->
             <template x-if="hasVideo && match">
-                <div style="position:absolute;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);padding:8px 24px;border-radius:12px;display:flex;align-items:center;gap:16px;">
-                    <span style="color:#fb7185;font-size:1.1rem;font-weight:700;" x-text="match?.player_left?.name || 'Left'"></span>
-                    <span style="color:white;font-size:2rem;font-weight:800;letter-spacing:2px;">
-                        <span x-text="match?.player_left_score ?? 0"></span>
-                        <span style="color:rgba(255,255,255,0.3);margin:0 4px;">-</span>
-                        <span x-text="match?.player_right_score ?? 0"></span>
-                    </span>
-                    <span style="color:#22d3ee;font-size:1.1rem;font-weight:700;" x-text="match?.player_right?.name || 'Right'"></span>
+                <div>
+                    <!-- Left score - bottom left -->
+                    <div style="position:absolute;bottom:24px;left:24px;display:flex;flex-direction:column;align-items:center;">
+                        <span style="color:#fb7185;font-size:2.5rem;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,0.8);" x-text="match?.player_left?.name || 'Left'"></span>
+                        <span x-show="isServingLeft()" style="color:#fbbf24;font-size:0.7rem;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,0.8);">SERVING</span>
+                        <span style="color:white;font-size:10rem;font-weight:900;line-height:1;text-shadow:0 4px 16px rgba(0,0,0,0.8);" x-text="match?.player_left_score ?? 0"></span>
+                    </div>
+                    <!-- Right score - bottom right -->
+                    <div style="position:absolute;bottom:24px;right:24px;display:flex;flex-direction:column;align-items:center;">
+                        <span style="color:#22d3ee;font-size:2.5rem;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,0.8);" x-text="match?.player_right?.name || 'Right'"></span>
+                        <span x-show="isServingRight()" style="color:#fbbf24;font-size:0.7rem;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,0.8);">SERVING</span>
+                        <span style="color:white;font-size:10rem;font-weight:900;line-height:1;text-shadow:0 4px 16px rgba(0,0,0,0.8);" x-text="match?.player_right_score ?? 0"></span>
+                    </div>
                 </div>
             </template>
 
@@ -197,6 +202,18 @@ function watchLive() {
                 this.hlsInstance.destroy();
                 this.hlsInstance = null;
             }
+        },
+
+        isServingLeft() {
+            if (!this.match?.current_server) return false;
+            return this.match.current_server.id === this.match.player_left_id
+                || this.match.current_server.id === this.match.team_left_player2_id;
+        },
+
+        isServingRight() {
+            if (!this.match?.current_server) return false;
+            return this.match.current_server.id === this.match.player_right_id
+                || this.match.current_server.id === this.match.team_right_player2_id;
         },
 
         subscribeToScores() {

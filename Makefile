@@ -30,7 +30,8 @@ logs:
 
 migrate:
 	docker compose exec app php artisan migrate
-
+queue:
+	docker compose exec app php artisan queue:work
 seed:
 	docker compose exec app php artisan db:seed
 
