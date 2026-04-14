@@ -27,6 +27,7 @@ Route::get('/games/ping-pong/api/matches/{id}', [PingPongApiController::class, '
 Route::get('/games/ping-pong/matches/{id}', [PingPongController::class, 'matchDetail']);
 Route::get('/games/ping-pong/watch', [PingPongController::class, 'watch']);
 Route::get('/games/ping-pong/recordings', [PingPongController::class, 'recordings']);
+Route::get('/games/ping-pong/embed-live', [PingPongController::class, 'embedLive']);
 Route::get('/games/ping-pong/remote/{id}/{side}', [PingPongController::class, 'remote']);
 
 // Recording API
