@@ -56,7 +56,12 @@ class PingPongController extends Controller
         ]);
     }
 
-public function remote(int $id, string $side)
+public function embedLive()
+    {
+        return view('games.ping-pong.embed-live');
+    }
+
+    public function remote(int $id, string $side)
     {
         abort_unless(in_array($side, ['left', 'right']), 404);
 
