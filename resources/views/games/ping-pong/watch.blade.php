@@ -100,6 +100,8 @@ function watchLive() {
         matchId: null,
         countdown: 10,
         countdownTimer: null,
+        healthCheckTimer: null,
+        hlsNetworkErrorCount: 0,
         echo: null,
 
         async init() {
@@ -120,9 +122,11 @@ function watchLive() {
                         this.matchId = recData.match_id;
                         this.matchActive = true;
                         this.hasVideo = true;
+                        this.hlsNetworkErrorCount = 0;
                         this.stopPolling();
                         this.$nextTick(() => this.initPlayer(recData.hls_url));
                         this.subscribeToScores();
+                        this.startHealthCheck();
                         return;
                     }
                 }
@@ -138,6 +142,7 @@ function watchLive() {
                         this.hasVideo = false;
                         this.stopPolling();
                         this.subscribeToScores();
+                        this.startHealthCheck();
                         return;
                     }
                 }
@@ -164,6 +169,42 @@ function watchLive() {
             }
         },
 
+        startHealthCheck() {
+            this.stopHealthCheck();
+            this.healthCheckTimer = setInterval(() => this.runHealthCheck(), 15000);
+        },
+
+        stopHealthCheck() {
+            if (this.healthCheckTimer) {
+                clearInterval(this.healthCheckTimer);
+                this.healthCheckTimer = null;
+            }
+        },
+
+        async runHealthCheck() {
+            if (!this.matchId) return;
+            try {
+                const res = await fetch('/games/ping-pong/api/matches/' + this.matchId);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.is_complete) {
+                        this.handleMatchEnd();
+                        return;
+                    }
+                }
+            } catch (e) {
+                // Ignore transient fetch errors
+            }
+        },
+
+        handleMatchEnd() {
+            this.stopHealthCheck();
+            this.matchActive = false;
+            this.hasVideo = false;
+            this.destroyPlayer();
+            this.startPolling();
+        },
+
         initPlayer(hlsUrl) {
             const video = document.getElementById('watchPlayer');
             if (!video) return;
@@ -183,6 +224,11 @@ function watchLive() {
                 hls.on(Hls.Events.ERROR, (event, data) => {
                     if (!data.fatal) return;
                     if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                        this.hlsNetworkErrorCount++;
+                        if (this.hlsNetworkErrorCount >= 3) {
+                            this.runHealthCheck();
+                            this.hlsNetworkErrorCount = 0;
+                        }
                         hls.startLoad();
                     } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
                         hls.recoverMediaError();
@@ -235,12 +281,7 @@ function watchLive() {
                     if (e.match) {
                         this.match = { ...this.match, ...e.match };
                         if (e.match.is_complete) {
-                            setTimeout(() => {
-                                this.matchActive = false;
-                                this.hasVideo = false;
-                                this.destroyPlayer();
-                                this.startPolling();
-                            }, 3000);
+                            setTimeout(() => this.handleMatchEnd(), 3000);
                         }
                     }
                 });
