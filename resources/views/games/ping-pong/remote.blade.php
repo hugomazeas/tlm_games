@@ -243,6 +243,92 @@
             background: rgba(239, 68, 68, 0.15);
         }
 
+        /* ===== ABANDON BUTTON ===== */
+        .abandon-area {
+            flex-shrink: 0;
+            display: flex;
+        }
+
+        .btn-abandon {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 10px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            background: rgba(255, 255, 255, 0.03);
+            color: rgba(255, 255, 255, 0.3);
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.15s ease;
+        }
+
+        .btn-abandon:active {
+            background: rgba(239, 68, 68, 0.15);
+            color: rgba(239, 68, 68, 0.9);
+        }
+
+        /* ===== CONFIRM OVERLAY ===== */
+        .confirm-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .confirm-box {
+            background: #1e293b;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 24px;
+            text-align: center;
+            max-width: 300px;
+            width: 90%;
+        }
+
+        .confirm-box h3 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .confirm-box p {
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.5);
+            margin-bottom: 20px;
+        }
+
+        .confirm-buttons {
+            display: flex;
+            gap: 12px;
+        }
+
+        .confirm-buttons button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .btn-confirm-cancel {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+
+        .btn-confirm-abandon {
+            background: #ef4444;
+            color: white;
+        }
+
     </style>
 </head>
 <body>
@@ -271,6 +357,23 @@
         <!-- Undo Button -->
         <div class="undo-area" id="undoArea">
             <button class="btn-undo" id="btnUndo">Undo (-1)</button>
+        </div>
+
+        <!-- Abandon Button -->
+        <div class="abandon-area">
+            <button class="btn-abandon" id="btnAbandon">Abandon Match</button>
+        </div>
+
+        <!-- Confirm Dialog -->
+        <div class="confirm-overlay" id="confirmOverlay" style="display:none;">
+            <div class="confirm-box">
+                <h3>Abandon Match?</h3>
+                <p>Scores will be annulled and the recording deleted.</p>
+                <div class="confirm-buttons">
+                    <button class="btn-confirm-cancel" id="btnConfirmCancel">Cancel</button>
+                    <button class="btn-confirm-abandon" id="btnConfirmAbandon">Abandon</button>
+                </div>
+            </div>
         </div>
 
     </div>
@@ -331,8 +434,16 @@
             });
         }
 
+        const confirmOverlay = document.getElementById('confirmOverlay');
+        const btnAbandon = document.getElementById('btnAbandon');
+        const btnConfirmCancel = document.getElementById('btnConfirmCancel');
+        const btnConfirmAbandon = document.getElementById('btnConfirmAbandon');
+
         addTouchHandler(btnPlus, () => updateScore('increment'));
         addTouchHandler(btnUndo, () => updateScore('decrement'));
+        addTouchHandler(btnAbandon, () => { confirmOverlay.style.display = 'flex'; });
+        addTouchHandler(btnConfirmCancel, () => { confirmOverlay.style.display = 'none'; });
+        addTouchHandler(btnConfirmAbandon, () => abandonMatch());
 
         async function updateScore(action) {
             if (isUpdating || isComplete) return;
@@ -428,6 +539,26 @@
             }
         }
 
+        async function abandonMatch() {
+            if (isUpdating || isComplete) return;
+            isUpdating = true;
+
+            try {
+                const res = await fetch(`${API}/matches/${MATCH_ID}`, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRF-TOKEN': CSRF },
+                });
+                if (res.ok) {
+                    window.location.href = '/games/ping-pong';
+                    return;
+                }
+            } catch (err) {
+                // ignore
+            }
+            isUpdating = false;
+            confirmOverlay.style.display = 'none';
+        }
+
         let echoInstance = null;
 
         function subscribeToMatch() {
@@ -450,6 +581,9 @@
                         data.is_complete) {
                         renderMatch(data);
                     }
+                })
+                .listen('.match.abandoned', function() {
+                    window.location.href = '/games/ping-pong';
                 });
         }
 

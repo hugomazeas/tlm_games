@@ -3,6 +3,7 @@
 namespace App\Games\PingPong\Controllers;
 
 use App\Games\PingPong\Events\LiveMatchStarted;
+use App\Games\PingPong\Events\MatchAbandoned;
 use App\Games\PingPong\Events\MatchScoreUpdated;
 use App\Games\PingPong\Models\PingPongMatch;
 use App\Games\PingPong\Models\PingPongPoint;
@@ -681,6 +682,47 @@ class PingPongApiController extends Controller
         broadcast(new LiveMatchStarted($match));
 
         return response()->json($match, 201);
+    }
+
+    public function abandonMatch(int $id): JsonResponse
+    {
+        $match = PingPongMatch::findOrFail($id);
+
+        if ($match->is_complete) {
+            return response()->json(['error' => 'Match is already complete'], 422);
+        }
+
+        $matchId = $match->id;
+
+        // Stop and delete recording if present
+        $recording = $match->recording;
+        if ($recording) {
+            if ($recording->status === 'recording') {
+                try {
+                    $this->videoRecordingService->stopRecording($match);
+                    $recording->refresh();
+                } catch (\Throwable $e) {
+                    // Continue with cleanup even if stop fails
+                }
+            }
+
+            if ($recording->video_path) {
+                $fullPath = storage_path('app/public/' . $recording->video_path);
+                if (file_exists($fullPath)) {
+                    unlink($fullPath);
+                }
+            }
+
+            $recording->delete();
+        }
+
+        // Delete points and match
+        $match->points()->delete();
+        $match->delete();
+
+        broadcast(new MatchAbandoned($matchId));
+
+        return response()->json(['abandoned' => true]);
     }
 
     public function playerStatsApi(Request $request, int $id): JsonResponse
