@@ -562,6 +562,8 @@ function pingPong() {
                         m.id === data.id ? { ...m, _flash: false } : m
                     );
                 }, 600);
+            }).listen('.match.abandoned', (e) => {
+                this.liveMatches = this.liveMatches.filter(m => m.id !== e.matchId);
             });
         },
 
@@ -675,6 +677,12 @@ function pingPong() {
                         this.stopTimer();
                         window.location.href = '/games/ping-pong/matches/' + data.id + '?from=game';
                     }
+                }
+            }).listen('.match.abandoned', () => {
+                if (this.screen === 'playing') {
+                    this.stopTimer();
+                    this.destroyLivePlayer();
+                    this.goToHome();
                 }
             });
         },
@@ -872,8 +880,18 @@ function pingPong() {
             this.goToHome();
         },
 
-        abandonMatch() {
+        async abandonMatch() {
             this.showAbandonConfirm = false;
+            if (this.match?.id) {
+                try {
+                    await fetch(`${this.API}/matches/${this.match.id}`, {
+                        method: 'DELETE',
+                        headers: { 'X-CSRF-TOKEN': this.csrf },
+                    });
+                } catch (e) {
+                    // Continue with local cleanup even if API fails
+                }
+            }
             this.stopTimer();
             this.destroyLivePlayer();
             this.goToHome();
