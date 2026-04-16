@@ -1,31 +1,39 @@
-@extends('layouts.app')
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ping Pong Live</title>
+    <meta property="og:title" content="Ping Pong Live">
+    <meta property="og:description" content="Watch the live ping pong match">
+    <meta property="og:image" content="{{ url('/images/pingpong-live-thumb.png') }}">
+    <meta property="og:type" content="video.other">
+    <link rel="stylesheet" href="{{ asset('css/ping-pong-play.css') }}">
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #0a0a0a; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    </style>
+</head>
+<body>
 
-@section('title', 'Watch Live - Ping Pong')
-@section('main-class', 'p-0')
-
-@section('content')
-<link rel="stylesheet" href="{{ asset('css/ping-pong-play.css') }}">
-
-<div x-data="watchLive()" x-init="init()" style="width:100%;height:100vh;max-height:calc(100dvh - 60px);display:flex;align-items:center;justify-content:center;background:#0a0a0a;">
+<div x-data="embedLive()" x-init="init()" style="width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;">
 
     <!-- No live match -->
     <template x-if="!matchActive">
         <div style="text-align:center;color:rgba(255,255,255,0.6);">
             <div style="font-size:3rem;margin-bottom:16px;">&#127955;</div>
             <h2 style="color:#fff;font-size:1.4rem;margin-bottom:8px;">No Live Match</h2>
-            <p style="font-size:0.9rem;margin-bottom:20px;">No match is being played right now.</p>
-            <p style="font-size:0.8rem;color:rgba(255,255,255,0.3);" x-text="'Checking again in ' + countdown + 's...'"></p>
-            <a href="/games/ping-pong" style="display:inline-block;margin-top:16px;padding:8px 20px;background:#3b82f6;border-radius:8px;color:#fff;text-decoration:none;font-size:0.85rem;font-weight:600;">
-                &larr; Back to Ping Pong
-            </a>
+            <p style="font-size:0.9rem;">No match is being played right now.</p>
+            <p style="font-size:0.8rem;color:rgba(255,255,255,0.3);margin-top:12px;" x-text="'Checking again in ' + countdown + 's...'"></p>
         </div>
     </template>
 
-    <!-- Match active (with or without video) -->
+    <!-- Match active -->
     <template x-if="matchActive">
         <div style="position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
-            <!-- Video player (always in DOM, hidden when no video) -->
-            <video x-show="hasVideo" id="watchPlayer" muted autoplay playsinline
+            <!-- Video player -->
+            <video x-show="hasVideo" id="embedPlayer" muted autoplay playsinline
                    style="width:100%;height:100%;object-fit:contain;background:#000;position:absolute;inset:0;"></video>
 
             <!-- Score-only mode (no video) -->
@@ -63,13 +71,11 @@
             <!-- Overlay: Corner scores (on top of video) -->
             <template x-if="hasVideo && match">
                 <div>
-                    <!-- Left score - bottom left -->
                     <div style="position:absolute;bottom:24px;left:24px;display:flex;flex-direction:column;align-items:center;">
                         <span style="color:#fb7185;font-size:2.5rem;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,0.8);" x-text="match?.player_left?.name || 'Left'"></span>
                         <span x-show="isServingLeft()" style="color:#fbbf24;font-size:0.7rem;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,0.8);">SERVING</span>
                         <span style="color:white;font-size:10rem;font-weight:900;line-height:1;text-shadow:0 4px 16px rgba(0,0,0,0.8);" x-text="match?.player_left_score ?? 0"></span>
                     </div>
-                    <!-- Right score - bottom right -->
                     <div style="position:absolute;bottom:24px;right:24px;display:flex;flex-direction:column;align-items:center;">
                         <span style="color:#22d3ee;font-size:2.5rem;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,0.8);" x-text="match?.player_right?.name || 'Right'"></span>
                         <span x-show="isServingRight()" style="color:#fbbf24;font-size:0.7rem;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,0.8);">SERVING</span>
@@ -77,11 +83,6 @@
                     </div>
                 </div>
             </template>
-
-            <!-- Back link -->
-            <a href="/games/ping-pong" style="position:absolute;top:16px;right:16px;background:rgba(0,0,0,0.7);padding:4px 12px;border-radius:6px;color:white;text-decoration:none;font-size:0.8rem;">
-                &larr; Back
-            </a>
         </div>
     </template>
 
@@ -91,7 +92,7 @@
 <script src="https://cdn.jsdelivr.net/npm/pusher-js@8.4.0/dist/web/pusher.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
 <script>
-function watchLive() {
+function embedLive() {
     return {
         matchActive: false,
         hasVideo: false,
@@ -113,7 +114,6 @@ function watchLive() {
 
         async checkForLiveMatch() {
             try {
-                // First check for a recording with video stream
                 const recRes = await fetch('/games/ping-pong/api/recordings/live');
                 if (recRes.ok) {
                     const recData = await recRes.json();
@@ -131,7 +131,6 @@ function watchLive() {
                     }
                 }
 
-                // Fall back to any live match (score-only mode)
                 const liveRes = await fetch('/games/ping-pong/api/matches/live');
                 if (liveRes.ok) {
                     const matches = await liveRes.json();
@@ -206,7 +205,7 @@ function watchLive() {
         },
 
         initPlayer(hlsUrl) {
-            const video = document.getElementById('watchPlayer');
+            const video = document.getElementById('embedPlayer');
             if (!video) return;
 
             this.destroyPlayer();
@@ -289,4 +288,6 @@ function watchLive() {
     };
 }
 </script>
-@endsection
+
+</body>
+</html>
