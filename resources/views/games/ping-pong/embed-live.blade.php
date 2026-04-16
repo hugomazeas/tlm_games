@@ -283,6 +283,9 @@ function embedLive() {
                             setTimeout(() => this.handleMatchEnd(), 3000);
                         }
                     }
+                })
+                .listen('.match.abandoned', () => {
+                    this.handleMatchEnd();
                 });
         },
     };
