@@ -37,8 +37,10 @@
     <template x-if="matchActive">
         <div style="position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
             <!-- Video player -->
-            <video x-show="hasVideo" id="embedPlayer" muted autoplay playsinline
-                   style="width:100%;height:100%;object-fit:contain;background:#000;position:absolute;inset:0;transform:scaleX(-1);"></video>
+            <div x-show="hasVideo" style="width:100%;height:100%;position:absolute;inset:0;transform:scaleX(-1);">
+                <video id="embedPlayer" muted autoplay playsinline
+                       style="width:100%;height:100%;object-fit:contain;background:#000;"></video>
+            </div>
 
             <!-- Score-only mode (no video) -->
             <template x-if="!hasVideo">
