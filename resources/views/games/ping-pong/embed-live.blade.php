@@ -13,6 +13,10 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #0a0a0a; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        @keyframes servePulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.05); }
+        }
     </style>
 </head>
 <body>
@@ -34,7 +38,7 @@
         <div style="position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
             <!-- Video player -->
             <video x-show="hasVideo" id="embedPlayer" muted autoplay playsinline
-                   style="width:100%;height:100%;object-fit:contain;background:#000;position:absolute;inset:0;"></video>
+                   style="width:100%;height:100%;object-fit:contain;background:#000;position:absolute;inset:0;transform:scaleX(-1);"></video>
 
             <!-- Score-only mode (no video) -->
             <template x-if="!hasVideo">
@@ -73,12 +77,12 @@
                 <div>
                     <div style="position:absolute;bottom:24px;left:24px;display:flex;flex-direction:column;align-items:center;">
                         <span style="color:#fb7185;font-size:2.5rem;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,0.8);" x-text="match?.player_left?.name || 'Left'"></span>
-                        <span x-show="isServingLeft()" style="color:#fbbf24;font-size:0.7rem;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,0.8);">SERVING</span>
+                        <span x-show="isServingLeft()" style="background:#fbbf24;color:#000;font-size:1.4rem;font-weight:800;padding:4px 20px;border-radius:999px;animation:servePulse 1.5s ease-in-out infinite;text-transform:uppercase;letter-spacing:0.05em;">SERVING</span>
                         <span style="color:white;font-size:10rem;font-weight:900;line-height:1;text-shadow:0 4px 16px rgba(0,0,0,0.8);" x-text="match?.player_left_score ?? 0"></span>
                     </div>
                     <div style="position:absolute;bottom:24px;right:24px;display:flex;flex-direction:column;align-items:center;">
                         <span style="color:#22d3ee;font-size:2.5rem;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,0.8);" x-text="match?.player_right?.name || 'Right'"></span>
-                        <span x-show="isServingRight()" style="color:#fbbf24;font-size:0.7rem;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,0.8);">SERVING</span>
+                        <span x-show="isServingRight()" style="background:#fbbf24;color:#000;font-size:1.4rem;font-weight:800;padding:4px 20px;border-radius:999px;animation:servePulse 1.5s ease-in-out infinite;text-transform:uppercase;letter-spacing:0.05em;">SERVING</span>
                         <span style="color:white;font-size:10rem;font-weight:900;line-height:1;text-shadow:0 4px 16px rgba(0,0,0,0.8);" x-text="match?.player_right_score ?? 0"></span>
                     </div>
                 </div>

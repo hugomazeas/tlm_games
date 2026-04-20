@@ -334,6 +334,7 @@ class PingPongApiController extends Controller
                 'status' => $match->recording->status,
                 'video_url' => $match->recording->video_url,
                 'hls_url' => $match->recording->hls_url,
+                'created_at' => $match->recording->created_at?->toISOString(),
             ];
         }
 

@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('title', 'Match Detail - Ping Pong')
-@section('main-class', 'max-w-5xl mx-auto px-6 py-6')
+@section('main-class', 'max-w-6xl mx-auto px-6 py-6')
 
 @section('content')
 <style>
@@ -188,6 +188,92 @@
     }
     .md .countdown-bar .go-now:hover { background: #2563eb; }
 
+    /* Recording + Timeline layout */
+    .md .recording-layout {
+        display: grid;
+        grid-template-columns: 1fr 320px;
+        gap: 16px;
+        align-items: start;
+    }
+    .md .video-wrap {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16/9;
+        background: #000;
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    .md .video-wrap video {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+    .md .timeline-panel {
+        max-height: 450px;
+        overflow-y: auto;
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 12px;
+        background: rgba(255,255,255,0.03);
+    }
+    .md .timeline-panel::-webkit-scrollbar { width: 4px; }
+    .md .timeline-panel::-webkit-scrollbar-track { background: transparent; }
+    .md .timeline-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+    .md .timeline-header {
+        position: sticky;
+        top: 0;
+        background: rgba(15,15,15,0.95);
+        backdrop-filter: blur(8px);
+        padding: 12px 14px;
+        font-weight: 700;
+        font-size: 0.85rem;
+        color: rgba(255,255,255,0.5);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        z-index: 1;
+    }
+    .md .timeline-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 14px;
+        cursor: pointer;
+        transition: background 0.15s;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .md .timeline-item:hover { background: rgba(255,255,255,0.06); }
+    .md .timeline-item.active { background: rgba(59, 130, 246, 0.15); }
+    .md .timeline-item .pt-num {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: rgba(255,255,255,0.3);
+        min-width: 20px;
+        text-align: right;
+    }
+    .md .timeline-item .pt-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+    .md .timeline-item .pt-dot.left { background: #fb7185; }
+    .md .timeline-item .pt-dot.right { background: #22d3ee; }
+    .md .timeline-item .pt-score {
+        font-weight: 700;
+        font-size: 0.9rem;
+        color: rgba(255,255,255,0.8);
+        flex: 1;
+    }
+    .md .timeline-item .pt-time {
+        font-size: 0.8rem;
+        color: rgba(255,255,255,0.35);
+        font-variant-numeric: tabular-nums;
+    }
+
+    @media (max-width: 900px) {
+        .md .recording-layout { grid-template-columns: 1fr; }
+        .md .timeline-panel { max-height: 300px; }
+    }
     @media (max-width: 640px) {
         .md .stats-grid { grid-template-columns: repeat(2, 1fr); }
         .md .elo-grid { grid-template-columns: 1fr; }
@@ -245,14 +331,28 @@
                 </div>
             </div>
 
-            <!-- Match Recording -->
+            <!-- Match Recording + Point Timeline -->
             <template x-if="match.recording && match.recording.status === 'completed' && match.recording.video_url">
                 <div class="section">
                     <h2>Match Recording</h2>
-                    <div style="position:relative;width:100%;max-width:720px;margin:0 auto;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden;">
-                        <video controls playsinline preload="metadata"
-                               :src="match.recording.video_url"
-                               style="width:100%;height:100%;object-fit:contain;"></video>
+                    <div class="recording-layout">
+                        <div class="video-wrap">
+                            <video id="matchVideo" controls playsinline preload="metadata"
+                                   :src="match.recording.video_url"></video>
+                        </div>
+                        <div class="timeline-panel" x-show="pointTimestamps().length > 0">
+                            <div class="timeline-header">Points Timeline</div>
+                            <template x-for="pt in pointTimestamps()" :key="pt.number">
+                                <div class="timeline-item"
+                                     :class="{ active: activePoint === pt.number }"
+                                     @click="activePoint = pt.number; seekToPoint(pt.offset)">
+                                    <span class="pt-num" x-text="pt.number"></span>
+                                    <span class="pt-dot" :class="pt.side"></span>
+                                    <span class="pt-score" x-text="pt.scoreLeft + ' - ' + pt.scoreRight"></span>
+                                    <span class="pt-time" x-text="pt.label"></span>
+                                </div>
+                            </template>
+                        </div>
                     </div>
                 </div>
             </template>
@@ -366,6 +466,7 @@ function matchDetail() {
         fromGame: new URLSearchParams(window.location.search).has('from'),
         countdown: 30,
         countdownTimer: null,
+        activePoint: null,
 
         async init() {
             try {
@@ -464,6 +565,34 @@ function matchDetail() {
                 if (leader) prevLeader = leader;
             });
             return changes;
+        },
+
+        pointTimestamps() {
+            const points = this.match?.points || [];
+            const recStart = this.match?.recording?.created_at;
+            if (!recStart || points.length === 0) return [];
+            const recTime = new Date(recStart).getTime();
+            return points.map(p => {
+                const ptTime = new Date(p.created_at).getTime();
+                const offset = Math.max(0, (ptTime - recTime) / 1000);
+                const mins = Math.floor(offset / 60);
+                const secs = Math.floor(offset % 60);
+                return {
+                    number: p.point_number,
+                    side: p.scoring_side,
+                    scoreLeft: p.left_score_after,
+                    scoreRight: p.right_score_after,
+                    offset,
+                    label: mins + ':' + String(secs).padStart(2, '0'),
+                };
+            });
+        },
+
+        seekToPoint(offset) {
+            const video = document.getElementById('matchVideo');
+            if (!video) return;
+            video.currentTime = Math.max(0, offset - 10);
+            video.play().catch(() => {});
         },
 
         renderScoreChart() {
