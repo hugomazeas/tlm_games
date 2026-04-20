@@ -77,12 +77,12 @@
                 <div>
                     <div style="position:absolute;bottom:24px;left:24px;display:flex;flex-direction:column;align-items:center;">
                         <span style="color:#fb7185;font-size:2.5rem;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,0.8);" x-text="match?.player_left?.name || 'Left'"></span>
-                        <span x-show="isServingLeft()" style="background:#fbbf24;color:#000;font-size:1.4rem;font-weight:800;padding:4px 20px;border-radius:999px;animation:servePulse 1.5s ease-in-out infinite;text-transform:uppercase;letter-spacing:0.05em;">SERVING</span>
+                        <span x-show="isServingLeft()" style="background:#fbbf24;color:#000;font-size:2.5rem;font-weight:800;padding:4px 24px;border-radius:999px;animation:servePulse 1.5s ease-in-out infinite;text-transform:uppercase;letter-spacing:0.05em;text-shadow:none;">SERVING</span>
                         <span style="color:white;font-size:10rem;font-weight:900;line-height:1;text-shadow:0 4px 16px rgba(0,0,0,0.8);" x-text="match?.player_left_score ?? 0"></span>
                     </div>
                     <div style="position:absolute;bottom:24px;right:24px;display:flex;flex-direction:column;align-items:center;">
                         <span style="color:#22d3ee;font-size:2.5rem;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,0.8);" x-text="match?.player_right?.name || 'Right'"></span>
-                        <span x-show="isServingRight()" style="background:#fbbf24;color:#000;font-size:1.4rem;font-weight:800;padding:4px 20px;border-radius:999px;animation:servePulse 1.5s ease-in-out infinite;text-transform:uppercase;letter-spacing:0.05em;">SERVING</span>
+                        <span x-show="isServingRight()" style="background:#fbbf24;color:#000;font-size:2.5rem;font-weight:800;padding:4px 24px;border-radius:999px;animation:servePulse 1.5s ease-in-out infinite;text-transform:uppercase;letter-spacing:0.05em;text-shadow:none;">SERVING</span>
                         <span style="color:white;font-size:10rem;font-weight:900;line-height:1;text-shadow:0 4px 16px rgba(0,0,0,0.8);" x-text="match?.player_right_score ?? 0"></span>
                     </div>
                 </div>
