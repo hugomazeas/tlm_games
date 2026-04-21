@@ -38,6 +38,12 @@ Route::post('/games/ping-pong/api/recordings/stop', [PingPongApiController::clas
 Route::get('/games/ping-pong/api/recordings', [PingPongApiController::class, 'listRecordings']);
 Route::delete('/games/ping-pong/api/recordings/{id}', [PingPongApiController::class, 'deleteRecording']);
 
+// Clip API
+Route::post('/games/ping-pong/api/clips', [PingPongApiController::class, 'createClip']);
+Route::get('/games/ping-pong/api/clips', [PingPongApiController::class, 'listClips']);
+Route::delete('/games/ping-pong/api/clips/{id}', [PingPongApiController::class, 'deleteClip']);
+Route::get('/games/ping-pong/api/players/{id}/highlights', [PingPongApiController::class, 'playerHighlights']);
+
 // Lobby API
 Route::post('/games/ping-pong/api/lobbies', [PingPongLobbyApiController::class, 'createLobby']);
 Route::get('/games/ping-pong/api/lobbies/{code}', [PingPongLobbyApiController::class, 'getLobby']);
