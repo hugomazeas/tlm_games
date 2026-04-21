@@ -270,6 +270,143 @@
         font-variant-numeric: tabular-nums;
     }
 
+    /* Clip bar (above video) */
+    .md .clip-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 10px;
+        padding: 12px 14px;
+        margin-bottom: 14px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 10px;
+    }
+    .md .clip-field { display: flex; flex-direction: column; gap: 4px; min-width: 120px; }
+    .md .clip-field label {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: rgba(255,255,255,0.45);
+        font-weight: 700;
+    }
+    .md .clip-input-wrap { display: flex; gap: 4px; }
+    .md .clip-bar input,
+    .md .clip-bar select {
+        background: rgba(0,0,0,0.3);
+        color: rgba(255,255,255,0.9);
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 6px;
+        padding: 7px 9px;
+        font-size: 0.9rem;
+        font-family: inherit;
+        min-width: 0;
+        flex: 1;
+    }
+    .md .clip-bar input[type="number"] { width: 82px; font-variant-numeric: tabular-nums; }
+    .md .clip-bar input:focus,
+    .md .clip-bar select:focus { outline: none; border-color: #3b82f6; }
+    .md .clip-bar .mark-btn {
+        padding: 0 10px;
+        background: rgba(59,130,246,0.15);
+        color: #93c5fd;
+        border: 1px solid rgba(59,130,246,0.35);
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 700;
+        transition: background 0.15s;
+    }
+    .md .clip-bar .mark-btn:hover { background: rgba(59,130,246,0.3); }
+    .md .clip-bar .save-btn {
+        padding: 8px 18px;
+        background: #3b82f6;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-weight: 700;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+    .md .clip-bar .save-btn:hover:not(:disabled) { background: #2563eb; }
+    .md .clip-bar .save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .md .clip-msg {
+        flex-basis: 100%;
+        font-size: 0.85rem;
+        padding: 6px 10px;
+        border-radius: 6px;
+    }
+    .md .clip-msg.ok { background: rgba(34,197,94,0.12); color: #4ade80; }
+    .md .clip-msg.err { background: rgba(239,68,68,0.12); color: #f87171; }
+
+    /* Saved clips list */
+    .md .clips-strip {
+        margin-top: 16px;
+        padding-top: 14px;
+        border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    .md .clips-strip-title {
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: rgba(255,255,255,0.45);
+        font-weight: 700;
+        margin-bottom: 10px;
+    }
+    .md .clips-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 10px;
+    }
+    .md .clip-card {
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 8px;
+        padding: 10px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 0.85rem;
+    }
+    .md .clip-card .clip-player {
+        font-weight: 700;
+        color: #93c5fd;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .md .clip-card .clip-times {
+        font-variant-numeric: tabular-nums;
+        color: rgba(255,255,255,0.6);
+        font-size: 0.82rem;
+    }
+    .md .clip-card .clip-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 4px;
+    }
+    .md .clip-card a {
+        color: #3b82f6;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 0.82rem;
+    }
+    .md .clip-card a:hover { text-decoration: underline; }
+    .md .clip-card .delete-btn {
+        background: transparent;
+        border: none;
+        color: rgba(255,255,255,0.35);
+        cursor: pointer;
+        font-size: 1rem;
+        line-height: 1;
+        padding: 2px 6px;
+        border-radius: 4px;
+        transition: all 0.15s;
+    }
+    .md .clip-card .delete-btn:hover { color: #f87171; background: rgba(239,68,68,0.12); }
+
     @media (max-width: 900px) {
         .md .recording-layout { grid-template-columns: 1fr; }
         .md .timeline-panel { max-height: 300px; }
@@ -335,6 +472,40 @@
             <template x-if="match.recording && match.recording.status === 'completed' && match.recording.video_url">
                 <div class="section">
                     <h2>Match Recording</h2>
+
+                    <!-- Clip creation bar -->
+                    <div class="clip-bar">
+                        <div class="clip-field">
+                            <label>Start (s)</label>
+                            <div class="clip-input-wrap">
+                                <input type="number" step="0.1" min="0" x-model="clipStart" placeholder="0.0">
+                                <button type="button" class="mark-btn" @click="markClipTime('start')" title="Use current video time">Now</button>
+                            </div>
+                        </div>
+                        <div class="clip-field">
+                            <label>End (s)</label>
+                            <div class="clip-input-wrap">
+                                <input type="number" step="0.1" min="0" x-model="clipEnd" placeholder="0.0">
+                                <button type="button" class="mark-btn" @click="markClipTime('end')" title="Use current video time">Now</button>
+                            </div>
+                        </div>
+                        <div class="clip-field" style="flex: 1; min-width: 180px;">
+                            <label>Highlight for</label>
+                            <select x-model="clipPlayerId">
+                                <option value="">Select player…</option>
+                                <template x-for="p in participants()" :key="p.id">
+                                    <option :value="p.id" x-text="p.name"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <button type="button" class="save-btn" @click="createClip()"
+                                :disabled="savingClip || !clipPlayerId || clipStart === '' || clipEnd === ''"
+                                x-text="savingClip ? 'Saving…' : 'Save Clip'"></button>
+                        <template x-if="clipMessage">
+                            <div class="clip-msg" :class="clipError ? 'err' : 'ok'" x-text="clipMessage"></div>
+                        </template>
+                    </div>
+
                     <div class="recording-layout">
                         <div class="video-wrap">
                             <video id="matchVideo" controls playsinline preload="metadata"
@@ -354,6 +525,25 @@
                             </template>
                         </div>
                     </div>
+
+                    <!-- Saved clips for this match -->
+                    <template x-if="clips.length > 0">
+                        <div class="clips-strip">
+                            <div class="clips-strip-title" x-text="clips.length + ' clip' + (clips.length === 1 ? '' : 's') + ' saved'"></div>
+                            <div class="clips-grid">
+                                <template x-for="c in clips" :key="c.id">
+                                    <div class="clip-card">
+                                        <span class="clip-player" x-text="c.player_name || 'Player #' + c.player_id"></span>
+                                        <span class="clip-times" x-text="formatSeconds(c.start_seconds) + ' – ' + formatSeconds(c.end_seconds) + ' (' + c.duration_seconds.toFixed(1) + 's)'"></span>
+                                        <div class="clip-actions">
+                                            <a :href="c.url" target="_blank" rel="noopener">Open ↗</a>
+                                            <button type="button" class="delete-btn" @click="deleteClip(c.id)" title="Delete clip">×</button>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
                 </div>
             </template>
 
@@ -468,6 +658,15 @@ function matchDetail() {
         countdownTimer: null,
         activePoint: null,
 
+        // Clip creation state
+        clipStart: '',
+        clipEnd: '',
+        clipPlayerId: '',
+        clipMessage: '',
+        clipError: false,
+        savingClip: false,
+        clips: [],
+
         async init() {
             try {
                 const res = await fetch(`${this.API}/matches/${this.matchId}`);
@@ -477,6 +676,10 @@ function matchDetail() {
             }
             this.loading = false;
 
+            if (this.match?.recording?.status === 'completed') {
+                this.loadClips();
+            }
+
             if (this.fromGame) {
                 this.countdownTimer = setInterval(() => {
                     this.countdown--;
@@ -485,6 +688,127 @@ function matchDetail() {
                         window.location.href = '/games/ping-pong';
                     }
                 }, 1000);
+            }
+        },
+
+        participants() {
+            const m = this.match;
+            if (!m) return [];
+            const out = [];
+            const seen = new Set();
+            const add = (id, name) => {
+                if (!id || seen.has(id)) return;
+                seen.add(id);
+                out.push({ id, name: name || ('Player #' + id) });
+            };
+            add(m.player_left_id, m.player_left?.name);
+            add(m.player_right_id, m.player_right?.name);
+            add(m.team_left_player2_id, m.team_left_player2?.name);
+            add(m.team_right_player2_id, m.team_right_player2?.name);
+            return out;
+        },
+
+        markClipTime(which) {
+            const video = document.getElementById('matchVideo');
+            if (!video) return;
+            const t = Math.max(0, Math.round(video.currentTime * 10) / 10);
+            if (which === 'start') this.clipStart = t;
+            else this.clipEnd = t;
+        },
+
+        formatSeconds(s) {
+            s = Number(s) || 0;
+            const m = Math.floor(s / 60);
+            const sec = Math.floor(s % 60);
+            return m + ':' + String(sec).padStart(2, '0');
+        },
+
+        async loadClips() {
+            if (!this.match?.recording?.id && !this.matchId) return;
+            try {
+                const res = await fetch(`${this.API}/clips?match_id=${this.matchId}`);
+                if (res.ok) {
+                    this.clips = await res.json();
+                }
+            } catch (err) {
+                console.error('Error loading clips:', err);
+            }
+        },
+
+        async createClip() {
+            if (this.savingClip) return;
+            this.clipMessage = '';
+            this.clipError = false;
+
+            const recordingId = this.match?.recording?.id;
+            const start = parseFloat(this.clipStart);
+            const end = parseFloat(this.clipEnd);
+            const playerId = parseInt(this.clipPlayerId, 10);
+
+            if (!recordingId) {
+                this.clipError = true;
+                this.clipMessage = 'Recording not available.';
+                return;
+            }
+            if (isNaN(start) || isNaN(end) || end <= start) {
+                this.clipError = true;
+                this.clipMessage = 'End time must be greater than start time.';
+                return;
+            }
+            if (!playerId) {
+                this.clipError = true;
+                this.clipMessage = 'Pick which player this clip belongs to.';
+                return;
+            }
+
+            this.savingClip = true;
+            try {
+                const res = await fetch(`${this.API}/clips`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        recording_id: recordingId,
+                        player_id: playerId,
+                        start,
+                        end,
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    const msg = data.error
+                        || (data.errors ? Object.values(data.errors).flat().join(' ') : null)
+                        || 'Failed to save clip.';
+                    this.clipError = true;
+                    this.clipMessage = msg;
+                } else {
+                    this.clipError = false;
+                    this.clipMessage = 'Clip saved for ' + (data.player_name || 'player') + '.';
+                    this.clipStart = '';
+                    this.clipEnd = '';
+                    await this.loadClips();
+                    setTimeout(() => { if (!this.clipError) this.clipMessage = ''; }, 4000);
+                }
+            } catch (err) {
+                console.error('Error saving clip:', err);
+                this.clipError = true;
+                this.clipMessage = 'Network error while saving clip.';
+            } finally {
+                this.savingClip = false;
+            }
+        },
+
+        async deleteClip(id) {
+            if (!confirm('Delete this clip?')) return;
+            try {
+                const res = await fetch(`${this.API}/clips/${id}`, { method: 'DELETE' });
+                if (res.ok) {
+                    this.clips = this.clips.filter(c => c.id !== id);
+                }
+            } catch (err) {
+                console.error('Error deleting clip:', err);
             }
         },
 

@@ -345,6 +345,69 @@
         transform: translateX(2px);
     }
 
+    /* Highlights */
+    .pps .highlights-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 14px;
+    }
+    .pps .highlight-card {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 12px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+    .pps .highlight-card video {
+        width: 100%;
+        aspect-ratio: 16/9;
+        background: #000;
+        display: block;
+    }
+    .pps .highlight-card .hl-meta {
+        padding: 10px 14px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .pps .highlight-card .hl-matchup {
+        font-weight: 700;
+        font-size: 0.92rem;
+        color: rgba(255,255,255,0.9);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .pps .highlight-card .hl-score {
+        font-variant-numeric: tabular-nums;
+        color: rgba(255,255,255,0.5);
+        font-size: 0.85rem;
+    }
+    .pps .highlight-card .hl-foot {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 4px;
+        font-size: 0.8rem;
+        color: rgba(255,255,255,0.4);
+    }
+    .pps .highlight-card .hl-foot a {
+        color: #3b82f6;
+        text-decoration: none;
+        font-weight: 600;
+    }
+    .pps .highlight-card .hl-foot a:hover { text-decoration: underline; }
+    .pps .hl-duration-pill {
+        display: inline-block;
+        padding: 2px 8px;
+        background: rgba(59,130,246,0.15);
+        color: #93c5fd;
+        border-radius: 999px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+
 </style>
 
 <div class="pps" x-data="playerStats()" x-init="init()">
@@ -480,6 +543,31 @@
         <div class="loading" x-show="loadingH2h">Loading...</div>
     </div>
 
+    <!-- Highlights -->
+    <div class="section">
+        <h2>Highlights</h2>
+        <div class="highlights-grid" x-show="highlights.length > 0">
+            <template x-for="clip in highlights" :key="clip.id">
+                <div class="highlight-card">
+                    <video :src="clip.url" controls preload="metadata" playsinline></video>
+                    <div class="hl-meta">
+                        <div class="hl-matchup" x-text="(clip.match?.left_label || '?') + ' vs ' + (clip.match?.right_label || '?')"></div>
+                        <div class="hl-score">
+                            <span x-text="(clip.match?.player_left_score ?? '-') + ' – ' + (clip.match?.player_right_score ?? '-')"></span>
+                            <span style="margin-left:8px;" x-text="highlightDate(clip)"></span>
+                        </div>
+                        <div class="hl-foot">
+                            <span class="hl-duration-pill" x-text="Number(clip.duration_seconds).toFixed(1) + 's'"></span>
+                            <a :href="'/games/ping-pong/matches/' + clip.match_id">View match &rsaquo;</a>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+        <div class="empty" x-show="highlights.length === 0 && !loadingHighlights">No highlights yet</div>
+        <div class="loading" x-show="loadingHighlights">Loading...</div>
+    </div>
+
     <!-- Match History -->
     <div class="section">
         <h2>Match History</h2>
@@ -518,6 +606,8 @@ function playerStats() {
         loadingH2h: true,
         loadingMatches: true,
         loadingEloHistory: true,
+        highlights: [],
+        loadingHighlights: true,
 
         async init() {
             await Promise.all([
@@ -525,6 +615,7 @@ function playerStats() {
                 this.loadH2h(),
                 this.loadMatches(),
                 this.loadEloHistory(),
+                this.loadHighlights(),
             ]);
             window.addEventListener('resize', () => {
                 if (this.eloHistory.length > 0) this.renderEloChart();
@@ -567,6 +658,24 @@ function playerStats() {
                 console.error('Error loading h2h:', err);
             }
             this.loadingH2h = false;
+        },
+
+        async loadHighlights() {
+            try {
+                const res = await fetch(`${this.API}/players/${this.playerId}/highlights`);
+                this.highlights = await res.json();
+            } catch (err) {
+                console.error('Error loading highlights:', err);
+                this.highlights = [];
+            }
+            this.loadingHighlights = false;
+        },
+
+        highlightDate(clip) {
+            const iso = clip.match?.ended_at || clip.created_at;
+            if (!iso) return '';
+            const d = new Date(iso);
+            return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
         },
 
         async loadMatches() {
