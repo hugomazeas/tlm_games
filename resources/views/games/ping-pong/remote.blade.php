@@ -329,6 +329,95 @@
             color: white;
         }
 
+        /* ===== END-GAME OVERLAY ===== */
+        .endgame-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.92);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 90;
+            padding: 24px;
+        }
+
+        .endgame-box {
+            text-align: center;
+            max-width: 360px;
+            width: 100%;
+        }
+
+        .endgame-result {
+            font-size: 1rem;
+            font-weight: 600;
+            color: rgba(255,255,255,0.5);
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            margin-bottom: 8px;
+        }
+
+        .endgame-winner {
+            font-size: 2rem;
+            font-weight: 900;
+            margin-bottom: 8px;
+        }
+
+        .endgame-winner.left { color: #fb7185; }
+        .endgame-winner.right { color: #22d3ee; }
+
+        .endgame-score {
+            font-size: 3.5rem;
+            font-weight: 900;
+            margin-bottom: 32px;
+            color: white;
+        }
+
+        .endgame-score .sep {
+            color: rgba(255,255,255,0.2);
+            margin: 0 8px;
+        }
+
+        .endgame-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .endgame-buttons button {
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .btn-rematch {
+            background: linear-gradient(135deg, #3b82f6, #06b6d4);
+            color: white;
+            box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-rematch:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-rematch:active {
+            transform: scale(0.98);
+        }
+
+        .btn-done {
+            background: rgba(255, 255, 255, 0.08);
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .endgame-hint {
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.4);
+            margin-top: 16px;
+        }
+
     </style>
 </head>
 <body>
@@ -364,6 +453,22 @@
             <button class="btn-abandon" id="btnAbandon">Abandon Match</button>
         </div>
 
+        <!-- End-Game Overlay -->
+        <div class="endgame-overlay" id="endgameOverlay" style="display:none;">
+            <div class="endgame-box">
+                <div class="endgame-result">Match Complete</div>
+                <div class="endgame-winner" id="endgameWinner">—</div>
+                <div class="endgame-score">
+                    <span id="endgameLeftScore">0</span><span class="sep">-</span><span id="endgameRightScore">0</span>
+                </div>
+                <div class="endgame-buttons">
+                    <button class="btn-rematch" id="btnRematch">Rematch</button>
+                    <button class="btn-done" id="btnDone">View Match Detail</button>
+                </div>
+                <div class="endgame-hint" id="endgameHint" style="display:none;"></div>
+            </div>
+        </div>
+
         <!-- Confirm Dialog -->
         <div class="confirm-overlay" id="confirmOverlay" style="display:none;">
             <div class="confirm-box">
@@ -372,6 +477,18 @@
                 <div class="confirm-buttons">
                     <button class="btn-confirm-cancel" id="btnConfirmCancel">Cancel</button>
                     <button class="btn-confirm-abandon" id="btnConfirmAbandon">Abandon</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Match-Point Confirm Dialog -->
+        <div class="confirm-overlay" id="matchPointOverlay" style="display:none;">
+            <div class="confirm-box">
+                <h3>Match Point</h3>
+                <p id="matchPointDetail">This point will end the match.</p>
+                <div class="confirm-buttons">
+                    <button class="btn-confirm-cancel" id="btnMatchPointCancel">Cancel</button>
+                    <button class="btn-confirm-abandon" id="btnMatchPointConfirm" style="background: #22c55e;">Confirm Win</button>
                 </div>
             </div>
         </div>
@@ -439,11 +556,52 @@
         const btnConfirmCancel = document.getElementById('btnConfirmCancel');
         const btnConfirmAbandon = document.getElementById('btnConfirmAbandon');
 
-        addTouchHandler(btnPlus, () => updateScore('increment'));
+        const endgameOverlay = document.getElementById('endgameOverlay');
+        const endgameWinner = document.getElementById('endgameWinner');
+        const endgameLeftScore = document.getElementById('endgameLeftScore');
+        const endgameRightScore = document.getElementById('endgameRightScore');
+        const endgameHint = document.getElementById('endgameHint');
+        const btnRematch = document.getElementById('btnRematch');
+        const btnDone = document.getElementById('btnDone');
+
+        const matchPointOverlay = document.getElementById('matchPointOverlay');
+        const matchPointDetail = document.getElementById('matchPointDetail');
+        const btnMatchPointCancel = document.getElementById('btnMatchPointCancel');
+        const btnMatchPointConfirm = document.getElementById('btnMatchPointConfirm');
+
+        addTouchHandler(btnPlus, () => handlePlusTap());
         addTouchHandler(btnUndo, () => updateScore('decrement'));
         addTouchHandler(btnAbandon, () => { confirmOverlay.style.display = 'flex'; });
         addTouchHandler(btnConfirmCancel, () => { confirmOverlay.style.display = 'none'; });
         addTouchHandler(btnConfirmAbandon, () => abandonMatch());
+        addTouchHandler(btnMatchPointCancel, () => { matchPointOverlay.style.display = 'none'; });
+        addTouchHandler(btnMatchPointConfirm, () => {
+            matchPointOverlay.style.display = 'none';
+            updateScore('increment');
+        });
+        addTouchHandler(btnRematch, () => requestRematch());
+        addTouchHandler(btnDone, () => {
+            window.location.href = '/games/ping-pong/matches/' + MATCH_ID;
+        });
+
+        function wouldWinMatch() {
+            if (!matchData || isComplete) return false;
+            const newLeft = matchData.player_left_score + (SIDE === 'left' ? 1 : 0);
+            const newRight = matchData.player_right_score + (SIDE === 'right' ? 1 : 0);
+            return (newLeft >= 11 || newRight >= 11) && Math.abs(newLeft - newRight) >= 2;
+        }
+
+        function handlePlusTap() {
+            if (isUpdating || isComplete) return;
+            if (wouldWinMatch()) {
+                const newLeft = matchData.player_left_score + (SIDE === 'left' ? 1 : 0);
+                const newRight = matchData.player_right_score + (SIDE === 'right' ? 1 : 0);
+                matchPointDetail.textContent = 'This point will end the match at ' + newLeft + '–' + newRight + '.';
+                matchPointOverlay.style.display = 'flex';
+                return;
+            }
+            updateScore('increment');
+        }
 
         async function updateScore(action) {
             if (isUpdating || isComplete) return;
@@ -492,8 +650,90 @@
             renderServing(data);
 
             if (data.is_complete) {
-                window.location.href = '/games/ping-pong/matches/' + MATCH_ID;
+                isComplete = true;
+                showEndgameOverlay(data);
                 return;
+            }
+        }
+
+        function showEndgameOverlay(data) {
+            const leftScoreVal = data.player_left_score ?? 0;
+            const rightScoreVal = data.player_right_score ?? 0;
+            endgameLeftScore.textContent = leftScoreVal;
+            endgameRightScore.textContent = rightScoreVal;
+
+            let winnerName = '';
+            let winnerSide = '';
+            if (leftScoreVal > rightScoreVal) {
+                winnerSide = 'left';
+                winnerName = data.mode === '2v2'
+                    ? (data.player_left?.name || '?') + ' & ' + (data.team_left_player2?.name || '?')
+                    : (data.player_left?.name || 'Left');
+            } else if (rightScoreVal > leftScoreVal) {
+                winnerSide = 'right';
+                winnerName = data.mode === '2v2'
+                    ? (data.player_right?.name || '?') + ' & ' + (data.team_right_player2?.name || '?')
+                    : (data.player_right?.name || 'Right');
+            } else {
+                winnerName = 'Tie';
+            }
+
+            endgameWinner.className = 'endgame-winner' + (winnerSide ? ' ' + winnerSide : '');
+            endgameWinner.textContent = winnerName + (winnerSide ? ' wins' : '');
+            endgameOverlay.style.display = 'flex';
+        }
+
+        function getOwnPlayerInfo() {
+            if (!matchData) return null;
+            if (SIDE === 'left') {
+                return {
+                    player_id: matchData.player_left_id,
+                    player_name: matchData.player_left?.name || '',
+                };
+            }
+            return {
+                player_id: matchData.player_right_id,
+                player_name: matchData.player_right?.name || '',
+            };
+        }
+
+        function redirectToRematchLobby(lobbyCode) {
+            // Seed last-player cache so the lobby join page auto-joins us;
+            // since rematch endpoint pre-joined this player, /join returns the
+            // existing session_token.
+            const me = getOwnPlayerInfo();
+            if (me?.player_id) {
+                try {
+                    localStorage.setItem('ping_pong_last_player', JSON.stringify({
+                        player_id: me.player_id,
+                        player_name: me.player_name,
+                    }));
+                } catch (e) {}
+            }
+            window.location.href = '/games/ping-pong/lobby/' + lobbyCode;
+        }
+
+        async function requestRematch() {
+            if (!isComplete) return;
+            btnRematch.disabled = true;
+            endgameHint.style.display = 'block';
+            endgameHint.textContent = 'Creating new lobby...';
+            try {
+                const res = await fetch(`${API}/matches/${MATCH_ID}/rematch`, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': CSRF },
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    endgameHint.textContent = err.error || 'Could not create rematch';
+                    btnRematch.disabled = false;
+                    return;
+                }
+                const data = await res.json();
+                redirectToRematchLobby(data.lobby_code);
+            } catch (err) {
+                endgameHint.textContent = 'Network error — try again';
+                btnRematch.disabled = false;
             }
         }
 
@@ -584,6 +824,10 @@
                 })
                 .listen('.match.abandoned', function() {
                     window.location.href = '/games/ping-pong';
+                })
+                .listen('.match.rematched', function(e) {
+                    if (!e?.lobbyCode) return;
+                    redirectToRematchLobby(e.lobbyCode);
                 });
         }
 

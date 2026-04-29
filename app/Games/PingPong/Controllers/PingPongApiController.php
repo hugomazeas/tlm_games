@@ -4,7 +4,10 @@ namespace App\Games\PingPong\Controllers;
 
 use App\Games\PingPong\Events\LiveMatchStarted;
 use App\Games\PingPong\Events\MatchAbandoned;
+use App\Games\PingPong\Events\MatchRematched;
 use App\Games\PingPong\Events\MatchScoreUpdated;
+use App\Games\PingPong\Models\PingPongLobby;
+use App\Games\PingPong\Models\PingPongLobbyParticipant;
 use App\Games\PingPong\Models\PingPongMatch;
 use App\Games\PingPong\Models\PingPongPoint;
 use App\Games\PingPong\Models\PingPongRating;
@@ -820,30 +823,57 @@ class PingPongApiController extends Controller
             return response()->json(['error' => 'Previous match is not complete'], 422);
         }
 
-        $matchData = [
+        // If a rematch lobby was already created for this match, reuse it (handles
+        // races where both remotes click rematch at roughly the same time).
+        $existing = PingPongLobby::where('rematch_of_match_id', $id)
+            ->where('status', 'waiting')
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'lobby_code' => $existing->code,
+                'mode' => $existing->mode,
+            ]);
+        }
+
+        $lobby = PingPongLobby::create([
+            'code' => PingPongLobby::generateCode(),
             'mode' => $previousMatch->mode,
-            'player_left_id' => $previousMatch->player_left_id,
-            'player_right_id' => $previousMatch->player_right_id,
-            'player_left_score' => 0,
-            'player_right_score' => 0,
-            'current_server_id' => $previousMatch->player_left_id,
-            'serve_count' => 0,
-            'started_at' => now(),
-            'last_score_activity_at' => now(),
+            'host_token' => \Illuminate\Support\Str::random(64),
+            'status' => 'waiting',
+            'expires_at' => now()->addYears(10),
+            'rematch_of_match_id' => $previousMatch->id,
+        ]);
+
+        $players = [
+            ['player_id' => $previousMatch->player_left_id, 'side' => 'left'],
+            ['player_id' => $previousMatch->player_right_id, 'side' => 'right'],
         ];
 
         if ($previousMatch->isDoubles()) {
-            $matchData['team_left_player2_id'] = $previousMatch->team_left_player2_id;
-            $matchData['team_right_player2_id'] = $previousMatch->team_right_player2_id;
+            $players[] = ['player_id' => $previousMatch->team_left_player2_id, 'side' => 'left'];
+            $players[] = ['player_id' => $previousMatch->team_right_player2_id, 'side' => 'right'];
         }
 
-        $match = PingPongMatch::create($matchData);
+        foreach ($players as $p) {
+            if (!$p['player_id']) {
+                continue;
+            }
+            PingPongLobbyParticipant::create([
+                'lobby_id' => $lobby->id,
+                'player_id' => $p['player_id'],
+                'side' => $p['side'],
+                'session_token' => \Illuminate\Support\Str::random(64),
+                'last_seen_at' => now(),
+            ]);
+        }
 
-        $match->load(['playerLeft', 'playerRight', 'currentServer', 'teamLeftPlayer2', 'teamRightPlayer2']);
+        broadcast(new MatchRematched($previousMatch->id, $lobby->code, $lobby->mode));
 
-        broadcast(new LiveMatchStarted($match));
-
-        return response()->json($match, 201);
+        return response()->json([
+            'lobby_code' => $lobby->code,
+            'mode' => $lobby->mode,
+        ], 201);
     }
 
     public function abandonMatch(int $id): JsonResponse

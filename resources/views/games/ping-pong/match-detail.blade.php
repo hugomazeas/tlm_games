@@ -644,6 +644,8 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pusher-js@8.4.0/dist/web/pusher.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
 <script>
 function matchDetail() {
     return {
@@ -688,6 +690,33 @@ function matchDetail() {
                         window.location.href = '/games/ping-pong';
                     }
                 }, 1000);
+            }
+
+            this.subscribeToMatch();
+        },
+
+        subscribeToMatch() {
+            if (typeof Echo === 'undefined') return;
+            try {
+                const echo = new Echo({
+                    broadcaster: 'pusher',
+                    key: 'games-hub-key',
+                    wsHost: window.location.hostname,
+                    wsPort: window.location.port || 80,
+                    forceTLS: false,
+                    disableStats: true,
+                    enabledTransports: ['ws', 'wss'],
+                    cluster: 'mt1',
+                });
+
+                echo.channel('ping-pong.match.' + this.matchId)
+                    .listen('.match.rematched', (e) => {
+                        if (!e?.lobbyCode) return;
+                        if (this.countdownTimer) clearInterval(this.countdownTimer);
+                        window.location.href = '/games/ping-pong?lobby=' + encodeURIComponent(e.lobbyCode);
+                    });
+            } catch (err) {
+                console.warn('Echo subscribe failed:', err);
             }
         },
 
