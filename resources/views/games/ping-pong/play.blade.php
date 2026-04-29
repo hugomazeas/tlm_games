@@ -46,10 +46,13 @@
                                     </template>
                                 </div>
                             </div>
-                            <button class="pp-start-btn" :disabled="!lobbyReady || loading" @click="startLobbyMatch()">
+                            <button class="pp-start-btn" :disabled="!lobbyReady || loading || !hostToken" @click="startLobbyMatch()" x-show="hostToken">
                                 <span x-show="!loading">Start Match</span>
                                 <span x-show="loading">Starting...</span>
                             </button>
+                            <div class="pp-hint" style="text-align: center;" x-show="!hostToken && lobbyCode">
+                                Waiting for a player to start the match...
+                            </div>
                             <div class="pp-hint" style="text-align: center;">
                                 <span x-show="wsStatus === 'connected'" style="color: #22c55e;">&#9679; Live</span>
                                 <span x-show="wsStatus === 'connecting'" style="color: #eab308;">&#9679; Connecting...</span>
@@ -407,7 +410,37 @@ function pingPong() {
             await this.loadLiveMatches();
             this.subscribeLive();
             this.startClock();
+
+            const params = new URLSearchParams(window.location.search);
+            const existingLobby = params.get('lobby');
+            if (existingLobby) {
+                const adopted = await this.adoptExistingLobby(existingLobby);
+                if (adopted) return;
+            }
+
             await this.createLobby();
+        },
+
+        async adoptExistingLobby(code) {
+            try {
+                const res = await fetch(`${this.API}/lobbies/${code}`);
+                if (!res.ok) return false;
+                const lobby = await res.json();
+                if (lobby.status !== 'waiting') return false;
+
+                this.lobbyCode = lobby.code;
+                this.hostToken = '';
+                this.mode = lobby.mode;
+                this.lobbyParticipants = lobby.participants || [];
+                this.lobbyJoinUrl = `${window.location.origin}/games/ping-pong/lobby/${this.lobbyCode}`;
+
+                this.subscribeToLobby();
+                this.$nextTick(() => setTimeout(() => this.generateLobbyQr(), 100));
+                return true;
+            } catch (err) {
+                console.warn('Could not adopt lobby:', err);
+                return false;
+            }
         },
 
         async setMode(newMode) {
