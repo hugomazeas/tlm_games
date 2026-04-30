@@ -20,8 +20,10 @@ use App\Games\PingPong\Services\VideoRecordingService;
 use App\Http\Controllers\Controller;
 use App\Models\Office;
 use App\Models\Player;
+use Carbon\CarbonPeriod;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class PingPongApiController extends Controller
@@ -106,7 +108,40 @@ class PingPongApiController extends Controller
             $playerIds = $playerIds->intersect($allowedIds)->values();
         }
 
-        $entries = $playerIds->map(function ($playerId) use ($mode) {
+        $today = Carbon::today();
+        $cutoff7  = $today->copy()->subDays(6);
+        $cutoff30 = $today->copy()->subDays(29);
+        $cutoff7Str = $cutoff7->toDateString();
+
+        $recentMatches = PingPongMatch::whereNotNull('ended_at')
+            ->where('ended_at', '>=', $cutoff30)
+            ->get(['player_left_id', 'player_right_id', 'team_left_player2_id', 'team_right_player2_id', 'ended_at']);
+
+        $playerDates = [];
+        foreach ($recentMatches as $match) {
+            $date = $match->ended_at->toDateString();
+            foreach (['player_left_id', 'player_right_id', 'team_left_player2_id', 'team_right_player2_id'] as $slot) {
+                $pid = $match->{$slot};
+                if ($pid !== null) {
+                    $playerDates[$pid][$date] = true;
+                }
+            }
+        }
+
+        $workdays7 = 0;
+        foreach (CarbonPeriod::create($cutoff7, $today) as $day) {
+            if ($day->isWeekday()) {
+                $workdays7++;
+            }
+        }
+        $workdays30 = 0;
+        foreach (CarbonPeriod::create($cutoff30, $today) as $day) {
+            if ($day->isWeekday()) {
+                $workdays30++;
+            }
+        }
+
+        $entries = $playerIds->map(function ($playerId) use ($mode, $playerDates, $cutoff7Str, $workdays7, $workdays30) {
             $player = Player::find($playerId);
             if (!$player) {
                 return null;
@@ -156,6 +191,13 @@ class PingPongApiController extends Controller
             $losingStreak = $this->getCurrentLosingStreak($playerId, $mode);
             $last10 = $this->getLast10Results($playerId, $mode);
 
+            $dates = $playerDates[$playerId] ?? [];
+            $weekdayDates = array_filter(array_keys($dates), fn($d) => Carbon::parse($d)->isWeekday());
+            $count7  = count(array_filter($weekdayDates, fn($d) => $d >= $cutoff7Str));
+            $count30 = count($weekdayDates);
+            $office7  = $workdays7  > 0 ? (int) round($count7  / $workdays7  * 100) : 0;
+            $office30 = $workdays30 > 0 ? (int) round($count30 / $workdays30 * 100) : 0;
+
             return [
                 'player_id' => $playerId,
                 'player_name' => $player->name,
@@ -167,6 +209,8 @@ class PingPongApiController extends Controller
                 'losing_streak' => $losingStreak,
                 'games_played' => $totalGames,
                 'last_10' => $last10,
+                'office_7d' => $office7,
+                'office_30d' => $office30,
             ];
         })
         ->filter()

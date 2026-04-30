@@ -145,6 +145,9 @@
                                     <th style="text-align: center;">W-L</th>
                                     <th style="text-align: center;">Last 10</th>
                                     <th>Streak</th>
+                                    <template x-if="mode !== '2v2'">
+                                        <th style="text-align: center; white-space: nowrap;" title="% of workdays with at least one ping pong match — last 7 days / last month">Office presence (7d, 1m)</th>
+                                    </template>
                                 </tr>
                             </thead>
                             <tbody>
@@ -188,6 +191,14 @@
                                                 <span style="color: rgba(255,255,255,0.3);">-</span>
                                             </template>
                                         </td>
+                                        <template x-if="mode !== '2v2'">
+                                            <td style="text-align: center; white-space: nowrap;">
+                                                <div style="display: flex; flex-direction: column; align-items: center;">
+                                                    <span style="font-size: 15px; font-weight: 600; color: rgba(255,255,255,0.85);" x-text="entry.office_7d + '%'"></span>
+                                                    <span style="font-size: 13px; color: rgba(255,255,255,0.55);" x-text="entry.office_30d + '% / last month'"></span>
+                                                </div>
+                                            </td>
+                                        </template>
                                     </tr>
                                 </template>
                             </tbody>
@@ -207,6 +218,9 @@
                                         <th style="text-align: center;">W-L</th>
                                         <th style="text-align: center;">Last 10</th>
                                         <th>Streak</th>
+                                        <template x-if="mode !== '2v2'">
+                                            <th style="text-align: center; white-space: nowrap;" title="% of workdays with at least one ping pong match — last 7 days / last month">Office presence (7d, 1m)</th>
+                                        </template>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -250,6 +264,14 @@
                                                     <span style="color: rgba(255,255,255,0.3);">-</span>
                                                 </template>
                                             </td>
+                                            <template x-if="mode !== '2v2'">
+                                                <td style="text-align: center; white-space: nowrap;">
+                                                    <div style="display: flex; flex-direction: column; align-items: center;">
+                                                        <span style="font-size: 15px; font-weight: 600; color: rgba(255,255,255,0.85);" x-text="entry.office_7d + '%'"></span>
+                                                        <span style="font-size: 13px; color: rgba(255,255,255,0.55);" x-text="entry.office_30d + '% / last month'"></span>
+                                                    </div>
+                                                </td>
+                                            </template>
                                         </tr>
                                     </template>
                                 </tbody>
