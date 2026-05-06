@@ -13,6 +13,10 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #0a0a0a; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        @keyframes servePulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.05); }
+        }
     </style>
 </head>
 <body>
@@ -61,6 +65,10 @@
                     <div style="color:rgba(255,255,255,0.3);font-size:0.9rem;" x-text="match?.mode?.toUpperCase()"></div>
                 </div>
             </template>
+            <div x-show="hasVideo" style="width:100%;height:100%;position:absolute;inset:0;transform:scaleX(-1);">
+                <video id="embedPlayer" muted autoplay playsinline
+                       style="width:100%;height:100%;object-fit:contain;background:#000;"></video>
+            </div>
 
             <!-- Overlay: LIVE badge -->
             <div style="position:absolute;top:16px;left:16px;display:flex;align-items:center;gap:6px;background:rgba(0,0,0,0.7);padding:4px 12px;border-radius:6px;">
@@ -80,6 +88,15 @@
                         <span style="color:#22d3ee;font-size:2.5rem;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,0.8);" x-text="match?.player_right?.name || 'Right'"></span>
                         <span x-show="isServingRight()" style="color:#fbbf24;font-size:0.7rem;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,0.8);">SERVING</span>
                         <span style="color:white;font-size:10rem;font-weight:900;line-height:1;text-shadow:0 4px 16px rgba(0,0,0,0.8);" x-text="match?.player_right_score ?? 0"></span>
+                    </div>
+                        <span style="color:#22d3ee;font-size:2.5rem;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,0.8);" x-text="match?.player_right?.name || 'Right'"></span>
+                        <span x-show="isServingRight()" style="background:#fbbf24;color:#000;font-size:4rem;font-weight:800;padding:8px 36px;border-radius:999px;animation:servePulse 1.5s ease-in-out infinite;text-transform:uppercase;letter-spacing:0.05em;text-shadow:none;">SERVING</span>
+                        <span style="color:white;font-size:10rem;font-weight:900;line-height:1;text-shadow:0 4px 16px rgba(0,0,0,0.8);" x-text="match?.player_right_score ?? 0"></span>
+                    </div>
+                    <div style="position:absolute;bottom:24px;right:24px;display:flex;flex-direction:column;align-items:center;">
+                        <span style="color:#fb7185;font-size:2.5rem;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,0.8);" x-text="match?.player_left?.name || 'Left'"></span>
+                        <span x-show="isServingLeft()" style="background:#fbbf24;color:#000;font-size:4rem;font-weight:800;padding:8px 36px;border-radius:999px;animation:servePulse 1.5s ease-in-out infinite;text-transform:uppercase;letter-spacing:0.05em;text-shadow:none;">SERVING</span>
+                        <span style="color:white;font-size:10rem;font-weight:900;line-height:1;text-shadow:0 4px 16px rgba(0,0,0,0.8);" x-text="match?.player_left_score ?? 0"></span>
                     </div>
                 </div>
             </template>
@@ -101,6 +118,8 @@ function embedLive() {
         matchId: null,
         countdown: 10,
         countdownTimer: null,
+        healthCheckTimer: null,
+        hlsNetworkErrorCount: 0,
         echo: null,
 
         async init() {
@@ -123,6 +142,11 @@ function embedLive() {
                         this.stopPolling();
                         this.$nextTick(() => this.initPlayer(recData.hls_url));
                         this.subscribeToScores();
+                        this.hlsNetworkErrorCount = 0;
+                        this.stopPolling();
+                        this.$nextTick(() => this.initPlayer(recData.hls_url));
+                        this.subscribeToScores();
+                        this.startHealthCheck();
                         return;
                     }
                 }
@@ -137,6 +161,7 @@ function embedLive() {
                         this.hasVideo = false;
                         this.stopPolling();
                         this.subscribeToScores();
+                        this.startHealthCheck();
                         return;
                     }
                 }
@@ -163,6 +188,42 @@ function embedLive() {
             }
         },
 
+        startHealthCheck() {
+            this.stopHealthCheck();
+            this.healthCheckTimer = setInterval(() => this.runHealthCheck(), 15000);
+        },
+
+        stopHealthCheck() {
+            if (this.healthCheckTimer) {
+                clearInterval(this.healthCheckTimer);
+                this.healthCheckTimer = null;
+            }
+        },
+
+        async runHealthCheck() {
+            if (!this.matchId) return;
+            try {
+                const res = await fetch('/games/ping-pong/api/matches/' + this.matchId);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.is_complete) {
+                        this.handleMatchEnd();
+                        return;
+                    }
+                }
+            } catch (e) {
+                // Ignore transient fetch errors
+            }
+        },
+
+        handleMatchEnd() {
+            this.stopHealthCheck();
+            this.matchActive = false;
+            this.hasVideo = false;
+            this.destroyPlayer();
+            this.startPolling();
+        },
+
         initPlayer(hlsUrl) {
             const video = document.getElementById('embedPlayer');
             if (!video) return;
@@ -182,6 +243,11 @@ function embedLive() {
                 hls.on(Hls.Events.ERROR, (event, data) => {
                     if (!data.fatal) return;
                     if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                        this.hlsNetworkErrorCount++;
+                        if (this.hlsNetworkErrorCount >= 3) {
+                            this.runHealthCheck();
+                            this.hlsNetworkErrorCount = 0;
+                        }
                         hls.startLoad();
                     } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
                         hls.recoverMediaError();
@@ -242,6 +308,12 @@ function embedLive() {
                             }, 3000);
                         }
                     }
+                            setTimeout(() => this.handleMatchEnd(), 3000);
+                        }
+                    }
+                })
+                .listen('.match.abandoned', () => {
+                    this.handleMatchEnd();
                 });
         },
     };

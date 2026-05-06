@@ -3,19 +3,27 @@
 namespace App\Games\PingPong\Controllers;
 
 use App\Games\PingPong\Events\LiveMatchStarted;
+use App\Games\PingPong\Events\MatchAbandoned;
+use App\Games\PingPong\Events\MatchRematched;
 use App\Games\PingPong\Events\MatchScoreUpdated;
+use App\Games\PingPong\Models\PingPongLobby;
+use App\Games\PingPong\Models\PingPongLobbyParticipant;
 use App\Games\PingPong\Models\PingPongMatch;
 use App\Games\PingPong\Models\PingPongPoint;
 use App\Games\PingPong\Models\PingPongRating;
+use App\Games\PingPong\Models\PingPongClip;
 use App\Games\PingPong\Models\PingPongRecording;
 use App\Games\PingPong\Models\PingPongRatingChange;
+use App\Games\PingPong\Services\ClipExtractionService;
 use App\Games\PingPong\Services\EloService;
 use App\Games\PingPong\Services\VideoRecordingService;
 use App\Http\Controllers\Controller;
 use App\Models\Office;
 use App\Models\Player;
+use Carbon\CarbonPeriod;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class PingPongApiController extends Controller
@@ -100,7 +108,40 @@ class PingPongApiController extends Controller
             $playerIds = $playerIds->intersect($allowedIds)->values();
         }
 
-        $entries = $playerIds->map(function ($playerId) use ($mode) {
+        $today = Carbon::today();
+        $cutoff7  = $today->copy()->subDays(6);
+        $cutoff30 = $today->copy()->subDays(29);
+        $cutoff7Str = $cutoff7->toDateString();
+
+        $recentMatches = PingPongMatch::whereNotNull('ended_at')
+            ->where('ended_at', '>=', $cutoff30)
+            ->get(['player_left_id', 'player_right_id', 'team_left_player2_id', 'team_right_player2_id', 'ended_at']);
+
+        $playerDates = [];
+        foreach ($recentMatches as $match) {
+            $date = $match->ended_at->toDateString();
+            foreach (['player_left_id', 'player_right_id', 'team_left_player2_id', 'team_right_player2_id'] as $slot) {
+                $pid = $match->{$slot};
+                if ($pid !== null) {
+                    $playerDates[$pid][$date] = true;
+                }
+            }
+        }
+
+        $workdays7 = 0;
+        foreach (CarbonPeriod::create($cutoff7, $today) as $day) {
+            if ($day->isWeekday()) {
+                $workdays7++;
+            }
+        }
+        $workdays30 = 0;
+        foreach (CarbonPeriod::create($cutoff30, $today) as $day) {
+            if ($day->isWeekday()) {
+                $workdays30++;
+            }
+        }
+
+        $entries = $playerIds->map(function ($playerId) use ($mode, $playerDates, $cutoff7Str, $workdays7, $workdays30) {
             $player = Player::find($playerId);
             if (!$player) {
                 return null;
@@ -150,6 +191,13 @@ class PingPongApiController extends Controller
             $losingStreak = $this->getCurrentLosingStreak($playerId, $mode);
             $last10 = $this->getLast10Results($playerId, $mode);
 
+            $dates = $playerDates[$playerId] ?? [];
+            $weekdayDates = array_filter(array_keys($dates), fn($d) => Carbon::parse($d)->isWeekday());
+            $count7  = count(array_filter($weekdayDates, fn($d) => $d >= $cutoff7Str));
+            $count30 = count($weekdayDates);
+            $office7  = $workdays7  > 0 ? (int) round($count7  / $workdays7  * 100) : 0;
+            $office30 = $workdays30 > 0 ? (int) round($count30 / $workdays30 * 100) : 0;
+
             return [
                 'player_id' => $playerId,
                 'player_name' => $player->name,
@@ -161,6 +209,8 @@ class PingPongApiController extends Controller
                 'losing_streak' => $losingStreak,
                 'games_played' => $totalGames,
                 'last_10' => $last10,
+                'office_7d' => $office7,
+                'office_30d' => $office30,
             ];
         })
         ->filter()
@@ -330,9 +380,12 @@ class PingPongApiController extends Controller
 
         if ($match->recording) {
             $response['recording'] = [
+                'id' => $match->recording->id,
                 'status' => $match->recording->status,
                 'video_url' => $match->recording->video_url,
                 'hls_url' => $match->recording->hls_url,
+                'duration_seconds' => $match->recording->duration_seconds,
+                'created_at' => $match->recording->created_at?->toISOString(),
             ];
         }
 
@@ -627,6 +680,163 @@ class PingPongApiController extends Controller
         return response()->json(['deleted' => true]);
     }
 
+    public function createClip(Request $request, ClipExtractionService $clipService): JsonResponse
+    {
+        $validated = $request->validate([
+            'recording_id' => 'required|integer|exists:ping_pong_recordings,id',
+            'player_id' => 'required|integer|exists:players,id',
+            'start' => 'required|numeric|min:0',
+            'end' => 'required|numeric|gt:start',
+        ]);
+
+        $recording = PingPongRecording::findOrFail($validated['recording_id']);
+
+        if ($recording->status !== 'completed') {
+            return response()->json([
+                'error' => 'Recording is not ready (status: ' . $recording->status . ')',
+            ], 422);
+        }
+
+        $match = $recording->match;
+        $participantIds = array_filter([
+            $match?->player_left_id,
+            $match?->player_right_id,
+            $match?->team_left_player2_id,
+            $match?->team_right_player2_id,
+        ]);
+
+        if (!in_array((int) $validated['player_id'], $participantIds, true)) {
+            return response()->json([
+                'error' => 'Selected player did not participate in this match',
+            ], 422);
+        }
+
+        try {
+            $clip = $clipService->extract(
+                $recording,
+                (float) $validated['start'],
+                (float) $validated['end'],
+                (int) $validated['player_id'],
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+
+        if ($clip->status === 'failed') {
+            return response()->json([
+                'error' => 'Clip extraction failed',
+                'details' => $clip->error_message,
+            ], 500);
+        }
+
+        return response()->json($this->serializeClip($clip->load('player')), 201);
+    }
+
+    public function listClips(Request $request): JsonResponse
+    {
+        $query = PingPongClip::with('player')->orderByDesc('created_at');
+
+        if ($request->filled('recording_id')) {
+            $query->where('recording_id', (int) $request->query('recording_id'));
+        }
+
+        if ($request->filled('match_id')) {
+            $query->where('match_id', (int) $request->query('match_id'));
+        }
+
+        if ($request->filled('player_id')) {
+            $query->where('player_id', (int) $request->query('player_id'));
+        }
+
+        return response()->json(
+            $query->get()->map(fn (PingPongClip $clip) => $this->serializeClip($clip))
+        );
+    }
+
+    public function deleteClip(int $id): JsonResponse
+    {
+        $clip = PingPongClip::findOrFail($id);
+
+        if ($clip->clip_path) {
+            $fullPath = storage_path('app/public/' . $clip->clip_path);
+            if (file_exists($fullPath)) {
+                unlink($fullPath);
+            }
+        }
+
+        $clip->delete();
+
+        return response()->json(['deleted' => true]);
+    }
+
+    public function playerHighlights(int $id): JsonResponse
+    {
+        Player::findOrFail($id);
+
+        $clips = PingPongClip::with(['match.playerLeft', 'match.playerRight', 'match.teamLeftPlayer2', 'match.teamRightPlayer2'])
+            ->where('player_id', $id)
+            ->where('status', 'ready')
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(function (PingPongClip $clip) {
+                $match = $clip->match;
+                $leftLabel = $match
+                    ? ($match->isDoubles()
+                        ? ($match->playerLeft->name ?? '?') . ' & ' . ($match->teamLeftPlayer2->name ?? '?')
+                        : ($match->playerLeft->name ?? '?'))
+                    : '?';
+                $rightLabel = $match
+                    ? ($match->isDoubles()
+                        ? ($match->playerRight->name ?? '?') . ' & ' . ($match->teamRightPlayer2->name ?? '?')
+                        : ($match->playerRight->name ?? '?'))
+                    : '?';
+
+                return [
+                    'id' => $clip->id,
+                    'match_id' => $clip->match_id,
+                    'recording_id' => $clip->recording_id,
+                    'start_seconds' => $clip->start_seconds,
+                    'end_seconds' => $clip->end_seconds,
+                    'duration_seconds' => $clip->duration_seconds,
+                    'url' => $clip->clip_url,
+                    'file_size' => $clip->file_size,
+                    'created_at' => $clip->created_at?->toIso8601String(),
+                    'match' => $match ? [
+                        'id' => $match->id,
+                        'mode' => $match->mode,
+                        'left_label' => $leftLabel,
+                        'right_label' => $rightLabel,
+                        'player_left_score' => $match->player_left_score,
+                        'player_right_score' => $match->player_right_score,
+                        'ended_at' => $match->ended_at?->toIso8601String(),
+                    ] : null,
+                ];
+            });
+
+        return response()->json($clips);
+    }
+
+    private function serializeClip(PingPongClip $clip): array
+    {
+        return [
+            'id' => $clip->id,
+            'recording_id' => $clip->recording_id,
+            'match_id' => $clip->match_id,
+            'player_id' => $clip->player_id,
+            'player_name' => $clip->player?->name,
+            'start_seconds' => $clip->start_seconds,
+            'end_seconds' => $clip->end_seconds,
+            'duration_seconds' => $clip->duration_seconds,
+            'url' => $clip->clip_url,
+            'file_size' => $clip->file_size,
+            'status' => $clip->status,
+            'error_message' => $clip->error_message,
+            'created_at' => $clip->created_at?->toIso8601String(),
+        ];
+    }
+
     public function connectRemote(Request $request, int $id): JsonResponse
     {
         $validated = $request->validate([
@@ -657,30 +867,98 @@ class PingPongApiController extends Controller
             return response()->json(['error' => 'Previous match is not complete'], 422);
         }
 
-        $matchData = [
+        // If a rematch lobby was already created for this match, reuse it (handles
+        // races where both remotes click rematch at roughly the same time).
+        $existing = PingPongLobby::where('rematch_of_match_id', $id)
+            ->where('status', 'waiting')
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'lobby_code' => $existing->code,
+                'mode' => $existing->mode,
+            ]);
+        }
+
+        $lobby = PingPongLobby::create([
+            'code' => PingPongLobby::generateCode(),
             'mode' => $previousMatch->mode,
-            'player_left_id' => $previousMatch->player_left_id,
-            'player_right_id' => $previousMatch->player_right_id,
-            'player_left_score' => 0,
-            'player_right_score' => 0,
-            'current_server_id' => $previousMatch->player_left_id,
-            'serve_count' => 0,
-            'started_at' => now(),
-            'last_score_activity_at' => now(),
+            'host_token' => \Illuminate\Support\Str::random(64),
+            'status' => 'waiting',
+            'expires_at' => now()->addYears(10),
+            'rematch_of_match_id' => $previousMatch->id,
+        ]);
+
+        $players = [
+            ['player_id' => $previousMatch->player_left_id, 'side' => 'left'],
+            ['player_id' => $previousMatch->player_right_id, 'side' => 'right'],
         ];
 
         if ($previousMatch->isDoubles()) {
-            $matchData['team_left_player2_id'] = $previousMatch->team_left_player2_id;
-            $matchData['team_right_player2_id'] = $previousMatch->team_right_player2_id;
+            $players[] = ['player_id' => $previousMatch->team_left_player2_id, 'side' => 'left'];
+            $players[] = ['player_id' => $previousMatch->team_right_player2_id, 'side' => 'right'];
         }
 
-        $match = PingPongMatch::create($matchData);
+        foreach ($players as $p) {
+            if (!$p['player_id']) {
+                continue;
+            }
+            PingPongLobbyParticipant::create([
+                'lobby_id' => $lobby->id,
+                'player_id' => $p['player_id'],
+                'side' => $p['side'],
+                'session_token' => \Illuminate\Support\Str::random(64),
+                'last_seen_at' => now(),
+            ]);
+        }
 
-        $match->load(['playerLeft', 'playerRight', 'currentServer', 'teamLeftPlayer2', 'teamRightPlayer2']);
+        broadcast(new MatchRematched($previousMatch->id, $lobby->code, $lobby->mode));
 
-        broadcast(new LiveMatchStarted($match));
+        return response()->json([
+            'lobby_code' => $lobby->code,
+            'mode' => $lobby->mode,
+        ], 201);
+    }
 
-        return response()->json($match, 201);
+    public function abandonMatch(int $id): JsonResponse
+    {
+        $match = PingPongMatch::findOrFail($id);
+
+        if ($match->is_complete) {
+            return response()->json(['error' => 'Match is already complete'], 422);
+        }
+
+        $matchId = $match->id;
+
+        // Stop and delete recording if present
+        $recording = $match->recording;
+        if ($recording) {
+            if ($recording->status === 'recording') {
+                try {
+                    $this->videoRecordingService->stopRecording($match);
+                    $recording->refresh();
+                } catch (\Throwable $e) {
+                    // Continue with cleanup even if stop fails
+                }
+            }
+
+            if ($recording->video_path) {
+                $fullPath = storage_path('app/public/' . $recording->video_path);
+                if (file_exists($fullPath)) {
+                    unlink($fullPath);
+                }
+            }
+
+            $recording->delete();
+        }
+
+        // Delete points and match
+        $match->points()->delete();
+        $match->delete();
+
+        broadcast(new MatchAbandoned($matchId));
+
+        return response()->json(['abandoned' => true]);
     }
 
     public function playerStatsApi(Request $request, int $id): JsonResponse

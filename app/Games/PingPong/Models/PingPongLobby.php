@@ -18,6 +18,7 @@ class PingPongLobby extends Model
         'host_token',
         'status',
         'match_id',
+        'rematch_of_match_id',
         'expires_at',
     ];
 

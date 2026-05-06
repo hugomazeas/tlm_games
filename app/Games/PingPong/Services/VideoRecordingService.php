@@ -118,7 +118,22 @@ class VideoRecordingService
     {
         $recording = PingPongRecording::where('status', 'recording')->first();
 
-        if ($recording && $recording->ffmpeg_pid && !$this->isProcessRunning($recording->ffmpeg_pid)) {
+        if (!$recording) {
+            return null;
+        }
+
+        // Check if the associated match has already ended
+        $match = $recording->match;
+        if ($match && $match->ended_at !== null) {
+            Log::warning('Clearing stale recording for completed match', [
+                'recording_id' => $recording->id,
+                'match_id' => $recording->match_id,
+            ]);
+            $this->stopRecording($match);
+            return null;
+        }
+
+        if ($recording->ffmpeg_pid && !$this->isProcessRunning($recording->ffmpeg_pid)) {
             Log::warning('Clearing stale recording with dead FFmpeg process', [
                 'recording_id' => $recording->id,
                 'match_id' => $recording->match_id,

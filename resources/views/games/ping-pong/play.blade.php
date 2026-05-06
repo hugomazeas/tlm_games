@@ -46,10 +46,13 @@
                                     </template>
                                 </div>
                             </div>
-                            <button class="pp-start-btn" :disabled="!lobbyReady || loading" @click="startLobbyMatch()">
+                            <button class="pp-start-btn" :disabled="!lobbyReady || loading || !hostToken" @click="startLobbyMatch()" x-show="hostToken">
                                 <span x-show="!loading">Start Match</span>
                                 <span x-show="loading">Starting...</span>
                             </button>
+                            <div class="pp-hint" style="text-align: center;" x-show="!hostToken && lobbyCode">
+                                Waiting for a player to start the match...
+                            </div>
                             <div class="pp-hint" style="text-align: center;">
                                 <span x-show="wsStatus === 'connected'" style="color: #22c55e;">&#9679; Live</span>
                                 <span x-show="wsStatus === 'connecting'" style="color: #eab308;">&#9679; Connecting...</span>
@@ -142,6 +145,9 @@
                                     <th style="text-align: center;">W-L</th>
                                     <th style="text-align: center;">Last 10</th>
                                     <th>Streak</th>
+                                    <template x-if="mode !== '2v2'">
+                                        <th style="text-align: center; white-space: nowrap;" title="% of workdays with at least one ping pong match — last 7 days / last month">Office presence (7d, 1m)</th>
+                                    </template>
                                 </tr>
                             </thead>
                             <tbody>
@@ -185,6 +191,14 @@
                                                 <span style="color: rgba(255,255,255,0.3);">-</span>
                                             </template>
                                         </td>
+                                        <template x-if="mode !== '2v2'">
+                                            <td style="text-align: center; white-space: nowrap;">
+                                                <div style="display: flex; flex-direction: column; align-items: center;">
+                                                    <span style="font-size: 15px; font-weight: 600; color: rgba(255,255,255,0.85);" x-text="entry.office_7d + '%'"></span>
+                                                    <span style="font-size: 13px; color: rgba(255,255,255,0.55);" x-text="entry.office_30d + '% / last month'"></span>
+                                                </div>
+                                            </td>
+                                        </template>
                                     </tr>
                                 </template>
                             </tbody>
@@ -204,6 +218,9 @@
                                         <th style="text-align: center;">W-L</th>
                                         <th style="text-align: center;">Last 10</th>
                                         <th>Streak</th>
+                                        <template x-if="mode !== '2v2'">
+                                            <th style="text-align: center; white-space: nowrap;" title="% of workdays with at least one ping pong match — last 7 days / last month">Office presence (7d, 1m)</th>
+                                        </template>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -247,6 +264,14 @@
                                                     <span style="color: rgba(255,255,255,0.3);">-</span>
                                                 </template>
                                             </td>
+                                            <template x-if="mode !== '2v2'">
+                                                <td style="text-align: center; white-space: nowrap;">
+                                                    <div style="display: flex; flex-direction: column; align-items: center;">
+                                                        <span style="font-size: 15px; font-weight: 600; color: rgba(255,255,255,0.85);" x-text="entry.office_7d + '%'"></span>
+                                                        <span style="font-size: 13px; color: rgba(255,255,255,0.55);" x-text="entry.office_30d + '% / last month'"></span>
+                                                    </div>
+                                                </td>
+                                            </template>
                                         </tr>
                                     </template>
                                 </tbody>
@@ -407,7 +432,37 @@ function pingPong() {
             await this.loadLiveMatches();
             this.subscribeLive();
             this.startClock();
+
+            const params = new URLSearchParams(window.location.search);
+            const existingLobby = params.get('lobby');
+            if (existingLobby) {
+                const adopted = await this.adoptExistingLobby(existingLobby);
+                if (adopted) return;
+            }
+
             await this.createLobby();
+        },
+
+        async adoptExistingLobby(code) {
+            try {
+                const res = await fetch(`${this.API}/lobbies/${code}`);
+                if (!res.ok) return false;
+                const lobby = await res.json();
+                if (lobby.status !== 'waiting') return false;
+
+                this.lobbyCode = lobby.code;
+                this.hostToken = '';
+                this.mode = lobby.mode;
+                this.lobbyParticipants = lobby.participants || [];
+                this.lobbyJoinUrl = `${window.location.origin}/games/ping-pong/lobby/${this.lobbyCode}`;
+
+                this.subscribeToLobby();
+                this.$nextTick(() => setTimeout(() => this.generateLobbyQr(), 100));
+                return true;
+            } catch (err) {
+                console.warn('Could not adopt lobby:', err);
+                return false;
+            }
         },
 
         async setMode(newMode) {
@@ -562,6 +617,8 @@ function pingPong() {
                         m.id === data.id ? { ...m, _flash: false } : m
                     );
                 }, 600);
+            }).listen('.match.abandoned', (e) => {
+                this.liveMatches = this.liveMatches.filter(m => m.id !== e.matchId);
             });
         },
 
@@ -675,6 +732,12 @@ function pingPong() {
                         this.stopTimer();
                         window.location.href = '/games/ping-pong/matches/' + data.id + '?from=game';
                     }
+                }
+            }).listen('.match.abandoned', () => {
+                if (this.screen === 'playing') {
+                    this.stopTimer();
+                    this.destroyLivePlayer();
+                    this.goToHome();
                 }
             });
         },
@@ -872,8 +935,18 @@ function pingPong() {
             this.goToHome();
         },
 
-        abandonMatch() {
+        async abandonMatch() {
             this.showAbandonConfirm = false;
+            if (this.match?.id) {
+                try {
+                    await fetch(`${this.API}/matches/${this.match.id}`, {
+                        method: 'DELETE',
+                        headers: { 'X-CSRF-TOKEN': this.csrf },
+                    });
+                } catch (e) {
+                    // Continue with local cleanup even if API fails
+                }
+            }
             this.stopTimer();
             this.destroyLivePlayer();
             this.goToHome();

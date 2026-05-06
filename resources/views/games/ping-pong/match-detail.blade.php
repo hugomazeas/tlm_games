@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('title', 'Match Detail - Ping Pong')
-@section('main-class', 'max-w-5xl mx-auto px-6 py-6')
+@section('main-class', 'max-w-6xl mx-auto px-6 py-6')
 
 @section('content')
 <style>
@@ -188,6 +188,229 @@
     }
     .md .countdown-bar .go-now:hover { background: #2563eb; }
 
+    /* Recording + Timeline layout */
+    .md .recording-layout {
+        display: grid;
+        grid-template-columns: 1fr 320px;
+        gap: 16px;
+        align-items: start;
+    }
+    .md .video-wrap {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16/9;
+        background: #000;
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    .md .video-wrap video {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+    .md .timeline-panel {
+        max-height: 450px;
+        overflow-y: auto;
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 12px;
+        background: rgba(255,255,255,0.03);
+    }
+    .md .timeline-panel::-webkit-scrollbar { width: 4px; }
+    .md .timeline-panel::-webkit-scrollbar-track { background: transparent; }
+    .md .timeline-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+    .md .timeline-header {
+        position: sticky;
+        top: 0;
+        background: rgba(15,15,15,0.95);
+        backdrop-filter: blur(8px);
+        padding: 12px 14px;
+        font-weight: 700;
+        font-size: 0.85rem;
+        color: rgba(255,255,255,0.5);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        z-index: 1;
+    }
+    .md .timeline-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 14px;
+        cursor: pointer;
+        transition: background 0.15s;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .md .timeline-item:hover { background: rgba(255,255,255,0.06); }
+    .md .timeline-item.active { background: rgba(59, 130, 246, 0.15); }
+    .md .timeline-item .pt-num {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: rgba(255,255,255,0.3);
+        min-width: 20px;
+        text-align: right;
+    }
+    .md .timeline-item .pt-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+    .md .timeline-item .pt-dot.left { background: #fb7185; }
+    .md .timeline-item .pt-dot.right { background: #22d3ee; }
+    .md .timeline-item .pt-score {
+        font-weight: 700;
+        font-size: 0.9rem;
+        color: rgba(255,255,255,0.8);
+        flex: 1;
+    }
+    .md .timeline-item .pt-time {
+        font-size: 0.8rem;
+        color: rgba(255,255,255,0.35);
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* Clip bar (above video) */
+    .md .clip-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 10px;
+        padding: 12px 14px;
+        margin-bottom: 14px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 10px;
+    }
+    .md .clip-field { display: flex; flex-direction: column; gap: 4px; min-width: 120px; }
+    .md .clip-field label {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: rgba(255,255,255,0.45);
+        font-weight: 700;
+    }
+    .md .clip-input-wrap { display: flex; gap: 4px; }
+    .md .clip-bar input,
+    .md .clip-bar select {
+        background: rgba(0,0,0,0.3);
+        color: rgba(255,255,255,0.9);
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 6px;
+        padding: 7px 9px;
+        font-size: 0.9rem;
+        font-family: inherit;
+        min-width: 0;
+        flex: 1;
+    }
+    .md .clip-bar input[type="number"] { width: 82px; font-variant-numeric: tabular-nums; }
+    .md .clip-bar input:focus,
+    .md .clip-bar select:focus { outline: none; border-color: #3b82f6; }
+    .md .clip-bar .mark-btn {
+        padding: 0 10px;
+        background: rgba(59,130,246,0.15);
+        color: #93c5fd;
+        border: 1px solid rgba(59,130,246,0.35);
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 700;
+        transition: background 0.15s;
+    }
+    .md .clip-bar .mark-btn:hover { background: rgba(59,130,246,0.3); }
+    .md .clip-bar .save-btn {
+        padding: 8px 18px;
+        background: #3b82f6;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-weight: 700;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+    .md .clip-bar .save-btn:hover:not(:disabled) { background: #2563eb; }
+    .md .clip-bar .save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .md .clip-msg {
+        flex-basis: 100%;
+        font-size: 0.85rem;
+        padding: 6px 10px;
+        border-radius: 6px;
+    }
+    .md .clip-msg.ok { background: rgba(34,197,94,0.12); color: #4ade80; }
+    .md .clip-msg.err { background: rgba(239,68,68,0.12); color: #f87171; }
+
+    /* Saved clips list */
+    .md .clips-strip {
+        margin-top: 16px;
+        padding-top: 14px;
+        border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    .md .clips-strip-title {
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: rgba(255,255,255,0.45);
+        font-weight: 700;
+        margin-bottom: 10px;
+    }
+    .md .clips-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 10px;
+    }
+    .md .clip-card {
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 8px;
+        padding: 10px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 0.85rem;
+    }
+    .md .clip-card .clip-player {
+        font-weight: 700;
+        color: #93c5fd;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .md .clip-card .clip-times {
+        font-variant-numeric: tabular-nums;
+        color: rgba(255,255,255,0.6);
+        font-size: 0.82rem;
+    }
+    .md .clip-card .clip-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 4px;
+    }
+    .md .clip-card a {
+        color: #3b82f6;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 0.82rem;
+    }
+    .md .clip-card a:hover { text-decoration: underline; }
+    .md .clip-card .delete-btn {
+        background: transparent;
+        border: none;
+        color: rgba(255,255,255,0.35);
+        cursor: pointer;
+        font-size: 1rem;
+        line-height: 1;
+        padding: 2px 6px;
+        border-radius: 4px;
+        transition: all 0.15s;
+    }
+    .md .clip-card .delete-btn:hover { color: #f87171; background: rgba(239,68,68,0.12); }
+
+    @media (max-width: 900px) {
+        .md .recording-layout { grid-template-columns: 1fr; }
+        .md .timeline-panel { max-height: 300px; }
+    }
     @media (max-width: 640px) {
         .md .stats-grid { grid-template-columns: repeat(2, 1fr); }
         .md .elo-grid { grid-template-columns: 1fr; }
@@ -245,15 +468,82 @@
                 </div>
             </div>
 
-            <!-- Match Recording -->
+            <!-- Match Recording + Point Timeline -->
             <template x-if="match.recording && match.recording.status === 'completed' && match.recording.video_url">
                 <div class="section">
                     <h2>Match Recording</h2>
-                    <div style="position:relative;width:100%;max-width:720px;margin:0 auto;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden;">
-                        <video controls playsinline preload="metadata"
-                               :src="match.recording.video_url"
-                               style="width:100%;height:100%;object-fit:contain;"></video>
+
+                    <!-- Clip creation bar -->
+                    <div class="clip-bar">
+                        <div class="clip-field">
+                            <label>Start (s)</label>
+                            <div class="clip-input-wrap">
+                                <input type="number" step="0.1" min="0" x-model="clipStart" placeholder="0.0">
+                                <button type="button" class="mark-btn" @click="markClipTime('start')" title="Use current video time">Now</button>
+                            </div>
+                        </div>
+                        <div class="clip-field">
+                            <label>End (s)</label>
+                            <div class="clip-input-wrap">
+                                <input type="number" step="0.1" min="0" x-model="clipEnd" placeholder="0.0">
+                                <button type="button" class="mark-btn" @click="markClipTime('end')" title="Use current video time">Now</button>
+                            </div>
+                        </div>
+                        <div class="clip-field" style="flex: 1; min-width: 180px;">
+                            <label>Highlight for</label>
+                            <select x-model="clipPlayerId">
+                                <option value="">Select player…</option>
+                                <template x-for="p in participants()" :key="p.id">
+                                    <option :value="p.id" x-text="p.name"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <button type="button" class="save-btn" @click="createClip()"
+                                :disabled="savingClip || !clipPlayerId || clipStart === '' || clipEnd === ''"
+                                x-text="savingClip ? 'Saving…' : 'Save Clip'"></button>
+                        <template x-if="clipMessage">
+                            <div class="clip-msg" :class="clipError ? 'err' : 'ok'" x-text="clipMessage"></div>
+                        </template>
                     </div>
+
+                    <div class="recording-layout">
+                        <div class="video-wrap">
+                            <video id="matchVideo" controls playsinline preload="metadata"
+                                   :src="match.recording.video_url"></video>
+                        </div>
+                        <div class="timeline-panel" x-show="pointTimestamps().length > 0">
+                            <div class="timeline-header">Points Timeline</div>
+                            <template x-for="pt in pointTimestamps()" :key="pt.number">
+                                <div class="timeline-item"
+                                     :class="{ active: activePoint === pt.number }"
+                                     @click="activePoint = pt.number; seekToPoint(pt.offset)">
+                                    <span class="pt-num" x-text="pt.number"></span>
+                                    <span class="pt-dot" :class="pt.side"></span>
+                                    <span class="pt-score" x-text="pt.scoreLeft + ' - ' + pt.scoreRight"></span>
+                                    <span class="pt-time" x-text="pt.label"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Saved clips for this match -->
+                    <template x-if="clips.length > 0">
+                        <div class="clips-strip">
+                            <div class="clips-strip-title" x-text="clips.length + ' clip' + (clips.length === 1 ? '' : 's') + ' saved'"></div>
+                            <div class="clips-grid">
+                                <template x-for="c in clips" :key="c.id">
+                                    <div class="clip-card">
+                                        <span class="clip-player" x-text="c.player_name || 'Player #' + c.player_id"></span>
+                                        <span class="clip-times" x-text="formatSeconds(c.start_seconds) + ' – ' + formatSeconds(c.end_seconds) + ' (' + c.duration_seconds.toFixed(1) + 's)'"></span>
+                                        <div class="clip-actions">
+                                            <a :href="c.url" target="_blank" rel="noopener">Open ↗</a>
+                                            <button type="button" class="delete-btn" @click="deleteClip(c.id)" title="Delete clip">×</button>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
                 </div>
             </template>
 
@@ -354,6 +644,8 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pusher-js@8.4.0/dist/web/pusher.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
 <script>
 function matchDetail() {
     return {
@@ -366,6 +658,16 @@ function matchDetail() {
         fromGame: new URLSearchParams(window.location.search).has('from'),
         countdown: 30,
         countdownTimer: null,
+        activePoint: null,
+
+        // Clip creation state
+        clipStart: '',
+        clipEnd: '',
+        clipPlayerId: '',
+        clipMessage: '',
+        clipError: false,
+        savingClip: false,
+        clips: [],
 
         async init() {
             try {
@@ -376,6 +678,10 @@ function matchDetail() {
             }
             this.loading = false;
 
+            if (this.match?.recording?.status === 'completed') {
+                this.loadClips();
+            }
+
             if (this.fromGame) {
                 this.countdownTimer = setInterval(() => {
                     this.countdown--;
@@ -384,6 +690,154 @@ function matchDetail() {
                         window.location.href = '/games/ping-pong';
                     }
                 }, 1000);
+            }
+
+            this.subscribeToMatch();
+        },
+
+        subscribeToMatch() {
+            if (typeof Echo === 'undefined') return;
+            try {
+                const echo = new Echo({
+                    broadcaster: 'pusher',
+                    key: 'games-hub-key',
+                    wsHost: window.location.hostname,
+                    wsPort: window.location.port || 80,
+                    forceTLS: false,
+                    disableStats: true,
+                    enabledTransports: ['ws', 'wss'],
+                    cluster: 'mt1',
+                });
+
+                echo.channel('ping-pong.match.' + this.matchId)
+                    .listen('.match.rematched', (e) => {
+                        if (!e?.lobbyCode) return;
+                        if (this.countdownTimer) clearInterval(this.countdownTimer);
+                        window.location.href = '/games/ping-pong?lobby=' + encodeURIComponent(e.lobbyCode);
+                    });
+            } catch (err) {
+                console.warn('Echo subscribe failed:', err);
+            }
+        },
+
+        participants() {
+            const m = this.match;
+            if (!m) return [];
+            const out = [];
+            const seen = new Set();
+            const add = (id, name) => {
+                if (!id || seen.has(id)) return;
+                seen.add(id);
+                out.push({ id, name: name || ('Player #' + id) });
+            };
+            add(m.player_left_id, m.player_left?.name);
+            add(m.player_right_id, m.player_right?.name);
+            add(m.team_left_player2_id, m.team_left_player2?.name);
+            add(m.team_right_player2_id, m.team_right_player2?.name);
+            return out;
+        },
+
+        markClipTime(which) {
+            const video = document.getElementById('matchVideo');
+            if (!video) return;
+            const t = Math.max(0, Math.round(video.currentTime * 10) / 10);
+            if (which === 'start') this.clipStart = t;
+            else this.clipEnd = t;
+        },
+
+        formatSeconds(s) {
+            s = Number(s) || 0;
+            const m = Math.floor(s / 60);
+            const sec = Math.floor(s % 60);
+            return m + ':' + String(sec).padStart(2, '0');
+        },
+
+        async loadClips() {
+            if (!this.match?.recording?.id && !this.matchId) return;
+            try {
+                const res = await fetch(`${this.API}/clips?match_id=${this.matchId}`);
+                if (res.ok) {
+                    this.clips = await res.json();
+                }
+            } catch (err) {
+                console.error('Error loading clips:', err);
+            }
+        },
+
+        async createClip() {
+            if (this.savingClip) return;
+            this.clipMessage = '';
+            this.clipError = false;
+
+            const recordingId = this.match?.recording?.id;
+            const start = parseFloat(this.clipStart);
+            const end = parseFloat(this.clipEnd);
+            const playerId = parseInt(this.clipPlayerId, 10);
+
+            if (!recordingId) {
+                this.clipError = true;
+                this.clipMessage = 'Recording not available.';
+                return;
+            }
+            if (isNaN(start) || isNaN(end) || end <= start) {
+                this.clipError = true;
+                this.clipMessage = 'End time must be greater than start time.';
+                return;
+            }
+            if (!playerId) {
+                this.clipError = true;
+                this.clipMessage = 'Pick which player this clip belongs to.';
+                return;
+            }
+
+            this.savingClip = true;
+            try {
+                const res = await fetch(`${this.API}/clips`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        recording_id: recordingId,
+                        player_id: playerId,
+                        start,
+                        end,
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    const msg = data.error
+                        || (data.errors ? Object.values(data.errors).flat().join(' ') : null)
+                        || 'Failed to save clip.';
+                    this.clipError = true;
+                    this.clipMessage = msg;
+                } else {
+                    this.clipError = false;
+                    this.clipMessage = 'Clip saved for ' + (data.player_name || 'player') + '.';
+                    this.clipStart = '';
+                    this.clipEnd = '';
+                    await this.loadClips();
+                    setTimeout(() => { if (!this.clipError) this.clipMessage = ''; }, 4000);
+                }
+            } catch (err) {
+                console.error('Error saving clip:', err);
+                this.clipError = true;
+                this.clipMessage = 'Network error while saving clip.';
+            } finally {
+                this.savingClip = false;
+            }
+        },
+
+        async deleteClip(id) {
+            if (!confirm('Delete this clip?')) return;
+            try {
+                const res = await fetch(`${this.API}/clips/${id}`, { method: 'DELETE' });
+                if (res.ok) {
+                    this.clips = this.clips.filter(c => c.id !== id);
+                }
+            } catch (err) {
+                console.error('Error deleting clip:', err);
             }
         },
 
@@ -464,6 +918,34 @@ function matchDetail() {
                 if (leader) prevLeader = leader;
             });
             return changes;
+        },
+
+        pointTimestamps() {
+            const points = this.match?.points || [];
+            const recStart = this.match?.recording?.created_at;
+            if (!recStart || points.length === 0) return [];
+            const recTime = new Date(recStart).getTime();
+            return points.map(p => {
+                const ptTime = new Date(p.created_at).getTime();
+                const offset = Math.max(0, (ptTime - recTime) / 1000);
+                const mins = Math.floor(offset / 60);
+                const secs = Math.floor(offset % 60);
+                return {
+                    number: p.point_number,
+                    side: p.scoring_side,
+                    scoreLeft: p.left_score_after,
+                    scoreRight: p.right_score_after,
+                    offset,
+                    label: mins + ':' + String(secs).padStart(2, '0'),
+                };
+            });
+        },
+
+        seekToPoint(offset) {
+            const video = document.getElementById('matchVideo');
+            if (!video) return;
+            video.currentTime = Math.max(0, offset - 10);
+            video.play().catch(() => {});
         },
 
         renderScoreChart() {
