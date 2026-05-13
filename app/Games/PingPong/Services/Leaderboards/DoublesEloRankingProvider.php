@@ -30,6 +30,21 @@ class DoublesEloRankingProvider implements LeaderboardProviderInterface
             ->merge((clone $query)->whereNotNull('team_right_player2_id')->select('team_right_player2_id')->distinct()->pluck('team_right_player2_id'))
             ->unique();
 
+        $cutoff = now()->subWeeks(2);
+
+        $playerIds = $playerIds->filter(function ($playerId) use ($cutoff) {
+            return PingPongMatch::whereNotNull('ended_at')
+                ->where('mode', '2v2')
+                ->where('ended_at', '>=', $cutoff)
+                ->where(function ($q) use ($playerId) {
+                    $q->where('player_left_id', $playerId)
+                      ->orWhere('player_right_id', $playerId)
+                      ->orWhere('team_left_player2_id', $playerId)
+                      ->orWhere('team_right_player2_id', $playerId);
+                })
+                ->exists();
+        });
+
         return $playerIds->map(function ($playerId) {
             $player = Player::find($playerId);
             if (!$player) {
