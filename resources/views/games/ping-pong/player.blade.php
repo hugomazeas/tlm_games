@@ -408,6 +408,67 @@
         font-variant-numeric: tabular-nums;
     }
 
+    .pps .weekly-chart-wrap {
+        width: 100%;
+        height: 620px;
+        position: relative;
+        user-select: none;
+        touch-action: none;
+        cursor: grab;
+    }
+    .pps .weekly-chart-wrap.dragging { cursor: grabbing; }
+    .pps .weekly-chart-wrap canvas { display: block; }
+
+    .pps .weekly-hint {
+        text-align: center;
+        font-size: 0.75rem;
+        color: rgba(255,255,255,0.35);
+        margin-top: 8px;
+    }
+
+    .pps .weekly-tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 14px;
+        flex-wrap: wrap;
+    }
+    .pps .weekly-tab {
+        padding: 6px 14px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        cursor: pointer;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        color: rgba(255,255,255,0.6);
+        transition: all 0.15s;
+    }
+    .pps .weekly-tab:hover {
+        background: rgba(255,255,255,0.08);
+        color: rgba(255,255,255,0.9);
+    }
+    .pps .weekly-tab.active {
+        background: rgba(59, 130, 246, 0.2);
+        border-color: #3b82f6;
+        color: #3b82f6;
+    }
+
+    .pps .weekly-tooltip {
+        position: fixed;
+        z-index: 50;
+        padding: 8px 12px;
+        min-width: 120px;
+        background: rgba(15, 23, 42, 0.95);
+        border: 1px solid rgba(59, 130, 246, 0.4);
+        border-radius: 8px;
+        font-size: 0.875rem;
+        pointer-events: none;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .pps .weekly-tooltip .tt-week { color: rgba(255,255,255,0.7); font-size: 0.78rem; }
+    .pps .weekly-tooltip .tt-rate { font-weight: 800; font-size: 1.05rem; margin-top: 2px; }
+    .pps .weekly-tooltip .tt-wl { color: rgba(255,255,255,0.55); font-size: 0.78rem; margin-top: 2px; }
+
 </style>
 
 <div class="pps" x-data="playerStats()" x-init="init()">
@@ -533,6 +594,39 @@
         <div class="loading" x-show="loadingEloHistory">Loading...</div>
     </div>
 
+    <!-- Weekly Win Rate (3D) -->
+    <div class="section">
+        <h2>Weekly Win Rate</h2>
+        <div class="weekly-tabs" x-show="weekly.length > 0">
+            <button class="weekly-tab" :class="{ active: weeklyPreset === '3d' }" @click="setWeeklyPreset('3d')">3D</button>
+            <button class="weekly-tab" :class="{ active: weeklyPreset === 'front' }" @click="setWeeklyPreset('front')" title="Look along the opponent axis">Front (week × %)</button>
+            <button class="weekly-tab" :class="{ active: weeklyPreset === 'side' }" @click="setWeeklyPreset('side')" title="Look along the week axis">Side (opponent × %)</button>
+            <button class="weekly-tab" :class="{ active: weeklyPreset === 'top' }" @click="setWeeklyPreset('top')" title="Look straight down">Top-down</button>
+        </div>
+        <div class="weekly-chart-wrap"
+             x-ref="weeklyContainer"
+             :class="{ 'dragging': weeklyDrag.active }"
+             x-show="weekly.length > 0"
+             @pointerdown="onWeeklyDragStart($event)"
+             @pointermove="onWeeklyDragMove($event)"
+             @pointerup="onWeeklyDragEnd()"
+             @pointerleave="onWeeklyDragEnd()"
+             @wheel.prevent="onWeeklyWheel($event)">
+            <canvas x-ref="weeklyCanvas"></canvas>
+        </div>
+        <div class="weekly-hint" x-show="weekly.length > 0">Drag to rotate · scroll to zoom</div>
+        <div class="empty" x-show="weekly.length === 0 && !loadingWeekly">No matches yet</div>
+        <div class="loading" x-show="loadingWeekly">Loading...</div>
+        <div class="weekly-tooltip"
+             x-show="weeklyTooltip.show"
+             :style="`left:${weeklyTooltip.x}px; top:${weeklyTooltip.y}px;`">
+            <div class="tt-week" x-text="weeklyTooltip.week"></div>
+            <div class="tt-week" x-text="weeklyTooltip.opp"></div>
+            <div class="tt-rate" :style="`color:${weeklyTooltip.color};`" x-text="weeklyTooltip.rate"></div>
+            <div class="tt-wl" x-text="weeklyTooltip.wl"></div>
+        </div>
+    </div>
+
     <!-- Head to Head -->
     <div class="section">
         <h2>Head-to-Head</h2>
@@ -608,6 +702,15 @@ function playerStats() {
         loadingEloHistory: true,
         highlights: [],
         loadingHighlights: true,
+        weekly: [],            // cells
+        weeklyWeeks: [],
+        weeklyOpponents: [],
+        loadingWeekly: true,
+        weeklyPreset: '3d',
+        weeklyView: { azimuth: -0.55 + Math.PI, elevation: 0.5, zoom: 1 },
+        weeklyDrag: { active: false, x: 0, y: 0, pointerId: null },
+        weeklyHit: [],
+        weeklyTooltip: { show: false, x: 0, y: 0, week: '', opp: '', rate: '', wl: '', color: '#22c55e' },
 
         async init() {
             await Promise.all([
@@ -616,10 +719,12 @@ function playerStats() {
                 this.loadMatches(),
                 this.loadEloHistory(),
                 this.loadHighlights(),
+                this.loadWeekly(),
             ]);
             window.addEventListener('resize', () => {
                 if (this.eloHistory.length > 0) this.renderEloChart();
                 if (this.h2h.length > 0) this.renderH2hChart();
+                if (this.weekly.length > 0) this.renderWeeklyChart();
             });
         },
 
@@ -658,6 +763,433 @@ function playerStats() {
                 console.error('Error loading h2h:', err);
             }
             this.loadingH2h = false;
+        },
+
+        async loadWeekly() {
+            try {
+                const res = await fetch(`${this.API}/players/${this.playerId}/weekly-stats`);
+                const data = await res.json();
+                this.weekly = data.cells || [];
+                this.weeklyWeeks = data.weeks || [];
+                this.weeklyOpponents = data.opponents || [];
+                this.$nextTick(() => {
+                    this.renderWeeklyChart();
+                    // Some browsers report 0 width on the first paint when the section was
+                    // hidden until x-show updated. Watch the container and retry on resize.
+                    const wrap = this.$refs.weeklyContainer;
+                    if (wrap && !this._weeklyObserver && 'ResizeObserver' in window) {
+                        this._weeklyObserver = new ResizeObserver(() => this.renderWeeklyChart());
+                        this._weeklyObserver.observe(wrap);
+                    }
+                });
+            } catch (err) {
+                console.error('Error loading weekly stats:', err);
+            }
+            this.loadingWeekly = false;
+        },
+
+        onWeeklyDragStart(e) {
+            const wrap = this.$refs.weeklyContainer;
+            if (!wrap) return;
+            this.weeklyDrag.active = true;
+            this.weeklyDrag.x = e.clientX;
+            this.weeklyDrag.y = e.clientY;
+            this.weeklyDrag.pointerId = e.pointerId;
+            this.weeklyTooltip.show = false;
+            try { wrap.setPointerCapture(e.pointerId); } catch (err) {}
+        },
+
+        onWeeklyDragMove(e) {
+            if (this.weeklyDrag.active) {
+                const dx = e.clientX - this.weeklyDrag.x;
+                const dy = e.clientY - this.weeklyDrag.y;
+                this.weeklyDrag.x = e.clientX;
+                this.weeklyDrag.y = e.clientY;
+                this.weeklyView.azimuth += dx * 0.01;
+                let el = this.weeklyView.elevation - dy * 0.01;
+                if (el < 0) el = 0;
+                if (el > Math.PI / 2) el = Math.PI / 2;
+                this.weeklyView.elevation = el;
+                // Any manual drag drops us out of axis-aligned presets
+                this.weeklyPreset = '3d';
+                this.renderWeeklyChart();
+                return;
+            }
+            this.updateWeeklyTooltip(e);
+        },
+
+        setWeeklyPreset(name) {
+            this.weeklyPreset = name;
+            switch (name) {
+                case 'front': // Look along opponent (+Z) axis — show week × win rate
+                    this.weeklyView.azimuth = 0;
+                    this.weeklyView.elevation = 0;
+                    break;
+                case 'side': // Look along week (+X) axis — show opponent × win rate
+                    this.weeklyView.azimuth = -Math.PI / 2;
+                    this.weeklyView.elevation = 0;
+                    break;
+                case 'top': // Look straight down — show week × opponent heatmap
+                    this.weeklyView.azimuth = 0;
+                    this.weeklyView.elevation = Math.PI / 2;
+                    break;
+                case '3d':
+                default:
+                    this.weeklyView.azimuth = -0.55 + Math.PI;
+                    this.weeklyView.elevation = 0.5;
+                    break;
+            }
+            this.weeklyView.zoom = 1;
+            this.weeklyTooltip.show = false;
+            this.renderWeeklyChart();
+        },
+
+        onWeeklyDragEnd() {
+            this.weeklyDrag.active = false;
+            this.weeklyDrag.pointerId = null;
+        },
+
+        onWeeklyWheel(e) {
+            const factor = e.deltaY < 0 ? 1.1 : 0.9;
+            let z = this.weeklyView.zoom * factor;
+            if (z < 0.5) z = 0.5;
+            if (z > 3) z = 3;
+            this.weeklyView.zoom = z;
+            this.renderWeeklyChart();
+        },
+
+        updateWeeklyTooltip(e) {
+            if (this.weeklyHit.length === 0) { this.weeklyTooltip.show = false; return; }
+            const wrap = this.$refs.weeklyContainer;
+            if (!wrap) return;
+            const rect = wrap.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+
+            let best = null;
+            let bestDist = Infinity;
+            for (const hit of this.weeklyHit) {
+                const dx = mx - hit.sx;
+                const dy = my - hit.sy;
+                const d = dx * dx + dy * dy;
+                if (d < bestDist) { bestDist = d; best = hit; }
+            }
+            if (best && bestDist < 50 * 50) {
+                const cell = best.cell;
+                const wk = this.weeklyWeeks.find(w => w.week_start === cell.week);
+                const opp = this.weeklyOpponents.find(o => o.id === cell.opponent_id);
+                const ratePct = Math.round(cell.win_rate * 100);
+                this.weeklyTooltip.show = true;
+                this.weeklyTooltip.x = e.clientX + 14;
+                this.weeklyTooltip.y = e.clientY + 14;
+                this.weeklyTooltip.week = wk ? 'Week of ' + wk.week_label : '';
+                this.weeklyTooltip.opp = opp ? 'vs ' + opp.name : '';
+                this.weeklyTooltip.rate = ratePct + '% win rate';
+                this.weeklyTooltip.wl = cell.wins + 'W – ' + cell.losses + 'L (' + cell.games + ' game' + (cell.games === 1 ? '' : 's') + ')';
+                this.weeklyTooltip.color = cell.win_rate >= 0.5 ? '#22c55e' : '#ef4444';
+            } else {
+                this.weeklyTooltip.show = false;
+            }
+        },
+
+        renderWeeklyChart() {
+            const canvas = this.$refs.weeklyCanvas;
+            const container = this.$refs.weeklyContainer;
+            if (!canvas || !container || this.weekly.length === 0) return;
+            const rect = container.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return;
+
+            const dpr = window.devicePixelRatio || 1;
+            const w = rect.width;
+            const h = rect.height;
+            canvas.width = Math.floor(w * dpr);
+            canvas.height = Math.floor(h * dpr);
+            canvas.style.width = w + 'px';
+            canvas.style.height = h + 'px';
+
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+
+            const weeks = this.weeklyWeeks;
+            const opps = this.weeklyOpponents;
+            const cells = this.weekly;
+            if (weeks.length === 0 || opps.length === 0) return;
+
+            // Index lookups
+            const weekIdx = {};
+            weeks.forEach((wk, i) => weekIdx[wk.week_start] = i);
+            const oppIdx = {};
+            opps.forEach((o, j) => oppIdx[o.id] = j);
+
+            // World layout — floor is the (X, Z) plane; bars rise along Y by win_rate.
+            const xSpacing = 1.4;            // weeks along X (floor)
+            const zSpacing = 1.1;            // opponents along Z (floor depth)
+            const yScale = 3.0;              // win_rate * yScale = bar height (up)
+            const barHalfX = 0.35;
+            const barHalfZ = 0.35;
+            const xTotal = (weeks.length - 1) * xSpacing;
+            const zTotal = (opps.length - 1) * zSpacing;
+            const xOffset = -xTotal / 2;
+            const zOffset = -zTotal / 2;
+
+            // Camera
+            const az = this.weeklyView.azimuth;
+            const el = this.weeklyView.elevation;
+            const sinA = Math.sin(az), cosA = Math.cos(az);
+            const sinE = Math.sin(el), cosE = Math.cos(el);
+
+            // ---- Floor (y=0 plane) ----
+            const floorMinX = xOffset - 0.7;
+            const floorMaxX = xOffset + xTotal + 0.7;
+            const floorMinZ = zOffset - 0.6;
+            const floorMaxZ = zOffset + zTotal + 0.6;
+
+            // Unit (unscaled, uncentered) projection
+            const unitProject = (x, y, z) => {
+                const x1 = cosA * x + sinA * z;
+                const z1 = -sinA * x + cosA * z;
+                const y2 = cosE * y - sinE * z1;
+                const z2 = sinE * y + cosE * z1;
+                return { ux: x1, uy: -y2, depth: z2 };
+            };
+
+            // Auto-fit: project the 8 corners of the data volume, get bounds
+            const fitPoints = [
+                [floorMinX, 0, floorMinZ], [floorMaxX, 0, floorMinZ],
+                [floorMinX, 0, floorMaxZ], [floorMaxX, 0, floorMaxZ],
+                [floorMinX, yScale, floorMinZ], [floorMaxX, yScale, floorMinZ],
+                [floorMinX, yScale, floorMaxZ], [floorMaxX, yScale, floorMaxZ],
+            ];
+            let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
+            for (const p of fitPoints) {
+                const u = unitProject(p[0], p[1], p[2]);
+                if (u.ux < minU) minU = u.ux;
+                if (u.ux > maxU) maxU = u.ux;
+                if (u.uy < minV) minV = u.uy;
+                if (u.uy > maxV) maxV = u.uy;
+            }
+            const marginL = 140, marginR = 60, marginT = 40, marginB = 50;
+            const spanU = Math.max(0.001, maxU - minU);
+            const spanV = Math.max(0.001, maxV - minV);
+            const scale = Math.min(
+                (w - marginL - marginR) / spanU,
+                (h - marginT - marginB) / spanV
+            ) * this.weeklyView.zoom;
+            const cx = (w + marginL - marginR) / 2 - ((minU + maxU) / 2) * scale;
+            const cy = (h + marginT - marginB) / 2 - ((minV + maxV) / 2) * scale;
+
+            const project = (x, y, z) => {
+                const u = unitProject(x, y, z);
+                return { sx: cx + u.ux * scale, sy: cy + u.uy * scale, depth: u.depth };
+            };
+
+            // Floor fill (y=0)
+            const f1 = project(floorMinX, 0, floorMinZ);
+            const f2 = project(floorMaxX, 0, floorMinZ);
+            const f3 = project(floorMaxX, 0, floorMaxZ);
+            const f4 = project(floorMinX, 0, floorMaxZ);
+            ctx.beginPath();
+            ctx.moveTo(f1.sx, f1.sy);
+            ctx.lineTo(f2.sx, f2.sy);
+            ctx.lineTo(f3.sx, f3.sy);
+            ctx.lineTo(f4.sx, f4.sy);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(59, 130, 246, 0.04)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            // Floor grid: lines per opponent (along X) and per week (along Z)
+            ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+            for (let j = 0; j < opps.length; j++) {
+                const zj = zOffset + j * zSpacing;
+                const a = project(floorMinX, 0, zj);
+                const b = project(floorMaxX, 0, zj);
+                ctx.beginPath();
+                ctx.moveTo(a.sx, a.sy);
+                ctx.lineTo(b.sx, b.sy);
+                ctx.stroke();
+            }
+            for (let i = 0; i < weeks.length; i++) {
+                const xi = xOffset + i * xSpacing;
+                const a = project(xi, 0, floorMinZ);
+                const b = project(xi, 0, floorMaxZ);
+                ctx.beginPath();
+                ctx.moveTo(a.sx, a.sy);
+                ctx.lineTo(b.sx, b.sy);
+                ctx.stroke();
+            }
+
+            // Horizontal reference rings at 50% and 100% win rate, projected along the back edge
+            const yMarks = [0.5, 1.0];
+            ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+            ctx.setLineDash([3, 4]);
+            for (const yr of yMarks) {
+                const y = yr * yScale;
+                const a = project(floorMinX, y, floorMaxZ);
+                const b = project(floorMaxX, y, floorMaxZ);
+                ctx.beginPath();
+                ctx.moveTo(a.sx, a.sy);
+                ctx.lineTo(b.sx, b.sy);
+                ctx.stroke();
+            }
+            ctx.setLineDash([]);
+
+            // ---- Axis labels ----
+            // X (weeks) along the front edge of the floor (z = floorMinZ)
+            const labelStep = Math.max(1, Math.ceil(weeks.length / 10));
+            ctx.fillStyle = 'rgba(255,255,255,0.7)';
+            ctx.font = '600 14px Outfit, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            for (let i = 0; i < weeks.length; i++) {
+                if (i % labelStep !== 0 && i !== weeks.length - 1) continue;
+                const xi = xOffset + i * xSpacing;
+                const p = project(xi, 0, floorMinZ);
+                ctx.fillText(weeks[i].week_label, p.sx, p.sy + 8);
+            }
+
+            // Z (opponents) along the left edge of the floor (x = floorMinX)
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = 'rgba(255,255,255,0.85)';
+            ctx.font = '700 15px Outfit, sans-serif';
+            for (let j = 0; j < opps.length; j++) {
+                const zj = zOffset + j * zSpacing;
+                const p = project(floorMinX, 0, zj);
+                ctx.fillText(opps[j].name, p.sx - 10, p.sy);
+            }
+
+            // Y (% win rate) labels at the back-left vertical edge
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = 'rgba(255,255,255,0.55)';
+            ctx.font = '600 13px Outfit, sans-serif';
+            for (const yr of yMarks) {
+                const p = project(floorMinX, yr * yScale, floorMaxZ);
+                ctx.fillText(Math.round(yr * 100) + '%', p.sx - 10, p.sy);
+            }
+
+            // ---- Bars ----
+            const barColor = (wr, lightness) => {
+                const hue = wr * 130; // 0 red → 65 yellow → 130 green
+                return `hsl(${hue}, 70%, ${lightness}%)`;
+            };
+
+            // Build all bar cuboids, painter-sort by centroid depth (back→front).
+            // Each bar sits on the floor and rises in Y by win_rate * yScale.
+            // Corner index convention: aXYZ where X = ±X, Y = base(0)/top(1), Z = ±Z.
+            const bars = [];
+            for (const cell of cells) {
+                const i = weekIdx[cell.week];
+                const j = oppIdx[cell.opponent_id];
+                if (i === undefined || j === undefined) continue;
+                const wr = cell.win_rate;
+                const xi = xOffset + i * xSpacing;
+                const zj = zOffset + j * zSpacing;
+                const yTop = Math.max(0.001, wr * yScale);
+
+                const c = {
+                    a000: project(xi - barHalfX, 0,    zj - barHalfZ),
+                    a100: project(xi + barHalfX, 0,    zj - barHalfZ),
+                    a001: project(xi - barHalfX, 0,    zj + barHalfZ),
+                    a101: project(xi + barHalfX, 0,    zj + barHalfZ),
+                    a010: project(xi - barHalfX, yTop, zj - barHalfZ),
+                    a110: project(xi + barHalfX, yTop, zj - barHalfZ),
+                    a011: project(xi - barHalfX, yTop, zj + barHalfZ),
+                    a111: project(xi + barHalfX, yTop, zj + barHalfZ),
+                };
+
+                let centerDepth = 0;
+                for (const k in c) centerDepth += c[k].depth;
+                centerDepth /= 8;
+
+                bars.push({ cell, wr, corners: c, centerDepth });
+            }
+
+            bars.sort((a, b) => a.centerDepth - b.centerDepth);
+
+            const drawQuad = (p1, p2, p3, p4, fill, stroke) => {
+                ctx.beginPath();
+                ctx.moveTo(p1.sx, p1.sy);
+                ctx.lineTo(p2.sx, p2.sy);
+                ctx.lineTo(p3.sx, p3.sy);
+                ctx.lineTo(p4.sx, p4.sy);
+                ctx.closePath();
+                ctx.fillStyle = fill;
+                ctx.fill();
+                if (stroke) {
+                    ctx.strokeStyle = stroke;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+            };
+
+            const hitInfo = [];
+            for (const bar of bars) {
+                const c = bar.corners;
+                const wr = bar.wr;
+                const baseL = 28 + wr * 12;
+                const topFill = barColor(wr, baseL + 20);     // bright cap (lit from above)
+                const sideFill = barColor(wr, baseL + 2);     // side walls
+                const sideDimFill = barColor(wr, baseL - 6);
+                const bottomFill = barColor(wr, baseL - 14);
+                const edge = 'rgba(0,0,0,0.4)';
+
+                // Faces: top (y=top), bottom (y=0), and the 4 sides.
+                const topDepth = (c.a010.depth + c.a110.depth + c.a011.depth + c.a111.depth) / 4;
+                const botDepth = (c.a000.depth + c.a100.depth + c.a001.depth + c.a101.depth) / 4;
+                const rightDepth = (c.a100.depth + c.a110.depth + c.a101.depth + c.a111.depth) / 4;
+                const leftDepth  = (c.a000.depth + c.a010.depth + c.a001.depth + c.a011.depth) / 4;
+                const frontDepth = (c.a001.depth + c.a101.depth + c.a011.depth + c.a111.depth) / 4;
+                const backDepth  = (c.a000.depth + c.a100.depth + c.a010.depth + c.a110.depth) / 4;
+
+                const visible = [];
+                if (topDepth >= botDepth) {
+                    visible.push({ d: topDepth, fill: topFill, pts: [c.a010, c.a110, c.a111, c.a011] });
+                } else {
+                    visible.push({ d: botDepth, fill: bottomFill, pts: [c.a000, c.a100, c.a101, c.a001] });
+                }
+                if (rightDepth >= leftDepth) {
+                    visible.push({ d: rightDepth, fill: sideFill, pts: [c.a100, c.a110, c.a111, c.a101] });
+                } else {
+                    visible.push({ d: leftDepth, fill: sideFill, pts: [c.a000, c.a010, c.a011, c.a001] });
+                }
+                if (frontDepth >= backDepth) {
+                    visible.push({ d: frontDepth, fill: sideDimFill, pts: [c.a001, c.a101, c.a111, c.a011] });
+                } else {
+                    visible.push({ d: backDepth, fill: sideDimFill, pts: [c.a000, c.a100, c.a110, c.a010] });
+                }
+                visible.sort((a, b) => a.d - b.d);
+                for (const f of visible) drawQuad(f.pts[0], f.pts[1], f.pts[2], f.pts[3], f.fill, edge);
+
+                // Glow accent on the cap for >=50% bars
+                if (wr >= 0.5) {
+                    ctx.save();
+                    ctx.shadowColor = 'rgba(34, 197, 94, 0.35)';
+                    ctx.shadowBlur = 6 + wr * 12;
+                    ctx.strokeStyle = 'rgba(34, 197, 94, 0.5)';
+                    ctx.lineWidth = 1.2;
+                    ctx.beginPath();
+                    ctx.moveTo(c.a010.sx, c.a010.sy);
+                    ctx.lineTo(c.a110.sx, c.a110.sy);
+                    ctx.lineTo(c.a111.sx, c.a111.sy);
+                    ctx.lineTo(c.a011.sx, c.a011.sy);
+                    ctx.closePath();
+                    ctx.stroke();
+                    ctx.restore();
+                }
+
+                // Hit-test point: centroid of top face
+                const hx = (c.a010.sx + c.a110.sx + c.a111.sx + c.a011.sx) / 4;
+                const hy = (c.a010.sy + c.a110.sy + c.a111.sy + c.a011.sy) / 4;
+                hitInfo.push({ cell: bar.cell, sx: hx, sy: hy });
+            }
+            this.weeklyHit = hitInfo;
+
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
         },
 
         async loadHighlights() {
