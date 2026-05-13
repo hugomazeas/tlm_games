@@ -1437,4 +1437,90 @@ class PingPongApiController extends Controller
             'records' => $records,
         ]);
     }
+
+    public function weeklyStats(int $id): JsonResponse
+    {
+        $player = Player::findOrFail($id);
+
+        $matches = PingPongMatch::whereNotNull('ended_at')
+            ->whereNotNull('winner_id')
+            ->where('mode', '1v1')
+            ->where(function ($q) use ($id) {
+                $q->where('player_left_id', $id)->orWhere('player_right_id', $id);
+            })
+            ->with(['playerLeft:id,name', 'playerRight:id,name'])
+            ->get();
+
+        $weekMap = [];
+        $oppMap = [];
+        $cellMap = [];
+
+        foreach ($matches as $match) {
+            $onLeft = $match->player_left_id === $id;
+            $opp = $onLeft ? $match->playerRight : $match->playerLeft;
+            if (!$opp) continue;
+
+            $won = ($onLeft && $match->winner_id === $match->player_left_id)
+                || (!$onLeft && $match->winner_id === $match->player_right_id);
+
+            $weekStart = Carbon::parse($match->ended_at)->startOfWeek();
+            $weekKey = $weekStart->toDateString();
+
+            if (!isset($weekMap[$weekKey])) {
+                $weekMap[$weekKey] = [
+                    'week_start' => $weekKey,
+                    'week_label' => $weekStart->format('M j'),
+                ];
+            }
+
+            if (!isset($oppMap[$opp->id])) {
+                $oppMap[$opp->id] = ['id' => $opp->id, 'name' => $opp->name, 'games' => 0];
+            }
+            $oppMap[$opp->id]['games']++;
+
+            $cellKey = $weekKey . '|' . $opp->id;
+            if (!isset($cellMap[$cellKey])) {
+                $cellMap[$cellKey] = [
+                    'week' => $weekKey,
+                    'opponent_id' => $opp->id,
+                    'wins' => 0,
+                    'losses' => 0,
+                ];
+            }
+            if ($won) $cellMap[$cellKey]['wins']++;
+            else $cellMap[$cellKey]['losses']++;
+        }
+
+        ksort($weekMap);
+        $weeks = array_values($weekMap);
+
+        // Sort opponents by total games desc, cap top 12 to keep chart readable
+        uasort($oppMap, fn($a, $b) => $b['games'] <=> $a['games']);
+        $opponents = array_values(array_map(
+            fn($o) => ['id' => $o['id'], 'name' => $o['name'], 'games' => $o['games']],
+            array_slice($oppMap, 0, 12, true)
+        ));
+        $keepIds = array_flip(array_column($opponents, 'id'));
+
+        $cells = [];
+        foreach ($cellMap as $c) {
+            if (!isset($keepIds[$c['opponent_id']])) continue;
+            $games = $c['wins'] + $c['losses'];
+            $cells[] = [
+                'week' => $c['week'],
+                'opponent_id' => $c['opponent_id'],
+                'wins' => $c['wins'],
+                'losses' => $c['losses'],
+                'games' => $games,
+                'win_rate' => $games > 0 ? round($c['wins'] / $games, 4) : 0,
+            ];
+        }
+
+        return response()->json([
+            'player' => ['id' => $player->id, 'name' => $player->name],
+            'weeks' => $weeks,
+            'opponents' => $opponents,
+            'cells' => $cells,
+        ]);
+    }
 }
