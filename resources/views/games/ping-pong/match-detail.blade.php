@@ -129,6 +129,19 @@
         font-weight: 600;
         color: #facc15;
     }
+    .md .elo-card .streak-breaker-bonus {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-top: 4px;
+        padding: 2px 8px;
+        background: rgba(251, 146, 60, 0.15);
+        border: 1px solid rgba(251, 146, 60, 0.3);
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #fb923c;
+    }
 
     /* 2v2 sub-players */
     .md .elo-sub {
@@ -585,6 +598,9 @@
                             <template x-if="streakBonus('left') > 0">
                                 <div class="streak-bonus" x-text="'+ ' + streakBonus('left') + ' streak bonus'"></div>
                             </template>
+                            <template x-if="streakBreakerBonus('left') > 0">
+                                <div class="streak-breaker-bonus" x-text="'+ ' + streakBreakerBonus('left') + ' streak breaker'"></div>
+                            </template>
                             <template x-if="match.mode === '2v2' && match.elo_changes?.left?.player1">
                                 <div class="elo-sub">
                                     <div class="elo-sub-row">
@@ -609,6 +625,9 @@
                                  x-text="(eloChange('right') >= 0 ? '+' : '') + eloChange('right')"></div>
                             <template x-if="streakBonus('right') > 0">
                                 <div class="streak-bonus" x-text="'+ ' + streakBonus('right') + ' streak bonus'"></div>
+                            </template>
+                            <template x-if="streakBreakerBonus('right') > 0">
+                                <div class="streak-breaker-bonus" x-text="'+ ' + streakBreakerBonus('right') + ' streak breaker'"></div>
                             </template>
                             <template x-if="match.mode === '2v2' && match.elo_changes?.right?.player1">
                                 <div class="elo-sub">
@@ -912,11 +931,15 @@ function matchDetail() {
             const elo = this.match?.elo_changes?.[side];
             if (!elo) return 0;
             const base = elo.change ?? ((elo.after ?? 0) - (elo.before ?? 0));
-            return base + (elo.streak_bonus ?? 0);
+            return base + (elo.streak_bonus ?? 0) + (elo.streak_breaker_bonus ?? 0);
         },
 
         streakBonus(side) {
             return this.match?.elo_changes?.[side]?.streak_bonus ?? 0;
+        },
+
+        streakBreakerBonus(side) {
+            return this.match?.elo_changes?.[side]?.streak_breaker_bonus ?? 0;
         },
 
         runs() {
