@@ -10,6 +10,8 @@ class EloService
 {
     private const K = 32;
     private const DEFAULT_RATING = 1200;
+    private const STREAK_BONUS_THRESHOLD = 3;
+    private const STREAK_BONUS_CAP = 5;
 
     public function getOrCreateRating(int $playerId, string $mode = '1v1'): PingPongRating
     {
@@ -33,6 +35,78 @@ class EloService
         $expected = 1 / (1 + pow(10, ($opponentRating - $playerRating) / 400));
 
         return (int) round(self::K * ($score - $expected));
+    }
+
+    /**
+     * Count consecutive wins for a player (most recent first), excluding
+     * the match currently being processed so the caller can add 1.
+     */
+    public function getCurrentWinStreak(int $playerId, string $mode, ?int $excludeMatchId = null): int
+    {
+        $query = PingPongMatch::whereNotNull('ended_at')
+            ->where('mode', $mode)
+            ->where(function ($q) use ($playerId) {
+                $q->where('player_left_id', $playerId)
+                  ->orWhere('player_right_id', $playerId)
+                  ->orWhere('team_left_player2_id', $playerId)
+                  ->orWhere('team_right_player2_id', $playerId);
+            })
+            ->orderBy('ended_at', 'desc');
+
+        if ($excludeMatchId) {
+            $query->where('id', '!=', $excludeMatchId);
+        }
+
+        $matches = $query->get();
+
+        $streak = 0;
+        foreach ($matches as $match) {
+            $won = $mode === '1v1'
+                ? $match->winner_id === $playerId
+                : (($match->winner_id === $match->player_left_id && in_array($playerId, [$match->player_left_id, $match->team_left_player2_id], true))
+                    || ($match->winner_id === $match->player_right_id && in_array($playerId, [$match->player_right_id, $match->team_right_player2_id], true)));
+            if ($won) {
+                $streak++;
+            } else {
+                break;
+            }
+        }
+
+        return $streak;
+    }
+
+    /**
+     * Bonus ELO for being on a win streak. Returns 0 if streak < threshold.
+     */
+    public function calculateStreakBonus(int $streakLength): int
+    {
+        if ($streakLength < self::STREAK_BONUS_THRESHOLD) {
+            return 0;
+        }
+
+        return min($streakLength, self::STREAK_BONUS_CAP);
+    }
+
+    private function applyStreakBonus(int $playerId, string $mode, PingPongMatch $match): int
+    {
+        $priorStreak = $this->getCurrentWinStreak($playerId, $mode, $match->id);
+        $streakLength = $priorStreak + 1;
+        $bonus = $this->calculateStreakBonus($streakLength);
+
+        if ($bonus > 0) {
+            PingPongRatingChange::create([
+                'player_id' => $playerId,
+                'match_id' => $match->id,
+                'mode' => $mode,
+                'type' => 'streak_bonus',
+                'rating_change' => $bonus,
+            ]);
+
+            $rating = $this->getOrCreateRating($playerId, $mode);
+            $rating->update(['elo_rating' => $rating->elo_rating + $bonus]);
+        }
+
+        return $bonus;
     }
 
     public function applyMatchResult(PingPongMatch $match): array
@@ -81,16 +155,34 @@ class EloService
             'player_right_elo_after' => $rightBefore + $rightChange,
         ]);
 
+        $leftBonus = 0;
+        $rightBonus = 0;
+        $winnerId = $match->winner_id;
+
+        if ($winnerId === $match->player_left_id) {
+            $leftBonus = $this->applyStreakBonus($match->player_left_id, '1v1', $match);
+            if ($leftBonus > 0) {
+                $match->update(['player_left_elo_after' => $match->player_left_elo_after + $leftBonus]);
+            }
+        } else {
+            $rightBonus = $this->applyStreakBonus($match->player_right_id, '1v1', $match);
+            if ($rightBonus > 0) {
+                $match->update(['player_right_elo_after' => $match->player_right_elo_after + $rightBonus]);
+            }
+        }
+
         return [
             'left' => [
                 'before' => $leftBefore,
-                'after' => $leftBefore + $leftChange,
+                'after' => $leftBefore + $leftChange + $leftBonus,
                 'change' => $leftChange,
+                'streak_bonus' => $leftBonus,
             ],
             'right' => [
                 'before' => $rightBefore,
-                'after' => $rightBefore + $rightChange,
+                'after' => $rightBefore + $rightChange + $rightBonus,
                 'change' => $rightChange,
+                'streak_bonus' => $rightBonus,
             ],
         ];
     }
@@ -162,20 +254,66 @@ class EloService
             'team_right_player2_elo_after' => $rightP2Before + $rightChange,
         ]);
 
+        $leftP1Bonus = 0;
+        $leftP2Bonus = 0;
+        $rightP1Bonus = 0;
+        $rightP2Bonus = 0;
+
+        if ($leftWon) {
+            $leftP1Bonus = $this->applyStreakBonus($match->player_left_id, $mode, $match);
+            $leftP2Bonus = $this->applyStreakBonus($match->team_left_player2_id, $mode, $match);
+            if ($leftP1Bonus > 0) {
+                $match->update(['player_left_elo_after' => $match->player_left_elo_after + $leftP1Bonus]);
+            }
+            if ($leftP2Bonus > 0) {
+                $match->update(['team_left_player2_elo_after' => $match->team_left_player2_elo_after + $leftP2Bonus]);
+            }
+        } else {
+            $rightP1Bonus = $this->applyStreakBonus($match->player_right_id, $mode, $match);
+            $rightP2Bonus = $this->applyStreakBonus($match->team_right_player2_id, $mode, $match);
+            if ($rightP1Bonus > 0) {
+                $match->update(['player_right_elo_after' => $match->player_right_elo_after + $rightP1Bonus]);
+            }
+            if ($rightP2Bonus > 0) {
+                $match->update(['team_right_player2_elo_after' => $match->team_right_player2_elo_after + $rightP2Bonus]);
+            }
+        }
+
+        $leftAvgBonus = (int) round(($leftP1Bonus + $leftP2Bonus) / 2);
+        $rightAvgBonus = (int) round(($rightP1Bonus + $rightP2Bonus) / 2);
+
         return [
             'left' => [
                 'team_avg_before' => $teamLeftAvg,
-                'team_avg_after' => $teamLeftAvg + $leftChange,
+                'team_avg_after' => $teamLeftAvg + $leftChange + $leftAvgBonus,
                 'change' => $leftChange,
-                'player1' => ['before' => $leftP1Before, 'after' => $leftP1Before + $leftChange],
-                'player2' => ['before' => $leftP2Before, 'after' => $leftP2Before + $leftChange],
+                'streak_bonus' => $leftAvgBonus,
+                'player1' => [
+                    'before' => $leftP1Before,
+                    'after' => $leftP1Before + $leftChange + $leftP1Bonus,
+                    'streak_bonus' => $leftP1Bonus,
+                ],
+                'player2' => [
+                    'before' => $leftP2Before,
+                    'after' => $leftP2Before + $leftChange + $leftP2Bonus,
+                    'streak_bonus' => $leftP2Bonus,
+                ],
             ],
             'right' => [
                 'team_avg_before' => $teamRightAvg,
-                'team_avg_after' => $teamRightAvg + $rightChange,
+                'team_avg_after' => $teamRightAvg + $rightChange + $rightAvgBonus,
                 'change' => $rightChange,
-                'player1' => ['before' => $rightP1Before, 'after' => $rightP1Before + $rightChange],
-                'player2' => ['before' => $rightP2Before, 'after' => $rightP2Before + $rightChange],
+                'streak_bonus' => $rightAvgBonus,
+                'player1' => [
+                    'before' => $rightP1Before,
+                    'after' => $rightP1Before + $rightChange + $rightP1Bonus,
+                    'streak_bonus' => $rightP1Bonus,
+                ],
+                'player2' => [
+                    'before' => $rightP2Before,
+                    'after' => $rightP2Before + $rightChange + $rightP2Bonus,
+                    'streak_bonus' => $rightP2Bonus,
+                ],
             ],
         ];
     }

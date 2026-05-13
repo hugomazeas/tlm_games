@@ -10,7 +10,7 @@ class PingPongRatingChange extends Model
 {
     protected $table = 'ping_pong_rating_changes';
 
-    protected $fillable = ['player_id', 'match_id', 'mode', 'rating_change'];
+    protected $fillable = ['player_id', 'match_id', 'mode', 'type', 'rating_change'];
 
     protected function casts(): array
     {
