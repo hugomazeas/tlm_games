@@ -36,6 +36,19 @@ class EloRankingProvider implements LeaderboardProviderInterface
             )
             ->unique();
 
+        $cutoff = now()->subWeeks(2);
+
+        $playerIds = $playerIds->filter(function ($playerId) use ($cutoff) {
+            return PingPongMatch::whereNotNull('ended_at')
+                ->where('mode', '1v1')
+                ->where('ended_at', '>=', $cutoff)
+                ->where(function ($q) use ($playerId) {
+                    $q->where('player_left_id', $playerId)
+                      ->orWhere('player_right_id', $playerId);
+                })
+                ->exists();
+        });
+
         return $playerIds->map(function ($playerId) {
             $player = Player::find($playerId);
             if (!$player) {

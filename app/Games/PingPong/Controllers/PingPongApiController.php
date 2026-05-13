@@ -99,6 +99,20 @@ class PingPongApiController extends Controller
 
         $playerIds = $playerIds->unique();
 
+        $activityCutoff = now()->subWeeks(2);
+        $playerIds = $playerIds->filter(function ($playerId) use ($mode, $activityCutoff) {
+            return PingPongMatch::whereNotNull('ended_at')
+                ->where('mode', $mode)
+                ->where('ended_at', '>=', $activityCutoff)
+                ->where(function ($q) use ($playerId) {
+                    $q->where('player_left_id', $playerId)
+                      ->orWhere('player_right_id', $playerId)
+                      ->orWhere('team_left_player2_id', $playerId)
+                      ->orWhere('team_right_player2_id', $playerId);
+                })
+                ->exists();
+        });
+
         if ($request->filled('office_id')) {
             $office = Office::find($request->query('office_id'));
             if (! $office) {
