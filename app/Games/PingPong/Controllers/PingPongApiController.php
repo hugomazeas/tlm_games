@@ -390,40 +390,75 @@ class PingPongApiController extends Controller
         }
 
         if ($match->is_complete && $match->player_left_elo_before !== null) {
+            $streakBonuses = PingPongRatingChange::where('match_id', $match->id)
+                ->where('type', 'streak_bonus')
+                ->pluck('rating_change', 'player_id');
+            $breakerBonuses = PingPongRatingChange::where('match_id', $match->id)
+                ->where('type', 'streak_breaker_bonus')
+                ->pluck('rating_change', 'player_id');
+
             if ($match->isDoubles()) {
-                $leftChange = $match->player_left_elo_after - $match->player_left_elo_before;
-                $rightChange = $match->player_right_elo_after - $match->player_right_elo_before;
+                $leftP1Bonus = $streakBonuses[$match->player_left_id] ?? 0;
+                $leftP2Bonus = $streakBonuses[$match->team_left_player2_id] ?? 0;
+                $rightP1Bonus = $streakBonuses[$match->player_right_id] ?? 0;
+                $rightP2Bonus = $streakBonuses[$match->team_right_player2_id] ?? 0;
+
+                $leftP1Breaker = $breakerBonuses[$match->player_left_id] ?? 0;
+                $leftP2Breaker = $breakerBonuses[$match->team_left_player2_id] ?? 0;
+                $rightP1Breaker = $breakerBonuses[$match->player_right_id] ?? 0;
+                $rightP2Breaker = $breakerBonuses[$match->team_right_player2_id] ?? 0;
+
+                $leftEloChange = $match->player_left_elo_after - $match->player_left_elo_before - $leftP1Bonus - $leftP1Breaker;
+                $rightEloChange = $match->player_right_elo_after - $match->player_right_elo_before - $rightP1Bonus - $rightP1Breaker;
 
                 $teamLeftAvg = (int) round(($match->player_left_elo_before + $match->team_left_player2_elo_before) / 2);
                 $teamRightAvg = (int) round(($match->player_right_elo_before + $match->team_right_player2_elo_before) / 2);
 
+                $leftAvgBonus = (int) round(($leftP1Bonus + $leftP2Bonus) / 2);
+                $rightAvgBonus = (int) round(($rightP1Bonus + $rightP2Bonus) / 2);
+                $leftAvgBreaker = (int) round(($leftP1Breaker + $leftP2Breaker) / 2);
+                $rightAvgBreaker = (int) round(($rightP1Breaker + $rightP2Breaker) / 2);
+
                 $response['elo_changes'] = [
                     'left' => [
                         'team_avg_before' => $teamLeftAvg,
-                        'team_avg_after' => $teamLeftAvg + $leftChange,
-                        'change' => $leftChange,
-                        'player1' => ['before' => $match->player_left_elo_before, 'after' => $match->player_left_elo_after],
-                        'player2' => ['before' => $match->team_left_player2_elo_before, 'after' => $match->team_left_player2_elo_after],
+                        'team_avg_after' => $teamLeftAvg + $leftEloChange + $leftAvgBonus + $leftAvgBreaker,
+                        'change' => $leftEloChange,
+                        'streak_bonus' => $leftAvgBonus,
+                        'streak_breaker_bonus' => $leftAvgBreaker,
+                        'player1' => ['before' => $match->player_left_elo_before, 'after' => $match->player_left_elo_after, 'streak_bonus' => $leftP1Bonus, 'streak_breaker_bonus' => $leftP1Breaker],
+                        'player2' => ['before' => $match->team_left_player2_elo_before, 'after' => $match->team_left_player2_elo_after, 'streak_bonus' => $leftP2Bonus, 'streak_breaker_bonus' => $leftP2Breaker],
                     ],
                     'right' => [
                         'team_avg_before' => $teamRightAvg,
-                        'team_avg_after' => $teamRightAvg + $rightChange,
-                        'change' => $rightChange,
-                        'player1' => ['before' => $match->player_right_elo_before, 'after' => $match->player_right_elo_after],
-                        'player2' => ['before' => $match->team_right_player2_elo_before, 'after' => $match->team_right_player2_elo_after],
+                        'team_avg_after' => $teamRightAvg + $rightEloChange + $rightAvgBonus + $rightAvgBreaker,
+                        'change' => $rightEloChange,
+                        'streak_bonus' => $rightAvgBonus,
+                        'streak_breaker_bonus' => $rightAvgBreaker,
+                        'player1' => ['before' => $match->player_right_elo_before, 'after' => $match->player_right_elo_after, 'streak_bonus' => $rightP1Bonus, 'streak_breaker_bonus' => $rightP1Breaker],
+                        'player2' => ['before' => $match->team_right_player2_elo_before, 'after' => $match->team_right_player2_elo_after, 'streak_bonus' => $rightP2Bonus, 'streak_breaker_bonus' => $rightP2Breaker],
                     ],
                 ];
             } else {
+                $leftBonus = $streakBonuses[$match->player_left_id] ?? 0;
+                $rightBonus = $streakBonuses[$match->player_right_id] ?? 0;
+                $leftBreaker = $breakerBonuses[$match->player_left_id] ?? 0;
+                $rightBreaker = $breakerBonuses[$match->player_right_id] ?? 0;
+
                 $response['elo_changes'] = [
                     'left' => [
                         'before' => $match->player_left_elo_before,
                         'after' => $match->player_left_elo_after,
-                        'change' => $match->player_left_elo_after - $match->player_left_elo_before,
+                        'change' => $match->player_left_elo_after - $match->player_left_elo_before - $leftBonus - $leftBreaker,
+                        'streak_bonus' => $leftBonus,
+                        'streak_breaker_bonus' => $leftBreaker,
                     ],
                     'right' => [
                         'before' => $match->player_right_elo_before,
                         'after' => $match->player_right_elo_after,
-                        'change' => $match->player_right_elo_after - $match->player_right_elo_before,
+                        'change' => $match->player_right_elo_after - $match->player_right_elo_before - $rightBonus - $rightBreaker,
+                        'streak_bonus' => $rightBonus,
+                        'streak_breaker_bonus' => $rightBreaker,
                     ],
                 ];
             }
