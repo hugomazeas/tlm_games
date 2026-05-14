@@ -505,6 +505,7 @@ class PingPongApiController extends Controller
             'player_right_id' => $validated['player_right_id'],
             'player_left_score' => 0,
             'player_right_score' => 0,
+            'first_server_id' => $validated['first_server_id'],
             'current_server_id' => $validated['first_server_id'],
             'serve_count' => 0,
             'started_at' => now(),

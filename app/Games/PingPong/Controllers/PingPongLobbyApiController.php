@@ -215,13 +215,16 @@ class PingPongLobbyApiController extends Controller
         $leftParticipants = $lobby->participants()->where('side', 'left')->with('player')->get();
         $rightParticipants = $lobby->participants()->where('side', 'right')->with('player')->get();
 
+        $firstServerId = collect([$leftParticipants[0]->player_id, $rightParticipants[0]->player_id])->random();
+
         $matchData = [
             'mode' => $lobby->mode,
             'player_left_id' => $leftParticipants[0]->player_id,
             'player_right_id' => $rightParticipants[0]->player_id,
             'player_left_score' => 0,
             'player_right_score' => 0,
-            'current_server_id' => $leftParticipants[0]->player_id,
+            'first_server_id' => $firstServerId,
+            'current_server_id' => $firstServerId,
             'serve_count' => 0,
             'started_at' => now(),
             'last_score_activity_at' => now(),
