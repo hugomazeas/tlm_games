@@ -196,16 +196,17 @@ class PingPongLobbyApiController extends Controller
         }
 
         if (!empty($validated['session_token'])) {
-            $isParticipant = PingPongLobbyParticipant::where('lobby_id', $lobby->id)
+            $leftParticipant = PingPongLobbyParticipant::where('lobby_id', $lobby->id)
                 ->where('session_token', $validated['session_token'])
+                ->where('side', 'left')
                 ->exists();
-            if ($isParticipant) {
+            if ($leftParticipant) {
                 $authorized = true;
             }
         }
 
         if (!$authorized) {
-            return response()->json(['error' => 'Unauthorized'], 403);
+            return response()->json(['error' => 'Only the left-side player can start the match'], 403);
         }
 
         if (!$lobby->isReadyToStart()) {
