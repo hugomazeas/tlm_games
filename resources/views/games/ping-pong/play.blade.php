@@ -334,6 +334,7 @@
                         <button class="pp-score-btn minus" @click="updateScore('left', 'decrement')">-</button>
                         <button class="pp-score-btn plus" @click="updateScore('left', 'increment')">+</button>
                     </div>
+                    @include('games.ping-pong.partials.elo-preview', ['side' => 'left'])
                 </div>
                 <!-- Right Team -->
                 <div class="pp-score-panel right" :class="{ 'serving-active': isServing('right') }">
@@ -358,6 +359,7 @@
                         <button class="pp-score-btn minus" @click="updateScore('right', 'decrement')">-</button>
                         <button class="pp-score-btn plus" @click="updateScore('right', 'increment')">+</button>
                     </div>
+                    @include('games.ping-pong.partials.elo-preview', ['side' => 'right'])
                 </div>
             </div>
             <div class="pp-hint" style="text-align: center; margin-top: 8px;">
@@ -410,6 +412,7 @@ function pingPong() {
 
         // Match state
         match: {},
+        eloPreview: null,
 
         // Timer
         timerDisplay: '00:00',
@@ -800,6 +803,7 @@ function pingPong() {
 
                 this.startTimer();
                 this.screen = 'playing';
+                this.loadEloPreview();
 
                 // Start live player for recording
                 this.initLivePlayer('/recordings/live/' + this.match.id + '/stream.m3u8');
@@ -818,9 +822,58 @@ function pingPong() {
                 this.subscribeToMatch(matchId);
                 this.startTimer();
                 this.screen = 'playing';
+                this.loadEloPreview();
             } catch (err) {
                 console.error('Error loading match:', err);
             }
+        },
+
+        async loadEloPreview() {
+            if (!this.match?.id) return;
+            try {
+                const res = await fetch(`${this.API}/matches/${this.match.id}/elo-preview`);
+                if (!res.ok) {
+                    this.eloPreview = null;
+                    return;
+                }
+                this.eloPreview = await res.json();
+            } catch (err) {
+                console.warn('Failed to load ELO preview:', err);
+                this.eloPreview = null;
+            }
+        },
+
+        eloPreviewFor(playerId, won) {
+            if (!this.eloPreview || !playerId) return null;
+            const onLeft = this.match.player_left_id === playerId
+                || this.match.team_left_player2_id === playerId;
+            const key = (onLeft === won) ? 'if_left_wins' : 'if_right_wins';
+            return this.eloPreview[key]?.[playerId] ?? null;
+        },
+
+        formatDelta(n) {
+            if (n === null || n === undefined) return '';
+            if (n > 0) return '+' + n;
+            return String(n);
+        },
+
+        previewPlayerIdsForSide(side) {
+            if (side === 'left') {
+                return this.mode === '2v2'
+                    ? [this.match.player_left_id, this.match.team_left_player2_id].filter(Boolean)
+                    : (this.match.player_left_id ? [this.match.player_left_id] : []);
+            }
+            return this.mode === '2v2'
+                ? [this.match.player_right_id, this.match.team_right_player2_id].filter(Boolean)
+                : (this.match.player_right_id ? [this.match.player_right_id] : []);
+        },
+
+        playerNameById(id) {
+            if (id === this.match.player_left_id) return this.match.player_left?.name;
+            if (id === this.match.player_right_id) return this.match.player_right?.name;
+            if (id === this.match.team_left_player2_id) return this.match.team_left_player2?.name;
+            if (id === this.match.team_right_player2_id) return this.match.team_right_player2?.name;
+            return '';
         },
 
         // --- PLAYING ---
@@ -956,6 +1009,7 @@ function pingPong() {
             this.destroyLivePlayer();
             this.unsubscribeAll();
             this.match = {};
+            this.eloPreview = null;
             this.lobbyCode = '';
             this.hostToken = '';
             this.lobbyParticipants = [];
