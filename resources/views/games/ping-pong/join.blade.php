@@ -338,13 +338,20 @@
                 </div>
 
                 <div style="padding: 12px 16px; text-align: center;">
-                    <button class="create-btn"
-                            style="width: 100%; padding: 14px; font-size: 1.1rem;"
-                            :disabled="!lobbyReady || starting"
-                            @click="startGame()">
-                        <span x-show="!starting">Start Game</span>
-                        <span x-show="starting">Starting...</span>
-                    </button>
+                    <template x-if="mySide === 'left'">
+                        <button class="create-btn"
+                                style="width: 100%; padding: 14px; font-size: 1.1rem;"
+                                :disabled="!lobbyReady || starting"
+                                @click="startGame()">
+                            <span x-show="!starting">Start Game</span>
+                            <span x-show="starting">Starting...</span>
+                        </button>
+                    </template>
+                    <template x-if="mySide === 'right'">
+                        <div class="waiting-indicator">
+                            Waiting for left player to start the game<span class="dots"></span>
+                        </div>
+                    </template>
                 </div>
                 <div class="waiting-indicator" x-show="!lobbyReady">
                     Waiting for players<span class="dots"></span>

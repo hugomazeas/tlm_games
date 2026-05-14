@@ -462,7 +462,11 @@
                     <span id="endgameLeftScore">0</span><span class="sep">-</span><span id="endgameRightScore">0</span>
                 </div>
                 <div class="endgame-buttons">
+                    @if($side === 'left')
                     <button class="btn-rematch" id="btnRematch">Rematch</button>
+                    @else
+                    <div class="endgame-hint" style="display:block;">Waiting for left player to start rematch...</div>
+                    @endif
                     <button class="btn-done" id="btnDone">View Match Detail</button>
                 </div>
                 <div class="endgame-hint" id="endgameHint" style="display:none;"></div>
@@ -579,7 +583,7 @@
             matchPointOverlay.style.display = 'none';
             updateScore('increment');
         });
-        addTouchHandler(btnRematch, () => requestRematch());
+        if (btnRematch) addTouchHandler(btnRematch, () => requestRematch());
         addTouchHandler(btnDone, () => {
             window.location.href = '/games/ping-pong/matches/' + MATCH_ID;
         });
