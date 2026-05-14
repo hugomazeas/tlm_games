@@ -389,8 +389,8 @@ class PingPongApiController extends Controller
         $response['duration'] = $match->duration;
         $response['duration_formatted'] = $match->duration_formatted;
         $response['is_complete'] = $match->is_complete;
-        $response['left_remote_connected'] = $match->left_remote_connected_at !== null;
-        $response['right_remote_connected'] = $match->right_remote_connected_at !== null;
+        $response['left_remote_connected'] = $match->isRemoteSidePresent('left');
+        $response['right_remote_connected'] = $match->isRemoteSidePresent('right');
 
         if ($match->recording) {
             $response['recording'] = [
@@ -896,15 +896,35 @@ class PingPongApiController extends Controller
 
         $field = $validated['side'] === 'left' ? 'left_remote_connected_at' : 'right_remote_connected_at';
 
-        if ($match->$field === null) {
-            $match->$field = now();
+        $match->$field = now();
+        $match->save();
+
+        return response()->json([
+            'connected' => true,
+            'left_remote_connected' => $match->isRemoteSidePresent('left'),
+            'right_remote_connected' => $match->isRemoteSidePresent('right'),
+        ]);
+    }
+
+    public function disconnectRemote(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'side' => 'required|in:left,right',
+        ]);
+
+        $match = PingPongMatch::findOrFail($id);
+
+        $field = $validated['side'] === 'left' ? 'left_remote_connected_at' : 'right_remote_connected_at';
+
+        if ($match->$field !== null) {
+            $match->$field = null;
             $match->save();
         }
 
         return response()->json([
-            'connected' => true,
-            'left_remote_connected' => $match->left_remote_connected_at !== null,
-            'right_remote_connected' => $match->right_remote_connected_at !== null,
+            'disconnected' => true,
+            'left_remote_connected' => $match->isRemoteSidePresent('left'),
+            'right_remote_connected' => $match->isRemoteSidePresent('right'),
         ]);
     }
 
@@ -927,6 +947,12 @@ class PingPongApiController extends Controller
                 'lobby_code' => $existing->code,
                 'mode' => $existing->mode,
             ]);
+        }
+
+        if (!$previousMatch->bothRemoteSidesPresent()) {
+            return response()->json([
+                'error' => 'Both players must be on a match end screen (remote scoreboard or match details) to start a rematch.',
+            ], 422);
         }
 
         $lobby = PingPongLobby::create([

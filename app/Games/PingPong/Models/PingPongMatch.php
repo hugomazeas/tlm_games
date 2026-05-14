@@ -10,6 +10,9 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class PingPongMatch extends Model
 {
+    /** How recently a side must have called /connect to count as "on the remote match screen". */
+    public const REMOTE_PRESENCE_TTL_SECONDS = 45;
+
     protected $table = 'ping_pong_matches';
 
     protected $fillable = [
@@ -127,6 +130,23 @@ class PingPongMatch extends Model
     public function getIsCompleteAttribute(): bool
     {
         return $this->ended_at !== null;
+    }
+
+    public function isRemoteSidePresent(string $side): bool
+    {
+        $field = $side === 'left' ? 'left_remote_connected_at' : 'right_remote_connected_at';
+        $at = $this->$field;
+
+        if ($at === null) {
+            return false;
+        }
+
+        return $at->isAfter(now()->subSeconds(self::REMOTE_PRESENCE_TTL_SECONDS));
+    }
+
+    public function bothRemoteSidesPresent(): bool
+    {
+        return $this->isRemoteSidePresent('left') && $this->isRemoteSidePresent('right');
     }
 
     public function getLoserAttribute(): ?Player

@@ -107,6 +107,10 @@ class MatchScoreUpdated implements ShouldBroadcastNow
             ];
         }
 
+        $match->refresh();
+        $data['left_remote_connected'] = $match->isRemoteSidePresent('left');
+        $data['right_remote_connected'] = $match->isRemoteSidePresent('right');
+
         $this->match = $data;
     }
 

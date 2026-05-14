@@ -506,6 +506,9 @@
         let currentLeftScore = 0;
         let currentRightScore = 0;
         let matchData = null;
+        let endgamePresencePollTimer = null;
+        const PRESENCE_HEARTBEAT_MS = 20000;
+        const ENDGAME_PRESENCE_POLL_MS = 5000;
 
         // DOM elements
         const scoreboard = document.getElementById('scoreboard');
@@ -579,9 +582,12 @@
             matchPointOverlay.style.display = 'none';
             updateScore('increment');
         });
-        addTouchHandler(btnRematch, () => requestRematch());
+        addTouchHandler(btnRematch, () => {
+            if (btnRematch.disabled) return;
+            requestRematch();
+        });
         addTouchHandler(btnDone, () => {
-            window.location.href = '/games/ping-pong/matches/' + MATCH_ID;
+            window.location.href = '/games/ping-pong/matches/' + MATCH_ID + '?end=1&side=' + encodeURIComponent(SIDE);
         });
 
         function wouldWinMatch() {
@@ -681,6 +687,42 @@
             endgameWinner.className = 'endgame-winner' + (winnerSide ? ' ' + winnerSide : '');
             endgameWinner.textContent = winnerName + (winnerSide ? ' wins' : '');
             endgameOverlay.style.display = 'flex';
+            syncRematchButton(data);
+            if (endgamePresencePollTimer) {
+                clearInterval(endgamePresencePollTimer);
+            }
+            endgamePresencePollTimer = setInterval(async () => {
+                if (!isComplete || endgameOverlay.style.display === 'none') return;
+                try {
+                    const res = await fetch(`${API}/matches/${MATCH_ID}`);
+                    if (!res.ok) return;
+                    const d = await res.json();
+                    matchData = d;
+                    syncRematchButton(d);
+                } catch (err) {
+                    // ignore
+                }
+            }, ENDGAME_PRESENCE_POLL_MS);
+        }
+
+        function isOpponentRemotePresent(data) {
+            if (!data) return false;
+            return SIDE === 'left' ? !!data.right_remote_connected : !!data.left_remote_connected;
+        }
+
+        function syncRematchButton(data) {
+            if (!isComplete) return;
+            const oppOk = isOpponentRemotePresent(data);
+            btnRematch.disabled = !oppOk;
+            if (!oppOk) {
+                endgameHint.style.display = 'block';
+                endgameHint.textContent = 'Your opponent is not on a match end screen (here or match details). Rematch becomes available when they return.';
+                endgameHint.dataset.waitingOpp = '1';
+            } else if (endgameHint.dataset.waitingOpp === '1') {
+                endgameHint.style.display = 'none';
+                endgameHint.textContent = '';
+                delete endgameHint.dataset.waitingOpp;
+            }
         }
 
         function getOwnPlayerInfo() {
@@ -714,8 +756,9 @@
         }
 
         async function requestRematch() {
-            if (!isComplete) return;
+            if (!isComplete || !isOpponentRemotePresent(matchData)) return;
             btnRematch.disabled = true;
+            delete endgameHint.dataset.waitingOpp;
             endgameHint.style.display = 'block';
             endgameHint.textContent = 'Creating new lobby...';
             try {
@@ -726,14 +769,30 @@
                 if (!res.ok) {
                     const err = await res.json().catch(() => ({}));
                     endgameHint.textContent = err.error || 'Could not create rematch';
-                    btnRematch.disabled = false;
+                    syncRematchButton(matchData);
+                    try {
+                        const r2 = await fetch(`${API}/matches/${MATCH_ID}`);
+                        if (r2.ok) {
+                            const d2 = await r2.json();
+                            matchData = d2;
+                            syncRematchButton(d2);
+                        }
+                    } catch (e2) {}
                     return;
                 }
                 const data = await res.json();
                 redirectToRematchLobby(data.lobby_code);
             } catch (err) {
                 endgameHint.textContent = 'Network error — try again';
-                btnRematch.disabled = false;
+                syncRematchButton(matchData);
+                try {
+                    const r2 = await fetch(`${API}/matches/${MATCH_ID}`);
+                    if (r2.ok) {
+                        const d2 = await r2.json();
+                        matchData = d2;
+                        syncRematchButton(d2);
+                    }
+                } catch (e2) {}
             }
         }
 
@@ -847,6 +906,45 @@
             }
         }
 
+        function beaconDisconnectRemote() {
+            const fd = new FormData();
+            fd.append('_token', CSRF);
+            fd.append('side', SIDE);
+            const disconnectUrl = API + '/matches/' + MATCH_ID + '/disconnect';
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon(disconnectUrl, fd);
+            } else {
+                fetch(disconnectUrl, {
+                    method: 'POST',
+                    body: fd,
+                    headers: { 'X-CSRF-TOKEN': CSRF },
+                    keepalive: true,
+                }).catch(function() {});
+            }
+        }
+
+        // Remote presence: heartbeat while on this page; disconnect when leaving (not bfcache restore).
+        window.addEventListener('pageshow', function(ev) {
+            if (ev.persisted) {
+                registerConnection();
+            }
+        });
+
+        window.addEventListener('pagehide', function(ev) {
+            if (ev.persisted) {
+                return;
+            }
+            beaconDisconnectRemote();
+        });
+
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'hidden') {
+                beaconDisconnectRemote();
+            } else {
+                registerConnection();
+            }
+        });
+
         // Initial load
         async function init() {
             await registerConnection();
@@ -858,6 +956,12 @@
                 leftNames.textContent = 'Error loading match';
             }
             subscribeToMatch();
+            setInterval(function() {
+                if (document.visibilityState === 'hidden') {
+                    return;
+                }
+                registerConnection();
+            }, PRESENCE_HEARTBEAT_MS);
         }
 
         init();

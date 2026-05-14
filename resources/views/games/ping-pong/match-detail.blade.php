@@ -707,6 +707,13 @@ function matchDetail() {
         savingClip: false,
         clips: [],
 
+        /** When set, this tab keeps /connect heartbeat so rematch works from match details too. */
+        endScreenPresenceSide: null,
+        _presenceHeartbeat: null,
+        _onDetailPageHide: null,
+        _onDetailPageShow: null,
+        _onDetailVisibility: null,
+
         async init() {
             try {
                 const res = await fetch(`${this.API}/matches/${this.matchId}`);
@@ -715,6 +722,12 @@ function matchDetail() {
                 console.error('Error loading match:', err);
             }
             this.loading = false;
+
+            const params = new URLSearchParams(window.location.search);
+            const sideParam = params.get('side');
+            if (sideParam === 'left' || sideParam === 'right') {
+                this.endScreenPresenceSide = sideParam;
+            }
 
             if (this.match?.recording?.status === 'completed') {
                 this.loadClips();
@@ -731,6 +744,85 @@ function matchDetail() {
             }
 
             this.subscribeToMatch();
+
+            if (this.shouldTrackEndScreenPresence()) {
+                this.startEndScreenPresenceTracking();
+            }
+        },
+
+        shouldTrackEndScreenPresence() {
+            if (!this.match?.is_complete || !this.endScreenPresenceSide) {
+                return false;
+            }
+            return new URLSearchParams(window.location.search).get('end') === '1';
+        },
+
+        startEndScreenPresenceTracking() {
+            const API = this.API;
+            const matchId = this.matchId;
+            const side = this.endScreenPresenceSide;
+            const csrf = () => document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+            const ping = async () => {
+                if (document.visibilityState === 'hidden') {
+                    return;
+                }
+                try {
+                    await fetch(`${API}/matches/${matchId}/connect`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrf(),
+                        },
+                        body: JSON.stringify({ side }),
+                    });
+                } catch (e) {
+                    // ignore
+                }
+            };
+
+            ping();
+            this._presenceHeartbeat = setInterval(ping, 20000);
+
+            const beaconDisconnect = () => {
+                const fd = new FormData();
+                fd.append('_token', csrf());
+                fd.append('side', side);
+                const disconnectUrl = `${API}/matches/${matchId}/disconnect`;
+                if (navigator.sendBeacon) {
+                    navigator.sendBeacon(disconnectUrl, fd);
+                } else {
+                    fetch(disconnectUrl, {
+                        method: 'POST',
+                        body: fd,
+                        headers: { 'X-CSRF-TOKEN': csrf() },
+                        keepalive: true,
+                    }).catch(() => {});
+                }
+            };
+
+            this._onDetailPageHide = (ev) => {
+                if (ev.persisted) {
+                    return;
+                }
+                beaconDisconnect();
+            };
+            this._onDetailPageShow = (ev) => {
+                if (ev.persisted) {
+                    ping();
+                }
+            };
+            this._onDetailVisibility = () => {
+                if (document.visibilityState === 'hidden') {
+                    beaconDisconnect();
+                } else {
+                    ping();
+                }
+            };
+            window.addEventListener('pagehide', this._onDetailPageHide);
+            window.addEventListener('pageshow', this._onDetailPageShow);
+            document.addEventListener('visibilitychange', this._onDetailVisibility);
         },
 
         subscribeToMatch() {
