@@ -481,6 +481,17 @@ class PingPongApiController extends Controller
         return response()->json($response);
     }
 
+    public function eloPreview(int $id): JsonResponse
+    {
+        $match = PingPongMatch::findOrFail($id);
+
+        if ($match->is_complete) {
+            return response()->json(['error' => 'Match is already complete'], 422);
+        }
+
+        return response()->json($this->eloService->previewMatchResult($match));
+    }
+
     public function createMatch(Request $request): JsonResponse
     {
         $mode = $request->input('mode', '1v1');

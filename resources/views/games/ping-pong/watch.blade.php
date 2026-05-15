@@ -78,6 +78,13 @@
                 </div>
             </template>
 
+            <!-- Scoreboard link -->
+            <a x-show="matchId"
+               :href="'/games/ping-pong/matches/' + matchId + '/scoreboard'"
+               style="position:absolute;top:16px;right:108px;background:rgba(0,0,0,0.7);padding:4px 12px;border-radius:6px;color:white;text-decoration:none;font-size:0.8rem;">
+                Scoreboard &rarr;
+            </a>
+
             <!-- Back link -->
             <a href="/games/ping-pong" style="position:absolute;top:16px;right:16px;background:rgba(0,0,0,0.7);padding:4px 12px;border-radius:6px;color:white;text-decoration:none;font-size:0.8rem;">
                 &larr; Back

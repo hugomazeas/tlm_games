@@ -153,6 +153,175 @@ class EloService
         return $this->applySinglesResult($match);
     }
 
+    /**
+     * Compute, without persisting, the ELO change each player would receive
+     * for both outcomes of the given (in-progress) match. Mirrors the math
+     * used by applyMatchResult including streak and streak-breaker bonuses.
+     *
+     * Return shape:
+     * [
+     *   'mode' => '1v1'|'2v2',
+     *   'if_left_wins'  => [<player_id> => ['base'=>int,'streak'=>int,'breaker'=>int,'total'=>int], ...],
+     *   'if_right_wins' => [<player_id> => [...], ...],
+     * ]
+     */
+    public function previewMatchResult(PingPongMatch $match): array
+    {
+        if ($match->isDoubles()) {
+            return $this->previewDoublesResult($match);
+        }
+
+        return $this->previewSinglesResult($match);
+    }
+
+    private function previewSinglesResult(PingPongMatch $match): array
+    {
+        $mode = '1v1';
+        $leftId = $match->player_left_id;
+        $rightId = $match->player_right_id;
+
+        $leftRating = $this->getOrCreateRating($leftId, $mode)->elo_rating;
+        $rightRating = $this->getOrCreateRating($rightId, $mode)->elo_rating;
+
+        $leftPriorStreak = $this->getCurrentWinStreak($leftId, $mode, $match->id);
+        $rightPriorStreak = $this->getCurrentWinStreak($rightId, $mode, $match->id);
+
+        $leftWinBase = $this->calculateChange($leftRating, $rightRating, 1.0);
+        $rightLossBase = $this->calculateChange($rightRating, $leftRating, 0.0);
+        $leftWinStreakBonus = $this->calculateStreakBonus($leftPriorStreak + 1);
+        $leftWinBreakerBonus = $this->calculateStreakBreakerBonus($rightPriorStreak);
+
+        $rightWinBase = $this->calculateChange($rightRating, $leftRating, 1.0);
+        $leftLossBase = $this->calculateChange($leftRating, $rightRating, 0.0);
+        $rightWinStreakBonus = $this->calculateStreakBonus($rightPriorStreak + 1);
+        $rightWinBreakerBonus = $this->calculateStreakBreakerBonus($leftPriorStreak);
+
+        return [
+            'mode' => $mode,
+            'if_left_wins' => [
+                $leftId => [
+                    'base' => $leftWinBase,
+                    'streak' => $leftWinStreakBonus,
+                    'breaker' => $leftWinBreakerBonus,
+                    'total' => $leftWinBase + $leftWinStreakBonus + $leftWinBreakerBonus,
+                ],
+                $rightId => [
+                    'base' => $rightLossBase,
+                    'streak' => 0,
+                    'breaker' => 0,
+                    'total' => $rightLossBase,
+                ],
+            ],
+            'if_right_wins' => [
+                $leftId => [
+                    'base' => $leftLossBase,
+                    'streak' => 0,
+                    'breaker' => 0,
+                    'total' => $leftLossBase,
+                ],
+                $rightId => [
+                    'base' => $rightWinBase,
+                    'streak' => $rightWinStreakBonus,
+                    'breaker' => $rightWinBreakerBonus,
+                    'total' => $rightWinBase + $rightWinStreakBonus + $rightWinBreakerBonus,
+                ],
+            ],
+        ];
+    }
+
+    private function previewDoublesResult(PingPongMatch $match): array
+    {
+        $mode = '2v2';
+        $leftP1Id = $match->player_left_id;
+        $leftP2Id = $match->team_left_player2_id;
+        $rightP1Id = $match->player_right_id;
+        $rightP2Id = $match->team_right_player2_id;
+
+        $leftP1Rating = $this->getOrCreateRating($leftP1Id, $mode)->elo_rating;
+        $leftP2Rating = $this->getOrCreateRating($leftP2Id, $mode)->elo_rating;
+        $rightP1Rating = $this->getOrCreateRating($rightP1Id, $mode)->elo_rating;
+        $rightP2Rating = $this->getOrCreateRating($rightP2Id, $mode)->elo_rating;
+
+        $teamLeftAvg = (int) round(($leftP1Rating + $leftP2Rating) / 2);
+        $teamRightAvg = (int) round(($rightP1Rating + $rightP2Rating) / 2);
+
+        $leftP1Prior = $this->getCurrentWinStreak($leftP1Id, $mode, $match->id);
+        $leftP2Prior = $this->getCurrentWinStreak($leftP2Id, $mode, $match->id);
+        $rightP1Prior = $this->getCurrentWinStreak($rightP1Id, $mode, $match->id);
+        $rightP2Prior = $this->getCurrentWinStreak($rightP2Id, $mode, $match->id);
+
+        $maxLeftPrior = max($leftP1Prior, $leftP2Prior);
+        $maxRightPrior = max($rightP1Prior, $rightP2Prior);
+
+        $leftWinBase = $this->calculateChange($teamLeftAvg, $teamRightAvg, 1.0);
+        $rightLossBase = $this->calculateChange($teamRightAvg, $teamLeftAvg, 0.0);
+        $leftP1WinStreak = $this->calculateStreakBonus($leftP1Prior + 1);
+        $leftP2WinStreak = $this->calculateStreakBonus($leftP2Prior + 1);
+        $leftWinBreaker = $this->calculateStreakBreakerBonus($maxRightPrior);
+
+        $rightWinBase = $this->calculateChange($teamRightAvg, $teamLeftAvg, 1.0);
+        $leftLossBase = $this->calculateChange($teamLeftAvg, $teamRightAvg, 0.0);
+        $rightP1WinStreak = $this->calculateStreakBonus($rightP1Prior + 1);
+        $rightP2WinStreak = $this->calculateStreakBonus($rightP2Prior + 1);
+        $rightWinBreaker = $this->calculateStreakBreakerBonus($maxLeftPrior);
+
+        return [
+            'mode' => $mode,
+            'if_left_wins' => [
+                $leftP1Id => [
+                    'base' => $leftWinBase,
+                    'streak' => $leftP1WinStreak,
+                    'breaker' => $leftWinBreaker,
+                    'total' => $leftWinBase + $leftP1WinStreak + $leftWinBreaker,
+                ],
+                $leftP2Id => [
+                    'base' => $leftWinBase,
+                    'streak' => $leftP2WinStreak,
+                    'breaker' => $leftWinBreaker,
+                    'total' => $leftWinBase + $leftP2WinStreak + $leftWinBreaker,
+                ],
+                $rightP1Id => [
+                    'base' => $rightLossBase,
+                    'streak' => 0,
+                    'breaker' => 0,
+                    'total' => $rightLossBase,
+                ],
+                $rightP2Id => [
+                    'base' => $rightLossBase,
+                    'streak' => 0,
+                    'breaker' => 0,
+                    'total' => $rightLossBase,
+                ],
+            ],
+            'if_right_wins' => [
+                $leftP1Id => [
+                    'base' => $leftLossBase,
+                    'streak' => 0,
+                    'breaker' => 0,
+                    'total' => $leftLossBase,
+                ],
+                $leftP2Id => [
+                    'base' => $leftLossBase,
+                    'streak' => 0,
+                    'breaker' => 0,
+                    'total' => $leftLossBase,
+                ],
+                $rightP1Id => [
+                    'base' => $rightWinBase,
+                    'streak' => $rightP1WinStreak,
+                    'breaker' => $rightWinBreaker,
+                    'total' => $rightWinBase + $rightP1WinStreak + $rightWinBreaker,
+                ],
+                $rightP2Id => [
+                    'base' => $rightWinBase,
+                    'streak' => $rightP2WinStreak,
+                    'breaker' => $rightWinBreaker,
+                    'total' => $rightWinBase + $rightP2WinStreak + $rightWinBreaker,
+                ],
+            ],
+        ];
+    }
+
     private function applySinglesResult(PingPongMatch $match): array
     {
         $leftRating = $this->getOrCreateRating($match->player_left_id);

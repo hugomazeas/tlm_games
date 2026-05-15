@@ -56,6 +56,19 @@ class PingPongController extends Controller
         ]);
     }
 
+    public function scoreboard(int $id)
+    {
+        $match = PingPongMatch::findOrFail($id);
+
+        if ($match->is_complete) {
+            return redirect('/games/ping-pong/matches/' . $match->id);
+        }
+
+        return view('games.ping-pong.play', [
+            'preloadedMatchId' => $match->id,
+        ]);
+    }
+
 public function embedLive()
     {
         return view('games.ping-pong.embed-live');
