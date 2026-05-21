@@ -342,7 +342,7 @@
             transform: translateY(110%);
             transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
             z-index: 80;
-            max-height: 55vh;
+            max-height: 65vh;
             overflow-y: auto;
         }
 
@@ -379,8 +379,8 @@
 
         .tag-row {
             display: flex;
-            gap: 12px;
-            margin-bottom: 12px;
+            gap: 14px;
+            margin-bottom: 14px;
         }
 
         .tag-row:last-child {
@@ -389,21 +389,21 @@
 
         .tag-chip {
             flex: 1;
-            min-height: 96px;
+            min-height: 140px;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 6px;
+            gap: 10px;
             background: rgba(255, 255, 255, 0.05);
-            color: rgba(255, 255, 255, 0.75);
+            color: rgba(255, 255, 255, 0.8);
             border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 16px;
-            font-size: 1.15rem;
+            border-radius: 18px;
+            font-size: 1.4rem;
             font-weight: 700;
             cursor: pointer;
             transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.08s ease;
-            padding: 12px;
+            padding: 16px;
         }
 
         .tag-chip:active {
@@ -423,7 +423,7 @@
         }
 
         .tag-chip-icon {
-            font-size: 1.7rem;
+            font-size: 2.4rem;
             line-height: 1;
         }
 
