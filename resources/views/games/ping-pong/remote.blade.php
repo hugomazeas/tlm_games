@@ -338,11 +338,11 @@
             background: rgba(15, 23, 42, 0.97);
             backdrop-filter: blur(12px);
             border-top: 1px solid rgba(255, 255, 255, 0.08);
-            padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+            padding: 16px 18px calc(20px + env(safe-area-inset-bottom));
             transform: translateY(110%);
             transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
             z-index: 80;
-            max-height: 40vh;
+            max-height: 55vh;
             overflow-y: auto;
         }
 
@@ -354,11 +354,11 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
         }
 
         .tag-sheet-title {
-            font-size: 0.7rem;
+            font-size: 0.75rem;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.12em;
@@ -368,16 +368,19 @@
         .tag-sheet-close {
             background: none;
             border: none;
-            color: rgba(255, 255, 255, 0.4);
-            font-size: 1.2rem;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 1.8rem;
+            line-height: 1;
             cursor: pointer;
-            padding: 4px 8px;
+            padding: 6px 14px;
+            min-width: 44px;
+            min-height: 44px;
         }
 
         .tag-row {
             display: flex;
-            gap: 8px;
-            margin-bottom: 8px;
+            gap: 12px;
+            margin-bottom: 12px;
         }
 
         .tag-row:last-child {
@@ -386,20 +389,21 @@
 
         .tag-chip {
             flex: 1;
-            min-height: 52px;
+            min-height: 96px;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
             gap: 6px;
             background: rgba(255, 255, 255, 0.05);
-            color: rgba(255, 255, 255, 0.7);
+            color: rgba(255, 255, 255, 0.75);
             border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 12px;
-            font-size: 0.95rem;
+            border-radius: 16px;
+            font-size: 1.15rem;
             font-weight: 700;
             cursor: pointer;
             transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.08s ease;
-            padding: 8px;
+            padding: 12px;
         }
 
         .tag-chip:active {
@@ -419,7 +423,7 @@
         }
 
         .tag-chip-icon {
-            font-size: 1.1rem;
+            font-size: 1.7rem;
             line-height: 1;
         }
 
