@@ -17,6 +17,9 @@ class PingPongPoint extends Model
         'point_number',
         'left_score_after',
         'right_score_after',
+        'shot_type',
+        'net_edge',
+        'clip_requested',
     ];
 
     protected function casts(): array
@@ -25,6 +28,8 @@ class PingPongPoint extends Model
             'point_number' => 'integer',
             'left_score_after' => 'integer',
             'right_score_after' => 'integer',
+            'net_edge' => 'boolean',
+            'clip_requested' => 'boolean',
             'created_at' => 'datetime',
         ];
     }

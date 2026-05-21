@@ -329,6 +329,122 @@
             color: white;
         }
 
+        /* ===== TAG SHEET ===== */
+        .tag-sheet {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 23, 42, 0.97);
+            backdrop-filter: blur(12px);
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+            transform: translateY(110%);
+            transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+            z-index: 80;
+            max-height: 40vh;
+            overflow-y: auto;
+        }
+
+        .tag-sheet.visible {
+            transform: translateY(0);
+        }
+
+        .tag-sheet-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .tag-sheet-title {
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .tag-sheet-close {
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 4px 8px;
+        }
+
+        .tag-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .tag-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .tag-chip {
+            flex: 1;
+            min-height: 52px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            font-size: 0.95rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.08s ease;
+            padding: 8px;
+        }
+
+        .tag-chip:active {
+            transform: scale(0.97);
+        }
+
+        .tag-chip.selected {
+            background: rgba(251, 191, 36, 0.18);
+            color: #fbbf24;
+            border-color: rgba(251, 191, 36, 0.5);
+        }
+
+        .tag-chip.tag-clip.selected {
+            background: rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+            border-color: rgba(239, 68, 68, 0.6);
+        }
+
+        .tag-chip-icon {
+            font-size: 1.1rem;
+            line-height: 1;
+        }
+
+        .tag-confirm {
+            position: fixed;
+            top: 16vh;
+            left: 50%;
+            transform: translate(-50%, -20px);
+            opacity: 0;
+            pointer-events: none;
+            background: rgba(34, 197, 94, 0.92);
+            color: white;
+            font-size: 0.85rem;
+            font-weight: 700;
+            padding: 8px 14px;
+            border-radius: 999px;
+            z-index: 70;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+
+        .tag-confirm.visible {
+            opacity: 1;
+            transform: translate(-50%, 0);
+        }
+
         /* ===== END-GAME OVERLAY ===== */
         .endgame-overlay {
             position: fixed;
@@ -453,6 +569,32 @@
             <button class="btn-abandon" id="btnAbandon">Abandon Match</button>
         </div>
 
+        <!-- Tag Sheet -->
+        <div class="tag-sheet" id="tagSheet">
+            <div class="tag-sheet-header">
+                <div class="tag-sheet-title" id="tagSheetTitle">Tag point</div>
+                <button class="tag-sheet-close" id="tagSheetClose" aria-label="Close">×</button>
+            </div>
+            <div class="tag-row">
+                <button class="tag-chip" data-tag="shot" data-value="forehand" id="tagForehand">
+                    <span class="tag-chip-icon">↗</span>Forehand
+                </button>
+                <button class="tag-chip" data-tag="shot" data-value="backhand" id="tagBackhand">
+                    <span class="tag-chip-icon">↖</span>Backhand
+                </button>
+            </div>
+            <div class="tag-row">
+                <button class="tag-chip" data-tag="net" id="tagNet">
+                    <span class="tag-chip-icon">🍀</span>Net edge
+                </button>
+                <button class="tag-chip tag-clip" data-tag="clip" id="tagClip">
+                    <span class="tag-chip-icon">🎬</span>Clip this
+                </button>
+            </div>
+        </div>
+
+        <div class="tag-confirm" id="tagConfirm">Tagged</div>
+
         <!-- End-Game Overlay -->
         <div class="endgame-overlay" id="endgameOverlay" style="display:none;">
             <div class="endgame-box">
@@ -510,6 +652,10 @@
         let currentLeftScore = 0;
         let currentRightScore = 0;
         let matchData = null;
+        let lastPointId = null;
+        let lastPointTags = { shot_type: null, net_edge: false, clip_requested: false };
+        let tagSheetTimer = null;
+        const TAG_SHEET_AUTO_DISMISS_MS = 6000;
 
         // DOM elements
         const scoreboard = document.getElementById('scoreboard');
@@ -573,6 +719,99 @@
         const btnMatchPointCancel = document.getElementById('btnMatchPointCancel');
         const btnMatchPointConfirm = document.getElementById('btnMatchPointConfirm');
 
+        const tagSheet = document.getElementById('tagSheet');
+        const tagSheetClose = document.getElementById('tagSheetClose');
+        const tagConfirm = document.getElementById('tagConfirm');
+        const tagChipForehand = document.getElementById('tagForehand');
+        const tagChipBackhand = document.getElementById('tagBackhand');
+        const tagChipNet = document.getElementById('tagNet');
+        const tagChipClip = document.getElementById('tagClip');
+
+        function resetTagChipUI() {
+            tagChipForehand.classList.remove('selected');
+            tagChipBackhand.classList.remove('selected');
+            tagChipNet.classList.remove('selected');
+            tagChipClip.classList.remove('selected');
+        }
+
+        function showTagSheet() {
+            resetTagChipUI();
+            lastPointTags = { shot_type: null, net_edge: false, clip_requested: false };
+            tagSheet.classList.add('visible');
+            if (tagSheetTimer) clearTimeout(tagSheetTimer);
+            tagSheetTimer = setTimeout(hideTagSheet, TAG_SHEET_AUTO_DISMISS_MS);
+        }
+
+        function hideTagSheet() {
+            tagSheet.classList.remove('visible');
+            if (tagSheetTimer) {
+                clearTimeout(tagSheetTimer);
+                tagSheetTimer = null;
+            }
+        }
+
+        function bumpTagSheetTimer() {
+            if (tagSheetTimer) clearTimeout(tagSheetTimer);
+            tagSheetTimer = setTimeout(hideTagSheet, TAG_SHEET_AUTO_DISMISS_MS);
+        }
+
+        function flashTagConfirm() {
+            tagConfirm.classList.add('visible');
+            setTimeout(() => tagConfirm.classList.remove('visible'), 900);
+        }
+
+        async function sendTagUpdate() {
+            if (!lastPointId) return;
+            const payload = {
+                shot_type: lastPointTags.shot_type,
+                net_edge: lastPointTags.net_edge,
+                clip_requested: lastPointTags.clip_requested,
+            };
+            try {
+                const res = await fetch(`${API}/points/${lastPointId}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': CSRF,
+                    },
+                    body: JSON.stringify(payload),
+                });
+                if (res.ok) {
+                    flashTagConfirm();
+                }
+            } catch (err) {
+                // swallow — best-effort tagging
+            }
+        }
+
+        function handleTagChip(tag, value) {
+            if (!lastPointId) return;
+            bumpTagSheetTimer();
+            if (tag === 'shot') {
+                if (lastPointTags.shot_type === value) {
+                    lastPointTags.shot_type = null;
+                    (value === 'forehand' ? tagChipForehand : tagChipBackhand).classList.remove('selected');
+                } else {
+                    lastPointTags.shot_type = value;
+                    tagChipForehand.classList.toggle('selected', value === 'forehand');
+                    tagChipBackhand.classList.toggle('selected', value === 'backhand');
+                }
+            } else if (tag === 'net') {
+                lastPointTags.net_edge = !lastPointTags.net_edge;
+                tagChipNet.classList.toggle('selected', lastPointTags.net_edge);
+            } else if (tag === 'clip') {
+                lastPointTags.clip_requested = !lastPointTags.clip_requested;
+                tagChipClip.classList.toggle('selected', lastPointTags.clip_requested);
+            }
+            sendTagUpdate();
+        }
+
+        addTouchHandler(tagChipForehand, () => handleTagChip('shot', 'forehand'));
+        addTouchHandler(tagChipBackhand, () => handleTagChip('shot', 'backhand'));
+        addTouchHandler(tagChipNet, () => handleTagChip('net'));
+        addTouchHandler(tagChipClip, () => handleTagChip('clip'));
+        addTouchHandler(tagSheetClose, () => hideTagSheet());
+
         addTouchHandler(btnPlus, () => handlePlusTap());
         addTouchHandler(btnUndo, () => updateScore('decrement'));
         addTouchHandler(btnAbandon, () => { confirmOverlay.style.display = 'flex'; });
@@ -613,6 +852,9 @@
 
             if (navigator.vibrate) navigator.vibrate(50);
 
+            // Always hide the previous sheet before a new score action.
+            hideTagSheet();
+
             try {
                 const res = await fetch(`${API}/matches/${MATCH_ID}`, {
                     method: 'PATCH',
@@ -625,6 +867,12 @@
                 const data = await res.json();
 
                 if (res.ok) {
+                    if (action === 'increment' && data.last_point_id && !data.is_complete) {
+                        lastPointId = data.last_point_id;
+                        showTagSheet();
+                    } else if (action === 'decrement') {
+                        lastPointId = null;
+                    }
                     renderMatch(data);
                 }
             } catch (err) {

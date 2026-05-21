@@ -13,6 +13,7 @@ class PingPongClip extends Model
     protected $fillable = [
         'recording_id',
         'match_id',
+        'ping_pong_point_id',
         'player_id',
         'start_seconds',
         'end_seconds',
@@ -46,6 +47,11 @@ class PingPongClip extends Model
     public function player(): BelongsTo
     {
         return $this->belongsTo(Player::class, 'player_id');
+    }
+
+    public function point(): BelongsTo
+    {
+        return $this->belongsTo(PingPongPoint::class, 'ping_pong_point_id');
     }
 
     public function getClipUrlAttribute(): ?string
