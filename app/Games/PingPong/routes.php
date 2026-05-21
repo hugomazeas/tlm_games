@@ -15,6 +15,7 @@ Route::get('/games/ping-pong/api/offices', [PingPongApiController::class, 'offic
 Route::get('/games/ping-pong/api/leaderboard', [PingPongApiController::class, 'leaderboard']);
 Route::post('/games/ping-pong/api/matches', [PingPongApiController::class, 'createMatch']);
 Route::patch('/games/ping-pong/api/matches/{id}', [PingPongApiController::class, 'updateScore']);
+Route::patch('/games/ping-pong/api/points/{id}', [PingPongApiController::class, 'tagPoint']);
 Route::post('/games/ping-pong/api/matches/{id}/connect', [PingPongApiController::class, 'connectRemote']);
 Route::post('/games/ping-pong/api/matches/{id}/rematch', [PingPongApiController::class, 'rematch']);
 Route::delete('/games/ping-pong/api/matches/{id}', [PingPongApiController::class, 'abandonMatch']);

@@ -564,11 +564,12 @@ class PingPongApiController extends Controller
 
         $scoreField = $validated['side'] === 'left' ? 'player_left_score' : 'player_right_score';
 
+        $createdPoint = null;
         if ($validated['action'] === 'increment') {
             $match->$scoreField += 1;
 
             $pointNumber = $match->points()->count() + 1;
-            PingPongPoint::create([
+            $createdPoint = PingPongPoint::create([
                 'match_id' => $match->id,
                 'scoring_side' => $validated['side'],
                 'point_number' => $pointNumber,
@@ -578,8 +579,9 @@ class PingPongApiController extends Controller
         } else {
             $match->$scoreField = max(0, $match->$scoreField - 1);
 
-            // Remove the last recorded point if it exists
-            $lastPoint = $match->points()->orderByDesc('point_number')->first();
+            // Remove the last recorded point if it exists. Reorder is required because
+            // the points() relation applies a default ASC orderBy.
+            $lastPoint = $match->points()->reorder('point_number', 'desc')->first();
             if ($lastPoint) {
                 $lastPoint->delete();
             }
@@ -620,6 +622,7 @@ class PingPongApiController extends Controller
         $response['duration'] = $match->duration;
         $response['duration_formatted'] = $match->duration_formatted;
         $response['is_complete'] = $match->is_complete;
+        $response['last_point_id'] = $createdPoint?->id;
 
         if ($eloChanges) {
             $response['elo_changes'] = $eloChanges;
@@ -637,6 +640,41 @@ class PingPongApiController extends Controller
         }
 
         return response()->json($response);
+    }
+
+    public function tagPoint(Request $request, int $pointId): JsonResponse
+    {
+        $point = PingPongPoint::findOrFail($pointId);
+        $match = $point->match;
+
+        if (!$match || $match->is_complete) {
+            return response()->json(['error' => 'Match is not in progress'], 422);
+        }
+
+        $validated = $request->validate([
+            'shot_type' => 'nullable|in:forehand,backhand',
+            'net_edge' => 'sometimes|boolean',
+            'clip_requested' => 'sometimes|boolean',
+        ]);
+
+        if (array_key_exists('shot_type', $validated)) {
+            $point->shot_type = $validated['shot_type'];
+        }
+        if (array_key_exists('net_edge', $validated)) {
+            $point->net_edge = (bool) $validated['net_edge'];
+        }
+        if (array_key_exists('clip_requested', $validated)) {
+            $point->clip_requested = (bool) $validated['clip_requested'];
+        }
+
+        $point->save();
+
+        return response()->json([
+            'id' => $point->id,
+            'shot_type' => $point->shot_type,
+            'net_edge' => $point->net_edge,
+            'clip_requested' => $point->clip_requested,
+        ]);
     }
 
     public function liveRecording(): JsonResponse

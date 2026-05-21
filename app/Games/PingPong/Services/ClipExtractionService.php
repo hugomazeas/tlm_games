@@ -3,6 +3,7 @@
 namespace App\Games\PingPong\Services;
 
 use App\Games\PingPong\Models\PingPongClip;
+use App\Games\PingPong\Models\PingPongPoint;
 use App\Games\PingPong\Models\PingPongRecording;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -18,7 +19,77 @@ class ClipExtractionService
         $this->clipsBasePath = storage_path('app/public/recordings/clips');
     }
 
-    public function extract(PingPongRecording $recording, float $start, float $end, int $playerId): PingPongClip
+    private const CLIP_LEAD_SECONDS = 7;
+    private const CLIP_TRAIL_SECONDS = 3;
+
+    public function extractFlaggedClips(PingPongRecording $recording): array
+    {
+        if ($recording->status !== 'completed' || !$recording->video_path) {
+            return [];
+        }
+
+        $match = $recording->match;
+        if (!$match) {
+            return [];
+        }
+
+        $anchor = $recording->created_at;
+        if (!$anchor) {
+            return [];
+        }
+
+        $durationSeconds = $recording->duration_seconds;
+
+        $points = PingPongPoint::where('match_id', $recording->match_id)
+            ->where('clip_requested', true)
+            ->whereNotIn('id', PingPongClip::where('recording_id', $recording->id)
+                ->whereNotNull('ping_pong_point_id')
+                ->pluck('ping_pong_point_id'))
+            ->orderBy('point_number')
+            ->get();
+
+        $created = [];
+        foreach ($points as $point) {
+            $offset = $anchor->diffInSeconds($point->created_at, false);
+            if ($offset < 0) {
+                continue;
+            }
+
+            $start = max(0.0, (float) $offset - self::CLIP_LEAD_SECONDS);
+            $end = (float) $offset + self::CLIP_TRAIL_SECONDS;
+
+            if ($durationSeconds !== null) {
+                $end = min((float) $durationSeconds, $end);
+            }
+
+            if ($end <= $start) {
+                continue;
+            }
+
+            $playerId = $point->scoring_side === 'left'
+                ? $match->player_left_id
+                : $match->player_right_id;
+
+            if (!$playerId) {
+                continue;
+            }
+
+            try {
+                $clip = $this->extract($recording, $start, $end, $playerId, $point->id);
+                $created[] = $clip;
+            } catch (\Throwable $e) {
+                Log::warning('Per-point clip extraction failed', [
+                    'recording_id' => $recording->id,
+                    'point_id' => $point->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $created;
+    }
+
+    public function extract(PingPongRecording $recording, float $start, float $end, int $playerId, ?int $pointId = null): PingPongClip
     {
         if ($recording->status !== 'completed' || !$recording->video_path) {
             throw new \RuntimeException('Recording is not ready for clip extraction (status: ' . $recording->status . ')');
@@ -62,6 +133,7 @@ class ClipExtractionService
         $clip = PingPongClip::create([
             'recording_id' => $recording->id,
             'match_id' => $recording->match_id,
+            'ping_pong_point_id' => $pointId,
             'player_id' => $playerId,
             'start_seconds' => $start,
             'end_seconds' => $end,

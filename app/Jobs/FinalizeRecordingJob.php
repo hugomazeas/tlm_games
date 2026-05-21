@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Games\PingPong\Models\PingPongMatch;
 use App\Games\PingPong\Models\PingPongRecording;
+use App\Games\PingPong\Services\ClipExtractionService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -102,6 +103,22 @@ class FinalizeRecordingJob implements ShouldQueue
                 'file_size' => $fileSize,
                 'duration' => $durationSeconds,
             ]);
+
+            try {
+                $clipService = app(ClipExtractionService::class);
+                $clips = $clipService->extractFlaggedClips($recording->fresh());
+                if (!empty($clips)) {
+                    Log::info('Per-point clips extracted', [
+                        'match_id' => $match->id,
+                        'count' => count($clips),
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Per-point clip extraction batch failed', [
+                    'match_id' => $match->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         } catch (\Throwable $e) {
             $recording->update([
                 'status' => 'failed',

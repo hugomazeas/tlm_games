@@ -157,6 +157,77 @@
         padding: 2px 0;
     }
 
+    /* Shot Breakdown */
+    .md .shot-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+    .md .shot-card {
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 10px;
+        padding: 16px;
+    }
+    .md .shot-card.left { border-top: 3px solid #fb7185; }
+    .md .shot-card.right { border-top: 3px solid #22d3ee; }
+    .md .shot-card-name { font-weight: 700; font-size: 1rem; margin-bottom: 4px; }
+    .md .shot-card-name.left { color: #fb7185; }
+    .md .shot-card-name.right { color: #22d3ee; }
+    .md .shot-card-total {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        margin-bottom: 14px;
+    }
+    .md .shot-card-total > span:first-child {
+        font-size: 1.8rem;
+        font-weight: 800;
+        line-height: 1;
+        color: rgba(255,255,255,0.9);
+    }
+    .md .shot-total-label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: rgba(255,255,255,0.4);
+        font-weight: 600;
+    }
+    .md .shot-bars { display: flex; flex-direction: column; gap: 8px; }
+    .md .shot-row {
+        display: grid;
+        grid-template-columns: 90px 1fr 32px;
+        align-items: center;
+        gap: 10px;
+    }
+    .md .shot-row-label {
+        font-size: 0.85rem;
+        color: rgba(255,255,255,0.7);
+        font-weight: 600;
+    }
+    .md .shot-row-bar {
+        height: 8px;
+        background: rgba(255,255,255,0.05);
+        border-radius: 999px;
+        overflow: hidden;
+    }
+    .md .shot-row-fill {
+        height: 100%;
+        border-radius: 999px;
+        transition: width 0.4s ease;
+    }
+    .md .shot-row-fill.forehand { background: linear-gradient(90deg, #38bdf8, #22d3ee); }
+    .md .shot-row-fill.backhand { background: linear-gradient(90deg, #a78bfa, #c084fc); }
+    .md .shot-row-fill.net      { background: linear-gradient(90deg, #facc15, #fbbf24); }
+    .md .shot-row-fill.untagged { background: rgba(255,255,255,0.15); }
+    .md .shot-row-count {
+        font-weight: 700;
+        font-size: 0.9rem;
+        text-align: right;
+        color: rgba(255,255,255,0.8);
+        font-variant-numeric: tabular-nums;
+    }
+
     /* Stats grid */
     .md .stats-grid {
         display: grid;
@@ -440,6 +511,7 @@
     @media (max-width: 640px) {
         .md .stats-grid { grid-template-columns: repeat(2, 1fr); }
         .md .elo-grid { grid-template-columns: 1fr; }
+        .md .shot-grid { grid-template-columns: 1fr; }
         .md .big-score { font-size: 3rem; }
         .md .players { flex-direction: column; gap: 4px; }
     }
@@ -573,14 +645,6 @@
                 </div>
             </template>
 
-            <!-- Score Progression Chart -->
-            <div class="section">
-                <h2>Score Progression</h2>
-                <div class="chart-container" x-init="requestAnimationFrame(() => renderScoreChart())">
-                    <canvas id="scoreChart"></canvas>
-                </div>
-            </div>
-
             <!-- ELO Changes -->
             <template x-if="match.elo_changes">
                 <div class="section">
@@ -645,6 +709,45 @@
                     </div>
                 </div>
             </template>
+
+            <!-- Shot Breakdown -->
+            <template x-if="hasShotTags()">
+                <div class="section">
+                    <h2>Shot Breakdown</h2>
+                    <div class="shot-grid">
+                        <template x-for="side in ['left', 'right']" :key="side">
+                            <div class="shot-card" :class="side">
+                                <div class="shot-card-name" :class="side" x-text="side === 'left' ? leftName() : rightName()"></div>
+                                <div class="shot-card-total">
+                                    <span x-text="shotBreakdown(side).total"></span>
+                                    <span class="shot-total-label">points scored</span>
+                                </div>
+                                <div class="shot-bars">
+                                    <template x-for="row in shotBreakdownRows(side)" :key="row.key">
+                                        <div class="shot-row">
+                                            <span class="shot-row-label" x-text="row.label"></span>
+                                            <div class="shot-row-bar">
+                                                <div class="shot-row-fill"
+                                                    :class="row.key"
+                                                    :style="'width: ' + row.pct + '%;'"></div>
+                                            </div>
+                                            <span class="shot-row-count" x-text="row.count"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+
+            <!-- Score Progression Chart -->
+            <div class="section">
+                <h2>Score Progression</h2>
+                <div class="chart-container" x-init="requestAnimationFrame(() => renderScoreChart())">
+                    <canvas id="scoreChart"></canvas>
+                </div>
+            </div>
 
             <!-- Key Stats -->
             <div class="section">
@@ -940,6 +1043,31 @@ function matchDetail() {
 
         streakBreakerBonus(side) {
             return this.match?.elo_changes?.[side]?.streak_breaker_bonus ?? 0;
+        },
+
+        hasShotTags() {
+            const points = this.match?.points || [];
+            return points.some(p => p.shot_type || p.net_edge);
+        },
+
+        shotBreakdown(side) {
+            const points = (this.match?.points || []).filter(p => p.scoring_side === side);
+            const forehand = points.filter(p => p.shot_type === 'forehand').length;
+            const backhand = points.filter(p => p.shot_type === 'backhand').length;
+            const net = points.filter(p => p.net_edge).length;
+            const untagged = points.filter(p => !p.shot_type && !p.net_edge).length;
+            return { total: points.length, forehand, backhand, net, untagged };
+        },
+
+        shotBreakdownRows(side) {
+            const b = this.shotBreakdown(side);
+            const denom = Math.max(1, b.total);
+            return [
+                { key: 'forehand', label: 'Forehand', count: b.forehand, pct: (b.forehand / denom) * 100 },
+                { key: 'backhand', label: 'Backhand', count: b.backhand, pct: (b.backhand / denom) * 100 },
+                { key: 'net',      label: 'Net edge', count: b.net,      pct: (b.net      / denom) * 100 },
+                { key: 'untagged', label: 'Untagged', count: b.untagged, pct: (b.untagged / denom) * 100 },
+            ];
         },
 
         runs() {
