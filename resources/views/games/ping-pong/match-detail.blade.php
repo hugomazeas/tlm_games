@@ -219,6 +219,7 @@
     .md .shot-row-fill.forehand { background: linear-gradient(90deg, #38bdf8, #22d3ee); }
     .md .shot-row-fill.backhand { background: linear-gradient(90deg, #a78bfa, #c084fc); }
     .md .shot-row-fill.net      { background: linear-gradient(90deg, #facc15, #fbbf24); }
+    .md .shot-row-fill.opponent_error { background: linear-gradient(90deg, #64748b, #94a3b8); }
     .md .shot-row-fill.untagged { background: rgba(255,255,255,0.15); }
     .md .shot-row-count {
         font-weight: 700;
@@ -1047,7 +1048,7 @@ function matchDetail() {
 
         hasShotTags() {
             const points = this.match?.points || [];
-            return points.some(p => p.shot_type || p.net_edge);
+            return points.some(p => p.shot_type || p.net_edge || p.point_cause);
         },
 
         shotBreakdown(side) {
@@ -1055,18 +1056,20 @@ function matchDetail() {
             const forehand = points.filter(p => p.shot_type === 'forehand').length;
             const backhand = points.filter(p => p.shot_type === 'backhand').length;
             const net = points.filter(p => p.net_edge).length;
-            const untagged = points.filter(p => !p.shot_type && !p.net_edge).length;
-            return { total: points.length, forehand, backhand, net, untagged };
+            const opponent_error = points.filter(p => p.point_cause === 'opponent_error').length;
+            const untagged = points.filter(p => !p.shot_type && !p.net_edge && !p.point_cause).length;
+            return { total: points.length, forehand, backhand, net, opponent_error, untagged };
         },
 
         shotBreakdownRows(side) {
             const b = this.shotBreakdown(side);
             const denom = Math.max(1, b.total);
             return [
-                { key: 'forehand', label: 'Forehand', count: b.forehand, pct: (b.forehand / denom) * 100 },
-                { key: 'backhand', label: 'Backhand', count: b.backhand, pct: (b.backhand / denom) * 100 },
-                { key: 'net',      label: 'Net edge', count: b.net,      pct: (b.net      / denom) * 100 },
-                { key: 'untagged', label: 'Untagged', count: b.untagged, pct: (b.untagged / denom) * 100 },
+                { key: 'forehand',       label: 'Forehand',    count: b.forehand,       pct: (b.forehand       / denom) * 100 },
+                { key: 'backhand',       label: 'Backhand',    count: b.backhand,       pct: (b.backhand       / denom) * 100 },
+                { key: 'net',            label: 'Net edge',    count: b.net,            pct: (b.net            / denom) * 100 },
+                { key: 'opponent_error', label: 'Their error', count: b.opponent_error, pct: (b.opponent_error / denom) * 100 },
+                { key: 'untagged',       label: 'Untagged',    count: b.untagged,       pct: (b.untagged       / denom) * 100 },
             ];
         },
 
