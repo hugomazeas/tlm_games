@@ -37,34 +37,6 @@
     <template x-if="matchActive">
         <div style="position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
             <!-- Video player -->
-            <video x-show="hasVideo" id="embedPlayer" muted autoplay playsinline
-                   style="width:100%;height:100%;object-fit:contain;background:#000;position:absolute;inset:0;"></video>
-
-            <!-- Score-only mode (no video) -->
-            <template x-if="!hasVideo">
-                <div style="display:flex;flex-direction:column;align-items:center;gap:24px;">
-                    <div style="display:flex;align-items:center;gap:32px;">
-                        <div style="text-align:center;">
-                            <div style="color:#fb7185;font-size:1.6rem;font-weight:700;" x-text="match?.player_left?.name || 'Left'"></div>
-                            <template x-if="match?.mode === '2v2' && match?.team_left_player2">
-                                <div style="color:#fb7185;font-size:1rem;font-weight:500;opacity:0.7;" x-text="match.team_left_player2.name"></div>
-                            </template>
-                        </div>
-                        <div style="display:flex;align-items:center;gap:12px;">
-                            <span style="color:white;font-size:5rem;font-weight:800;" x-text="match?.player_left_score ?? 0"></span>
-                            <span style="color:rgba(255,255,255,0.2);font-size:3rem;">-</span>
-                            <span style="color:white;font-size:5rem;font-weight:800;" x-text="match?.player_right_score ?? 0"></span>
-                        </div>
-                        <div style="text-align:center;">
-                            <div style="color:#22d3ee;font-size:1.6rem;font-weight:700;" x-text="match?.player_right?.name || 'Right'"></div>
-                            <template x-if="match?.mode === '2v2' && match?.team_right_player2">
-                                <div style="color:#22d3ee;font-size:1rem;font-weight:500;opacity:0.7;" x-text="match.team_right_player2.name"></div>
-                            </template>
-                        </div>
-                    </div>
-                    <div style="color:rgba(255,255,255,0.3);font-size:0.9rem;" x-text="match?.mode?.toUpperCase()"></div>
-                </div>
-            </template>
             <div x-show="hasVideo" style="width:100%;height:100%;position:absolute;inset:0;transform:scaleX(-1);">
                 <video id="embedPlayer" muted autoplay playsinline
                        style="width:100%;height:100%;object-fit:contain;background:#000;"></video>
@@ -91,15 +63,6 @@
             <template x-if="hasVideo && match">
                 <div>
                     <div style="position:absolute;bottom:24px;left:24px;display:flex;flex-direction:column;align-items:center;">
-                        <span style="color:#fb7185;font-size:2.5rem;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,0.8);" x-text="match?.player_left?.name || 'Left'"></span>
-                        <span x-show="isServingLeft()" style="color:#fbbf24;font-size:0.7rem;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,0.8);">SERVING</span>
-                        <span style="color:white;font-size:10rem;font-weight:900;line-height:1;text-shadow:0 4px 16px rgba(0,0,0,0.8);" x-text="match?.player_left_score ?? 0"></span>
-                    </div>
-                    <div style="position:absolute;bottom:24px;right:24px;display:flex;flex-direction:column;align-items:center;">
-                        <span style="color:#22d3ee;font-size:2.5rem;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,0.8);" x-text="match?.player_right?.name || 'Right'"></span>
-                        <span x-show="isServingRight()" style="color:#fbbf24;font-size:0.7rem;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,0.8);">SERVING</span>
-                        <span style="color:white;font-size:10rem;font-weight:900;line-height:1;text-shadow:0 4px 16px rgba(0,0,0,0.8);" x-text="match?.player_right_score ?? 0"></span>
-                    </div>
                         <span style="color:#22d3ee;font-size:2.5rem;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,0.8);" x-text="match?.player_right?.name || 'Right'"></span>
                         <span x-show="isServingRight()" style="background:#fbbf24;color:#000;font-size:4rem;font-weight:800;padding:8px 36px;border-radius:999px;animation:servePulse 1.5s ease-in-out infinite;text-transform:uppercase;letter-spacing:0.05em;text-shadow:none;">SERVING</span>
                         <span style="color:white;font-size:10rem;font-weight:900;line-height:1;text-shadow:0 4px 16px rgba(0,0,0,0.8);" x-text="match?.player_right_score ?? 0"></span>
@@ -178,9 +141,6 @@ function embedLive() {
                         this.matchId = recData.match_id;
                         this.matchActive = true;
                         this.hasVideo = true;
-                        this.stopPolling();
-                        this.$nextTick(() => this.initPlayer(recData.hls_url));
-                        this.subscribeToScores();
                         this.hlsNetworkErrorCount = 0;
                         this.stopPolling();
                         this.$nextTick(() => this.initPlayer(recData.hls_url));
@@ -339,14 +299,6 @@ function embedLive() {
                     if (e.match) {
                         this.match = { ...this.match, ...e.match };
                         if (e.match.is_complete) {
-                            setTimeout(() => {
-                                this.matchActive = false;
-                                this.hasVideo = false;
-                                this.destroyPlayer();
-                                this.startPolling();
-                            }, 3000);
-                        }
-                    }
                             setTimeout(() => this.handleMatchEnd(), 3000);
                         }
                     }
