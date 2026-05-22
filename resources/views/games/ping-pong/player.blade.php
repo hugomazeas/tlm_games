@@ -711,6 +711,10 @@ function playerStats() {
         weeklyDrag: { active: false, x: 0, y: 0, pointerId: null },
         weeklyHit: [],
         weeklyTooltip: { show: false, x: 0, y: 0, week: '', opp: '', rate: '', wl: '', color: '#22c55e' },
+        weeklyAutoRotate: true,
+        weeklyRotateRAF: null,
+        weeklyRotateLast: 0,
+        weeklyRotateResumeTimer: null,
 
         async init() {
             await Promise.all([
@@ -781,6 +785,7 @@ function playerStats() {
                         this._weeklyObserver = new ResizeObserver(() => this.renderWeeklyChart());
                         this._weeklyObserver.observe(wrap);
                     }
+                    if (this.weekly.length > 0) this.startWeeklyAutoRotate();
                 });
             } catch (err) {
                 console.error('Error loading weekly stats:', err);
@@ -791,6 +796,7 @@ function playerStats() {
         onWeeklyDragStart(e) {
             const wrap = this.$refs.weeklyContainer;
             if (!wrap) return;
+            this.pauseWeeklyAutoRotate();
             this.weeklyDrag.active = true;
             this.weeklyDrag.x = e.clientX;
             this.weeklyDrag.y = e.clientY;
@@ -812,6 +818,8 @@ function playerStats() {
                 this.weeklyView.elevation = el;
                 // Any manual drag drops us out of axis-aligned presets
                 this.weeklyPreset = '3d';
+                // Re-arm the resume timer while the user is actively dragging
+                if (dx !== 0 || dy !== 0) this.pauseWeeklyAutoRotate();
                 this.renderWeeklyChart();
                 return;
             }
@@ -819,6 +827,7 @@ function playerStats() {
         },
 
         setWeeklyPreset(name) {
+            this.stopWeeklyAutoRotate();
             this.weeklyPreset = name;
             switch (name) {
                 case 'front': // Look along opponent (+Z) axis — show week × win rate
@@ -845,17 +854,63 @@ function playerStats() {
         },
 
         onWeeklyDragEnd() {
+            const wasDragging = this.weeklyDrag.active;
             this.weeklyDrag.active = false;
             this.weeklyDrag.pointerId = null;
+            // Start the 2s idle countdown now that the drag is over
+            if (wasDragging) this.pauseWeeklyAutoRotate();
         },
 
         onWeeklyWheel(e) {
+            this.pauseWeeklyAutoRotate();
             const factor = e.deltaY < 0 ? 1.1 : 0.9;
             let z = this.weeklyView.zoom * factor;
             if (z < 0.5) z = 0.5;
             if (z > 3) z = 3;
             this.weeklyView.zoom = z;
             this.renderWeeklyChart();
+        },
+
+        startWeeklyAutoRotate() {
+            if (this.weeklyRotateRAF) return;
+            this.weeklyAutoRotate = true;
+            this.weeklyRotateLast = performance.now();
+            const loop = (now) => {
+                if (!this.weeklyAutoRotate) { this.weeklyRotateRAF = null; return; }
+                const dt = Math.min(0.1, (now - this.weeklyRotateLast) / 1000);
+                this.weeklyRotateLast = now;
+                // ~0.18 rad/s — full revolution in ~35s
+                this.weeklyView.azimuth += dt * 0.18;
+                this.renderWeeklyChart();
+                this.weeklyRotateRAF = requestAnimationFrame(loop);
+            };
+            this.weeklyRotateRAF = requestAnimationFrame(loop);
+        },
+
+        stopWeeklyAutoRotate() {
+            this.weeklyAutoRotate = false;
+            if (this.weeklyRotateRAF) {
+                cancelAnimationFrame(this.weeklyRotateRAF);
+                this.weeklyRotateRAF = null;
+            }
+            if (this.weeklyRotateResumeTimer) {
+                clearTimeout(this.weeklyRotateResumeTimer);
+                this.weeklyRotateResumeTimer = null;
+            }
+        },
+
+        pauseWeeklyAutoRotate() {
+            // Stop the loop but arm a 2s timer to resume on continued inactivity.
+            this.weeklyAutoRotate = false;
+            if (this.weeklyRotateRAF) {
+                cancelAnimationFrame(this.weeklyRotateRAF);
+                this.weeklyRotateRAF = null;
+            }
+            if (this.weeklyRotateResumeTimer) clearTimeout(this.weeklyRotateResumeTimer);
+            this.weeklyRotateResumeTimer = setTimeout(() => {
+                this.weeklyRotateResumeTimer = null;
+                if (!this.weeklyDrag.active) this.startWeeklyAutoRotate();
+            }, 2000);
         },
 
         updateWeeklyTooltip(e) {
