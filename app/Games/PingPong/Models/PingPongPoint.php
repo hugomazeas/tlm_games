@@ -20,6 +20,7 @@ class PingPongPoint extends Model
         'shot_type',
         'net_edge',
         'clip_requested',
+        'point_cause',
     ];
 
     protected function casts(): array
