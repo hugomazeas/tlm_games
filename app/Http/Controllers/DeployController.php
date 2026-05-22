@@ -10,10 +10,6 @@ class DeployController extends Controller
 {
     public function __invoke(Request $request): JsonResponse
     {
-        if (! app()->environment('production')) {
-            abort(404);
-        }
-
         $expected = (string) config('deploy.token');
 
         if ($expected === '') {
