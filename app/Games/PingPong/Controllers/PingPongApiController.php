@@ -647,8 +647,8 @@ class PingPongApiController extends Controller
         $point = PingPongPoint::findOrFail($pointId);
         $match = $point->match;
 
-        if (!$match || $match->is_complete) {
-            return response()->json(['error' => 'Match is not in progress'], 422);
+        if (!$match) {
+            return response()->json(['error' => 'Match not found'], 422);
         }
 
         $validated = $request->validate([

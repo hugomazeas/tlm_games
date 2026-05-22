@@ -686,6 +686,8 @@
         let lastPointId = null;
         let lastPointTags = { shot_type: null, net_edge: false, clip_requested: false, point_cause: null };
         let tagSheetTimer = null;
+        let pendingEndgameData = null;
+        let deferEndgameForTagging = false;
         const TAG_SHEET_AUTO_DISMISS_MS = 6000;
 
         // DOM elements
@@ -781,9 +783,14 @@
 
         function hideTagSheet() {
             tagSheet.classList.remove('visible');
+            deferEndgameForTagging = false;
             if (tagSheetTimer) {
                 clearTimeout(tagSheetTimer);
                 tagSheetTimer = null;
+            }
+            if (pendingEndgameData) {
+                showEndgameOverlay(pendingEndgameData);
+                pendingEndgameData = null;
             }
         }
 
@@ -883,6 +890,7 @@
         addTouchHandler(btnMatchPointCancel, () => { matchPointOverlay.style.display = 'none'; });
         addTouchHandler(btnMatchPointConfirm, () => {
             matchPointOverlay.style.display = 'none';
+            deferEndgameForTagging = true;
             updateScore('increment');
         });
         if (btnRematch) addTouchHandler(btnRematch, () => requestRematch());
@@ -915,8 +923,10 @@
 
             if (navigator.vibrate) navigator.vibrate(50);
 
+            const deferEndgameAfterScore = deferEndgameForTagging;
             // Always hide the previous sheet before a new score action.
             hideTagSheet();
+            deferEndgameForTagging = deferEndgameAfterScore;
 
             try {
                 const res = await fetch(`${API}/matches/${MATCH_ID}`, {
@@ -930,15 +940,21 @@
                 const data = await res.json();
 
                 if (res.ok) {
-                    if (action === 'increment' && data.last_point_id && !data.is_complete) {
+                    if (action === 'increment' && data.last_point_id) {
                         lastPointId = data.last_point_id;
                         showTagSheet();
                     } else if (action === 'decrement') {
                         lastPointId = null;
+                        deferEndgameForTagging = false;
+                    } else {
+                        deferEndgameForTagging = false;
                     }
                     renderMatch(data);
+                } else {
+                    deferEndgameForTagging = false;
                 }
             } catch (err) {
+                deferEndgameForTagging = false;
                 // Silently ignore
             }
             isUpdating = false;
@@ -966,7 +982,11 @@
 
             if (data.is_complete) {
                 isComplete = true;
-                showEndgameOverlay(data);
+                if (deferEndgameForTagging || tagSheet.classList.contains('visible')) {
+                    pendingEndgameData = data;
+                } else {
+                    showEndgameOverlay(data);
+                }
                 return;
             }
         }
