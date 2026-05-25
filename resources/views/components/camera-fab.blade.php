@@ -58,6 +58,7 @@
         x-show="isOpen"
         x-transition.opacity
         @keydown.escape.window="close()"
+        @click.self="bumpDebugTaps()"
         class="fixed inset-0 z-50 bg-black text-white flex flex-col"
         style="touch-action: manipulation;"
         role="dialog"
@@ -90,7 +91,10 @@
             </button>
         </div>
 
-        <div class="flex-1 flex flex-col items-center justify-center px-4 pb-8">
+        <div
+            @click.self="bumpDebugTaps()"
+            class="flex-1 flex flex-col items-center justify-center px-4 pb-8"
+        >
             <div class="qr-frame">
                 <video
                     id="qr-video"
@@ -124,9 +128,10 @@
             </div>
 
             <p
+                x-show="hintFooter"
                 class="mt-3 text-xs text-white/50 text-center select-none"
-                @click="bumpDebugTaps()"
-            >Tap viewfinder to focus &middot; cycle lenses with the camera button</p>
+                x-text="hintFooter"
+            ></p>
 
             {{-- Debug HUD (hidden by default; tap the hint line above 5× within 3s to toggle) --}}
             <div x-show="debug" class="mt-3 w-full max-w-[min(92vmin,640px)] grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] font-mono text-white/60 bg-white/5 rounded-lg px-3 py-2">
@@ -380,6 +385,13 @@
                     .replace(/^(Back|Rear)\s+/i, '')
                     .replace(/\s*Camera\s*$/i, '')
                     .trim() || 'Camera';
+            },
+
+            get hintFooter() {
+                // Only mention features the user can actually act on.
+                // Tap-to-focus is iOS-Safari-incapable, so we don't promise it.
+                if (this.cameras.length > 1) return 'Switch lens with the camera button above if focus is poor';
+                return '';
             },
 
             async startStream() {
