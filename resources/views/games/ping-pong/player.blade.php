@@ -718,6 +718,7 @@
     <div class="section" x-show="pointTags.has_tags">
         <h2>Point Tags</h2>
         <p class="point-tags-summary">
+            Since May 22, 2026 ·
             <strong x-text="pointTags.total"></strong> points scored
             · <strong x-text="pointTags.tagged"></strong> tagged
             <span x-show="pointTags.total > 0"

@@ -10,6 +10,9 @@ class PlayerPointTagStatsService
 {
     public const TAGS = ['forehand', 'backhand', 'net', 'opponent_error', 'untagged'];
 
+    /** Matches before this date predate point tagging (migration added May 22, 2026). */
+    private const TAGGING_STATS_SINCE = '2026-05-22';
+
     private const TAG_LABELS = [
         'forehand' => 'Forehand',
         'backhand' => 'Backhand',
@@ -173,6 +176,7 @@ class PlayerPointTagStatsService
             ->select('ping_pong_points.*')
             ->join('ping_pong_matches', 'ping_pong_matches.id', '=', 'ping_pong_points.match_id')
             ->whereNotNull('ping_pong_matches.ended_at')
+            ->where('ping_pong_matches.ended_at', '>=', Carbon::parse(self::TAGGING_STATS_SINCE)->startOfDay())
             ->where('ping_pong_matches.mode', $mode)
             ->where(function ($q) use ($playerId) {
                 $q->where(function ($q2) use ($playerId) {
