@@ -775,7 +775,7 @@
                     </div>
                 </template>
             </div>
-            <p class="tag-history-hint" x-show="tagChartMode === 'compare' && tagCompare.weeks.length > 0">Click a tag above for a detailed view</p>
+            <p class="tag-history-hint" x-show="tagChartMode === 'compare' && tagCompare.weeks.length > 0">Each point is the % of your points that week · click a tag for a detailed view</p>
             <p class="tag-history-hint" x-show="tagChartMode === 'single' && tagHistory.points.length > 0">Each bar is the % of your points that week with this tag</p>
             <div class="empty" x-show="!hasTagChartData() && !loadingTagHistory && !loadingTagCompare">No tag history yet</div>
             <div class="loading" x-show="loadingTagHistory || loadingTagCompare">Loading history...</div>
@@ -960,8 +960,12 @@ function playerStats() {
 
         activeCompareSeries() {
             return (this.tagCompare.series || [])
-                .map(s => ({ ...s, counts: this.normalizeTagCounts(s.counts) }))
-                .filter(s => s.counts.some(c => c > 0));
+                .map(s => ({
+                    ...s,
+                    counts: this.normalizeTagCounts(s.counts),
+                    pcts: this.normalizeTagCounts(s.pcts),
+                }))
+                .filter(s => s.pcts.some(p => p > 0));
         },
 
         setEloChartView(view) {
@@ -1012,12 +1016,20 @@ function playerStats() {
             try {
                 const res = await fetch(`${this.API}/players/${this.playerId}/point-tags/history`);
                 const data = await res.json();
+                const weeks = data.weeks || [];
                 this.tagCompare = {
-                    weeks: data.weeks || [],
-                    series: (data.series || []).map(s => ({
-                        ...s,
-                        counts: this.normalizeTagCounts(s.counts),
-                    })),
+                    weeks,
+                    series: (data.series || []).map(s => {
+                        const counts = this.normalizeTagCounts(s.counts);
+                        let pcts = this.normalizeTagCounts(s.pcts);
+                        if (!pcts.length && weeks.length) {
+                            pcts = counts.map((c, i) => {
+                                const total = weeks[i]?.total ?? 0;
+                                return total > 0 ? Math.round((c / total) * 1000) / 10 : 0;
+                            });
+                        }
+                        return { ...s, counts, pcts };
+                    }),
                 };
                 if (this.tagChartMode === 'compare') {
                     this.scheduleTagChartRender();
@@ -1118,21 +1130,18 @@ function playerStats() {
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             ctx.clearRect(0, 0, w, h);
 
-            const allCounts = series.flatMap(s => s.counts);
-            const maxCount = Math.max(1, ...allCounts);
+            const maxPct = 100;
             const pad = { left: 44, right: 20, top: 16, bottom: 40 };
             const chartW = w - pad.left - pad.right;
             const chartH = h - pad.top - pad.bottom;
             const n = weeks.length;
-            const toY = (v) => pad.top + chartH - (v / maxCount) * chartH;
+            const toY = (pct) => pad.top + chartH - (pct / maxPct) * chartH;
             const pointX = (i) => n <= 1
                 ? pad.left + chartW / 2
                 : pad.left + (i / (n - 1)) * chartW;
 
             ctx.font = '11px Outfit, sans-serif';
-            const yTicks = maxCount <= 5
-                ? Array.from({ length: maxCount + 1 }, (_, i) => i)
-                : [0, Math.ceil(maxCount / 2), maxCount];
+            const yTicks = [0, 25, 50, 75, 100];
             yTicks.forEach((v) => {
                 const y = toY(v);
                 ctx.beginPath();
@@ -1143,7 +1152,7 @@ function playerStats() {
                 ctx.stroke();
                 ctx.fillStyle = 'rgba(255,255,255,0.5)';
                 ctx.textAlign = 'right';
-                ctx.fillText(String(v), pad.left - 8, y + 4);
+                ctx.fillText(v + '%', pad.left - 8, y + 4);
             });
 
             const labelStep = Math.max(1, Math.ceil(n / 8));
@@ -1163,7 +1172,7 @@ function playerStats() {
                 let started = false;
                 for (let i = 0; i < n; i++) {
                     const x = pointX(i);
-                    const y = toY(s.counts[i] ?? 0);
+                    const y = toY(s.pcts[i] ?? 0);
                     if (!started) { ctx.moveTo(x, y); started = true; }
                     else ctx.lineTo(x, y);
                 }
@@ -1172,10 +1181,10 @@ function playerStats() {
                 ctx.stroke();
 
                 for (let i = 0; i < n; i++) {
-                    const count = s.counts[i] ?? 0;
-                    if (count <= 0) continue;
+                    const pct = s.pcts[i] ?? 0;
+                    if (pct <= 0) continue;
                     const x = pointX(i);
-                    const y = toY(count);
+                    const y = toY(pct);
                     ctx.beginPath();
                     ctx.arc(x, y, 3.5, 0, Math.PI * 2);
                     ctx.fillStyle = color;
@@ -1183,7 +1192,7 @@ function playerStats() {
                 }
             }
 
-            this.tagHistoryChartData = { mode: 'compare', weeks, series, pad, chartW, n, pointX, toY, maxCount };
+            this.tagHistoryChartData = { mode: 'compare', weeks, series, pad, chartW, n, pointX, toY, maxPct };
             ctx.setTransform(1, 0, 0, 1, 0, 0);
         },
 
@@ -1293,10 +1302,10 @@ function playerStats() {
                 }
                 const week = weeks[best];
                 const lines = series
-                    .filter(s => (s.counts[best] ?? 0) > 0)
+                    .filter(s => (s.pcts[best] ?? 0) > 0)
                     .map(s => ({
                         tag: s.tag,
-                        text: s.counts[best] + ' ' + s.label.toLowerCase(),
+                        text: s.pcts[best] + '% (' + (s.counts[best] ?? 0) + ' of ' + (week.total ?? 0) + ')',
                     }));
                 this.tagHistoryTooltip = {
                     show: true,

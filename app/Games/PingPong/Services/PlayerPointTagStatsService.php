@@ -108,7 +108,7 @@ class PlayerPointTagStatsService
     /**
      * Weekly counts for every tag (1v1), aligned by week.
      *
-     * @return array{weeks: list<array{week_start: string, week_label: string}>, series: list<array{tag: string, label: string, counts: list<int>}>}|null
+     * @return array{weeks: list<array{week_start: string, week_label: string, total: int}>, series: list<array{tag: string, label: string, counts: list<int>, pcts: list<float>}>}|null
      */
     public function getComparativeHistory(int $playerId): ?array
     {
@@ -130,9 +130,12 @@ class PlayerPointTagStatsService
                 $byWeek[$weekKey] = [
                     'week_start' => $weekKey,
                     'week_label' => $weekStart->format('M j'),
+                    'total' => 0,
                     'tags' => array_fill_keys(self::TAGS, 0),
                 ];
             }
+
+            $byWeek[$weekKey]['total']++;
 
             foreach (self::TAGS as $tag) {
                 if ($this->pointMatchesTag($point, $tag)) {
@@ -146,16 +149,25 @@ class PlayerPointTagStatsService
             fn (array $week) => [
                 'week_start' => $week['week_start'],
                 'week_label' => $week['week_label'],
+                'total' => $week['total'],
             ],
             $byWeek
         ));
 
         $series = [];
         foreach (self::TAGS as $tag) {
+            $counts = array_values(array_map(fn (array $week) => $week['tags'][$tag], $byWeek));
+            $pcts = array_values(array_map(function (array $week) use ($tag) {
+                return $week['total'] > 0
+                    ? round(($week['tags'][$tag] / $week['total']) * 100, 1)
+                    : 0.0;
+            }, $byWeek));
+
             $series[] = [
                 'tag' => $tag,
                 'label' => self::TAG_LABELS[$tag],
-                'counts' => array_values(array_map(fn (array $week) => $week['tags'][$tag], $byWeek)),
+                'counts' => $counts,
+                'pcts' => $pcts,
             ];
         }
 
