@@ -776,7 +776,7 @@
                 </template>
             </div>
             <p class="tag-history-hint" x-show="tagChartMode === 'compare' && tagCompare.weeks.length > 0">Click a tag above for a detailed view</p>
-            <p class="tag-history-hint" x-show="tagChartMode === 'single' && tagHistory.points.length > 0">Bars: count per week · dashed line: % of your points that week</p>
+            <p class="tag-history-hint" x-show="tagChartMode === 'single' && tagHistory.points.length > 0">Each bar is the % of your points that week with this tag</p>
             <div class="empty" x-show="!hasTagChartData() && !loadingTagHistory && !loadingTagCompare">No tag history yet</div>
             <div class="loading" x-show="loadingTagHistory || loadingTagCompare">Loading history...</div>
         </div>
@@ -1210,8 +1210,8 @@ function playerStats() {
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             ctx.clearRect(0, 0, w, h);
 
-            const counts = pts.map(p => p.count);
-            const maxCount = Math.max(1, ...counts);
+            const pcts = pts.map(p => p.pct ?? 0);
+            const maxPct = 100;
             const color = this.tagColor(this.selectedTag);
 
             const pad = { left: 44, right: 20, top: 16, bottom: 40 };
@@ -1221,14 +1221,12 @@ function playerStats() {
             const slotW = chartW / Math.max(1, n);
             const barW = Math.min(slotW * 0.65, 28);
 
-            const toY = (v) => pad.top + chartH - (v / maxCount) * chartH;
+            const toY = (pct) => pad.top + chartH - (pct / maxPct) * chartH;
             const barX = (i) => pad.left + (i + 0.5) * slotW;
 
-            // Grid lines
+            // Grid lines (%)
             ctx.font = '11px Outfit, sans-serif';
-            const yTicks = maxCount <= 5
-                ? Array.from({ length: maxCount + 1 }, (_, i) => i)
-                : [0, Math.ceil(maxCount / 2), maxCount];
+            const yTicks = [0, 25, 50, 75, 100];
             yTicks.forEach((v) => {
                 const y = toY(v);
                 ctx.beginPath();
@@ -1239,7 +1237,7 @@ function playerStats() {
                 ctx.stroke();
                 ctx.fillStyle = 'rgba(255,255,255,0.5)';
                 ctx.textAlign = 'right';
-                ctx.fillText(String(v), pad.left - 8, y + 4);
+                ctx.fillText(v + '%', pad.left - 8, y + 4);
             });
 
             // X labels
@@ -1254,32 +1252,17 @@ function playerStats() {
                 ctx.fillText(pts[n - 1].week_label, barX(n - 1), pad.top + chartH + 8);
             }
 
-            // Bars
+            // Bars (% of points that week with this tag)
             for (let i = 0; i < n; i++) {
                 const cx = barX(i);
-                const yTop = toY(counts[i]);
+                const yTop = toY(pcts[i]);
                 const yBase = pad.top + chartH;
-                const barH = Math.max(yBase - yTop, counts[i] > 0 ? 2 : 0);
+                const barH = Math.max(yBase - yTop, pcts[i] > 0 ? 2 : 0);
                 ctx.fillStyle = color;
                 ctx.fillRect(cx - barW / 2, yTop, barW, barH);
             }
 
-            // Trend line (% of points that week)
-            ctx.beginPath();
-            let lineStarted = false;
-            for (let i = 0; i < n; i++) {
-                const x = barX(i);
-                const y = toY((pts[i].pct / 100) * maxCount);
-                if (!lineStarted) { ctx.moveTo(x, y); lineStarted = true; }
-                else ctx.lineTo(x, y);
-            }
-            ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-            ctx.lineWidth = 2;
-            ctx.setLineDash([4, 4]);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            this.tagHistoryChartData = { mode: 'single', pts, pad, chartW, chartH, n, slotW, barX, toY, maxCount };
+            this.tagHistoryChartData = { mode: 'single', pts, pad, chartW, chartH, n, slotW, barX, toY, maxPct };
             ctx.setTransform(1, 0, 0, 1, 0, 0);
         },
 
@@ -1343,8 +1326,8 @@ function playerStats() {
             this.tagHistoryTooltip = {
                 show: true,
                 week: 'Week of ' + pt.week_label,
-                count: pt.count + ' ' + (this.tagHistory.label || 'points').toLowerCase(),
-                pct: pt.pct + '% of points scored that week',
+                count: pt.pct + '%',
+                pct: pt.count + ' of ' + pt.total + ' points',
                 lines: [],
                 x: tx,
                 y: ty,
