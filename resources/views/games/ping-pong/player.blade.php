@@ -469,6 +469,126 @@
     .pps .weekly-tooltip .tt-rate { font-weight: 800; font-size: 1.05rem; margin-top: 2px; }
     .pps .weekly-tooltip .tt-wl { color: rgba(255,255,255,0.55); font-size: 0.78rem; margin-top: 2px; }
 
+    .pps .point-tags-summary {
+        color: rgba(255,255,255,0.45);
+        font-size: 0.85rem;
+        margin-bottom: 16px;
+    }
+    .pps .point-tags-summary strong {
+        color: rgba(255,255,255,0.75);
+        font-weight: 700;
+    }
+    .pps .shot-bars { display: flex; flex-direction: column; gap: 8px; max-width: 520px; }
+    .pps .shot-row {
+        display: grid;
+        grid-template-columns: 100px 1fr 36px;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        margin: 0 -10px;
+        border-radius: 8px;
+        cursor: pointer;
+        border: 1px solid transparent;
+        transition: background 0.15s, border-color 0.15s;
+    }
+    .pps .shot-row:hover {
+        background: rgba(255,255,255,0.04);
+    }
+    .pps .shot-row.selected {
+        background: rgba(59, 130, 246, 0.1);
+        border-color: rgba(59, 130, 246, 0.35);
+    }
+    .pps .shot-row-label {
+        font-size: 0.85rem;
+        color: rgba(255,255,255,0.7);
+        font-weight: 600;
+    }
+    .pps .shot-row-bar {
+        height: 8px;
+        background: rgba(255,255,255,0.05);
+        border-radius: 999px;
+        overflow: hidden;
+    }
+    .pps .shot-row-fill {
+        height: 100%;
+        border-radius: 999px;
+        transition: width 0.4s ease;
+    }
+    .pps .shot-row-fill.forehand { background: linear-gradient(90deg, #38bdf8, #22d3ee); }
+    .pps .shot-row-fill.backhand { background: linear-gradient(90deg, #a78bfa, #c084fc); }
+    .pps .shot-row-fill.net { background: linear-gradient(90deg, #facc15, #fbbf24); }
+    .pps .shot-row-fill.opponent_error { background: linear-gradient(90deg, #64748b, #94a3b8); }
+    .pps .shot-row-fill.untagged { background: rgba(255,255,255,0.15); }
+    .pps .shot-row-count {
+        font-weight: 700;
+        font-size: 0.9rem;
+        text-align: right;
+        color: rgba(255,255,255,0.8);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .pps .tag-history-wrap {
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    .pps .tag-history-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #3b82f6;
+        margin-bottom: 12px;
+    }
+    .pps .tag-history-chart {
+        position: relative;
+        width: 100%;
+        height: 220px;
+    }
+    .pps .tag-history-chart canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+    .pps .tag-history-hint {
+        font-size: 0.75rem;
+        color: rgba(255,255,255,0.35);
+        margin-top: 8px;
+    }
+    .pps .tag-history-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px 18px;
+        margin-top: 12px;
+    }
+    .pps .tag-history-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.8rem;
+        color: rgba(255,255,255,0.65);
+        font-weight: 600;
+    }
+    .pps .tag-history-legend-swatch {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        flex-shrink: 0;
+    }
+    .pps .tag-history-tooltip {
+        position: fixed;
+        z-index: 50;
+        padding: 8px 12px;
+        min-width: 140px;
+        background: rgba(15, 23, 42, 0.95);
+        border: 1px solid rgba(59, 130, 246, 0.4);
+        border-radius: 8px;
+        font-size: 0.875rem;
+        pointer-events: none;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .pps .tag-history-tooltip .tt-week { color: rgba(255,255,255,0.7); font-size: 0.8rem; }
+    .pps .tag-history-tooltip .tt-count { font-weight: 800; font-size: 1.05rem; margin-top: 2px; }
+    .pps .tag-history-tooltip .tt-pct { color: rgba(255,255,255,0.55); font-size: 0.78rem; margin-top: 2px; }
+
 </style>
 
 <div class="pps" x-data="playerStats()" x-init="init()">
@@ -594,6 +714,75 @@
         <div class="loading" x-show="loadingEloHistory">Loading...</div>
     </div>
 
+    <!-- Point tags (from remote scoring, 1v1 only) -->
+    <div class="section" x-show="pointTags.has_tags">
+        <h2>Point Tags</h2>
+        <p class="point-tags-summary">
+            Since May 22, 2026 ·
+            <strong x-text="pointTags.total"></strong> points scored
+            · <strong x-text="pointTags.tagged"></strong> tagged
+            <span x-show="pointTags.total > 0"
+                  x-text="' (' + Math.round((pointTags.tagged / pointTags.total) * 100) + '%)'"></span>
+        </p>
+        <div class="shot-bars">
+            <template x-for="row in pointTags.rows" :key="row.key">
+                <div class="shot-row"
+                     :class="{ selected: selectedTag === row.key }"
+                     @click="selectTag(row.key)"
+                     role="button"
+                     :aria-pressed="selectedTag === row.key">
+                    <span class="shot-row-label" x-text="row.label"></span>
+                    <div class="shot-row-bar">
+                        <div class="shot-row-fill"
+                             :class="row.key"
+                             :style="'width: ' + row.pct + '%;'"></div>
+                    </div>
+                    <span class="shot-row-count" x-text="row.count"></span>
+                </div>
+            </template>
+        </div>
+        <div class="tag-history-wrap">
+            <div class="tag-history-title"
+                 x-text="tagChartMode === 'single' ? (tagHistory.label + ' — weekly history') : 'All tags — weekly comparison'"></div>
+            <div class="tag-history-chart"
+                 x-ref="tagHistoryContainer"
+                 x-show="hasTagChartData()"
+                 @mousemove="onTagHistoryMouseMove($event)"
+                 @mouseleave="tagHistoryTooltip.show = false">
+                <canvas x-ref="tagHistoryCanvas"></canvas>
+                <div class="tag-history-tooltip"
+                     x-show="tagHistoryTooltip.show"
+                     :style="'left: ' + tagHistoryTooltip.x + 'px; top: ' + tagHistoryTooltip.y + 'px;'">
+                    <div class="tt-week" x-text="tagHistoryTooltip.week"></div>
+                    <template x-if="tagChartMode === 'single'">
+                        <div>
+                            <div class="tt-count" :style="'color:' + tagColor(selectedTag)" x-text="tagHistoryTooltip.count"></div>
+                            <div class="tt-pct" x-text="tagHistoryTooltip.pct"></div>
+                        </div>
+                    </template>
+                    <template x-if="tagChartMode === 'compare'">
+                        <template x-for="line in tagHistoryTooltip.lines" :key="line.tag">
+                            <div class="tt-count" :style="'color:' + tagColor(line.tag)" x-text="line.text"></div>
+                        </template>
+                    </template>
+                </div>
+            </div>
+            <div class="tag-history-legend" x-show="tagChartMode === 'compare' && tagCompare.weeks.length > 0">
+                <template x-for="s in activeCompareSeries()" :key="s.tag">
+                    <div class="tag-history-legend-item">
+                        <span class="tag-history-legend-swatch" :style="'background:' + tagColor(s.tag)"></span>
+                        <span x-text="s.label"></span>
+                    </div>
+                </template>
+            </div>
+            <p class="tag-history-hint" x-show="tagChartMode === 'compare' && tagCompare.weeks.length > 0">Each point is the % of your points that week · click a tag for a detailed view</p>
+            <p class="tag-history-hint" x-show="tagChartMode === 'single' && tagHistory.points.length > 0">Each bar is the % of your points that week with this tag</p>
+            <div class="empty" x-show="!hasTagChartData() && !loadingTagHistory && !loadingTagCompare">No tag history yet</div>
+            <div class="loading" x-show="loadingTagHistory || loadingTagCompare">Loading history...</div>
+        </div>
+        <div class="loading" x-show="loadingPointTags">Loading...</div>
+    </div>
+
     <!-- Weekly Win Rate (3D) -->
     <div class="section">
         <h2>Weekly Win Rate</h2>
@@ -715,10 +904,29 @@ function playerStats() {
         weeklyRotateRAF: null,
         weeklyRotateLast: 0,
         weeklyRotateResumeTimer: null,
+        pointTags: { has_tags: false, total: 0, tagged: 0, rows: [] },
+        loadingPointTags: true,
+        selectedTag: null,
+        tagChartMode: 'compare',
+        tagHistory: { label: '', points: [] },
+        tagCompare: { weeks: [], series: [] },
+        loadingTagHistory: false,
+        loadingTagCompare: false,
+        tagHistoryLoadId: 0,
+        tagHistoryTooltip: { show: false, week: '', count: '', pct: '', lines: [], x: 0, y: 0 },
+        tagHistoryChartData: null,
+        tagColors: {
+            forehand: '#22d3ee',
+            backhand: '#c084fc',
+            net: '#fbbf24',
+            opponent_error: '#94a3b8',
+            untagged: 'rgba(255,255,255,0.55)',
+        },
 
         async init() {
             await Promise.all([
                 this.loadStats(),
+                this.loadPointTags(),
                 this.loadH2h(),
                 this.loadMatches(),
                 this.loadEloHistory(),
@@ -729,7 +937,35 @@ function playerStats() {
                 if (this.eloHistory.length > 0) this.renderEloChart();
                 if (this.h2h.length > 0) this.renderH2hChart();
                 if (this.weekly.length > 0) this.renderWeeklyChart();
+                if (this.hasTagChartData()) this.renderTagChart();
             });
+        },
+
+        hasTagChartData() {
+            if (this.tagChartMode === 'single') {
+                return this.loadingTagHistory || this.tagHistory.points.length > 0;
+            }
+            return this.tagCompare.weeks.length > 0;
+        },
+
+        tagColor(key) {
+            return this.tagColors[key] || '#3b82f6';
+        },
+
+        normalizeTagCounts(counts) {
+            if (Array.isArray(counts)) return counts;
+            if (counts && typeof counts === 'object') return Object.values(counts);
+            return [];
+        },
+
+        activeCompareSeries() {
+            return (this.tagCompare.series || [])
+                .map(s => ({
+                    ...s,
+                    counts: this.normalizeTagCounts(s.counts),
+                    pcts: this.normalizeTagCounts(s.pcts),
+                }))
+                .filter(s => s.pcts.some(p => p > 0));
         },
 
         setEloChartView(view) {
@@ -755,6 +991,356 @@ function playerStats() {
             } catch (err) {
                 console.error('Error loading stats:', err);
             }
+        },
+
+        async loadPointTags() {
+            this.loadingPointTags = true;
+            try {
+                const res = await fetch(`${this.API}/players/${this.playerId}/point-tags`);
+                const data = await res.json();
+                this.pointTags = data.has_tags
+                    ? data
+                    : { has_tags: false, total: 0, tagged: 0, rows: [] };
+            } catch (err) {
+                console.error('Error loading point tags:', err);
+                this.pointTags = { has_tags: false, total: 0, tagged: 0, rows: [] };
+            }
+            this.loadingPointTags = false;
+            if (this.pointTags.has_tags) {
+                await this.loadComparativeTagHistory();
+            }
+        },
+
+        async loadComparativeTagHistory() {
+            this.loadingTagCompare = true;
+            try {
+                const res = await fetch(`${this.API}/players/${this.playerId}/point-tags/history`);
+                const data = await res.json();
+                const weeks = data.weeks || [];
+                this.tagCompare = {
+                    weeks,
+                    series: (data.series || []).map(s => {
+                        const counts = this.normalizeTagCounts(s.counts);
+                        let pcts = this.normalizeTagCounts(s.pcts);
+                        if (!pcts.length && weeks.length) {
+                            pcts = counts.map((c, i) => {
+                                const total = weeks[i]?.total ?? 0;
+                                return total > 0 ? Math.round((c / total) * 1000) / 10 : 0;
+                            });
+                        }
+                        return { ...s, counts, pcts };
+                    }),
+                };
+                if (this.tagChartMode === 'compare') {
+                    this.scheduleTagChartRender();
+                }
+            } catch (err) {
+                console.error('Error loading comparative tag history:', err);
+                this.tagCompare = { weeks: [], series: [] };
+            }
+            this.loadingTagCompare = false;
+        },
+
+        async selectTag(key) {
+            if (this.selectedTag === key) {
+                this.tagHistoryLoadId++;
+                this.selectedTag = null;
+                this.tagChartMode = 'compare';
+                this.tagHistory = { label: '', points: [] };
+                this.tagHistoryTooltip.show = false;
+                this.tagHistoryChartData = null;
+                this.scheduleTagChartRender();
+                return;
+            }
+            this.tagHistoryLoadId++;
+            const loadId = this.tagHistoryLoadId;
+            this.selectedTag = key;
+            this.tagChartMode = 'single';
+            this.tagHistoryTooltip.show = false;
+            await this.loadTagHistory(key, loadId);
+        },
+
+        scheduleTagChartRender() {
+            this.$nextTick(() => {
+                requestAnimationFrame(() => this.renderTagChart());
+                const wrap = this.$refs.tagHistoryContainer;
+                if (wrap && !this._tagChartObserver && 'ResizeObserver' in window) {
+                    this._tagChartObserver = new ResizeObserver(() => {
+                        if (this.hasTagChartData()) this.renderTagChart();
+                    });
+                    this._tagChartObserver.observe(wrap);
+                }
+            });
+        },
+
+        async loadTagHistory(tag, loadId) {
+            this.loadingTagHistory = true;
+            try {
+                const res = await fetch(`${this.API}/players/${this.playerId}/point-tags/${tag}/history`);
+                const data = await res.json();
+                if (loadId !== this.tagHistoryLoadId || this.selectedTag !== tag || this.tagChartMode !== 'single') {
+                    return;
+                }
+                const row = this.pointTags.rows?.find(r => r.key === tag);
+                this.tagHistory = {
+                    label: data.label || row?.label || tag,
+                    points: data.points || [],
+                };
+                this.scheduleTagChartRender();
+            } catch (err) {
+                console.error('Error loading tag history:', err);
+                if (loadId === this.tagHistoryLoadId && this.selectedTag === tag) {
+                    this.tagHistory = { label: tag, points: [] };
+                }
+            }
+            if (loadId === this.tagHistoryLoadId) {
+                this.loadingTagHistory = false;
+            }
+        },
+
+        renderTagChart() {
+            if (this.tagChartMode === 'single') {
+                this.renderTagHistoryChart();
+            } else {
+                this.renderComparativeTagChart();
+            }
+        },
+
+        renderComparativeTagChart() {
+            if (this.tagChartMode !== 'compare') return;
+
+            const canvas = this.$refs.tagHistoryCanvas;
+            const container = this.$refs.tagHistoryContainer;
+            const weeks = this.tagCompare.weeks;
+            const series = this.activeCompareSeries();
+            if (!canvas || !container || !weeks.length || !series.length) return;
+
+            const rect = container.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return;
+
+            const dpr = window.devicePixelRatio || 1;
+            const w = rect.width;
+            const h = rect.height;
+            canvas.width = Math.floor(w * dpr);
+            canvas.height = Math.floor(h * dpr);
+            canvas.style.width = w + 'px';
+            canvas.style.height = h + 'px';
+
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+
+            const maxPct = 100;
+            const pad = { left: 44, right: 20, top: 16, bottom: 40 };
+            const chartW = w - pad.left - pad.right;
+            const chartH = h - pad.top - pad.bottom;
+            const n = weeks.length;
+            const toY = (pct) => pad.top + chartH - (pct / maxPct) * chartH;
+            const pointX = (i) => n <= 1
+                ? pad.left + chartW / 2
+                : pad.left + (i / (n - 1)) * chartW;
+
+            ctx.font = '11px Outfit, sans-serif';
+            const yTicks = [0, 25, 50, 75, 100];
+            yTicks.forEach((v) => {
+                const y = toY(v);
+                ctx.beginPath();
+                ctx.moveTo(pad.left, y);
+                ctx.lineTo(pad.left + chartW, y);
+                ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                ctx.textAlign = 'right';
+                ctx.fillText(v + '%', pad.left - 8, y + 4);
+            });
+
+            const labelStep = Math.max(1, Math.ceil(n / 8));
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillStyle = 'rgba(255,255,255,0.55)';
+            for (let i = 0; i < n; i += labelStep) {
+                ctx.fillText(weeks[i].week_label, pointX(i), pad.top + chartH + 8);
+            }
+            if (n > 0 && (n - 1) % labelStep !== 0) {
+                ctx.fillText(weeks[n - 1].week_label, pointX(n - 1), pad.top + chartH + 8);
+            }
+
+            for (const s of series) {
+                const color = this.tagColor(s.tag);
+                ctx.beginPath();
+                let started = false;
+                for (let i = 0; i < n; i++) {
+                    const x = pointX(i);
+                    const y = toY(s.pcts[i] ?? 0);
+                    if (!started) { ctx.moveTo(x, y); started = true; }
+                    else ctx.lineTo(x, y);
+                }
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2.5;
+                ctx.stroke();
+
+                for (let i = 0; i < n; i++) {
+                    const pct = s.pcts[i] ?? 0;
+                    if (pct <= 0) continue;
+                    const x = pointX(i);
+                    const y = toY(pct);
+                    ctx.beginPath();
+                    ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+                    ctx.fillStyle = color;
+                    ctx.fill();
+                }
+            }
+
+            this.tagHistoryChartData = { mode: 'compare', weeks, series, pad, chartW, n, pointX, toY, maxPct };
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+        },
+
+        renderTagHistoryChart() {
+            if (this.tagChartMode !== 'single') return;
+
+            const canvas = this.$refs.tagHistoryCanvas;
+            const container = this.$refs.tagHistoryContainer;
+            const pts = this.tagHistory.points;
+            if (!canvas || !container || !pts.length) return;
+
+            const rect = container.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return;
+
+            const dpr = window.devicePixelRatio || 1;
+            const w = rect.width;
+            const h = rect.height;
+            canvas.width = Math.floor(w * dpr);
+            canvas.height = Math.floor(h * dpr);
+            canvas.style.width = w + 'px';
+            canvas.style.height = h + 'px';
+
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+
+            const pcts = pts.map(p => p.pct ?? 0);
+            const maxPct = 100;
+            const color = this.tagColor(this.selectedTag);
+
+            const pad = { left: 44, right: 20, top: 16, bottom: 40 };
+            const chartW = w - pad.left - pad.right;
+            const chartH = h - pad.top - pad.bottom;
+            const n = pts.length;
+            const slotW = chartW / Math.max(1, n);
+            const barW = Math.min(slotW * 0.65, 28);
+
+            const toY = (pct) => pad.top + chartH - (pct / maxPct) * chartH;
+            const barX = (i) => pad.left + (i + 0.5) * slotW;
+
+            // Grid lines (%)
+            ctx.font = '11px Outfit, sans-serif';
+            const yTicks = [0, 25, 50, 75, 100];
+            yTicks.forEach((v) => {
+                const y = toY(v);
+                ctx.beginPath();
+                ctx.moveTo(pad.left, y);
+                ctx.lineTo(pad.left + chartW, y);
+                ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                ctx.textAlign = 'right';
+                ctx.fillText(v + '%', pad.left - 8, y + 4);
+            });
+
+            // X labels
+            const labelStep = Math.max(1, Math.ceil(n / 8));
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillStyle = 'rgba(255,255,255,0.55)';
+            for (let i = 0; i < n; i += labelStep) {
+                ctx.fillText(pts[i].week_label, barX(i), pad.top + chartH + 8);
+            }
+            if (n > 0 && (n - 1) % labelStep !== 0) {
+                ctx.fillText(pts[n - 1].week_label, barX(n - 1), pad.top + chartH + 8);
+            }
+
+            // Bars (% of points that week with this tag)
+            for (let i = 0; i < n; i++) {
+                const cx = barX(i);
+                const yTop = toY(pcts[i]);
+                const yBase = pad.top + chartH;
+                const barH = Math.max(yBase - yTop, pcts[i] > 0 ? 2 : 0);
+                ctx.fillStyle = color;
+                ctx.fillRect(cx - barW / 2, yTop, barW, barH);
+            }
+
+            this.tagHistoryChartData = { mode: 'single', pts, pad, chartW, chartH, n, slotW, barX, toY, maxPct };
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+        },
+
+        onTagHistoryMouseMove(e) {
+            if (!this.tagHistoryChartData) return;
+            const container = this.$refs.tagHistoryContainer;
+            if (!container) return;
+            const rect = container.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+
+            let tx = e.clientX + 14;
+            let ty = e.clientY + 14;
+            if (tx + 180 > window.innerWidth) tx = e.clientX - 190;
+            if (ty + 120 > window.innerHeight) ty = e.clientY - 100;
+
+            if (this.tagHistoryChartData.mode === 'compare') {
+                const { weeks, series, pad, chartW, n, pointX } = this.tagHistoryChartData;
+                if (mouseX < pad.left || mouseX > pad.left + chartW) {
+                    this.tagHistoryTooltip.show = false;
+                    return;
+                }
+                let best = 0;
+                let bestDist = Infinity;
+                for (let i = 0; i < n; i++) {
+                    const cx = pointX(i);
+                    const dist = Math.abs(mouseX - cx);
+                    if (dist < bestDist) { bestDist = dist; best = i; }
+                }
+                const week = weeks[best];
+                const lines = series
+                    .filter(s => (s.pcts[best] ?? 0) > 0)
+                    .map(s => ({
+                        tag: s.tag,
+                        text: s.pcts[best] + '% (' + (s.counts[best] ?? 0) + ' of ' + (week.total ?? 0) + ')',
+                    }));
+                this.tagHistoryTooltip = {
+                    show: true,
+                    week: 'Week of ' + week.week_label,
+                    count: '',
+                    pct: '',
+                    lines,
+                    x: tx,
+                    y: ty,
+                };
+                return;
+            }
+
+            const { pts, pad, chartW, n, slotW } = this.tagHistoryChartData;
+            if (mouseX < pad.left || mouseX > pad.left + chartW) {
+                this.tagHistoryTooltip.show = false;
+                return;
+            }
+            let best = 0;
+            let bestDist = Infinity;
+            for (let i = 0; i < n; i++) {
+                const cx = pad.left + (i + 0.5) * slotW;
+                const dist = Math.abs(mouseX - cx);
+                if (dist < bestDist) { bestDist = dist; best = i; }
+            }
+            const pt = pts[best];
+            this.tagHistoryTooltip = {
+                show: true,
+                week: 'Week of ' + pt.week_label,
+                count: pt.pct + '%',
+                pct: pt.count + ' of ' + pt.total + ' points',
+                lines: [],
+                x: tx,
+                y: ty,
+            };
         },
 
         async loadH2h() {

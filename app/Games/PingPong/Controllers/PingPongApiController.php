@@ -16,6 +16,7 @@ use App\Games\PingPong\Models\PingPongRecording;
 use App\Games\PingPong\Models\PingPongRatingChange;
 use App\Games\PingPong\Services\ClipExtractionService;
 use App\Games\PingPong\Services\EloService;
+use App\Games\PingPong\Services\PlayerPointTagStatsService;
 use App\Games\PingPong\Services\VideoRecordingService;
 use App\Http\Controllers\Controller;
 use App\Models\Office;
@@ -33,6 +34,7 @@ class PingPongApiController extends Controller
     public function __construct(
         private EloService $eloService,
         private VideoRecordingService $videoRecordingService,
+        private PlayerPointTagStatsService $pointTagStatsService,
     ) {}
 
     public function offices(): JsonResponse
@@ -1315,6 +1317,62 @@ class PingPongApiController extends Controller
             'biggest_diff_win' => $biggestDiffWin,
             'biggest_diff_loss' => $biggestDiffLoss,
         ]);
+    }
+
+    public function playerPointTags(int $id): JsonResponse
+    {
+        Player::findOrFail($id);
+
+        $stats = $this->pointTagStatsService->getStats($id, '1v1');
+
+        if (!$stats) {
+            return response()->json(['has_tags' => false]);
+        }
+
+        $denom = max(1, $stats['total']);
+
+        return response()->json([
+            'has_tags' => true,
+            'total' => $stats['total'],
+            'tagged' => $stats['tagged'],
+            'rows' => [
+                ['key' => 'forehand', 'label' => 'Forehand', 'count' => $stats['forehand'], 'pct' => round(($stats['forehand'] / $denom) * 100, 1)],
+                ['key' => 'backhand', 'label' => 'Backhand', 'count' => $stats['backhand'], 'pct' => round(($stats['backhand'] / $denom) * 100, 1)],
+                ['key' => 'net', 'label' => 'Net edge', 'count' => $stats['net'], 'pct' => round(($stats['net'] / $denom) * 100, 1)],
+                ['key' => 'opponent_error', 'label' => 'Their error', 'count' => $stats['opponent_error'], 'pct' => round(($stats['opponent_error'] / $denom) * 100, 1)],
+                ['key' => 'untagged', 'label' => 'Untagged', 'count' => $stats['untagged'], 'pct' => round(($stats['untagged'] / $denom) * 100, 1)],
+            ],
+        ]);
+    }
+
+    public function playerPointTagsComparativeHistory(int $id): JsonResponse
+    {
+        Player::findOrFail($id);
+
+        $history = $this->pointTagStatsService->getComparativeHistory($id);
+
+        if (!$history) {
+            return response()->json(['weeks' => [], 'series' => []]);
+        }
+
+        return response()->json($history);
+    }
+
+    public function playerPointTagHistory(int $id, string $tag): JsonResponse
+    {
+        Player::findOrFail($id);
+
+        if (!$this->pointTagStatsService->isValidTag($tag)) {
+            return response()->json(['error' => 'Invalid tag'], 422);
+        }
+
+        $history = $this->pointTagStatsService->getTagHistory($id, $tag);
+
+        if (!$history) {
+            return response()->json(['tag' => $tag, 'label' => null, 'points' => []]);
+        }
+
+        return response()->json($history);
     }
 
     public function eloHistory(Request $request, int $id): JsonResponse
