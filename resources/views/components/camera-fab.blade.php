@@ -439,7 +439,7 @@
                 const elapsed = (performance.now() - this._scanStartedAt) / 1000;
                 if (elapsed < 3) this.hint = 'Looking for a QR code…';
                 else if (elapsed < 6) this.hint = 'Try moving the phone closer';
-                else if (elapsed < 10) this.hint = 'Hold steady — or try another lens above';
+                else if (elapsed < 10) this.hint = 'Hold steady';
                 else this.hint = 'Make sure the code is well-lit and unblocked';
             },
 
