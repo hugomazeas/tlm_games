@@ -20,6 +20,7 @@ Route::post('/games/ping-pong/api/matches/{id}/connect', [PingPongApiController:
 Route::post('/games/ping-pong/api/matches/{id}/rematch', [PingPongApiController::class, 'rematch']);
 Route::delete('/games/ping-pong/api/matches/{id}', [PingPongApiController::class, 'abandonMatch']);
 Route::get('/games/ping-pong/api/players/{id}/stats', [PingPongApiController::class, 'playerStatsApi']);
+Route::get('/games/ping-pong/api/players/{id}/practice-insights', [PingPongApiController::class, 'practiceInsights']);
 Route::get('/games/ping-pong/api/players/{id}/elo-history', [PingPongApiController::class, 'eloHistory']);
 Route::get('/games/ping-pong/api/players/{id}/matches', [PingPongApiController::class, 'playerMatches']);
 Route::get('/games/ping-pong/api/players/{id}/head-to-head', [PingPongApiController::class, 'headToHead']);

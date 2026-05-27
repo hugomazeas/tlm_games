@@ -16,6 +16,7 @@ use App\Games\PingPong\Models\PingPongRecording;
 use App\Games\PingPong\Models\PingPongRatingChange;
 use App\Games\PingPong\Services\ClipExtractionService;
 use App\Games\PingPong\Services\EloService;
+use App\Games\PingPong\Services\PracticeInsightsService;
 use App\Games\PingPong\Services\VideoRecordingService;
 use App\Http\Controllers\Controller;
 use App\Models\Office;
@@ -1330,6 +1331,12 @@ class PingPongApiController extends Controller
             'biggest_diff_win' => $biggestDiffWin,
             'biggest_diff_loss' => $biggestDiffLoss,
         ]);
+    }
+
+    public function practiceInsights(int $id, PracticeInsightsService $service): JsonResponse
+    {
+        Player::findOrFail($id);
+        return response()->json($service->forPlayer($id));
     }
 
     public function eloHistory(Request $request, int $id): JsonResponse
