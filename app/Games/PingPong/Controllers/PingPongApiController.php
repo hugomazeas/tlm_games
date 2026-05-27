@@ -658,6 +658,9 @@ class PingPongApiController extends Controller
             'net_edge' => 'sometimes|boolean',
             'clip_requested' => 'sometimes|boolean',
             'point_cause' => 'nullable|in:winner,opponent_error',
+            'error_type' => 'nullable|in:net,long_wide',
+            'serve_point' => 'sometimes|boolean',
+            'body_hit' => 'sometimes|boolean',
         ]);
 
         if (array_key_exists('shot_type', $validated)) {
@@ -669,11 +672,20 @@ class PingPongApiController extends Controller
         if (array_key_exists('clip_requested', $validated)) {
             $point->clip_requested = (bool) $validated['clip_requested'];
         }
+        if (array_key_exists('error_type', $validated)) {
+            $point->error_type = $validated['error_type'];
+        }
+        if (array_key_exists('serve_point', $validated)) {
+            $point->serve_point = (bool) $validated['serve_point'];
+        }
+        if (array_key_exists('body_hit', $validated)) {
+            $point->body_hit = (bool) $validated['body_hit'];
+        }
         if (array_key_exists('point_cause', $validated)) {
             $point->point_cause = $validated['point_cause'];
-            if ($point->point_cause === 'opponent_error') {
-                $point->shot_type = null;
-                $point->net_edge = false;
+            // error_type only applies to error points; clear it on a winner.
+            if ($point->point_cause === 'winner') {
+                $point->error_type = null;
             }
         }
 
@@ -685,6 +697,9 @@ class PingPongApiController extends Controller
             'net_edge' => $point->net_edge,
             'clip_requested' => $point->clip_requested,
             'point_cause' => $point->point_cause,
+            'error_type' => $point->error_type,
+            'serve_point' => $point->serve_point,
+            'body_hit' => $point->body_hit,
         ]);
     }
 
