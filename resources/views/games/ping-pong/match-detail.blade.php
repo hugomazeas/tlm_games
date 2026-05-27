@@ -1,9 +1,13 @@
 @extends('layouts.app')
 
 @section('title', 'Match Detail - Ping Pong')
-@section('main-class', 'max-w-6xl mx-auto px-6 py-6')
+@section('main-class', 'px-4 py-4')
 
 @section('content')
+@include('games.ping-pong.partials.chrome', ['pageTitle' => 'Match Detail'])
+
+<div class="pph-stage relative rounded-3xl p-4 md:p-7 overflow-x-hidden">
+
 <style>
     .md .header {
         display: flex;
@@ -519,53 +523,104 @@
 </style>
 
 <div class="md" x-data="matchDetail()" x-init="init()">
-    <div class="header">
-        <h1>Match Detail</h1>
-        <a :href="fromGame ? '/games/ping-pong' : 'javascript:history.back()'" class="back-link">&larr; Back</a>
-    </div>
 
-    <div class="countdown-bar" x-show="fromGame" x-cloak>
-        Returning to lobby in <span class="timer" x-text="countdown + 's'"></span>
-        <button class="go-now" @click="window.location.href='/games/ping-pong'">Go now</button>
+    {{-- Countdown bar (editorial chip) --}}
+    <div class="flex items-center justify-end gap-2 mb-4" x-show="fromGame" x-cloak>
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[#f5ecd6]/15 bg-[#f5ecd6]/[0.04]">
+            <span class="pph-flicker w-1.5 h-1.5 rounded-full bg-[#ffd166]"></span>
+            <span class="pph-mono text-[10px] tracking-[0.18em] uppercase text-[#f5ecd6]/70">Lobby in</span>
+            <span class="pph-mono font-bold text-[12px] text-[#f5ecd6] tabular-nums" x-text="countdown + 's'"></span>
+        </div>
+        <button class="px-3 py-1.5 rounded-full bg-[#f5ecd6] text-[#06081b] pph-mono text-[10px] uppercase tracking-[0.18em] font-bold border-0 cursor-pointer hover:bg-white transition"
+                @click="window.location.href='/games/ping-pong'">Go now</button>
     </div>
 
     <div class="loading" x-show="loading">Loading match data...</div>
 
     <template x-if="match">
         <div>
-            <!-- Score Hero -->
-            <div class="score-hero">
-                <div class="players">
-                    <span class="player-name left">
-                        <template x-if="match.mode === '1v1'">
-                            <a :href="'/games/ping-pong/players/' + match.player_left_id" x-text="leftName()"></a>
-                        </template>
-                        <template x-if="match.mode === '2v2'">
-                            <span x-text="leftName()"></span>
-                        </template>
-                    </span>
-                    <span class="vs">vs</span>
-                    <span class="player-name right">
-                        <template x-if="match.mode === '1v1'">
-                            <a :href="'/games/ping-pong/players/' + match.player_right_id" x-text="rightName()"></a>
-                        </template>
-                        <template x-if="match.mode === '2v2'">
-                            <span x-text="rightName()"></span>
-                        </template>
-                    </span>
+            {{-- ====== After-game Hero ====== --}}
+            <section class="relative overflow-hidden rounded-2xl border border-[#f5ecd6]/15 bg-gradient-to-b from-[#f5ecd6]/[0.04] to-[#f5ecd6]/[0.01] px-3 md:px-10 py-6 md:py-10 mb-6">
+
+                {{-- Center-line netting at the vertical midline --}}
+                <div aria-hidden="true" class="absolute top-8 bottom-8 left-1/2 -translate-x-1/2 w-px [background-image:repeating-linear-gradient(180deg,rgba(245,236,214,0.22)_0_8px,transparent_8px_16px)] pointer-events-none"></div>
+
+                {{-- Eyebrow --}}
+                <div class="flex items-center justify-between gap-4 mb-6">
+                    <div class="flex items-center gap-2.5">
+                        <span class="pph-display text-[clamp(20px,2vw,28px)] tracking-[0.06em] uppercase text-[#f5ecd6]">Final</span>
+                        <span class="pph-mono text-[10px] tracking-[0.28em] uppercase text-[#f5ecd6]/45" x-text="match.mode?.toUpperCase() + ' · First to 11'"></span>
+                    </div>
+                    <div class="pph-mono text-[10px] tracking-[0.18em] uppercase text-[#f5ecd6]/45">
+                        <span x-show="match.duration_formatted" x-text="match.duration_formatted"></span>
+                        <span class="text-[#f5ecd6]/25 mx-2">·</span>
+                        <span x-text="formattedDate()"></span>
+                    </div>
                 </div>
-                <div class="big-score">
-                    <span class="left" x-text="match.player_left_score"></span>
-                    <span class="sep"> - </span>
-                    <span class="right" x-text="match.player_right_score"></span>
+
+                {{-- Scoreboard --}}
+                <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-3 md:gap-10">
+                    {{-- Left side --}}
+                    <div class="text-right space-y-1.5 min-w-0"
+                         :class="{ 'opacity-100': match.player_left_score > match.player_right_score, 'opacity-60': match.player_left_score < match.player_right_score }">
+                        <div class="flex items-center justify-end gap-2 mb-1.5">
+                            <template x-if="match.player_left_score > match.player_right_score">
+                                <span class="pph-mono text-[9px] font-bold tracking-[0.22em] uppercase px-2 py-0.5 rounded-full bg-[#ffd166]/15 text-[#ffd166] pph-glow-amber">★ Winner</span>
+                            </template>
+                        </div>
+                        <div class="pph-display uppercase tracking-[0.015em] text-[clamp(20px,3.4vw,52px)] text-[#ff5a4a] leading-[0.95] truncate"
+                             :class="match.player_left_score > match.player_right_score ? 'pph-glow-red' : ''">
+                            <template x-if="match.mode === '1v1'">
+                                <a :href="'/games/ping-pong/players/' + match.player_left_id" class="no-underline text-inherit hover:opacity-80 transition" x-text="leftName()"></a>
+                            </template>
+                            <template x-if="match.mode === '2v2'">
+                                <span x-text="leftName()"></span>
+                            </template>
+                        </div>
+                        <div class="pph-mono text-[11px] tracking-[0.06em] text-[#f5ecd6]/55"
+                             x-show="match.elo_changes">
+                            <span x-text="eloBefore('left') + ' → ' + eloAfter('left')"></span>
+                            <span class="ml-2 font-bold" :class="eloChange('left') >= 0 ? 'text-[#9be7c4]' : 'text-[#ff5a4a]'"
+                                  x-text="(eloChange('left') >= 0 ? '+' : '') + eloChange('left')"></span>
+                        </div>
+                    </div>
+
+                    {{-- Score numerals --}}
+                    <div class="flex items-baseline gap-2 md:gap-5 pph-mono tabular-nums leading-none">
+                        <span class="text-[clamp(56px,11vw,148px)] font-bold text-[#ff5a4a] pph-glow-red" x-text="match.player_left_score"></span>
+                        <span class="text-[clamp(28px,5vw,72px)] text-[#f5ecd6]/30 -translate-y-2">·</span>
+                        <span class="text-[clamp(56px,11vw,148px)] font-bold text-[#3ec8ff] pph-glow-blue" x-text="match.player_right_score"></span>
+                    </div>
+
+                    {{-- Right side --}}
+                    <div class="text-left space-y-1.5 min-w-0"
+                         :class="{ 'opacity-100': match.player_right_score > match.player_left_score, 'opacity-60': match.player_right_score < match.player_left_score }">
+                        <div class="flex items-center justify-start gap-2 mb-1.5">
+                            <template x-if="match.player_right_score > match.player_left_score">
+                                <span class="pph-mono text-[9px] font-bold tracking-[0.22em] uppercase px-2 py-0.5 rounded-full bg-[#ffd166]/15 text-[#ffd166] pph-glow-amber">★ Winner</span>
+                            </template>
+                        </div>
+                        <div class="pph-display uppercase tracking-[0.015em] text-[clamp(20px,3.4vw,52px)] text-[#3ec8ff] leading-[0.95] truncate"
+                             :class="match.player_right_score > match.player_left_score ? 'pph-glow-blue' : ''">
+                            <template x-if="match.mode === '1v1'">
+                                <a :href="'/games/ping-pong/players/' + match.player_right_id" class="no-underline text-inherit hover:opacity-80 transition" x-text="rightName()"></a>
+                            </template>
+                            <template x-if="match.mode === '2v2'">
+                                <span x-text="rightName()"></span>
+                            </template>
+                        </div>
+                        <div class="pph-mono text-[11px] tracking-[0.06em] text-[#f5ecd6]/55"
+                             x-show="match.elo_changes">
+                            <span x-text="eloBefore('right') + ' → ' + eloAfter('right')"></span>
+                            <span class="ml-2 font-bold" :class="eloChange('right') >= 0 ? 'text-[#9be7c4]' : 'text-[#ff5a4a]'"
+                                  x-text="(eloChange('right') >= 0 ? '+' : '') + eloChange('right')"></span>
+                        </div>
+                    </div>
                 </div>
-                <div class="winner-badge" x-text="winnerName() + ' wins'"></div>
-                <div class="meta-row">
-                    <span x-show="match.duration_formatted" x-text="match.duration_formatted"></span>
-                    <span x-text="match.mode?.toUpperCase()"></span>
-                    <span x-text="formattedDate()"></span>
-                </div>
-            </div>
+
+                {{-- Bottom net line --}}
+                <div aria-hidden="true" class="mt-8 h-[2px] [background-image:repeating-linear-gradient(90deg,#f5ecd6_0_10px,transparent_10px_20px)] opacity-20"></div>
+            </section>
 
             <!-- Match Recording + Point Timeline -->
             <template x-if="match.recording && match.recording.status === 'completed' && match.recording.video_url">
@@ -646,69 +701,89 @@
                 </div>
             </template>
 
-            <!-- ELO Changes -->
+            {{-- ====== ELO Changes ====== --}}
             <template x-if="match.elo_changes">
-                <div class="section">
-                    <h2>ELO Changes</h2>
-                    <div class="elo-grid">
-                        <div class="elo-card">
-                            <div class="name left" x-text="leftName()"></div>
-                            <div class="elo-flow">
-                                <span x-text="eloBefore('left')"></span>
-                                <span>&rarr;</span>
-                                <span x-text="eloAfter('left')"></span>
+                <section class="rounded-2xl border border-[#f5ecd6]/15 bg-gradient-to-b from-[#f5ecd6]/[0.03] to-[#f5ecd6]/[0.01] p-5 md:p-6 mb-6">
+                    <div class="flex items-baseline gap-2.5 mb-4">
+                        <span class="pph-display text-[22px] tracking-[0.04em] uppercase text-[#f5ecd6]">ELO Movement</span>
+                        <span class="pph-mono text-[10px] tracking-[0.28em] uppercase text-[#f5ecd6]/45">Rating impact</span>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {{-- Left card --}}
+                        <div class="relative rounded-xl border border-[#f5ecd6]/15 bg-[#f5ecd6]/[0.03] p-5 overflow-hidden"
+                             :class="{ '!border-[#ffd166]/45 !bg-[#ffd166]/[0.04]': eloChange('left') > 0 }">
+                            <div class="absolute left-0 top-3 bottom-3 w-[3px] rounded-r"
+                                 :class="eloChange('left') > 0 ? 'bg-[#ffd166]' : 'bg-[#ff5a4a]/40'"></div>
+                            <div class="flex items-baseline justify-between gap-3 mb-3">
+                                <div class="pph-display text-[clamp(20px,1.8vw,26px)] tracking-[0.02em] uppercase text-[#ff5a4a] pph-glow-red truncate" x-text="leftName()"></div>
+                                <template x-if="eloChange('left') > 0">
+                                    <span class="pph-mono text-[9px] font-bold tracking-[0.22em] uppercase px-2 py-0.5 rounded-full bg-[#ffd166]/15 text-[#ffd166] shrink-0">★ Win</span>
+                                </template>
                             </div>
-                            <div class="elo-change" :class="eloChange('left') >= 0 ? 'pos' : 'neg'"
-                                 x-text="(eloChange('left') >= 0 ? '+' : '') + eloChange('left')"></div>
-                            <template x-if="streakBonus('left') > 0">
-                                <div class="streak-bonus" x-text="'+ ' + streakBonus('left') + ' streak bonus'"></div>
-                            </template>
-                            <template x-if="streakBreakerBonus('left') > 0">
-                                <div class="streak-breaker-bonus" x-text="'+ ' + streakBreakerBonus('left') + ' streak breaker'"></div>
-                            </template>
+                            <div class="flex items-baseline gap-3">
+                                <div class="pph-mono text-[13px] text-[#f5ecd6]/55 tabular-nums">
+                                    <span x-text="eloBefore('left')"></span>
+                                    <span class="text-[#f5ecd6]/25 mx-1.5">→</span>
+                                    <span class="text-[#f5ecd6] font-bold" x-text="eloAfter('left')"></span>
+                                </div>
+                                <div class="ml-auto pph-display text-[clamp(28px,3vw,40px)] tracking-[0.02em] leading-none"
+                                     :class="eloChange('left') >= 0 ? 'text-[#9be7c4]' : 'text-[#ff5a4a]'"
+                                     x-text="(eloChange('left') >= 0 ? '+' : '') + eloChange('left')"></div>
+                            </div>
+                            <div class="flex flex-wrap gap-1.5 mt-3">
+                                <template x-if="streakBonus('left') > 0">
+                                    <span class="inline-flex items-center gap-1 pph-mono text-[10px] font-bold tracking-[0.12em] uppercase px-2 py-1 rounded-md bg-[#ffd166]/15 border border-[#ffd166]/30 text-[#ffd166]">+<span x-text="streakBonus('left')"></span> Streak bonus</span>
+                                </template>
+                                <template x-if="streakBreakerBonus('left') > 0">
+                                    <span class="inline-flex items-center gap-1 pph-mono text-[10px] font-bold tracking-[0.12em] uppercase px-2 py-1 rounded-md bg-[#fb923c]/15 border border-[#fb923c]/30 text-[#fb923c]">+<span x-text="streakBreakerBonus('left')"></span> Streak breaker</span>
+                                </template>
+                            </div>
                             <template x-if="match.mode === '2v2' && match.elo_changes?.left?.player1">
-                                <div class="elo-sub">
-                                    <div class="elo-sub-row">
-                                        <span x-text="match.player_left?.name"></span>
-                                        <span x-text="match.elo_changes.left.player1.before + ' → ' + match.elo_changes.left.player1.after"></span>
-                                    </div>
-                                    <div class="elo-sub-row">
-                                        <span x-text="match.team_left_player2?.name"></span>
-                                        <span x-text="match.elo_changes.left.player2.before + ' → ' + match.elo_changes.left.player2.after"></span>
-                                    </div>
+                                <div class="mt-3 pt-3 border-t border-[#f5ecd6]/10 pph-mono text-[11px] text-[#f5ecd6]/55 space-y-1">
+                                    <div class="flex justify-between"><span x-text="match.player_left?.name"></span><span x-text="match.elo_changes.left.player1.before + ' → ' + match.elo_changes.left.player1.after"></span></div>
+                                    <div class="flex justify-between"><span x-text="match.team_left_player2?.name"></span><span x-text="match.elo_changes.left.player2.before + ' → ' + match.elo_changes.left.player2.after"></span></div>
                                 </div>
                             </template>
                         </div>
-                        <div class="elo-card">
-                            <div class="name right" x-text="rightName()"></div>
-                            <div class="elo-flow">
-                                <span x-text="eloBefore('right')"></span>
-                                <span>&rarr;</span>
-                                <span x-text="eloAfter('right')"></span>
+
+                        {{-- Right card --}}
+                        <div class="relative rounded-xl border border-[#f5ecd6]/15 bg-[#f5ecd6]/[0.03] p-5 overflow-hidden"
+                             :class="{ '!border-[#ffd166]/45 !bg-[#ffd166]/[0.04]': eloChange('right') > 0 }">
+                            <div class="absolute left-0 top-3 bottom-3 w-[3px] rounded-r"
+                                 :class="eloChange('right') > 0 ? 'bg-[#ffd166]' : 'bg-[#ff5a4a]/40'"></div>
+                            <div class="flex items-baseline justify-between gap-3 mb-3">
+                                <div class="pph-display text-[clamp(20px,1.8vw,26px)] tracking-[0.02em] uppercase text-[#3ec8ff] pph-glow-blue truncate" x-text="rightName()"></div>
+                                <template x-if="eloChange('right') > 0">
+                                    <span class="pph-mono text-[9px] font-bold tracking-[0.22em] uppercase px-2 py-0.5 rounded-full bg-[#ffd166]/15 text-[#ffd166] shrink-0">★ Win</span>
+                                </template>
                             </div>
-                            <div class="elo-change" :class="eloChange('right') >= 0 ? 'pos' : 'neg'"
-                                 x-text="(eloChange('right') >= 0 ? '+' : '') + eloChange('right')"></div>
-                            <template x-if="streakBonus('right') > 0">
-                                <div class="streak-bonus" x-text="'+ ' + streakBonus('right') + ' streak bonus'"></div>
-                            </template>
-                            <template x-if="streakBreakerBonus('right') > 0">
-                                <div class="streak-breaker-bonus" x-text="'+ ' + streakBreakerBonus('right') + ' streak breaker'"></div>
-                            </template>
+                            <div class="flex items-baseline gap-3">
+                                <div class="pph-mono text-[13px] text-[#f5ecd6]/55 tabular-nums">
+                                    <span x-text="eloBefore('right')"></span>
+                                    <span class="text-[#f5ecd6]/25 mx-1.5">→</span>
+                                    <span class="text-[#f5ecd6] font-bold" x-text="eloAfter('right')"></span>
+                                </div>
+                                <div class="ml-auto pph-display text-[clamp(28px,3vw,40px)] tracking-[0.02em] leading-none"
+                                     :class="eloChange('right') >= 0 ? 'text-[#9be7c4]' : 'text-[#ff5a4a]'"
+                                     x-text="(eloChange('right') >= 0 ? '+' : '') + eloChange('right')"></div>
+                            </div>
+                            <div class="flex flex-wrap gap-1.5 mt-3">
+                                <template x-if="streakBonus('right') > 0">
+                                    <span class="inline-flex items-center gap-1 pph-mono text-[10px] font-bold tracking-[0.12em] uppercase px-2 py-1 rounded-md bg-[#ffd166]/15 border border-[#ffd166]/30 text-[#ffd166]">+<span x-text="streakBonus('right')"></span> Streak bonus</span>
+                                </template>
+                                <template x-if="streakBreakerBonus('right') > 0">
+                                    <span class="inline-flex items-center gap-1 pph-mono text-[10px] font-bold tracking-[0.12em] uppercase px-2 py-1 rounded-md bg-[#fb923c]/15 border border-[#fb923c]/30 text-[#fb923c]">+<span x-text="streakBreakerBonus('right')"></span> Streak breaker</span>
+                                </template>
+                            </div>
                             <template x-if="match.mode === '2v2' && match.elo_changes?.right?.player1">
-                                <div class="elo-sub">
-                                    <div class="elo-sub-row">
-                                        <span x-text="match.player_right?.name"></span>
-                                        <span x-text="match.elo_changes.right.player1.before + ' → ' + match.elo_changes.right.player1.after"></span>
-                                    </div>
-                                    <div class="elo-sub-row">
-                                        <span x-text="match.team_right_player2?.name"></span>
-                                        <span x-text="match.elo_changes.right.player2.before + ' → ' + match.elo_changes.right.player2.after"></span>
-                                    </div>
+                                <div class="mt-3 pt-3 border-t border-[#f5ecd6]/10 pph-mono text-[11px] text-[#f5ecd6]/55 space-y-1">
+                                    <div class="flex justify-between"><span x-text="match.player_right?.name"></span><span x-text="match.elo_changes.right.player1.before + ' → ' + match.elo_changes.right.player1.after"></span></div>
+                                    <div class="flex justify-between"><span x-text="match.team_right_player2?.name"></span><span x-text="match.elo_changes.right.player2.before + ' → ' + match.elo_changes.right.player2.after"></span></div>
                                 </div>
                             </template>
                         </div>
                     </div>
-                </div>
+                </section>
             </template>
 
             <!-- Shot Breakdown -->
@@ -1291,4 +1366,5 @@ function matchDetail() {
     };
 }
 </script>
+</div>{{-- /pph-stage --}}
 @endsection

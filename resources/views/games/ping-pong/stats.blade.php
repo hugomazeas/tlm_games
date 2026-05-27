@@ -1,198 +1,49 @@
 @extends('layouts.app')
 
 @section('title', 'Ping Pong Stats - Games Hub')
-@section('main-class', 'max-w-6xl mx-auto px-6 py-6')
+@section('main-class', 'px-4 py-4')
 
 @section('content')
-<style>
-    .ppst .header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 28px;
-        padding-bottom: 16px;
-        border-bottom: 2px solid rgba(255,255,255,0.08);
-    }
+@include('games.ping-pong.partials.chrome', ['pageTitle' => 'Stats', 'pageBack' => '/games/ping-pong'])
 
-    .ppst h1 {
-        font-size: 2rem;
-        font-weight: 800;
-    }
+<div class="pph-stage relative rounded-3xl p-4 md:p-7 overflow-x-hidden" x-data="ppStats()" x-init="init()">
 
-    .ppst h1 span { color: #3b82f6; }
-
-    .ppst .back-link {
-        color: #3b82f6;
-        text-decoration: none;
-        font-weight: 600;
-        padding: 8px 16px;
-        border: 2px solid #3b82f6;
-        border-radius: 8px;
-        transition: all 0.2s;
-    }
-
-    .ppst .back-link:hover {
-        background: #3b82f6;
-        color: white;
-    }
-
-    .ppst .section {
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 14px;
-        padding: 22px;
-        margin-bottom: 20px;
-    }
-
-    .ppst .section-title {
-        font-size: 1.15rem;
-        font-weight: 700;
-        color: #3b82f6;
-        margin-bottom: 16px;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-    }
-
-    .ppst .chart-wrap {
-        position: relative;
-        overflow: visible;
-    }
-
-    .ppst .recent-list-wrap {
-        max-height: min(70vh, 720px);
-        overflow-y: auto;
-        overscroll-behavior: contain;
-        padding-right: 4px;
-        margin-right: -4px;
-    }
-
-    .ppst .recent-list-wrap::-webkit-scrollbar {
-        width: 8px;
-    }
-
-    .ppst .recent-list-wrap::-webkit-scrollbar-track {
-        background: rgba(255,255,255,0.04);
-        border-radius: 8px;
-    }
-
-    .ppst .recent-list-wrap::-webkit-scrollbar-thumb {
-        background: rgba(59,130,246,0.35);
-        border-radius: 8px;
-    }
-
-    .ppst .recent-list {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }
-
-    .ppst .recent-row {
-        display: flex;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 10px 14px;
-        padding: 12px 16px;
-        background: rgba(255,255,255,0.03);
-        border: 1px solid rgba(255,255,255,0.06);
-        border-radius: 10px;
-        text-decoration: none;
-        color: inherit;
-        transition: background 0.15s, border-color 0.15s;
-    }
-
-    .ppst .recent-row:hover {
-        background: rgba(59,130,246,0.08);
-        border-color: rgba(59,130,246,0.25);
-    }
-
-    .ppst .recent-mode {
-        font-size: 0.7rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: rgba(148,163,184,0.85);
-        padding: 2px 8px;
-        background: rgba(255,255,255,0.06);
-        border-radius: 6px;
-        flex-shrink: 0;
-    }
-
-    .ppst .recent-names {
-        display: flex;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 8px 12px;
-        flex: 1;
-        min-width: 0;
-        font-weight: 600;
-        font-size: 0.95rem;
-    }
-
-    .ppst .recent-name-won { color: #34d399; }
-    .ppst .recent-name-lost { color: rgba(248,113,113,0.75); }
-
-    .ppst .recent-score {
-        font-variant-numeric: tabular-nums;
-        font-weight: 800;
-        color: rgba(255,255,255,0.9);
-        flex-shrink: 0;
-    }
-
-    .ppst .recent-meta {
-        margin-left: auto;
-        font-size: 0.82rem;
-        color: rgba(148,163,184,0.85);
-        flex-shrink: 0;
-    }
-
-    .ppst .recent-arrow {
-        color: rgba(59,130,246,0.7);
-        font-size: 1.1rem;
-        flex-shrink: 0;
-    }
-
-    .ppst .recent-empty {
-        color: rgba(148,163,184,0.65);
-        font-size: 0.95rem;
-    }
-</style>
-
-<div class="ppst" x-data="ppStats()" x-init="init()">
-
-    <div class="header">
-        <h1><span>Ping Pong</span> Stats</h1>
-        <a href="/games/ping-pong" class="back-link">&larr; Back to Play</a>
-    </div>
-
-    <!-- Recent games -->
-    <div class="section" x-show="recentGamesLoaded">
-        <div class="section-title">Recent games</div>
-        <p class="recent-empty" x-show="recentGames.length === 0">No completed matches yet.</p>
-        <div class="recent-list-wrap" x-show="recentGames.length > 0">
-            <div class="recent-list">
+    {{-- Recent games --}}
+    <section class="pph-panel p-5 md:p-6 mb-5" x-show="recentGamesLoaded">
+        <div class="flex items-baseline gap-2.5 mb-4">
+            <span class="pph-display text-[22px] tracking-[0.04em] uppercase text-[#f5ecd6]">Recent</span>
+            <span class="pph-mono text-[10px] tracking-[0.28em] uppercase text-[#f5ecd6]/45">Completed matches</span>
+        </div>
+        <p class="pph-mono text-[12px] tracking-[0.14em] uppercase text-[#f5ecd6]/45" x-show="recentGames.length === 0">No completed matches yet.</p>
+        <div class="max-h-[min(70vh,720px)] overflow-y-auto" x-show="recentGames.length > 0">
+            <div class="flex flex-col gap-2">
                 <template x-for="g in recentGames" :key="g.id">
-                    <a class="recent-row" :href="'/games/ping-pong/matches/' + g.id">
-                        <span class="recent-mode" x-text="g.mode === '2v2' ? '2v2' : '1v1'"></span>
-                        <div class="recent-names">
-                            <span :class="g.left_won ? 'recent-name-won' : 'recent-name-lost'" x-text="g.left_label"></span>
-                            <span class="recent-score" x-text="g.player_left_score + ' – ' + g.player_right_score"></span>
-                            <span :class="g.left_won ? 'recent-name-lost' : 'recent-name-won'" x-text="g.right_label"></span>
+                    <a class="flex items-center flex-wrap gap-x-3.5 gap-y-2.5 px-4 py-3 rounded-[10px] border border-[#f5ecd6]/15 bg-[#f5ecd6]/[0.03] no-underline text-[#f5ecd6]/82 transition hover:bg-[#f5ecd6]/[0.06] hover:border-[#f5ecd6]/30"
+                       :href="'/games/ping-pong/matches/' + g.id">
+                        <span class="pph-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#f5ecd6]/55 bg-[#f5ecd6]/[0.06] px-2 py-0.5 rounded-md shrink-0" x-text="g.mode === '2v2' ? '2v2' : '1v1'"></span>
+                        <div class="flex items-center flex-wrap gap-x-3 gap-y-1 flex-1 min-w-0 font-semibold text-sm">
+                            <span :class="g.left_won ? 'text-[#9be7c4]' : 'text-[#ff5a4a]/70'" x-text="g.left_label"></span>
+                            <span class="pph-mono font-bold text-[15px] text-[#f5ecd6] tracking-tight tabular-nums" x-text="g.player_left_score + ' · ' + g.player_right_score"></span>
+                            <span :class="g.left_won ? 'text-[#ff5a4a]/70' : 'text-[#9be7c4]'" x-text="g.right_label"></span>
                         </div>
-                        <span class="recent-meta" x-text="g.ended_at_human"></span>
-                        <span class="recent-arrow">&rsaquo;</span>
+                        <span class="ml-auto pph-mono text-[11px] tracking-[0.06em] text-[#f5ecd6]/45 shrink-0" x-text="g.ended_at_human"></span>
+                        <span class="text-[#3ec8ff]/70 text-lg shrink-0">›</span>
                     </a>
                 </template>
             </div>
         </div>
-    </div>
+    </section>
 
-    <!-- ELO Distribution Chart -->
-    <div class="section" x-show="leaderboard.length > 0">
-        <div class="section-title">ELO Distribution</div>
-        <div class="chart-wrap">
+    {{-- ELO Distribution Chart --}}
+    <section class="pph-panel p-5 md:p-6" x-show="leaderboard.length > 0">
+        <div class="flex items-baseline gap-2.5 mb-4">
+            <span class="pph-display text-[22px] tracking-[0.04em] uppercase text-[#f5ecd6]">ELO Distribution</span>
+            <span class="pph-mono text-[10px] tracking-[0.28em] uppercase text-[#f5ecd6]/45">Singles · live</span>
+        </div>
+        <div class="relative overflow-visible">
             <canvas id="eloDistCanvas" style="width: 100%; height: 500px;"></canvas>
         </div>
-    </div>
+    </section>
 </div>
 
 <script>

@@ -1,265 +1,83 @@
 @extends('layouts.app')
 
 @section('title', 'Recordings - Ping Pong')
-@section('main-class', 'max-w-5xl mx-auto px-6 py-6')
+@section('main-class', 'px-4 py-4')
 
 @section('content')
-<style>
-    .rec .header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 24px;
-        padding-bottom: 16px;
-        border-bottom: 2px solid rgba(255,255,255,0.1);
-    }
-    .rec .header h1 { font-size: 1.6rem; font-weight: 800; color: #3b82f6; }
-    .rec .back-link {
-        color: #3b82f6;
-        text-decoration: none;
-        font-weight: 600;
-        padding: 8px 16px;
-        border: 2px solid #3b82f6;
-        border-radius: 8px;
-        transition: all 0.2s;
-    }
-    .rec .back-link:hover { background: #3b82f6; color: white; }
+@include('games.ping-pong.partials.chrome', ['pageTitle' => 'Recordings'])
 
-    .rec .empty {
-        text-align: center;
-        padding: 60px 20px;
-        color: rgba(255,255,255,0.4);
-    }
-    .rec .empty-icon { font-size: 3rem; margin-bottom: 12px; }
-    .rec .empty h2 { color: rgba(255,255,255,0.6); font-size: 1.2rem; margin-bottom: 8px; }
+<div class="pph-stage relative rounded-3xl p-4 md:p-7 overflow-x-hidden" x-data="recordingsPage()" x-init="init()">
 
-    .rec .recordings-list {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-    }
-
-    .rec .recording-card {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        padding: 16px 20px;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 12px;
-        transition: all 0.2s;
-    }
-    .rec .recording-card:hover {
-        background: rgba(255,255,255,0.06);
-        border-color: rgba(255,255,255,0.12);
-    }
-
-    .rec .rec-status {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        flex-shrink: 0;
-    }
-    .rec .rec-status.completed { background: #22c55e; }
-    .rec .rec-status.recording { background: #ef4444; animation: pulse-rec 1.5s infinite; }
-    .rec .rec-status.failed { background: #6b7280; }
-
-    .rec .rec-info { flex: 1; min-width: 0; }
-    .rec .rec-players {
-        font-weight: 700;
-        font-size: 1rem;
-        color: rgba(255,255,255,0.9);
-        margin-bottom: 4px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    .rec .rec-players .left { color: #fb7185; }
-    .rec .rec-players .right { color: #22d3ee; }
-    .rec .rec-players .vs { color: rgba(255,255,255,0.3); font-weight: 600; font-size: 0.85rem; }
-    .rec .rec-score {
-        font-weight: 800;
-        font-size: 0.9rem;
-        color: rgba(255,255,255,0.5);
-    }
-    .rec .rec-meta {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        font-size: 0.8rem;
-        color: rgba(255,255,255,0.35);
-    }
-    .rec .rec-meta .badge {
-        padding: 2px 8px;
-        border-radius: 4px;
-        font-weight: 600;
-        font-size: 0.7rem;
-        text-transform: uppercase;
-    }
-    .rec .rec-meta .badge.completed { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
-    .rec .rec-meta .badge.recording { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
-
-    .rec .rec-actions {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-shrink: 0;
-    }
-
-    .rec .btn {
-        padding: 6px 14px;
-        border: none;
-        border-radius: 8px;
-        font-weight: 600;
-        font-size: 0.8rem;
-        cursor: pointer;
-        text-decoration: none;
-        transition: all 0.2s;
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-    }
-    .rec .btn-play {
-        background: rgba(59, 130, 246, 0.15);
-        color: #3b82f6;
-        border: 1px solid rgba(59, 130, 246, 0.3);
-    }
-    .rec .btn-play:hover { background: rgba(59, 130, 246, 0.25); }
-    .rec .btn-match {
-        background: rgba(255,255,255,0.06);
-        color: rgba(255,255,255,0.6);
-        border: 1px solid rgba(255,255,255,0.1);
-    }
-    .rec .btn-match:hover { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.8); }
-    .rec .btn-delete {
-        background: rgba(239, 68, 68, 0.1);
-        color: #ef4444;
-        border: 1px solid rgba(239, 68, 68, 0.2);
-    }
-    .rec .btn-delete:hover { background: rgba(239, 68, 68, 0.2); }
-
-    .rec .confirm-delete {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 10px;
-        background: rgba(239, 68, 68, 0.15);
-        border: 1px solid rgba(239, 68, 68, 0.3);
-        border-radius: 8px;
-    }
-    .rec .confirm-delete span { color: rgba(255,255,255,0.7); font-size: 0.75rem; }
-    .rec .confirm-delete button {
-        padding: 3px 10px;
-        border: none;
-        border-radius: 5px;
-        font-weight: 600;
-        font-size: 0.7rem;
-        cursor: pointer;
-    }
-    .rec .confirm-yes { background: #ef4444; color: white; }
-    .rec .confirm-yes:hover { background: #dc2626; }
-    .rec .confirm-no { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.6); }
-    .rec .confirm-no:hover { background: rgba(255,255,255,0.15); }
-
-    .rec .video-preview {
-        position: fixed;
-        inset: 0;
-        background: rgba(0,0,0,0.9);
-        z-index: 100;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    .rec .video-preview-inner {
-        position: relative;
-        width: 90%;
-        max-width: 900px;
-        aspect-ratio: 16/9;
-        background: #000;
-        border-radius: 12px;
-        overflow: hidden;
-    }
-    .rec .video-preview video {
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-    }
-    .rec .video-preview-close {
-        position: absolute;
-        top: -40px;
-        right: 0;
-        background: none;
-        border: none;
-        color: white;
-        font-size: 1.5rem;
-        cursor: pointer;
-        padding: 4px 12px;
-    }
-
-    @keyframes pulse-rec {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.4; }
-    }
-
-    @media (max-width: 640px) {
-        .rec .recording-card { flex-direction: column; align-items: flex-start; gap: 10px; }
-        .rec .rec-actions { width: 100%; justify-content: flex-end; }
-    }
-</style>
-
-<div class="rec" x-data="recordingsPage()" x-init="init()">
-    <div class="header">
-        <h1>Recordings</h1>
-        <div style="display:flex;gap:8px;align-items:center;">
-            <a href="/games/ping-pong/watch" class="back-link" style="background:rgba(239,68,68,0.12);border-color:rgba(239,68,68,0.4);color:#ef4444;" onmouseenter="this.style.background='#ef4444';this.style.color='#fff'" onmouseleave="this.style.background='rgba(239,68,68,0.12)';this.style.color='#ef4444'">Live Stream</a>
-            <a href="/games/ping-pong" class="back-link">&larr; Back to Play</a>
-        </div>
+    <div class="flex items-center justify-end gap-2 mb-5">
+        <a href="/games/ping-pong/watch"
+           class="px-3 py-1.5 rounded-full bg-[#ff5a4a]/15 border border-[#ff5a4a]/40 text-[#ff5a4a] no-underline text-xs font-semibold transition hover:bg-[#ff5a4a] hover:text-[#06081b]">Live stream</a>
     </div>
 
-    <!-- Loading -->
-    <div x-show="loading" style="text-align:center;padding:40px;color:rgba(255,255,255,0.4);">Loading recordings...</div>
+    {{-- Loading --}}
+    <div x-show="loading" class="text-center py-16 pph-mono text-xs tracking-[0.2em] uppercase text-[#f5ecd6]/45">Loading recordings…</div>
 
-    <!-- Empty -->
+    {{-- Empty --}}
     <template x-if="!loading && recordings.length === 0">
-        <div class="empty">
-            <div class="empty-icon">&#127909;</div>
-            <h2>No Recordings Yet</h2>
-            <p>Match recordings will appear here once you start recording games.</p>
+        <div class="text-center py-16 px-5">
+            <div class="text-5xl mb-4">📼</div>
+            <h2 class="pph-display text-[24px] tracking-[0.04em] uppercase text-[#f5ecd6] mb-2">No recordings yet</h2>
+            <p class="pph-mono text-[12px] tracking-[0.14em] text-[#f5ecd6]/45">Match recordings will appear here once you start recording games.</p>
         </div>
     </template>
 
-    <!-- Recordings list -->
-    <div class="recordings-list" x-show="!loading && recordings.length > 0">
+    {{-- List --}}
+    <div class="flex flex-col gap-3" x-show="!loading && recordings.length > 0">
         <template x-for="rec in recordings" :key="rec.id">
-            <div class="recording-card">
-                <div class="rec-status" :class="rec.status"></div>
-                <div class="rec-info">
-                    <div class="rec-players">
-                        <span class="left" x-text="rec.player_left || '?'"></span>
-                        <span class="vs">vs</span>
-                        <span class="right" x-text="rec.player_right || '?'"></span>
-                        <span class="rec-score" x-text="rec.player_left_score + ' - ' + rec.player_right_score"></span>
+            <div class="flex items-center flex-wrap gap-4 px-5 py-4 rounded-2xl border border-[#f5ecd6]/15 bg-gradient-to-b from-[#f5ecd6]/[0.03] to-[#f5ecd6]/[0.01] transition hover:bg-[#f5ecd6]/[0.05] hover:border-[#f5ecd6]/25">
+                {{-- Status dot --}}
+                <span class="w-2.5 h-2.5 rounded-full shrink-0"
+                      :class="{
+                          'bg-[#9be7c4]': rec.status === 'completed',
+                          'bg-[#ff5a4a] pph-flicker': rec.status === 'recording',
+                          'bg-[#f5ecd6]/30': rec.status === 'failed',
+                      }"></span>
+
+                {{-- Info --}}
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1.5 font-bold text-base text-[#f5ecd6]">
+                        <span class="text-[#ff5a4a] truncate" x-text="rec.player_left || '?'"></span>
+                        <span class="pph-mono text-[10px] uppercase tracking-[0.18em] text-[#f5ecd6]/30">vs</span>
+                        <span class="text-[#3ec8ff] truncate" x-text="rec.player_right || '?'"></span>
+                        <span class="pph-mono ml-2 font-bold text-[13px] text-[#f5ecd6]/55 tabular-nums" x-text="rec.player_left_score + ' · ' + rec.player_right_score"></span>
                     </div>
-                    <div class="rec-meta">
-                        <span class="badge" :class="rec.status" x-text="rec.status"></span>
+                    <div class="flex items-center flex-wrap gap-3 pph-mono text-[11px] tracking-[0.06em] text-[#f5ecd6]/45">
+                        <span class="px-2 py-0.5 rounded font-bold text-[10px] uppercase tracking-[0.14em]"
+                              :class="{
+                                  'bg-[#9be7c4]/15 text-[#9be7c4]': rec.status === 'completed',
+                                  'bg-[#ff5a4a]/15 text-[#ff5a4a]': rec.status === 'recording',
+                                  'bg-[#f5ecd6]/10 text-[#f5ecd6]/55': rec.status === 'failed',
+                              }"
+                              x-text="rec.status"></span>
                         <span x-text="rec.file_size ? (rec.file_size / 1048576).toFixed(1) + ' MB' : ''"></span>
                         <span x-text="rec.duration_seconds ? formatDuration(rec.duration_seconds) : ''"></span>
                         <span x-text="formatDate(rec.created_at)"></span>
                     </div>
                 </div>
-                <div class="rec-actions">
+
+                {{-- Actions --}}
+                <div class="flex items-center gap-2 shrink-0">
                     <template x-if="rec.status === 'completed' && rec.video_url">
-                        <button class="btn btn-play" @click="previewVideo(rec.video_url)">Play</button>
+                        <button class="px-3.5 py-1.5 rounded-full bg-[#3ec8ff]/15 border border-[#3ec8ff]/40 text-[#3ec8ff] text-xs font-semibold cursor-pointer transition hover:bg-[#3ec8ff]/25"
+                                @click="previewVideo(rec.video_url)">▶ Play</button>
                     </template>
-                    <a :href="'/games/ping-pong/matches/' + rec.match_id" class="btn btn-match">Match</a>
+                    <a :href="'/games/ping-pong/matches/' + rec.match_id"
+                       class="px-3.5 py-1.5 rounded-full bg-[#f5ecd6]/[0.06] border border-[#f5ecd6]/15 text-[#f5ecd6]/70 text-xs font-semibold no-underline transition hover:bg-[#f5ecd6]/10 hover:text-[#f5ecd6]">Match</a>
                     <template x-if="confirmId !== rec.id">
-                        <button class="btn btn-delete" @click="confirmId = rec.id">Delete</button>
+                        <button class="px-3.5 py-1.5 rounded-full bg-[#ff5a4a]/10 border border-[#ff5a4a]/30 text-[#ff5a4a] text-xs font-semibold cursor-pointer transition hover:bg-[#ff5a4a]/20"
+                                @click="confirmId = rec.id">Delete</button>
                     </template>
                     <template x-if="confirmId === rec.id">
-                        <div class="confirm-delete">
-                            <span>Delete?</span>
-                            <button class="confirm-yes" @click="deleteRecording(rec.id)">Yes</button>
-                            <button class="confirm-no" @click="confirmId = null">No</button>
+                        <div class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-[#ff5a4a]/15 border border-[#ff5a4a]/40">
+                            <span class="pph-mono text-[10px] uppercase tracking-[0.14em] text-[#f5ecd6]/70">Delete?</span>
+                            <button class="px-2.5 py-0.5 rounded-full bg-[#ff5a4a] text-[#06081b] font-bold text-[10px] uppercase tracking-[0.1em] cursor-pointer hover:bg-[#ff7a6a]"
+                                    @click="deleteRecording(rec.id)">Yes</button>
+                            <button class="px-2.5 py-0.5 rounded-full bg-[#f5ecd6]/10 text-[#f5ecd6]/70 font-bold text-[10px] uppercase tracking-[0.1em] cursor-pointer hover:bg-[#f5ecd6]/15"
+                                    @click="confirmId = null">No</button>
                         </div>
                     </template>
                 </div>
@@ -267,12 +85,13 @@
         </template>
     </div>
 
-    <!-- Video preview overlay -->
+    {{-- Video preview overlay --}}
     <template x-if="previewUrl">
-        <div class="video-preview" @click.self="previewUrl = null">
-            <div class="video-preview-inner">
-                <button class="video-preview-close" @click="previewUrl = null">&times;</button>
-                <video controls autoplay :src="previewUrl"></video>
+        <div class="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center" @click.self="previewUrl = null">
+            <div class="relative w-[90%] max-w-[900px] aspect-video bg-black rounded-xl overflow-hidden">
+                <button class="absolute -top-10 right-0 bg-transparent border-0 text-white text-2xl cursor-pointer px-3 py-1"
+                        @click="previewUrl = null">×</button>
+                <video class="w-full h-full object-contain" controls autoplay :src="previewUrl"></video>
             </div>
         </div>
     </template>

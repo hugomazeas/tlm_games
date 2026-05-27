@@ -6,367 +6,390 @@
 @section('content')
 <link rel="stylesheet" href="{{ asset('css/ping-pong-play.css') }}">
 
+@include('games.ping-pong.partials.chrome')
+
 <div class="pp-container" x-data="pingPong()" x-init="init()" @keydown.window="handleKeydown($event)">
 
     <!-- SCREEN: HOME (lobby + leaderboard) -->
     <template x-if="screen === 'home'">
-        <div class="pp-grid" style="height: 100%;">
-            <!-- Left: Lobby Panel -->
-            <div class="pp-panel pp-start-panel" style="align-items: center; justify-content: center;">
-                <div style="display:flex;flex-direction:column;align-items:center;width:100%;gap:8px;">
-                    <div class="pp-header" style="text-align: center; padding: 8px 0;">
-                        <h2>Ping Pong</h2>
+        <div class="pph-stage relative flex flex-col gap-5 flex-1 min-h-0 overflow-hidden rounded-3xl p-6 md:p-7 text-[#f5ecd6]/80">
+
+            {{-- ====== Masthead (slim) ============================== --}}
+            <header class="pph-net relative flex items-center justify-between gap-6 pb-3 flex-shrink-0">
+                <div class="flex items-center gap-2.5 leading-none select-none">
+                    <span class="pph-display uppercase tracking-[0.015em] text-[clamp(24px,2.6vw,38px)] text-[#ff5a4a] pph-glow-red">PING</span>
+                    <span aria-hidden="true" class="pph-ball block rounded-full w-[clamp(12px,1.1vw,16px)] h-[clamp(12px,1.1vw,16px)]"></span>
+                    <span class="pph-display uppercase tracking-[0.015em] text-[clamp(24px,2.6vw,38px)] text-[#3ec8ff] pph-glow-blue">PONG</span>
+                    <span class="hidden md:inline-block ml-3 pph-mono text-[10px] tracking-[0.28em] uppercase text-[#f5ecd6]/40">TLM Office League</span>
+                </div>
+
+                <div class="inline-flex items-center gap-2 pph-mono text-[11px] uppercase tracking-[0.12em] text-[#f5ecd6]/80">
+                    <span class="w-2 h-2 rounded-full"
+                          :class="{
+                              'bg-[#9be7c4] shadow-[0_0_10px_#9be7c4]': wsStatus === 'connected',
+                              'bg-[#ffd166] pph-flicker': wsStatus === 'connecting',
+                              'bg-[#ff5a4a]': wsStatus === 'error' || wsStatus === 'disconnected',
+                          }"></span>
+                    <span x-show="wsStatus === 'connected'">Live</span>
+                    <span x-show="wsStatus === 'connecting'">Syncing…</span>
+                    <span x-show="wsStatus === 'error' || wsStatus === 'disconnected'">Offline</span>
+                </div>
+            </header>
+
+            {{-- ====== Body grid ===================================== --}}
+            <div class="grid grid-cols-1 lg:grid-cols-[minmax(330px,380px)_1fr] gap-5 flex-1 min-h-0">
+
+                {{-- ----- LEFT: ticket-style lobby ------------------- --}}
+                <aside class="pph-ticket-notch relative flex flex-col gap-4 rounded-2xl border border-[#f5ecd6]/15 bg-gradient-to-b from-[#f5ecd6]/[0.045] to-[#f5ecd6]/[0.015] p-5 md:p-6 overflow-y-auto overflow-x-hidden">
+                    <div class="flex items-center justify-between gap-3">
+                        <div class="pph-mono text-xs tracking-[0.18em] uppercase text-[#f5ecd6]/45">
+                            Lobby <strong class="text-[#f5ecd6] font-bold tracking-[0.06em] ml-1" x-text="lobbyCode || '———'"></strong>
+                        </div>
+                        <div class="inline-flex bg-[#f5ecd6]/[0.05] border border-[#f5ecd6]/15 rounded-full p-[3px]">
+                            <button @click="setMode('1v1')"
+                                    class="px-3.5 py-1.5 rounded-full font-semibold text-xs uppercase tracking-[0.04em] transition cursor-pointer"
+                                    :class="mode === '1v1'
+                                        ? 'bg-[#f5ecd6] text-[#06081b] shadow-[0_4px_14px_rgba(245,236,214,0.22)]'
+                                        : 'text-[#f5ecd6]/45 hover:text-[#f5ecd6]'">Singles</button>
+                            <button @click="setMode('2v2')"
+                                    class="px-3.5 py-1.5 rounded-full font-semibold text-xs uppercase tracking-[0.04em] transition cursor-pointer"
+                                    :class="mode === '2v2'
+                                        ? 'bg-[#f5ecd6] text-[#06081b] shadow-[0_4px_14px_rgba(245,236,214,0.22)]'
+                                        : 'text-[#f5ecd6]/45 hover:text-[#f5ecd6]'">Doubles</button>
+                        </div>
                     </div>
-                    <div class="pp-mode-toggle">
-                        <button class="pp-mode-btn" :class="{ active: mode === '1v1' }" @click="setMode('1v1')">1v1</button>
-                        <button class="pp-mode-btn" :class="{ active: mode === '2v2' }" @click="setMode('2v2')">2v2</button>
-                    </div>
+
                     <template x-if="lobbyCode">
-                        <div style="display:flex;flex-direction:column;align-items:center;width:100%;gap:8px;">
-                            <div class="pp-lobby-qr" id="lobbyQrContainer"></div>
-                            <div class="pp-lobby-code" x-text="lobbyCode"></div>
-                            <div class="pp-lobby-url" x-text="lobbyJoinUrl"></div>
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;padding:0 12px;">
-                                <div class="pp-lobby-side left">
-                                    <div class="side-label">Left</div>
-                                    <template x-for="p in lobbyLeftPlayers" :key="p.player_id">
-                                        <div class="pp-lobby-player-card"><div class="name" x-text="p.player_name"></div></div>
-                                    </template>
-                                    <template x-for="i in leftEmptySlots" :key="'left-empty-' + i">
-                                        <div class="pp-lobby-empty-slot">Waiting...</div>
-                                    </template>
+                        <div class="flex flex-col gap-4">
+                            {{-- QR --}}
+                            <div class="relative self-center w-[200px] aspect-square bg-[#ffff] rounded-[10px] p-3 mb-5">
+                                <div class="pph-qr-corners absolute inset-[3px] pointer-events-none">
+                                    <span></span><span></span><span></span><span></span>
                                 </div>
-                                <div class="pp-lobby-side right">
-                                    <div class="side-label">Right</div>
-                                    <template x-for="p in lobbyRightPlayers" :key="p.player_id">
-                                        <div class="pp-lobby-player-card"><div class="name" x-text="p.player_name"></div></div>
-                                    </template>
-                                    <template x-for="i in rightEmptySlots" :key="'right-empty-' + i">
-                                        <div class="pp-lobby-empty-slot">Waiting...</div>
-                                    </template>
-                                </div>
+                                <div id="lobbyQrContainer" class="w-full h-full"></div>
+                                <div class="absolute left-0 right-0 top-[calc(100%+6px)] text-center pph-mono text-[10px] tracking-[0.3em] uppercase text-[#f5ecd6]/45">Scan to join</div>
                             </div>
-                            <button class="pp-start-btn" :disabled="!lobbyReady || loading || !hostToken" @click="startLobbyMatch()" x-show="hostToken">
-                                <span x-show="!loading">Start Match</span>
-                                <span x-show="loading">Starting...</span>
-                            </button>
-                            <div class="pp-hint" style="text-align: center;" x-show="!hostToken && lobbyCode">
-                                Waiting for a player to start the match...
-                            </div>
-                            <div class="pp-hint" style="text-align: center;">
-                                <span x-show="wsStatus === 'connected'" style="color: #22c55e;">&#9679; Live</span>
-                                <span x-show="wsStatus === 'connecting'" style="color: #eab308;">&#9679; Connecting...</span>
-                                <span x-show="wsStatus === 'error' || wsStatus === 'disconnected'" style="color: #ef4444;">&#9679; Disconnected</span>
-                            </div>
-                        </div>
-                    </template>
-                    <template x-if="!lobbyCode">
-                        <div class="pp-hint">Creating lobby...</div>
-                    </template>
-                </div>
-            </div>
 
-            <!-- Right: Live Games + Leaderboards -->
-            <div class="pp-panel pp-lb-panel-body">
-                <div x-show="liveMatches.length > 0" style="flex-shrink: 0; margin-bottom: 16px;">
-                    <div class="pp-live-banner">
-                        <div class="pp-live-dot"></div>
-                        <span class="pp-live-title">Live</span>
-                        <span class="pp-live-count" x-text="liveMatches.length + ' match' + (liveMatches.length !== 1 ? 'es' : '')"></span>
-                    </div>
-                    <div class="pp-live-list">
-                        <template x-for="lm in liveMatches" :key="lm.id">
-                            <div class="pp-live-card"
-                                 :class="{ 'just-scored': lm._flash }"
-                                 style="position:relative;"
-                                 @click="window.location.href='/games/ping-pong/watch'">
-                                <template x-if="lm.recording && lm.recording.status === 'recording'">
-                                    <div style="position:absolute;top:4px;right:4px;display:flex;align-items:center;gap:3px;background:rgba(239,68,68,0.2);padding:2px 6px;border-radius:4px;">
-                                        <span class="pp-rec-dot" style="width:6px;height:6px;"></span>
-                                        <span style="font-size:0.65rem;color:#ef4444;font-weight:600;">REC</span>
-                                    </div>
-                                </template>
-                                <div class="pp-live-side left">
-                                    <div class="pp-live-player"
-                                         :class="{ serving: lm.current_server_id === lm.player_left_id }"
-                                         x-text="lm.player_left?.name || '?'"></div>
-                                    <template x-if="lm.mode === '2v2' && lm.team_left_player2">
-                                        <div class="pp-live-player"
-                                             :class="{ serving: lm.current_server_id === lm.team_left_player2_id }"
-                                             x-text="lm.team_left_player2?.name || '?'"></div>
-                                    </template>
-                                </div>
-                                <div>
-                                    <div class="pp-live-score-center">
-                                        <span class="pp-live-score left-score" x-text="lm.player_left_score ?? 0"></span>
-                                        <span class="pp-live-dash">-</span>
-                                        <span class="pp-live-score right-score" x-text="lm.player_right_score ?? 0"></span>
-                                    </div>
-                                    <div class="pp-live-mode" x-text="lm.mode"></div>
-                                </div>
-                                <div class="pp-live-side right">
-                                    <div class="pp-live-player"
-                                         :class="{ serving: lm.current_server_id === lm.player_right_id }"
-                                         x-text="lm.player_right?.name || '?'"></div>
-                                    <template x-if="lm.mode === '2v2' && lm.team_right_player2">
-                                        <div class="pp-live-player"
-                                             :class="{ serving: lm.current_server_id === lm.team_right_player2_id }"
-                                             x-text="lm.team_right_player2?.name || '?'"></div>
-                                    </template>
-                                </div>
-                            </div>
-                        </template>
-                    </div>
-                </div>
+                            {{-- Perforation --}}
+                            <div class="h-[2px] [background-image:repeating-linear-gradient(90deg,rgba(245,236,214,0.14)_0_5px,transparent_5px_10px)]"></div>
 
-                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; flex-shrink: 0;">
-                    <h2 style="font-size: 1.2rem; font-weight: 700; color: #fff; margin: 0; white-space: nowrap;" x-text="mode === '2v2' ? '2v2 ELO Leaderboard' : 'ELO Leaderboard'"></h2>
-                    <div class="pp-lb-tabs-row" style="margin-bottom: 0; flex: 1; justify-content: center;">
-                        <button type="button" class="pp-lb-tab" :class="{ active: leaderboardTab === 'all' }" @click="leaderboardTab = 'all'">
-                            All players
-                        </button>
-                        <template x-for="block in officeLeaderboards" :key="'tab-' + block.id">
-                            <button type="button" class="pp-lb-tab" :class="{ active: leaderboardTab === block.id }" @click="leaderboardTab = block.id" x-text="block.name"></button>
-                        </template>
-                    </div>
-                    <div style="display:flex;gap:8px;align-items:center;">
-                        <a x-show="leaderboard.length > 0" href="/games/ping-pong/stats" style="padding: 6px 16px; background: #3b82f6; border-radius: 8px; color: #fff; font-size: 0.85rem; font-weight: 700; text-decoration: none; white-space: nowrap; transition: all 0.2s;" onmouseenter="this.style.background='#2563eb'" onmouseleave="this.style.background='#3b82f6'">Stats &rarr;</a>
-                        <a href="/games/ping-pong/recordings" style="padding: 6px 16px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: rgba(255,255,255,0.7); font-size: 0.85rem; font-weight: 600; text-decoration: none; white-space: nowrap; transition: all 0.2s;" onmouseenter="this.style.background='rgba(255,255,255,0.12)';this.style.color='#fff'" onmouseleave="this.style.background='rgba(255,255,255,0.08)';this.style.color='rgba(255,255,255,0.7)'">Recordings</a>
-                    </div>
-                </div>
-                <div class="pp-lb-tab-content">
-                    <div x-show="leaderboardTab === 'all'">
-                        <table class="pp-leaderboard-table" x-show="leaderboard.length > 0">
-                            <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th>Player</th>
-                                    <th>ELO</th>
-                                    <th style="text-align: center;">W-L</th>
-                                    <th style="text-align: center;">Last 10</th>
-                                    <th>Streak</th>
-                                    <template x-if="mode !== '2v2'">
-                                        <th style="text-align: center; white-space: nowrap;" title="% of workdays with at least one ping pong match — last 7 days / last month">Office presence (7d, 1m)</th>
-                                    </template>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <template x-for="(entry, i) in leaderboard" :key="entry.player_id">
-                                    <tr>
-                                        <td style="color: rgba(255,255,255,0.4); font-family: monospace;" x-text="i + 1"></td>
-                                        <td>
-                                            <a :href="'/games/ping-pong/players/' + entry.player_id" x-text="entry.player_name"></a>
-                                        </td>
-                                        <td style="font-weight: 700;" x-text="entry.elo_rating"></td>
-                                        <td style="white-space: nowrap;">
-                                            <div style="display: flex; flex-direction: column; align-items: center;">
-                                                <span><span style="color: #22c55e; font-size: 15px; font-weight: 600;" x-text="entry.wins"></span><span style="color: rgba(255,255,255,0.3); font-size: 15px;">-</span><span style="color: #ef4444; font-size: 15px; font-weight: 600;" x-text="entry.losses"></span></span>
-                                                <span style="font-size: 13px; color: rgba(255,255,255,0.4);" x-text="entry.win_rate + '%'"></span>
+                            {{-- Sides roster --}}
+                            <div class="grid grid-cols-[1fr_auto_1fr] gap-2 items-start">
+                                <div class="flex flex-col gap-1.5 min-w-0">
+                                    <span class="pph-mono text-[10px] tracking-[0.3em] uppercase text-[#ff5a4a]">Left</span>
+                                    <div class="flex flex-col gap-1.5">
+                                        <template x-for="p in lobbyLeftPlayers" :key="p.player_id">
+                                            <div class="pph-slot-in pph-shadow-left rounded-lg px-3 py-2.5 font-semibold text-[13px] text-[#f5ecd6] bg-[#f5ecd6]/[0.06] border border-[#f5ecd6]/15 border-l-[3px] border-l-[#ff5a4a] truncate">
+                                                <span x-text="p.player_name"></span>
                                             </div>
-                                        </td>
-                                        <td style="text-align: center;">
-                                            <template x-if="entry.last_10 && entry.last_10.length > 0">
-                                                <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
-                                                    <span style="font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.8);" x-text="entry.last_10.filter(r => r === 'W').length + '-' + entry.last_10.filter(r => r === 'L').length"></span>
-                                                    <div style="display: flex; align-items: center; gap: 3px;">
-                                                        <template x-for="(r, j) in entry.last_10" :key="j">
-                                                            <span :style="'width: 7px; height: 7px; border-radius: 50%; background:' + (r === 'W' ? '#22c55e' : '#ef4444')"></span>
-                                                        </template>
-                                                        <span style="font-size: 9px; color: rgba(255,255,255,0.25); margin-left: 1px;">&#9656;</span>
-                                                    </div>
-                                                </div>
-                                            </template>
-                                            <template x-if="!entry.last_10 || entry.last_10.length === 0">
-                                                <span style="color: rgba(255,255,255,0.3);">-</span>
-                                            </template>
-                                        </td>
-                                        <td>
-                                            <template x-if="entry.win_streak > 0">
-                                                <span class="streak-badge W"><span>W</span><span x-text="entry.win_streak"></span></span>
-                                            </template>
-                                            <template x-if="entry.win_streak === 0 && entry.losing_streak > 0">
-                                                <span class="streak-badge L"><span>L</span><span x-text="entry.losing_streak"></span></span>
-                                            </template>
-                                            <template x-if="entry.win_streak === 0 && !entry.losing_streak">
-                                                <span style="color: rgba(255,255,255,0.3);">-</span>
-                                            </template>
-                                        </td>
-                                        <template x-if="mode !== '2v2'">
-                                            <td style="text-align: center; white-space: nowrap;">
-                                                <div style="display: flex; flex-direction: column; align-items: center;">
-                                                    <span style="font-size: 15px; font-weight: 600; color: rgba(255,255,255,0.85);" x-text="entry.office_7d + '%'"></span>
-                                                    <span style="font-size: 13px; color: rgba(255,255,255,0.55);" x-text="entry.office_30d + '% / last month'"></span>
-                                                </div>
-                                            </td>
                                         </template>
-                                    </tr>
-                                </template>
-                            </tbody>
-                        </table>
-                        <div x-show="leaderboard.length === 0" style="text-align: center; padding: 40px; color: rgba(255,255,255,0.4);">
-                            No matches played yet
-                        </div>
-                    </div>
-                    <template x-for="block in officeLeaderboards" :key="'panel-' + block.id">
-                        <div x-show="leaderboardTab === block.id">
-                            <table class="pp-leaderboard-table" x-show="block.entries.length > 0">
-                                <thead>
-                                    <tr>
-                                        <th>#</th>
-                                        <th>Player</th>
-                                        <th>ELO</th>
-                                        <th style="text-align: center;">W-L</th>
-                                        <th style="text-align: center;">Last 10</th>
-                                        <th>Streak</th>
-                                        <template x-if="mode !== '2v2'">
-                                            <th style="text-align: center; white-space: nowrap;" title="% of workdays with at least one ping pong match — last 7 days / last month">Office presence (7d, 1m)</th>
+                                        <template x-for="i in leftEmptySlots" :key="'left-empty-' + i">
+                                            <div class="rounded-lg px-3 py-2.5 italic font-medium text-xs text-[#f5ecd6]/25 border border-dashed border-[#f5ecd6]/15">Empty seat</div>
                                         </template>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <template x-for="(entry, i) in block.entries" :key="entry.player_id">
-                                        <tr>
-                                            <td style="color: rgba(255,255,255,0.4); font-family: monospace;" x-text="i + 1"></td>
-                                            <td>
-                                                <a :href="'/games/ping-pong/players/' + entry.player_id" x-text="entry.player_name"></a>
-                                            </td>
-                                            <td style="font-weight: 700;" x-text="entry.elo_rating"></td>
-                                            <td style="white-space: nowrap;">
-                                                <div style="display: flex; flex-direction: column; align-items: center;">
-                                                    <span><span style="color: #22c55e; font-size: 15px; font-weight: 600;" x-text="entry.wins"></span><span style="color: rgba(255,255,255,0.3); font-size: 15px;">-</span><span style="color: #ef4444; font-size: 15px; font-weight: 600;" x-text="entry.losses"></span></span>
-                                                    <span style="font-size: 13px; color: rgba(255,255,255,0.4);" x-text="entry.win_rate + '%'"></span>
-                                                </div>
-                                            </td>
-                                            <td style="text-align: center;">
-                                                <template x-if="entry.last_10 && entry.last_10.length > 0">
-                                                    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
-                                                        <span style="font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.8);" x-text="entry.last_10.filter(r => r === 'W').length + '-' + entry.last_10.filter(r => r === 'L').length"></span>
-                                                        <div style="display: flex; align-items: center; gap: 3px;">
-                                                            <template x-for="(r, j) in entry.last_10" :key="j">
-                                                                <span :style="'width: 7px; height: 7px; border-radius: 50%; background:' + (r === 'W' ? '#22c55e' : '#ef4444')"></span>
-                                                            </template>
-                                                            <span style="font-size: 9px; color: rgba(255,255,255,0.25); margin-left: 1px;">&#9656;</span>
-                                                        </div>
-                                                    </div>
-                                                </template>
-                                                <template x-if="!entry.last_10 || entry.last_10.length === 0">
-                                                    <span style="color: rgba(255,255,255,0.3);">-</span>
-                                                </template>
-                                            </td>
-                                            <td>
-                                                <template x-if="entry.win_streak > 0">
-                                                    <span class="streak-badge W"><span>W</span><span x-text="entry.win_streak"></span></span>
-                                                </template>
-                                                <template x-if="entry.win_streak === 0 && entry.losing_streak > 0">
-                                                    <span class="streak-badge L"><span>L</span><span x-text="entry.losing_streak"></span></span>
-                                                </template>
-                                                <template x-if="entry.win_streak === 0 && !entry.losing_streak">
-                                                    <span style="color: rgba(255,255,255,0.3);">-</span>
-                                                </template>
-                                            </td>
-                                            <template x-if="mode !== '2v2'">
-                                                <td style="text-align: center; white-space: nowrap;">
-                                                    <div style="display: flex; flex-direction: column; align-items: center;">
-                                                        <span style="font-size: 15px; font-weight: 600; color: rgba(255,255,255,0.85);" x-text="entry.office_7d + '%'"></span>
-                                                        <span style="font-size: 13px; color: rgba(255,255,255,0.55);" x-text="entry.office_30d + '% / last month'"></span>
-                                                    </div>
-                                                </td>
-                                            </template>
-                                        </tr>
-                                    </template>
-                                </tbody>
-                            </table>
-                            <div x-show="block.entries.length === 0" style="text-align: center; padding: 40px; color: rgba(255,255,255,0.4);">
-                                No players from this office yet
+                                    </div>
+                                </div>
+                                <div class="relative self-center pt-4 pph-display text-[22px] tracking-[0.06em] text-[#f5ecd6]
+                                            before:content-[''] before:absolute before:left-1/2 before:-translate-x-1/2 before:top-0.5 before:w-px before:h-2.5 before:bg-[#f5ecd6]/15
+                                            after:content-[''] after:absolute after:left-1/2 after:-translate-x-1/2 after:bottom-0.5 after:w-px after:h-2.5 after:bg-[#f5ecd6]/15">VS</div>
+                                <div class="flex flex-col gap-1.5 min-w-0 text-right items-end">
+                                    <span class="pph-mono text-[10px] tracking-[0.3em] uppercase text-[#3ec8ff]">Right</span>
+                                    <div class="flex flex-col gap-1.5 w-full">
+                                        <template x-for="p in lobbyRightPlayers" :key="p.player_id">
+                                            <div class="pph-slot-in pph-shadow-right rounded-lg px-3 py-2.5 font-semibold text-[13px] text-[#f5ecd6] bg-[#f5ecd6]/[0.06] border border-[#f5ecd6]/15 border-r-[3px] border-r-[#3ec8ff] truncate text-right">
+                                                <span x-text="p.player_name"></span>
+                                            </div>
+                                        </template>
+                                        <template x-for="i in rightEmptySlots" :key="'right-empty-' + i">
+                                            <div class="rounded-lg px-3 py-2.5 italic font-medium text-xs text-[#f5ecd6]/25 border border-dashed border-[#f5ecd6]/15 text-right">Empty seat</div>
+                                        </template>
+                                    </div>
+                                </div>
                             </div>
+
+                            {{-- Start --}}
+                            <button class="appearance-none border-0 mt-0.5 bg-[#f5ecd6] text-[#06081b] px-5 py-3.5 rounded-xl pph-display text-[22px] tracking-[0.06em] uppercase cursor-pointer transition shadow-[0_8px_22px_rgba(245,236,214,0.18)] hover:enabled:-translate-y-px hover:enabled:bg-[#fffaf0] hover:enabled:shadow-[0_12px_30px_rgba(245,236,214,0.28)] disabled:opacity-[0.35] disabled:cursor-not-allowed disabled:shadow-none disabled:bg-[#f5ecd6]/40"
+                                    :disabled="!lobbyReady || loading || !hostToken"
+                                    @click="startLobbyMatch()"
+                                    x-show="hostToken">
+                                <span x-show="!loading">Start match →</span>
+                                <span x-show="loading">Starting…</span>
+                            </button>
+                            <div class="pph-mono text-[11px] tracking-[0.18em] uppercase text-[#f5ecd6]/45 text-center"
+                                 x-show="!hostToken && lobbyCode">
+                                Waiting for host to start…
+                            </div>
+                            <div class="pph-mono text-[10px] text-[#f5ecd6]/25 break-all text-center tracking-wide"
+                                 x-text="lobbyJoinUrl"></div>
                         </div>
                     </template>
-                </div>
+
+                    <template x-if="!lobbyCode">
+                        <div class="flex items-center justify-center gap-3 py-16 pph-mono text-xs tracking-[0.2em] uppercase text-[#f5ecd6]/45">
+                            <span class="pph-spin w-3.5 h-3.5 rounded-full border-2 border-[#f5ecd6]/15 border-t-[#f5ecd6]"></span>
+                            Building lobby…
+                        </div>
+                    </template>
+                </aside>
+
+                {{-- ----- RIGHT: feed -------------------------------- --}}
+                <section class="flex flex-col gap-4 min-h-0">
+
+                    {{-- Live --}}
+                    <div x-show="liveMatches.length > 0" class="flex-shrink-0 rounded-2xl border border-[#ff5a4a]/30 bg-gradient-to-b from-[#ff5a4a]/[0.07] to-[#ff5a4a]/[0.02] p-3.5">
+                        <div class="flex items-center gap-2.5 mb-2.5">
+                            <span class="pph-pulse-dot w-2 h-2 rounded-full bg-[#ff5a4a]"></span>
+                            <span class="pph-display text-base tracking-[0.14em] uppercase text-[#ff5a4a]">On Court Now</span>
+                            <span class="ml-auto pph-mono text-[10px] tracking-[0.22em] uppercase text-[#f5ecd6]/45" x-text="liveMatches.length + ' active'"></span>
+                        </div>
+                        <div class="flex flex-col gap-1.5">
+                            <template x-for="lm in liveMatches" :key="lm.id">
+                                <div @click="window.location.href='/games/ping-pong/watch'"
+                                     class="relative grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-3.5 py-2.5 rounded-[10px] border border-[#f5ecd6]/15 bg-[#f5ecd6]/[0.03] cursor-pointer transition hover:border-[#f5ecd6]/30 hover:bg-[#f5ecd6]/[0.05] hover:-translate-y-px"
+                                     :class="{ '!border-[#ffd166]/60 !bg-[#ffd166]/[0.08]': lm._flash }">
+                                    <template x-if="lm.recording && lm.recording.status === 'recording'">
+                                        <div class="absolute top-1.5 right-2 flex items-center gap-1 bg-[#ff5a4a]/20 rounded px-1.5 py-0.5 pph-mono text-[9px] font-bold tracking-[0.14em] text-[#ff5a4a]">
+                                            <span class="pph-flicker w-1.5 h-1.5 rounded-full bg-[#ff5a4a]"></span>REC
+                                        </div>
+                                    </template>
+
+                                    <div class="flex flex-col gap-px text-right min-w-0">
+                                        <span class="font-bold text-sm text-[#f5ecd6] truncate"
+                                              :class="{ '!text-[#ffd166] pph-serving-left': lm.current_server_id === lm.player_left_id }"
+                                              x-text="lm.player_left?.name || '?'"></span>
+                                        <template x-if="lm.mode === '2v2' && lm.team_left_player2">
+                                            <span class="font-bold text-sm text-[#f5ecd6] truncate"
+                                                  :class="{ '!text-[#ffd166] pph-serving-left': lm.current_server_id === lm.team_left_player2_id }"
+                                                  x-text="lm.team_left_player2?.name || '?'"></span>
+                                        </template>
+                                    </div>
+
+                                    <div class="relative flex items-baseline gap-1.5 pph-mono leading-none pb-2.5">
+                                        <span class="text-[22px] font-bold text-[#ff5a4a] min-w-[26px] text-center" x-text="lm.player_left_score ?? 0"></span>
+                                        <span class="text-[#f5ecd6]/25">·</span>
+                                        <span class="text-[22px] font-bold text-[#3ec8ff] min-w-[26px] text-center" x-text="lm.player_right_score ?? 0"></span>
+                                        <span class="absolute -bottom-0.5 left-1/2 -translate-x-1/2 pph-mono text-[9px] tracking-[0.22em] uppercase text-[#f5ecd6]/25" x-text="lm.mode"></span>
+                                    </div>
+
+                                    <div class="flex flex-col gap-px text-left min-w-0">
+                                        <span class="font-bold text-sm text-[#f5ecd6] truncate"
+                                              :class="{ '!text-[#ffd166] pph-serving-right': lm.current_server_id === lm.player_right_id }"
+                                              x-text="lm.player_right?.name || '?'"></span>
+                                        <template x-if="lm.mode === '2v2' && lm.team_right_player2">
+                                            <span class="font-bold text-sm text-[#f5ecd6] truncate"
+                                                  :class="{ '!text-[#ffd166] pph-serving-right': lm.current_server_id === lm.team_right_player2_id }"
+                                                  x-text="lm.team_right_player2?.name || '?'"></span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    {{-- Leaderboard --}}
+                    <div class="flex flex-col flex-1 min-h-0 rounded-2xl border border-[#f5ecd6]/15 bg-gradient-to-b from-[#f5ecd6]/[0.03] to-[#f5ecd6]/[0.01] px-4 md:px-5 pt-4 pb-1">
+                        <div class="grid grid-cols-1 md:grid-cols-[auto_1fr_auto] items-center gap-3 mb-3 flex-shrink-0">
+                            <h2 class="flex items-baseline gap-2.5 m-0 min-w-0">
+                                <span class="pph-display text-[26px] tracking-[0.04em] uppercase text-[#f5ecd6]"
+                                      x-text="mode === '2v2' ? 'Doubles' : 'Singles'"></span>
+                                <span class="pph-mono text-[10px] tracking-[0.28em] uppercase text-[#f5ecd6]/45">ELO Standings</span>
+                            </h2>
+                            <div class="pph-tabs-row flex flex-nowrap gap-1 overflow-x-auto py-0.5 min-w-0 md:justify-self-start">
+                                <button type="button"
+                                        @click="leaderboardTab = 'all'"
+                                        class="px-3 py-1 rounded-full border border-[#f5ecd6]/15 text-xs font-semibold whitespace-nowrap transition cursor-pointer"
+                                        :class="leaderboardTab === 'all'
+                                            ? 'bg-[#f5ecd6] text-[#06081b] border-[#f5ecd6]'
+                                            : 'bg-transparent text-[#f5ecd6]/45 hover:text-[#f5ecd6] hover:border-[#f5ecd6]/30'">All</button>
+                                <template x-for="block in officeLeaderboards" :key="'tab-' + block.id">
+                                    <button type="button"
+                                            @click="leaderboardTab = block.id"
+                                            class="px-3 py-1 rounded-full border border-[#f5ecd6]/15 text-xs font-semibold whitespace-nowrap transition cursor-pointer"
+                                            :class="leaderboardTab === block.id
+                                                ? 'bg-[#f5ecd6] text-[#06081b] border-[#f5ecd6]'
+                                                : 'bg-transparent text-[#f5ecd6]/45 hover:text-[#f5ecd6] hover:border-[#f5ecd6]/30'"
+                                            x-text="block.name"></button>
+                                </template>
+                            </div>
+                            <div class="flex gap-2 justify-self-end">
+                                <a x-show="leaderboard.length > 0" href="/games/ping-pong/stats"
+                                   class="px-3 py-1.5 rounded-full bg-[#ff5a4a] text-[#06081b] border border-[#ff5a4a] no-underline text-xs font-semibold transition hover:bg-[#ff7a6a] hover:border-[#ff7a6a]">Full stats →</a>
+                                <a href="/games/ping-pong/recordings"
+                                   class="px-3 py-1.5 rounded-full border border-[#f5ecd6]/15 text-[#f5ecd6]/80 no-underline text-xs font-semibold transition hover:text-[#f5ecd6] hover:border-[#f5ecd6]/30 hover:bg-[#f5ecd6]/[0.04]">Recordings</a>
+                            </div>
+                        </div>
+
+                        <div class="overflow-y-auto flex-1 min-h-0 pb-3 -mx-1 px-1">
+                            {{-- All players --}}
+                            <div x-show="leaderboardTab === 'all'">
+                                <template x-if="leaderboard.length > 0">
+                                    @include('games.ping-pong.partials.home-leaderboard-rows', ['entriesExpr' => 'leaderboard'])
+                                </template>
+                                <div x-show="leaderboard.length === 0"
+                                     class="text-center py-14 px-5 pph-mono text-xs tracking-[0.14em] uppercase text-[#f5ecd6]/45">
+                                    No matches played yet — be the first.
+                                </div>
+                            </div>
+                            {{-- Per office --}}
+                            <template x-for="block in officeLeaderboards" :key="'panel-' + block.id">
+                                <div x-show="leaderboardTab === block.id">
+                                    <template x-if="block.entries.length > 0">
+                                        @include('games.ping-pong.partials.home-leaderboard-rows', ['entriesExpr' => 'block.entries'])
+                                    </template>
+                                    <div x-show="block.entries.length === 0"
+                                         class="text-center py-14 px-5 pph-mono text-xs tracking-[0.14em] uppercase text-[#f5ecd6]/45">
+                                        No players from this office yet.
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </section>
             </div>
         </div>
     </template>
 
     <!-- SCREEN: PLAYING -->
     <template x-if="screen === 'playing'">
-        <div style="display: flex; flex-direction: column; height: 100%;">
-            <div class="pp-game-topbar">
-                <span class="pp-badge" x-text="mode === '2v2' ? '2v2 - First to 11' : 'First to 11'"></span>
-                <span class="pp-clock" x-text="clockDisplay"></span>
-                <span class="pp-timer" x-text="timerDisplay"></span>
-            </div>
-            <div x-show="hlsInstance"
-                 style="display:flex;justify-content:center;margin:0 0 8px;">
-                <div style="position:relative;width:100%;max-width:480px;aspect-ratio:16/9;background:#000;border-radius:8px;overflow:hidden;">
-                    <video id="livePlayer" muted autoplay playsinline
-                           style="width:100%;height:100%;object-fit:cover;"></video>
-                    <div style="position:absolute;top:8px;left:8px;display:flex;align-items:center;gap:4px;background:rgba(0,0,0,0.6);padding:2px 8px;border-radius:4px;">
-                        <span class="pp-rec-dot"></span>
-                        <span style="color:white;font-size:0.75rem;font-weight:600;">LIVE</span>
+        <div class="pph-stage relative flex flex-col gap-4 flex-1 min-h-0 overflow-hidden rounded-3xl p-5 md:p-7">
+
+            {{-- ===== Top bar: mode + clock + timer ===== --}}
+            <header class="pph-net relative flex items-center justify-between gap-4 pb-3 flex-shrink-0">
+                <div class="flex items-center gap-3">
+                    <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#ff5a4a]/15 border border-[#ff5a4a]/35 text-[#ff5a4a] pph-mono text-[10px] font-bold tracking-[0.18em] uppercase">
+                        <span class="pph-flicker w-1.5 h-1.5 rounded-full bg-[#ff5a4a]"></span>
+                        Live ·
+                        <span x-text="mode === '2v2' ? '2v2 · First to 11' : 'First to 11'"></span>
+                    </span>
+                </div>
+                <div class="flex items-baseline gap-5">
+                    <span class="pph-mono font-bold text-[#f5ecd6] text-[clamp(28px,2.8vw,40px)] tracking-[0.06em] tabular-nums" x-text="clockDisplay"></span>
+                    <span class="pph-mono text-[#f5ecd6]/50 text-[clamp(14px,1.4vw,18px)] tabular-nums tracking-[0.04em]" x-text="timerDisplay"></span>
+                </div>
+            </header>
+
+            {{-- ===== Optional live video preview ===== --}}
+            <div x-show="hlsInstance" class="flex justify-center mb-1">
+                <div class="relative w-full max-w-[480px] aspect-video bg-black rounded-xl overflow-hidden border border-[#f5ecd6]/15">
+                    <video id="livePlayer" muted autoplay playsinline class="w-full h-full object-cover"></video>
+                    <div class="absolute top-2 left-2 inline-flex items-center gap-1.5 bg-black/60 px-2 py-0.5 rounded-md pph-mono text-[10px] font-bold tracking-[0.16em] uppercase text-white">
+                        <span class="pph-flicker w-1.5 h-1.5 rounded-full bg-[#ff5a4a]"></span>
+                        Live
                     </div>
                     <a :href="'/games/ping-pong/watch'" target="_blank"
-                       style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.6);padding:2px 8px;border-radius:4px;color:white;font-size:0.7rem;text-decoration:none;">
-                        Full Screen &rarr;
-                    </a>
+                       class="absolute top-2 right-2 bg-black/60 px-2 py-0.5 rounded-md text-white pph-mono text-[10px] uppercase tracking-[0.14em] no-underline">Full screen →</a>
                 </div>
             </div>
 
-            <div class="pp-game-area">
-                <!-- Left Team -->
-                <div class="pp-score-panel left" :class="{ 'serving-active': isServing('left') }">
+            {{-- ===== Two-side scoreboard ===== --}}
+            <div class="grid grid-cols-2 gap-4 md:gap-6 flex-1 min-h-0">
+
+                {{-- LEFT team --}}
+                <div class="relative rounded-2xl border-2 border-[#ff5a4a]/25 bg-gradient-to-b from-[#ff5a4a]/[0.08] to-[#ff5a4a]/[0.02] p-3 md:p-8 flex flex-col items-center justify-center transition-all duration-300"
+                     :class="isServing('left') ? '!border-[#ff5a4a]/75 !bg-[#ff5a4a]/[0.18] shadow-[inset_0_0_80px_rgba(255,90,74,0.16),0_0_40px_rgba(255,90,74,0.18)]' : ''">
+
+                    {{-- Player name(s) --}}
                     <template x-if="mode === '1v1'">
-                        <div class="player-name" x-text="match.player_left?.name || ''"></div>
+                        <div class="pph-display text-[clamp(20px,4vw,56px)] tracking-[0.02em] uppercase text-[#ff5a4a] pph-glow-red text-center leading-none truncate max-w-full"
+                             x-text="match.player_left?.name || ''"></div>
                     </template>
                     <template x-if="mode === '2v2'">
-                        <div>
-                            <div class="player-name-doubles"
-                                 :class="{ 'serving-player': isPlayerServing(match.player_left_id) }"
+                        <div class="flex flex-col items-center gap-0.5">
+                            <div class="pph-display tracking-[0.02em] uppercase truncate max-w-full transition-all duration-300"
+                                 :class="isPlayerServing(match.player_left_id)
+                                    ? 'text-[clamp(32px,4.5vw,60px)] text-[#ff5a4a] pph-glow-red font-bold'
+                                    : 'text-[clamp(22px,3vw,42px)] text-[#f5ecd6]/50'"
                                  x-text="match.player_left?.name || ''"></div>
-                            <div class="player-name-doubles"
-                                 :class="{ 'serving-player': isPlayerServing(match.team_left_player2_id) }"
+                            <div class="pph-display tracking-[0.02em] uppercase truncate max-w-full transition-all duration-300"
+                                 :class="isPlayerServing(match.team_left_player2_id)
+                                    ? 'text-[clamp(32px,4.5vw,60px)] text-[#ff5a4a] pph-glow-red font-bold'
+                                    : 'text-[clamp(22px,3vw,42px)] text-[#f5ecd6]/50'"
                                  x-text="match.team_left_player2?.name || ''"></div>
                         </div>
                     </template>
-                    <div class="pp-serve-indicator" :class="{ 'serving': isServing('left') }">
-                        Serving
+
+                    {{-- Serving badge --}}
+                    <div class="mt-3 mb-3" :class="{ 'invisible': !isServing('left') }">
+                        <span class="inline-flex items-center gap-1.5 pph-mono text-[11px] md:text-[13px] font-bold tracking-[0.22em] uppercase px-3 py-1 rounded-full bg-[#ffd166]/15 border border-[#ffd166]/40 text-[#ffd166] pph-flicker">
+                            <span class="w-1.5 h-1.5 rounded-full bg-[#ffd166] shadow-[0_0_10px_#ffd166]"></span>
+                            Serving
+                        </span>
                     </div>
-                    <div class="pp-score-value" x-text="match.player_left_score ?? 0"></div>
-                    <div class="pp-score-buttons" x-show="!readOnly">
-                        <button class="pp-score-btn minus" @click="updateScore('left', 'decrement')">-</button>
-                        <button class="pp-score-btn plus" @click="updateScore('left', 'increment')">+</button>
+
+                    {{-- Score --}}
+                    <div class="pph-mono font-bold text-[#ff5a4a] pph-glow-red text-[clamp(80px,16vw,220px)] leading-none tabular-nums"
+                         x-text="match.player_left_score ?? 0"></div>
+
+                    {{-- Buttons --}}
+                    <div class="flex gap-4 mt-5" x-show="!readOnly">
+                        <button @click="updateScore('left', 'decrement')"
+                                class="w-14 h-14 md:w-20 md:h-20 rounded-full border-2 border-[#ff5a4a]/40 bg-[#06081b]/40 text-[#ff5a4a] text-3xl font-bold cursor-pointer transition hover:bg-[#ff5a4a]/20 hover:border-[#ff5a4a] hover:scale-105">−</button>
+                        <button @click="updateScore('left', 'increment')"
+                                class="w-14 h-14 md:w-20 md:h-20 rounded-full border-2 border-[#9be7c4]/40 bg-[#06081b]/40 text-[#9be7c4] text-3xl font-bold cursor-pointer transition hover:bg-[#9be7c4]/20 hover:border-[#9be7c4] hover:scale-105">+</button>
                     </div>
+
                     @include('games.ping-pong.partials.elo-preview', ['side' => 'left'])
                 </div>
-                <!-- Right Team -->
-                <div class="pp-score-panel right" :class="{ 'serving-active': isServing('right') }">
+
+                {{-- RIGHT team --}}
+                <div class="relative rounded-2xl border-2 border-[#3ec8ff]/25 bg-gradient-to-b from-[#3ec8ff]/[0.08] to-[#3ec8ff]/[0.02] p-3 md:p-8 flex flex-col items-center justify-center transition-all duration-300"
+                     :class="isServing('right') ? '!border-[#3ec8ff]/75 !bg-[#3ec8ff]/[0.18] shadow-[inset_0_0_80px_rgba(62,200,255,0.16),0_0_40px_rgba(62,200,255,0.18)]' : ''">
+
                     <template x-if="mode === '1v1'">
-                        <div class="player-name" x-text="match.player_right?.name || ''"></div>
+                        <div class="pph-display text-[clamp(20px,4vw,56px)] tracking-[0.02em] uppercase text-[#3ec8ff] pph-glow-blue text-center leading-none truncate max-w-full"
+                             x-text="match.player_right?.name || ''"></div>
                     </template>
                     <template x-if="mode === '2v2'">
-                        <div>
-                            <div class="player-name-doubles"
-                                 :class="{ 'serving-player': isPlayerServing(match.player_right_id) }"
+                        <div class="flex flex-col items-center gap-0.5">
+                            <div class="pph-display tracking-[0.02em] uppercase truncate max-w-full transition-all duration-300"
+                                 :class="isPlayerServing(match.player_right_id)
+                                    ? 'text-[clamp(32px,4.5vw,60px)] text-[#3ec8ff] pph-glow-blue font-bold'
+                                    : 'text-[clamp(22px,3vw,42px)] text-[#f5ecd6]/50'"
                                  x-text="match.player_right?.name || ''"></div>
-                            <div class="player-name-doubles"
-                                 :class="{ 'serving-player': isPlayerServing(match.team_right_player2_id) }"
+                            <div class="pph-display tracking-[0.02em] uppercase truncate max-w-full transition-all duration-300"
+                                 :class="isPlayerServing(match.team_right_player2_id)
+                                    ? 'text-[clamp(32px,4.5vw,60px)] text-[#3ec8ff] pph-glow-blue font-bold'
+                                    : 'text-[clamp(22px,3vw,42px)] text-[#f5ecd6]/50'"
                                  x-text="match.team_right_player2?.name || ''"></div>
                         </div>
                     </template>
-                    <div class="pp-serve-indicator" :class="{ 'serving': isServing('right') }">
-                        Serving
+
+                    <div class="mt-3 mb-3" :class="{ 'invisible': !isServing('right') }">
+                        <span class="inline-flex items-center gap-1.5 pph-mono text-[11px] md:text-[13px] font-bold tracking-[0.22em] uppercase px-3 py-1 rounded-full bg-[#ffd166]/15 border border-[#ffd166]/40 text-[#ffd166] pph-flicker">
+                            <span class="w-1.5 h-1.5 rounded-full bg-[#ffd166] shadow-[0_0_10px_#ffd166]"></span>
+                            Serving
+                        </span>
                     </div>
-                    <div class="pp-score-value" x-text="match.player_right_score ?? 0"></div>
-                    <div class="pp-score-buttons" x-show="!readOnly">
-                        <button class="pp-score-btn minus" @click="updateScore('right', 'decrement')">-</button>
-                        <button class="pp-score-btn plus" @click="updateScore('right', 'increment')">+</button>
+
+                    <div class="pph-mono font-bold text-[#3ec8ff] pph-glow-blue text-[clamp(80px,16vw,220px)] leading-none tabular-nums"
+                         x-text="match.player_right_score ?? 0"></div>
+
+                    <div class="flex gap-4 mt-5" x-show="!readOnly">
+                        <button @click="updateScore('right', 'decrement')"
+                                class="w-14 h-14 md:w-20 md:h-20 rounded-full border-2 border-[#ff5a4a]/40 bg-[#06081b]/40 text-[#ff5a4a] text-3xl font-bold cursor-pointer transition hover:bg-[#ff5a4a]/20 hover:border-[#ff5a4a] hover:scale-105">−</button>
+                        <button @click="updateScore('right', 'increment')"
+                                class="w-14 h-14 md:w-20 md:h-20 rounded-full border-2 border-[#9be7c4]/40 bg-[#06081b]/40 text-[#9be7c4] text-3xl font-bold cursor-pointer transition hover:bg-[#9be7c4]/20 hover:border-[#9be7c4] hover:scale-105">+</button>
                     </div>
+
                     @include('games.ping-pong.partials.elo-preview', ['side' => 'right'])
                 </div>
             </div>
-            <div class="pp-hint" style="text-align: center; margin-top: 8px;" x-show="!readOnly">
-                Keys: &uarr; left+1 &darr; left-1 &rarr; right+1 &larr; right-1 | Backspace to abandon
+
+            {{-- ===== Bottom hint ===== --}}
+            <div class="text-center pph-mono text-[10px] tracking-[0.16em] uppercase text-[#f5ecd6]/35 flex-shrink-0" x-show="!readOnly">
+                <span class="inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+                    <span><kbd class="inline-block px-1.5 py-0.5 rounded bg-[#f5ecd6]/[0.08] border border-[#f5ecd6]/15 text-[#f5ecd6]/70 text-[10px]">↑</kbd> left +1</span>
+                    <span><kbd class="inline-block px-1.5 py-0.5 rounded bg-[#f5ecd6]/[0.08] border border-[#f5ecd6]/15 text-[#f5ecd6]/70 text-[10px]">↓</kbd> left −1</span>
+                    <span><kbd class="inline-block px-1.5 py-0.5 rounded bg-[#f5ecd6]/[0.08] border border-[#f5ecd6]/15 text-[#f5ecd6]/70 text-[10px]">→</kbd> right +1</span>
+                    <span><kbd class="inline-block px-1.5 py-0.5 rounded bg-[#f5ecd6]/[0.08] border border-[#f5ecd6]/15 text-[#f5ecd6]/70 text-[10px]">←</kbd> right −1</span>
+                    <span class="text-[#f5ecd6]/25">·</span>
+                    <span><kbd class="inline-block px-1.5 py-0.5 rounded bg-[#f5ecd6]/[0.08] border border-[#f5ecd6]/15 text-[#f5ecd6]/70 text-[10px]">⌫</kbd> abandon</span>
+                </span>
             </div>
-            <div class="pp-hint" style="text-align: center; margin-top: 8px;" x-show="readOnly">
-                <a href="/games/ping-pong/watch" style="color: rgba(255,255,255,0.6); text-decoration: none;">&larr; Watch live stream</a>
+            <div class="text-center flex-shrink-0" x-show="readOnly">
+                <a href="/games/ping-pong/watch"
+                   class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[#f5ecd6]/15 text-[#f5ecd6]/65 no-underline pph-mono text-[11px] tracking-[0.16em] uppercase hover:text-[#f5ecd6] hover:border-[#f5ecd6]/30 hover:bg-[#f5ecd6]/[0.04] transition">
+                    ← Watch live stream
+                </a>
             </div>
         </div>
     </template>
