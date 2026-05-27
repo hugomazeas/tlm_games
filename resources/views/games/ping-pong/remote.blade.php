@@ -434,11 +434,6 @@
             border-color: rgba(148, 163, 184, 0.5);
         }
 
-        .tag-shot-rows.dimmed {
-            opacity: 0.25;
-            pointer-events: none;
-        }
-
         .tag-chip-icon {
             font-size: 2.4rem;
             line-height: 1;
@@ -775,7 +770,6 @@
         const tagChipClip = document.getElementById('tagClip');
         const tagChipCauseEarned = document.getElementById('tagCauseEarned');
         const tagChipCauseError = document.getElementById('tagCauseError');
-        const tagShotRows = document.getElementById('tagShotRows');
         const tagChipErrNet = document.getElementById('tagErrNet');
         const tagChipErrLong = document.getElementById('tagErrLong');
         const tagChipServe = document.getElementById('tagServe');
@@ -789,7 +783,6 @@
             tagChipClip.classList.remove('selected');
             tagChipCauseEarned.classList.remove('selected');
             tagChipCauseError.classList.remove('selected');
-            tagShotRows.classList.remove('dimmed');
             tagChipErrNet.classList.remove('selected');
             tagChipErrLong.classList.remove('selected');
             tagChipServe.classList.remove('selected');
