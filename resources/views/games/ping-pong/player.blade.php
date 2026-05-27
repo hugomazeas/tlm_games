@@ -851,6 +851,41 @@
         <div class="loading" x-show="loadingHighlights">Loading...</div>
     </div>
 
+    <!-- What to practice -->
+    <template x-if="insights">
+    <div class="section">
+        <h2>What to practice</h2>
+
+        <div class="practice-grid" style="display:grid; gap:1rem; grid-template-columns:repeat(auto-fit,minmax(200px,1fr));">
+            <div class="practice-card" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px 20px;">
+                <h3 style="font-size:0.85rem; opacity:0.7; margin-bottom:0.4rem;">Serve vs. Return</h3>
+                <div>Won on serve: <strong x-text="insights.serve.serve_won"></strong> / <span x-text="insights.serve.serve_won + insights.serve.serve_lost"></span></div>
+                <div>Won on return: <strong x-text="insights.serve.return_won"></strong> / <span x-text="insights.serve.return_won + insights.serve.return_lost"></span></div>
+            </div>
+
+            <div class="practice-card" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px 20px;">
+                <h3 style="font-size:0.85rem; opacity:0.7; margin-bottom:0.4rem;">Wing balance</h3>
+                <div>Forehand: <strong x-text="insights.wing.fh_win"></strong> winners / <strong x-text="insights.wing.fh_err"></strong> errors</div>
+                <div>Backhand: <strong x-text="insights.wing.bh_win"></strong> winners / <strong x-text="insights.wing.bh_err"></strong> errors</div>
+            </div>
+
+            <div class="practice-card" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px 20px;">
+                <h3 style="font-size:0.85rem; opacity:0.7; margin-bottom:0.4rem;">Error profile</h3>
+                <div>Into net: <strong x-text="insights.errors.net"></strong></div>
+                <div>Long/Wide: <strong x-text="insights.errors.long_wide"></strong></div>
+            </div>
+        </div>
+
+        <template x-if="insights.takeaways && insights.takeaways.length">
+            <ul style="margin-top:1rem; padding-left:1.2rem; list-style:disc;">
+                <template x-for="t in insights.takeaways" :key="t">
+                    <li x-text="t" style="margin:0.2rem 0;"></li>
+                </template>
+            </ul>
+        </template>
+    </div>
+    </template>
+
     <!-- Match History -->
     <div class="section">
         <h2>Match History</h2>
@@ -891,6 +926,7 @@ function playerStats() {
         loadingEloHistory: true,
         highlights: [],
         loadingHighlights: true,
+        insights: null,
         weekly: [],            // cells
         weeklyWeeks: [],
         weeklyOpponents: [],
@@ -932,6 +968,7 @@ function playerStats() {
                 this.loadEloHistory(),
                 this.loadHighlights(),
                 this.loadWeekly(),
+                this.loadInsights(),
             ]);
             window.addEventListener('resize', () => {
                 if (this.eloHistory.length > 0) this.renderEloChart();
@@ -1842,6 +1879,16 @@ function playerStats() {
                 this.highlights = [];
             }
             this.loadingHighlights = false;
+        },
+
+        async loadInsights() {
+            try {
+                const res = await fetch(`${this.API}/players/${this.playerId}/practice-insights`);
+                this.insights = await res.json();
+            } catch (err) {
+                console.error('Error loading insights:', err);
+                this.insights = null;
+            }
         },
 
         highlightDate(clip) {
