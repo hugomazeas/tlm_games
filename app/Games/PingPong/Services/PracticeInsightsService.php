@@ -22,7 +22,7 @@ class PracticeInsightsService
             ->get();
 
         foreach ($matches as $match) {
-            $playerSide = $match->player_left_id === $playerId ? 'left' : 'right';
+            $playerSide = (int) $match->player_left_id === $playerId ? 'left' : 'right';
 
             foreach ($match->points as $point) {
                 $point->setRelation('match', $match);
