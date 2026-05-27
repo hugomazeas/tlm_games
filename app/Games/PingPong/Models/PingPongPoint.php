@@ -21,6 +21,9 @@ class PingPongPoint extends Model
         'net_edge',
         'clip_requested',
         'point_cause',
+        'error_type',
+        'serve_point',
+        'body_hit',
     ];
 
     protected function casts(): array
@@ -31,6 +34,8 @@ class PingPongPoint extends Model
             'right_score_after' => 'integer',
             'net_edge' => 'boolean',
             'clip_requested' => 'boolean',
+            'serve_point' => 'boolean',
+            'body_hit' => 'boolean',
             'created_at' => 'datetime',
         ];
     }
@@ -38,5 +43,30 @@ class PingPongPoint extends Model
     public function match(): BelongsTo
     {
         return $this->belongsTo(PingPongMatch::class, 'match_id');
+    }
+
+    /** Side that hit the point-ending shot. */
+    public function decisiveSide(): string
+    {
+        $opposite = $this->scoring_side === 'left' ? 'right' : 'left';
+        return $this->point_cause === 'opponent_error' ? $opposite : $this->scoring_side;
+    }
+
+    /** Side that served this point (singles), derived from the match's first server. */
+    public function serverSide(): string
+    {
+        $match = $this->match;
+        $beforeLeft = $this->left_score_after - ($this->scoring_side === 'left' ? 1 : 0);
+        $beforeRight = $this->right_score_after - ($this->scoring_side === 'right' ? 1 : 0);
+
+        $firstServerIsLeft = ($match->first_server_id ?? $match->player_left_id) === $match->player_left_id;
+        $inDeuce = $beforeLeft >= 10 && $beforeRight >= 10;
+        $interval = $inDeuce ? 1 : 2;
+        $serverIndex = intdiv($beforeLeft + $beforeRight, $interval) % 2;
+
+        if ($serverIndex === 0) {
+            return $firstServerIsLeft ? 'left' : 'right';
+        }
+        return $firstServerIsLeft ? 'right' : 'left';
     }
 }
