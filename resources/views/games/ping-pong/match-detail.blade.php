@@ -219,6 +219,7 @@
     .md .shot-row-fill.fhWin          { background: linear-gradient(90deg, #38bdf8, #22d3ee); }
     .md .shot-row-fill.bhWin          { background: linear-gradient(90deg, #a78bfa, #c084fc); }
     .md .shot-row-fill.net            { background: linear-gradient(90deg, #facc15, #fbbf24); }
+    .md .shot-row-fill.edge           { background: linear-gradient(90deg, #fb923c, #f97316); }
     .md .shot-row-fill.opponent_error { background: linear-gradient(90deg, #64748b, #94a3b8); }
     .md .shot-row-fill.errNet         { background: linear-gradient(90deg, #475569, #64748b); }
     .md .shot-row-fill.errLong        { background: linear-gradient(90deg, #334155, #475569); }
@@ -1051,7 +1052,7 @@ function matchDetail() {
 
         hasShotTags() {
             const points = this.match?.points || [];
-            return points.some(p => p.shot_type || p.net_edge || p.point_cause || p.error_type || p.serve_point || p.body_hit);
+            return points.some(p => p.shot_type || p.net_edge || p.table_edge || p.point_cause || p.error_type || p.serve_point || p.body_hit);
         },
 
         shotBreakdown(side) {
@@ -1063,8 +1064,9 @@ function matchDetail() {
             const errLong = points.filter(p => p.point_cause === 'opponent_error' && p.error_type === 'long_wide').length;
             const serve = points.filter(p => p.serve_point).length;
             const net = points.filter(p => p.net_edge).length;
-            const untagged = points.filter(p => !p.shot_type && !p.net_edge && !p.point_cause && !p.serve_point && !p.body_hit).length;
-            return { total: points.length, fhWin, bhWin, opponent_error, errNet, errLong, serve, net, untagged };
+            const edge = points.filter(p => p.table_edge).length;
+            const untagged = points.filter(p => !p.shot_type && !p.net_edge && !p.table_edge && !p.point_cause && !p.serve_point && !p.body_hit).length;
+            return { total: points.length, fhWin, bhWin, opponent_error, errNet, errLong, serve, net, edge, untagged };
         },
 
         shotBreakdownRows(side) {
@@ -1078,6 +1080,7 @@ function matchDetail() {
                 { key: 'errLong',        label: '— long/wide',     count: b.errLong,        pct: (b.errLong        / denom) * 100 },
                 { key: 'serve',          label: 'On serve/return', count: b.serve,          pct: (b.serve          / denom) * 100 },
                 { key: 'net',            label: 'Net edge',        count: b.net,             pct: (b.net            / denom) * 100 },
+                { key: 'edge',           label: 'Table edge',      count: b.edge,           pct: (b.edge           / denom) * 100 },
                 { key: 'untagged',       label: 'Untagged',        count: b.untagged,       pct: (b.untagged       / denom) * 100 },
             ];
         },

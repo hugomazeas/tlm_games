@@ -77,4 +77,15 @@ class TagPointTest extends TestCase
 
         $res->assertOk()->assertJson(['point_cause' => 'winner', 'error_type' => null]);
     }
+
+    public function test_tags_table_edge_independently_of_net_edge(): void
+    {
+        $point = $this->makePoint();
+
+        $res = $this->patchJson("/games/ping-pong/api/points/{$point->id}", [
+            'table_edge' => true,
+        ]);
+
+        $res->assertOk()->assertJson(['table_edge' => true, 'net_edge' => false]);
+    }
 }

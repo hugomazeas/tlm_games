@@ -1,0 +1,35 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]: Mathieu
+        - generic [ref=e7]: "2"
+      - generic [ref=e8]: "-"
+      - generic [ref=e9]:
+        - generic [ref=e10]: Thomas
+        - generic [ref=e11]: "0"
+    - generic [ref=e12]:
+      - generic [ref=e37]: Thomas
+      - generic [ref=e38]: serving
+  - button "+1" [active] [ref=e17] [cursor=pointer]
+  - button "Undo (-1)" [ref=e19] [cursor=pointer]
+  - button "Abandon Match" [ref=e21] [cursor=pointer]
+  - generic [ref=e22]:
+    - generic [ref=e23]:
+      - generic [ref=e24]: Tag point
+      - button "Close" [ref=e25] [cursor=pointer]: ×
+    - generic [ref=e26]:
+      - button "↗ Forehand" [ref=e27] [cursor=pointer]:
+        - generic [ref=e28]: ↗
+        - text: Forehand
+      - button "↖ Backhand" [ref=e29] [cursor=pointer]:
+        - generic [ref=e30]: ↖
+        - text: Backhand
+    - generic [ref=e31]:
+      - button "🍀 Net edge" [ref=e32] [cursor=pointer]:
+        - generic [ref=e33]: 🍀
+        - text: Net edge
+      - button "🎬 Clip this" [ref=e34] [cursor=pointer]:
+        - generic [ref=e35]: 🎬
+        - text: Clip this
+  - generic: Tagged
