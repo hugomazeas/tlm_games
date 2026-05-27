@@ -1,0 +1,101 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e3]:
+      - link "🎮 Games Hub" [ref=e4] [cursor=pointer]:
+        - /url: http://localhost:8081
+      - generic [ref=e5]:
+        - link "Home" [ref=e6] [cursor=pointer]:
+          - /url: http://localhost:8081
+        - link "Offices" [ref=e7] [cursor=pointer]:
+          - /url: http://localhost:8081/offices
+        - link "Players" [ref=e8] [cursor=pointer]:
+          - /url: http://localhost:8081/players
+        - link "Leaderboards" [ref=e9] [cursor=pointer]:
+          - /url: http://localhost:8081/leaderboards
+  - main [ref=e10]:
+    - generic [ref=e11]:
+      - generic [ref=e12]:
+        - heading "LA QUEEN - Ping Pong" [level=1] [ref=e13]
+        - link "← Back to Game" [ref=e14] [cursor=pointer]:
+          - /url: http://localhost:8081/games/ping-pong
+      - generic [ref=e15]:
+        - generic [ref=e16]:
+          - generic [ref=e17]: "1254"
+          - generic [ref=e18]: ELO Rating
+          - generic [ref=e19]: "Peak: 1254"
+          - generic [ref=e21]: "Streak: 3"
+        - generic [ref=e22]:
+          - generic [ref=e23]:
+            - generic [ref=e24]: "3"
+            - generic [ref=e25]: Games Played
+          - generic [ref=e26]:
+            - generic [ref=e27]: 2:08
+            - generic [ref=e28]: Avg Duration
+          - generic [ref=e29]:
+            - generic [ref=e30]: 3 / 0
+            - generic [ref=e31]: W / L
+            - generic [ref=e32]: 100% win rate
+          - generic [ref=e33]:
+            - generic [ref=e34]: 2:08 / -
+            - generic [ref=e35]: Avg Time W / L
+          - generic [ref=e36]:
+            - generic [ref=e37]: 3 / 0
+            - generic [ref=e38]: Best Winstreak / Worst Losestreak
+          - generic [ref=e39]:
+            - generic [ref=e40]: 11 / -
+            - generic [ref=e41]: Avg Points W / L
+          - generic [ref=e42]:
+            - generic [ref=e43]: 11 / -
+            - generic [ref=e44]: Biggest Diff W / L
+          - generic [ref=e45]:
+            - generic [ref=e46]: Right
+            - generic [ref=e47]: "Best Side (Left: 0 · Right: 3)"
+      - generic [ref=e48]:
+        - heading "ELO History" [level=2] [ref=e49]
+        - generic [ref=e50]:
+          - button "1v1" [ref=e51] [cursor=pointer]
+          - button "2v2" [ref=e52] [cursor=pointer]
+        - generic [ref=e53]:
+          - button "Line" [ref=e54] [cursor=pointer]
+          - button "Candles" [ref=e55] [cursor=pointer]
+      - generic [ref=e58]:
+        - heading "Weekly Win Rate" [level=2] [ref=e59]
+        - generic [ref=e60]:
+          - button "3D" [ref=e61] [cursor=pointer]
+          - button "Front (week × %)" [ref=e62] [cursor=pointer]
+          - button "Side (opponent × %)" [ref=e63] [cursor=pointer]
+          - button "Top-down" [ref=e64] [cursor=pointer]
+        - generic [ref=e67]: Drag to rotate · scroll to zoom
+      - generic [ref=e68]:
+        - heading "Head-to-Head" [level=2] [ref=e69]
+        - generic [ref=e70]: Loading...
+      - generic [ref=e71]:
+        - heading "Highlights" [level=2] [ref=e72]
+        - generic [ref=e73]: Loading...
+      - generic [ref=e74]:
+        - heading "Match History" [level=2] [ref=e75]
+        - generic [ref=e76]:
+          - link "W vs Mathieu 11 - 5 01:53 1 hour ago ›" [ref=e77] [cursor=pointer]:
+            - /url: /games/ping-pong/matches/305
+            - generic [ref=e78]: W
+            - generic [ref=e79]: vs Mathieu
+            - generic [ref=e80]: 11 - 5
+            - generic [ref=e81]: 01:53
+            - generic [ref=e82]: 1 hour ago
+            - generic [ref=e83]: ›
+          - link "W vs Mathieu 11 - 0 00:05 1 month ago ›" [ref=e84] [cursor=pointer]:
+            - /url: /games/ping-pong/matches/285
+            - generic [ref=e85]: W
+            - generic [ref=e86]: vs Mathieu
+            - generic [ref=e87]: 11 - 0
+            - generic [ref=e88]: 00:05
+            - generic [ref=e89]: 1 month ago
+            - generic [ref=e90]: ›
+          - link "W vs Mathieu 11 - 0 04:29 1 month ago ›" [ref=e91] [cursor=pointer]:
+            - /url: /games/ping-pong/matches/277
+            - generic [ref=e92]: W
+            - generic [ref=e93]: vs Mathieu
+            - generic [ref=e94]: 11 - 0
+            - generic [ref=e95]: 04:29
+            - generic [ref=e96]: 1 month ago
+            - generic [ref=e97]: ›

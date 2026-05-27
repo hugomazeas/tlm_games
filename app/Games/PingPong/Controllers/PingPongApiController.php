@@ -657,6 +657,7 @@ class PingPongApiController extends Controller
         $validated = $request->validate([
             'shot_type' => 'nullable|in:forehand,backhand',
             'net_edge' => 'sometimes|boolean',
+            'table_edge' => 'sometimes|boolean',
             'clip_requested' => 'sometimes|boolean',
             'point_cause' => 'nullable|in:winner,opponent_error',
             'error_type' => 'nullable|in:net,long_wide',
@@ -669,6 +670,9 @@ class PingPongApiController extends Controller
         }
         if (array_key_exists('net_edge', $validated)) {
             $point->net_edge = (bool) $validated['net_edge'];
+        }
+        if (array_key_exists('table_edge', $validated)) {
+            $point->table_edge = (bool) $validated['table_edge'];
         }
         if (array_key_exists('clip_requested', $validated)) {
             $point->clip_requested = (bool) $validated['clip_requested'];
@@ -696,6 +700,7 @@ class PingPongApiController extends Controller
             'id' => $point->id,
             'shot_type' => $point->shot_type,
             'net_edge' => $point->net_edge,
+            'table_edge' => $point->table_edge,
             'clip_requested' => $point->clip_requested,
             'point_cause' => $point->point_cause,
             'error_type' => $point->error_type,

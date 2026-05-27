@@ -1,0 +1,54 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e3]:
+      - link "🎮 Games Hub" [ref=e4] [cursor=pointer]:
+        - /url: http://localhost:8081
+      - generic [ref=e5]:
+        - link "Home" [ref=e6] [cursor=pointer]:
+          - /url: http://localhost:8081
+        - link "Offices" [ref=e7] [cursor=pointer]:
+          - /url: http://localhost:8081/offices
+        - link "Players" [ref=e8] [cursor=pointer]:
+          - /url: http://localhost:8081/players
+        - link "Leaderboards" [ref=e9] [cursor=pointer]:
+          - /url: http://localhost:8081/leaderboards
+  - main [ref=e10]:
+    - generic [ref=e12]:
+      - generic [ref=e13]:
+        - generic [ref=e14]: First to 11
+        - generic [ref=e15]: 16:16:01
+        - generic [ref=e16]: 00:00
+      - generic [ref=e17]:
+        - generic [ref=e18]:
+          - generic [ref=e19]: Mathieu
+          - generic [ref=e20]: "0"
+          - generic [ref=e22]:
+            - generic [ref=e23]:
+              - generic [ref=e24]: If wins
+              - generic [ref=e25]:
+                - text: "+25"
+                - generic [ref=e26]:
+                  - text: (+20
+                  - generic [ref=e27]: · +5 break
+                  - text: )
+            - generic [ref=e28]:
+              - generic [ref=e29]: If loses
+              - generic [ref=e30]: "-12"
+        - generic [ref=e31]:
+          - generic [ref=e32]: Pauline
+          - generic [ref=e33]: Serving
+          - generic [ref=e34]: "0"
+          - generic [ref=e36]:
+            - generic [ref=e37]:
+              - generic [ref=e38]: If wins
+              - generic [ref=e39]:
+                - text: "+16"
+                - generic [ref=e40]:
+                  - text: (+12
+                  - generic [ref=e41]: · +4 streak
+                  - text: )
+            - generic [ref=e42]:
+              - generic [ref=e43]: If loses
+              - generic [ref=e44]: "-20"
+      - link "← Watch live stream" [ref=e46] [cursor=pointer]:
+        - /url: /games/ping-pong/watch

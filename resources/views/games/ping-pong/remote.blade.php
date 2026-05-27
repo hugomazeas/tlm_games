@@ -620,6 +620,9 @@
                     <button class="tag-chip" data-tag="net" id="tagNet">
                         <span class="tag-chip-icon">🍀</span>Net edge
                     </button>
+                    <button class="tag-chip" data-tag="edge" id="tagEdge">
+                        <span class="tag-chip-icon">📐</span>Table edge
+                    </button>
                     <button class="tag-chip tag-clip" data-tag="clip" id="tagClip">
                         <span class="tag-chip-icon">🎬</span>Clip this
                     </button>
@@ -695,7 +698,7 @@
         let currentRightScore = 0;
         let matchData = null;
         let lastPointId = null;
-        let lastPointTags = { shot_type: null, net_edge: false, clip_requested: false, point_cause: null, error_type: null, serve_point: false, body_hit: false };
+        let lastPointTags = { shot_type: null, net_edge: false, table_edge: false, clip_requested: false, point_cause: null, error_type: null, serve_point: false, body_hit: false };
         let tagSheetTimer = null;
         let pendingEndgameData = null;
         let deferEndgameForTagging = false;
@@ -769,6 +772,7 @@
         const tagChipForehand = document.getElementById('tagForehand');
         const tagChipBackhand = document.getElementById('tagBackhand');
         const tagChipNet = document.getElementById('tagNet');
+        const tagChipEdge = document.getElementById('tagEdge');
         const tagChipClip = document.getElementById('tagClip');
         const tagChipCauseEarned = document.getElementById('tagCauseEarned');
         const tagChipCauseError = document.getElementById('tagCauseError');
@@ -782,6 +786,7 @@
             tagChipForehand.classList.remove('selected');
             tagChipBackhand.classList.remove('selected');
             tagChipNet.classList.remove('selected');
+            tagChipEdge.classList.remove('selected');
             tagChipClip.classList.remove('selected');
             tagChipCauseEarned.classList.remove('selected');
             tagChipCauseError.classList.remove('selected');
@@ -794,7 +799,7 @@
 
         function showTagSheet() {
             resetTagChipUI();
-            lastPointTags = { shot_type: null, net_edge: false, clip_requested: false, point_cause: null, error_type: null, serve_point: false, body_hit: false };
+            lastPointTags = { shot_type: null, net_edge: false, table_edge: false, clip_requested: false, point_cause: null, error_type: null, serve_point: false, body_hit: false };
             tagSheet.classList.add('visible');
             if (tagSheetTimer) clearTimeout(tagSheetTimer);
             tagSheetTimer = setTimeout(hideTagSheet, TAG_SHEET_AUTO_DISMISS_MS);
@@ -828,6 +833,7 @@
             const payload = {
                 shot_type: lastPointTags.shot_type,
                 net_edge: lastPointTags.net_edge,
+                table_edge: lastPointTags.table_edge,
                 clip_requested: lastPointTags.clip_requested,
                 point_cause: lastPointTags.point_cause,
                 error_type: lastPointTags.error_type,
@@ -903,6 +909,9 @@
             } else if (tag === 'net') {
                 lastPointTags.net_edge = !lastPointTags.net_edge;
                 tagChipNet.classList.toggle('selected', lastPointTags.net_edge);
+            } else if (tag === 'edge') {
+                lastPointTags.table_edge = !lastPointTags.table_edge;
+                tagChipEdge.classList.toggle('selected', lastPointTags.table_edge);
             } else if (tag === 'clip') {
                 lastPointTags.clip_requested = !lastPointTags.clip_requested;
                 tagChipClip.classList.toggle('selected', lastPointTags.clip_requested);
@@ -915,6 +924,7 @@
         addTouchHandler(tagChipForehand, () => handleTagChip('shot', 'forehand'));
         addTouchHandler(tagChipBackhand, () => handleTagChip('shot', 'backhand'));
         addTouchHandler(tagChipNet, () => handleTagChip('net'));
+        addTouchHandler(tagChipEdge, () => handleTagChip('edge'));
         addTouchHandler(tagChipClip, () => handleTagChip('clip'));
         addTouchHandler(tagChipErrNet, () => handleTagChip('error', 'net'));
         addTouchHandler(tagChipErrLong, () => handleTagChip('error', 'long_wide'));
