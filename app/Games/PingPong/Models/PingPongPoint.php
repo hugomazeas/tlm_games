@@ -52,10 +52,16 @@ class PingPongPoint extends Model
         return $this->point_cause === 'opponent_error' ? $opposite : $this->scoring_side;
     }
 
-    /** Side that served this point (singles), derived from the match's first server. */
+    /**
+     * Side that served this point. Singles (1v1) only — result is undefined for 2v2.
+     * Derived from the match's first server and the score before this point.
+     */
     public function serverSide(): string
     {
         $match = $this->match;
+        if (!$match) {
+            throw new \LogicException('serverSide() requires a loaded match relation.');
+        }
         $beforeLeft = $this->left_score_after - ($this->scoring_side === 'left' ? 1 : 0);
         $beforeRight = $this->right_score_after - ($this->scoring_side === 'right' ? 1 : 0);
 
