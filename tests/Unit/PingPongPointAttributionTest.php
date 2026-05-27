@@ -61,4 +61,11 @@ class PingPongPointAttributionTest extends TestCase
         $p = $this->point(['scoring_side' => 'left', 'point_number' => 21, 'left_score_after' => 11, 'right_score_after' => 10]);
         $this->assertSame('left', $p->serverSide());
     }
+
+    public function test_server_side_second_deuce_point(): void
+    {
+        // before this point left=11, right=11 -> deuce total 22, interval 1, index 0 -> first server (left)
+        $p = $this->point(['scoring_side' => 'left', 'point_number' => 23, 'left_score_after' => 12, 'right_score_after' => 11]);
+        $this->assertSame('left', $p->serverSide());
+    }
 }
