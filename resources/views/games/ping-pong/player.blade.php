@@ -852,7 +852,7 @@
     </div>
 
     <!-- What to practice -->
-    <template x-if="insights">
+    <template x-if="hasInsights()">
     <div class="section">
         <h2>What to practice</h2>
 
@@ -1889,6 +1889,13 @@ function playerStats() {
                 console.error('Error loading insights:', err);
                 this.insights = null;
             }
+        },
+
+        hasInsights() {
+            const i = this.insights;
+            if (!i) return false;
+            const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
+            return sum(i.serve) + sum(i.wing) + sum(i.errors) > 0;
         },
 
         highlightDate(clip) {
