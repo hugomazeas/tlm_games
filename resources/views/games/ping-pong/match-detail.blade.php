@@ -216,11 +216,15 @@
         border-radius: 999px;
         transition: width 0.4s ease;
     }
-    .md .shot-row-fill.forehand { background: linear-gradient(90deg, #38bdf8, #22d3ee); }
-    .md .shot-row-fill.backhand { background: linear-gradient(90deg, #a78bfa, #c084fc); }
-    .md .shot-row-fill.net      { background: linear-gradient(90deg, #facc15, #fbbf24); }
+    .md .shot-row-fill.fhWin          { background: linear-gradient(90deg, #38bdf8, #22d3ee); }
+    .md .shot-row-fill.bhWin          { background: linear-gradient(90deg, #a78bfa, #c084fc); }
+    .md .shot-row-fill.net            { background: linear-gradient(90deg, #facc15, #fbbf24); }
+    .md .shot-row-fill.edge           { background: linear-gradient(90deg, #fb923c, #f97316); }
     .md .shot-row-fill.opponent_error { background: linear-gradient(90deg, #64748b, #94a3b8); }
-    .md .shot-row-fill.untagged { background: rgba(255,255,255,0.15); }
+    .md .shot-row-fill.errNet         { background: linear-gradient(90deg, #475569, #64748b); }
+    .md .shot-row-fill.errLong        { background: linear-gradient(90deg, #334155, #475569); }
+    .md .shot-row-fill.serve          { background: linear-gradient(90deg, #34d399, #10b981); }
+    .md .shot-row-fill.untagged       { background: rgba(255,255,255,0.15); }
     .md .shot-row-count {
         font-weight: 700;
         font-size: 0.9rem;
@@ -1048,28 +1052,36 @@ function matchDetail() {
 
         hasShotTags() {
             const points = this.match?.points || [];
-            return points.some(p => p.shot_type || p.net_edge || p.point_cause);
+            return points.some(p => p.shot_type || p.net_edge || p.table_edge || p.point_cause || p.error_type || p.serve_point || p.body_hit);
         },
 
         shotBreakdown(side) {
             const points = (this.match?.points || []).filter(p => p.scoring_side === side);
-            const forehand = points.filter(p => p.shot_type === 'forehand').length;
-            const backhand = points.filter(p => p.shot_type === 'backhand').length;
-            const net = points.filter(p => p.net_edge).length;
+            const fhWin = points.filter(p => p.shot_type === 'forehand' && p.point_cause !== 'opponent_error').length;
+            const bhWin = points.filter(p => p.shot_type === 'backhand' && p.point_cause !== 'opponent_error').length;
             const opponent_error = points.filter(p => p.point_cause === 'opponent_error').length;
-            const untagged = points.filter(p => !p.shot_type && !p.net_edge && !p.point_cause).length;
-            return { total: points.length, forehand, backhand, net, opponent_error, untagged };
+            const errNet = points.filter(p => p.point_cause === 'opponent_error' && p.error_type === 'net').length;
+            const errLong = points.filter(p => p.point_cause === 'opponent_error' && p.error_type === 'long_wide').length;
+            const serve = points.filter(p => p.serve_point).length;
+            const net = points.filter(p => p.net_edge).length;
+            const edge = points.filter(p => p.table_edge).length;
+            const untagged = points.filter(p => !p.shot_type && !p.net_edge && !p.table_edge && !p.point_cause && !p.serve_point && !p.body_hit).length;
+            return { total: points.length, fhWin, bhWin, opponent_error, errNet, errLong, serve, net, edge, untagged };
         },
 
         shotBreakdownRows(side) {
             const b = this.shotBreakdown(side);
             const denom = Math.max(1, b.total);
             return [
-                { key: 'forehand',       label: 'Forehand',    count: b.forehand,       pct: (b.forehand       / denom) * 100 },
-                { key: 'backhand',       label: 'Backhand',    count: b.backhand,       pct: (b.backhand       / denom) * 100 },
-                { key: 'net',            label: 'Net edge',    count: b.net,            pct: (b.net            / denom) * 100 },
-                { key: 'opponent_error', label: 'Their error', count: b.opponent_error, pct: (b.opponent_error / denom) * 100 },
-                { key: 'untagged',       label: 'Untagged',    count: b.untagged,       pct: (b.untagged       / denom) * 100 },
+                { key: 'fhWin',          label: 'Forehand winner', count: b.fhWin,          pct: (b.fhWin          / denom) * 100 },
+                { key: 'bhWin',          label: 'Backhand winner', count: b.bhWin,          pct: (b.bhWin          / denom) * 100 },
+                { key: 'opponent_error', label: 'Their error',     count: b.opponent_error, pct: (b.opponent_error / denom) * 100 },
+                { key: 'errNet',         label: '— into net',      count: b.errNet,         pct: (b.errNet         / denom) * 100 },
+                { key: 'errLong',        label: '— long/wide',     count: b.errLong,        pct: (b.errLong        / denom) * 100 },
+                { key: 'serve',          label: 'On serve/return', count: b.serve,          pct: (b.serve          / denom) * 100 },
+                { key: 'net',            label: 'Net edge',        count: b.net,             pct: (b.net            / denom) * 100 },
+                { key: 'edge',           label: 'Table edge',      count: b.edge,           pct: (b.edge           / denom) * 100 },
+                { key: 'untagged',       label: 'Untagged',        count: b.untagged,       pct: (b.untagged       / denom) * 100 },
             ];
         },
 
