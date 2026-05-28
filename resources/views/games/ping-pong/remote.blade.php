@@ -416,6 +416,11 @@
             border-color: rgba(251, 191, 36, 0.5);
         }
 
+        .tag-chip.chip-disabled {
+            opacity: 0.35;
+            pointer-events: none;
+        }
+
         .tag-chip.tag-clip.selected {
             background: rgba(239, 68, 68, 0.2);
             color: #fca5a5;
@@ -780,6 +785,27 @@
         const tagChipBody = document.getElementById('tagBody');
         const errorTypeRow = document.getElementById('errorTypeRow');
 
+        // Chips that are disabled while "Their error" is active — only the
+        // Net / Long·Wide error-type chips remain interactive on errors.
+        const disableOnErrorChips = [
+            tagChipForehand, tagChipBackhand,
+            tagChipNet, tagChipEdge, tagChipBody,
+            tagChipServe, tagChipClip,
+        ];
+
+        function setErrorMode(on) {
+            disableOnErrorChips.forEach(c => c.classList.toggle('chip-disabled', on));
+            if (on) {
+                lastPointTags.shot_type = null;
+                lastPointTags.net_edge = false;
+                lastPointTags.table_edge = false;
+                lastPointTags.body_hit = false;
+                lastPointTags.serve_point = false;
+                lastPointTags.clip_requested = false;
+                disableOnErrorChips.forEach(c => c.classList.remove('selected'));
+            }
+        }
+
         function resetTagChipUI() {
             tagChipForehand.classList.remove('selected');
             tagChipBackhand.classList.remove('selected');
@@ -792,6 +818,7 @@
             tagChipErrLong.classList.remove('selected');
             tagChipServe.classList.remove('selected');
             tagChipBody.classList.remove('selected');
+            disableOnErrorChips.forEach(c => c.classList.remove('chip-disabled'));
             errorTypeRow.style.display = 'none';
         }
 
@@ -862,17 +889,20 @@
                     lastPointTags.error_type = null;
                     tagChipErrNet.classList.remove('selected');
                     tagChipErrLong.classList.remove('selected');
+                    setErrorMode(false);
                 } else {
                     lastPointTags.point_cause = value;
                     tagChipCauseEarned.classList.toggle('selected', value === 'winner');
                     tagChipCauseError.classList.toggle('selected', value === 'opponent_error');
                     if (value === 'opponent_error') {
                         errorTypeRow.style.display = '';
+                        setErrorMode(true);
                     } else {
                         errorTypeRow.style.display = 'none';
                         lastPointTags.error_type = null;
                         tagChipErrNet.classList.remove('selected');
                         tagChipErrLong.classList.remove('selected');
+                        setErrorMode(false);
                     }
                 }
             } else if (tag === 'shot') {
