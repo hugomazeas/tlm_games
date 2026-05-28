@@ -702,6 +702,7 @@ function playerStats() {
         loadingEloHistory: true,
         highlights: [],
         loadingHighlights: true,
+        insights: null,
         weekly: [],            // cells
         weeklyWeeks: [],
         weeklyOpponents: [],
@@ -720,6 +721,7 @@ function playerStats() {
                 this.loadEloHistory(),
                 this.loadHighlights(),
                 this.loadWeekly(),
+                this.loadInsights(),
             ]);
             window.addEventListener('resize', () => {
                 if (this.eloHistory.length > 0) this.renderEloChart();
@@ -1201,6 +1203,23 @@ function playerStats() {
                 this.highlights = [];
             }
             this.loadingHighlights = false;
+        },
+
+        async loadInsights() {
+            try {
+                const res = await fetch(`${this.API}/players/${this.playerId}/practice-insights`);
+                this.insights = await res.json();
+            } catch (err) {
+                console.error('Error loading insights:', err);
+                this.insights = null;
+            }
+        },
+
+        hasInsights() {
+            const i = this.insights;
+            if (!i) return false;
+            const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
+            return sum(i.serve) + sum(i.wing) + sum(i.errors) > 0;
         },
 
         highlightDate(clip) {

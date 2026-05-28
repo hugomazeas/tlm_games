@@ -342,8 +342,8 @@
             transform: translateY(110%);
             transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
             z-index: 80;
-            max-height: 65vh;
-            overflow-y: auto;
+            max-height: none;
+            overflow-y: visible;
         }
 
         .tag-sheet.visible {
@@ -416,6 +416,11 @@
             border-color: rgba(251, 191, 36, 0.5);
         }
 
+        .tag-chip.chip-disabled {
+            opacity: 0.35;
+            pointer-events: none;
+        }
+
         .tag-chip.tag-clip.selected {
             background: rgba(239, 68, 68, 0.2);
             color: #fca5a5;
@@ -432,11 +437,6 @@
             background: rgba(148, 163, 184, 0.18);
             color: #cbd5e1;
             border-color: rgba(148, 163, 184, 0.5);
-        }
-
-        .tag-shot-rows.dimmed {
-            opacity: 0.25;
-            pointer-events: none;
         }
 
         .tag-chip-icon {
@@ -604,6 +604,14 @@
                     <span class="tag-chip-icon">✕</span>Their error
                 </button>
             </div>
+            <div class="tag-row" id="errorTypeRow" style="display:none;">
+                <button class="tag-chip" data-tag="error" data-value="net" id="tagErrNet">
+                    <span class="tag-chip-icon">🥅</span>Net
+                </button>
+                <button class="tag-chip" data-tag="error" data-value="long_wide" id="tagErrLong">
+                    <span class="tag-chip-icon">➡</span>Long/Wide
+                </button>
+            </div>
             <div class="tag-shot-rows" id="tagShotRows">
                 <div class="tag-row">
                     <button class="tag-chip" data-tag="shot" data-value="forehand" id="tagForehand">
@@ -616,6 +624,17 @@
                 <div class="tag-row">
                     <button class="tag-chip" data-tag="net" id="tagNet">
                         <span class="tag-chip-icon">🍀</span>Net edge
+                    </button>
+                    <button class="tag-chip" data-tag="edge" id="tagEdge">
+                        <span class="tag-chip-icon">📐</span>Table edge
+                    </button>
+                    <button class="tag-chip" data-tag="body" id="tagBody">
+                        <span class="tag-chip-icon">🙆</span>Body hit
+                    </button>
+                </div>
+                <div class="tag-row">
+                    <button class="tag-chip" data-tag="serve" id="tagServe">
+                        <span class="tag-chip-icon">🏓</span>On serve
                     </button>
                     <button class="tag-chip tag-clip" data-tag="clip" id="tagClip">
                         <span class="tag-chip-icon">🎬</span>Clip this
@@ -684,7 +703,7 @@
         let currentRightScore = 0;
         let matchData = null;
         let lastPointId = null;
-        let lastPointTags = { shot_type: null, net_edge: false, clip_requested: false, point_cause: null };
+        let lastPointTags = { shot_type: null, net_edge: false, table_edge: false, clip_requested: false, point_cause: null, error_type: null, serve_point: false, body_hit: false };
         let tagSheetTimer = null;
         const TAG_SHEET_AUTO_DISMISS_MS = 6000;
 
@@ -756,24 +775,56 @@
         const tagChipForehand = document.getElementById('tagForehand');
         const tagChipBackhand = document.getElementById('tagBackhand');
         const tagChipNet = document.getElementById('tagNet');
+        const tagChipEdge = document.getElementById('tagEdge');
         const tagChipClip = document.getElementById('tagClip');
         const tagChipCauseEarned = document.getElementById('tagCauseEarned');
         const tagChipCauseError = document.getElementById('tagCauseError');
-        const tagShotRows = document.getElementById('tagShotRows');
+        const tagChipErrNet = document.getElementById('tagErrNet');
+        const tagChipErrLong = document.getElementById('tagErrLong');
+        const tagChipServe = document.getElementById('tagServe');
+        const tagChipBody = document.getElementById('tagBody');
+        const errorTypeRow = document.getElementById('errorTypeRow');
+
+        // Chips that are disabled while "Their error" is active — only the
+        // Net / Long·Wide error-type chips remain interactive on errors.
+        const disableOnErrorChips = [
+            tagChipForehand, tagChipBackhand,
+            tagChipNet, tagChipEdge, tagChipBody,
+            tagChipServe, tagChipClip,
+        ];
+
+        function setErrorMode(on) {
+            disableOnErrorChips.forEach(c => c.classList.toggle('chip-disabled', on));
+            if (on) {
+                lastPointTags.shot_type = null;
+                lastPointTags.net_edge = false;
+                lastPointTags.table_edge = false;
+                lastPointTags.body_hit = false;
+                lastPointTags.serve_point = false;
+                lastPointTags.clip_requested = false;
+                disableOnErrorChips.forEach(c => c.classList.remove('selected'));
+            }
+        }
 
         function resetTagChipUI() {
             tagChipForehand.classList.remove('selected');
             tagChipBackhand.classList.remove('selected');
             tagChipNet.classList.remove('selected');
+            tagChipEdge.classList.remove('selected');
             tagChipClip.classList.remove('selected');
             tagChipCauseEarned.classList.remove('selected');
             tagChipCauseError.classList.remove('selected');
-            tagShotRows.classList.remove('dimmed');
+            tagChipErrNet.classList.remove('selected');
+            tagChipErrLong.classList.remove('selected');
+            tagChipServe.classList.remove('selected');
+            tagChipBody.classList.remove('selected');
+            disableOnErrorChips.forEach(c => c.classList.remove('chip-disabled'));
+            errorTypeRow.style.display = 'none';
         }
 
         function showTagSheet() {
             resetTagChipUI();
-            lastPointTags = { shot_type: null, net_edge: false, clip_requested: false, point_cause: null };
+            lastPointTags = { shot_type: null, net_edge: false, table_edge: false, clip_requested: false, point_cause: null, error_type: null, serve_point: false, body_hit: false };
             tagSheet.classList.add('visible');
             if (tagSheetTimer) clearTimeout(tagSheetTimer);
             tagSheetTimer = setTimeout(hideTagSheet, TAG_SHEET_AUTO_DISMISS_MS);
@@ -802,8 +853,12 @@
             const payload = {
                 shot_type: lastPointTags.shot_type,
                 net_edge: lastPointTags.net_edge,
+                table_edge: lastPointTags.table_edge,
                 clip_requested: lastPointTags.clip_requested,
                 point_cause: lastPointTags.point_cause,
+                error_type: lastPointTags.error_type,
+                serve_point: lastPointTags.serve_point,
+                body_hit: lastPointTags.body_hit,
             };
             try {
                 const res = await fetch(`${API}/points/${lastPointId}`, {
@@ -830,24 +885,26 @@
                     lastPointTags.point_cause = null;
                     tagChipCauseEarned.classList.remove('selected');
                     tagChipCauseError.classList.remove('selected');
-                    tagShotRows.classList.remove('dimmed');
+                    errorTypeRow.style.display = 'none';
+                    lastPointTags.error_type = null;
+                    tagChipErrNet.classList.remove('selected');
+                    tagChipErrLong.classList.remove('selected');
+                    setErrorMode(false);
                 } else {
                     lastPointTags.point_cause = value;
                     tagChipCauseEarned.classList.toggle('selected', value === 'winner');
                     tagChipCauseError.classList.toggle('selected', value === 'opponent_error');
                     if (value === 'opponent_error') {
-                        lastPointTags.shot_type = null;
-                        lastPointTags.net_edge = false;
-                        tagChipForehand.classList.remove('selected');
-                        tagChipBackhand.classList.remove('selected');
-                        tagChipNet.classList.remove('selected');
-                        tagShotRows.classList.add('dimmed');
+                        errorTypeRow.style.display = '';
+                        setErrorMode(true);
                     } else {
-                        tagShotRows.classList.remove('dimmed');
+                        errorTypeRow.style.display = 'none';
+                        lastPointTags.error_type = null;
+                        tagChipErrNet.classList.remove('selected');
+                        tagChipErrLong.classList.remove('selected');
+                        setErrorMode(false);
                     }
                 }
-            } else if (lastPointTags.point_cause === 'opponent_error' && (tag === 'shot' || tag === 'net')) {
-                return;
             } else if (tag === 'shot') {
                 if (lastPointTags.shot_type === value) {
                     lastPointTags.shot_type = null;
@@ -857,9 +914,34 @@
                     tagChipForehand.classList.toggle('selected', value === 'forehand');
                     tagChipBackhand.classList.toggle('selected', value === 'backhand');
                 }
-            } else if (tag === 'net') {
-                lastPointTags.net_edge = !lastPointTags.net_edge;
-                tagChipNet.classList.toggle('selected', lastPointTags.net_edge);
+            } else if (tag === 'error') {
+                if (lastPointTags.error_type === value) {
+                    lastPointTags.error_type = null;
+                    (value === 'net' ? tagChipErrNet : tagChipErrLong).classList.remove('selected');
+                } else {
+                    lastPointTags.error_type = value;
+                    tagChipErrNet.classList.toggle('selected', value === 'net');
+                    tagChipErrLong.classList.toggle('selected', value === 'long_wide');
+                }
+            } else if (tag === 'serve') {
+                lastPointTags.serve_point = !lastPointTags.serve_point;
+                tagChipServe.classList.toggle('selected', lastPointTags.serve_point);
+            } else if (tag === 'net' || tag === 'edge' || tag === 'body') {
+                // Net edge / Table edge / Body hit are mutually exclusive — at most one can be on.
+                const map = {
+                    net:  { key: 'net_edge',   chip: tagChipNet  },
+                    edge: { key: 'table_edge', chip: tagChipEdge },
+                    body: { key: 'body_hit',   chip: tagChipBody },
+                };
+                const cur = map[tag];
+                const wasOn = lastPointTags[cur.key];
+                lastPointTags.net_edge = false;   tagChipNet.classList.remove('selected');
+                lastPointTags.table_edge = false; tagChipEdge.classList.remove('selected');
+                lastPointTags.body_hit = false;   tagChipBody.classList.remove('selected');
+                if (!wasOn) {
+                    lastPointTags[cur.key] = true;
+                    cur.chip.classList.add('selected');
+                }
             } else if (tag === 'clip') {
                 lastPointTags.clip_requested = !lastPointTags.clip_requested;
                 tagChipClip.classList.toggle('selected', lastPointTags.clip_requested);
@@ -872,7 +954,12 @@
         addTouchHandler(tagChipForehand, () => handleTagChip('shot', 'forehand'));
         addTouchHandler(tagChipBackhand, () => handleTagChip('shot', 'backhand'));
         addTouchHandler(tagChipNet, () => handleTagChip('net'));
+        addTouchHandler(tagChipEdge, () => handleTagChip('edge'));
         addTouchHandler(tagChipClip, () => handleTagChip('clip'));
+        addTouchHandler(tagChipErrNet, () => handleTagChip('error', 'net'));
+        addTouchHandler(tagChipErrLong, () => handleTagChip('error', 'long_wide'));
+        addTouchHandler(tagChipServe, () => handleTagChip('serve'));
+        addTouchHandler(tagChipBody, () => handleTagChip('body'));
         addTouchHandler(tagSheetClose, () => hideTagSheet());
 
         addTouchHandler(btnPlus, () => handlePlusTap());
