@@ -1340,7 +1340,6 @@ class PingPongApiController extends Controller
         ]);
     }
 
-<<<<<<< HEAD
     public function playerPointTags(int $id): JsonResponse
     {
         Player::findOrFail($id);
