@@ -342,8 +342,8 @@
             transform: translateY(110%);
             transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
             z-index: 80;
-            max-height: 65vh;
-            overflow-y: auto;
+            max-height: none;
+            overflow-y: visible;
         }
 
         .tag-sheet.visible {
