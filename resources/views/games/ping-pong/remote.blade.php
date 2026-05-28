@@ -623,16 +623,16 @@
                     <button class="tag-chip" data-tag="edge" id="tagEdge">
                         <span class="tag-chip-icon">📐</span>Table edge
                     </button>
-                    <button class="tag-chip tag-clip" data-tag="clip" id="tagClip">
-                        <span class="tag-chip-icon">🎬</span>Clip this
+                    <button class="tag-chip" data-tag="body" id="tagBody">
+                        <span class="tag-chip-icon">🙆</span>Body hit
                     </button>
                 </div>
                 <div class="tag-row">
                     <button class="tag-chip" data-tag="serve" id="tagServe">
                         <span class="tag-chip-icon">🏓</span>On serve
                     </button>
-                    <button class="tag-chip" data-tag="body" id="tagBody">
-                        <span class="tag-chip-icon">🙆</span>Body hit
+                    <button class="tag-chip tag-clip" data-tag="clip" id="tagClip">
+                        <span class="tag-chip-icon">🎬</span>Clip this
                     </button>
                 </div>
             </div>
@@ -896,15 +896,22 @@
             } else if (tag === 'serve') {
                 lastPointTags.serve_point = !lastPointTags.serve_point;
                 tagChipServe.classList.toggle('selected', lastPointTags.serve_point);
-            } else if (tag === 'body') {
-                lastPointTags.body_hit = !lastPointTags.body_hit;
-                tagChipBody.classList.toggle('selected', lastPointTags.body_hit);
-            } else if (tag === 'net') {
-                lastPointTags.net_edge = !lastPointTags.net_edge;
-                tagChipNet.classList.toggle('selected', lastPointTags.net_edge);
-            } else if (tag === 'edge') {
-                lastPointTags.table_edge = !lastPointTags.table_edge;
-                tagChipEdge.classList.toggle('selected', lastPointTags.table_edge);
+            } else if (tag === 'net' || tag === 'edge' || tag === 'body') {
+                // Net edge / Table edge / Body hit are mutually exclusive — at most one can be on.
+                const map = {
+                    net:  { key: 'net_edge',   chip: tagChipNet  },
+                    edge: { key: 'table_edge', chip: tagChipEdge },
+                    body: { key: 'body_hit',   chip: tagChipBody },
+                };
+                const cur = map[tag];
+                const wasOn = lastPointTags[cur.key];
+                lastPointTags.net_edge = false;   tagChipNet.classList.remove('selected');
+                lastPointTags.table_edge = false; tagChipEdge.classList.remove('selected');
+                lastPointTags.body_hit = false;   tagChipBody.classList.remove('selected');
+                if (!wasOn) {
+                    lastPointTags[cur.key] = true;
+                    cur.chip.classList.add('selected');
+                }
             } else if (tag === 'clip') {
                 lastPointTags.clip_requested = !lastPointTags.clip_requested;
                 tagChipClip.classList.toggle('selected', lastPointTags.clip_requested);
