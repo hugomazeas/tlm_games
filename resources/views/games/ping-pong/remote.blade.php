@@ -822,8 +822,11 @@
                 max-height: none;
                 border-top: 0;
                 border-left: 1px solid var(--paper-line);
-                padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
+                padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
                 transform: translateX(110%);
+                display: flex;
+                flex-direction: column;
+                overflow-y: auto;
             }
             .tag-sheet.visible { transform: translateX(0); }
 
@@ -836,28 +839,64 @@
             }
             body[data-orientation="landscape-right"] .tag-sheet.visible { transform: translateX(0); }
 
-            /* Tag sheet: cause row (2 chips) + shots row (4 chips) — all visible without scrolling */
-            .tag-sheet-header { margin-bottom: 10px; }
+            /* Tag sheet fills its height with flex so every row stays on-screen:
+               cause row (2) + optional error row (2) + shot grid (7 chips / 2 rows).
+               Rows flex to share vertical space — chips never clip off the bottom,
+               down to a 44px tap-target floor (then the sheet scrolls as a backstop). */
+            .tag-sheet-header { margin-bottom: 8px; flex: 0 0 auto; }
             .tag-row {
-                margin-bottom: 10px;
-                gap: 10px;
+                margin-bottom: 8px;
+                gap: 8px;
+                flex: 1 1 0;
+                min-height: 0;
             }
             .tag-shot-rows {
                 display: grid;
                 grid-template-columns: repeat(4, 1fr);
-                gap: 10px;
+                grid-auto-rows: 1fr;
+                gap: 8px;
+                flex: 2 1 0;
+                min-height: 0;
+                margin-bottom: 0;
             }
             .tag-shot-rows .tag-row {
                 display: contents;
             }
             .tag-chip {
-                min-height: 76px;
-                font-size: 0.85rem;
+                min-height: 44px;
+                height: 100%;
+                font-size: 0.8rem;
+                padding: 6px;
+                gap: 4px;
+                border-radius: 12px;
+            }
+            .tag-chip-icon { font-size: 1.3rem; }
+        }
+
+        /* =====================================================
+           Portrait orientation — phone held upright.
+           The shot grid has grown (Table edge, Body hit) and the
+           error-type row appears on "Their error", giving up to 5
+           rows. Compact the chips so the whole stack fits a phone's
+           height (~530px), with a scroll backstop on tiny screens.
+           (The sheet is anchored only at the bottom here, so it has
+           no definite height for flex distribution — hence fixed
+           chip sizing rather than the flex-fill used in landscape.)
+           ===================================================== */
+        @media (orientation: portrait) {
+            .tag-sheet {
+                max-height: 92dvh;
+                overflow-y: auto;
+            }
+            .tag-sheet-header { margin-bottom: 8px; }
+            .tag-row { margin-bottom: 8px; }
+            .tag-chip {
+                min-height: 80px;
+                font-size: 1.1rem;
                 padding: 10px;
                 gap: 6px;
-                border-radius: 14px;
             }
-            .tag-chip-icon { font-size: 1.4rem; }
+            .tag-chip-icon { font-size: 1.8rem; }
         }
     </style>
 </head>
