@@ -36,9 +36,59 @@
         .gradient-bg {
             background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
         }
+        /* Editorial palette on ping pong pages — full bleed */
+        body.pp-theme {
+            position: relative;
+            background:
+                radial-gradient(40% 50% at 6% 4%, rgba(255, 90, 74, 0.13), transparent 70%),
+                radial-gradient(55% 65% at 96% 96%, rgba(62, 200, 255, 0.13), transparent 72%),
+                linear-gradient(180deg, #0a0f24 0%, #06081b 100%);
+            background-attachment: fixed;
+        }
+        /* Grain texture full-bleed on body */
+        body.pp-theme::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 0.95 0 0 0 0 0.85 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+            opacity: 0.06;
+            mix-blend-mode: overlay;
+            pointer-events: none;
+            z-index: 0;
+        }
+        body.pp-theme > * { position: relative; z-index: 1; }
+        /* In pp-theme, the .pph-stage becomes a transparent passthrough — body already provides bg + grain */
+        body.pp-theme .pph-stage {
+            background: none !important;
+            border-radius: 0 !important;
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+        }
+        body.pp-theme .pph-stage::before { display: none !important; }
+        @media (min-width: 768px) {
+            body.pp-theme .pph-stage {
+                padding-left: 1.75rem !important;
+                padding-right: 1.75rem !important;
+            }
+        }
+        body.pp-theme main { padding-left: 0 !important; padding-right: 0 !important; }
+
+        /* Nav bleeds — keep the default homepage logo + nav links;
+           the editorial body bg shows through the translucent backdrop. */
+        body.pp-theme nav {
+            background: transparent;
+            border-color: rgba(245, 236, 214, 0.10);
+            backdrop-filter: none;
+        }
     </style>
 </head>
-<body class="gradient-bg text-white min-h-screen font-body">
+@php $isPingPong = request()->is('games/ping-pong*'); @endphp
+<body class="{{ $isPingPong ? 'pp-theme' : 'gradient-bg' }} text-white min-h-screen font-body">
+    @if ($isPingPong)
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    @endif
     <nav class="border-b border-white/10 bg-white/5 backdrop-blur" x-data="{ mobileOpen: false }">
         <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
             <a href="{{ url('/') }}" class="text-xl font-bold tracking-tight">

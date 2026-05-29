@@ -9,128 +9,181 @@
     <script src="https://cdn.jsdelivr.net/npm/pusher-js@8.4.0/dist/web/pusher.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
+        /* ============================================================
+           Remote — Editorial mobile controller
+           Cream + paddle-red + chalk-blue + amber on deep ink.
+           ============================================================ */
+        :root {
+            --ink:    #06081b;
+            --ink-2:  #0a0f24;
+            --paper:  #f5ecd6;
+            --paper-soft: rgba(245, 236, 214, 0.82);
+            --paper-faint: rgba(245, 236, 214, 0.45);
+            --paper-line: rgba(245, 236, 214, 0.14);
+            --red:    #ff5a4a;
+            --blue:   #3ec8ff;
+            --amber:  #ffd166;
+            --mint:   #9be7c4;
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body {
             height: 100%;
             overflow: hidden;
-            font-family: 'Inter', sans-serif;
-            background: #0f172a;
-            color: white;
+            font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+            color: var(--paper-soft);
             touch-action: manipulation;
             -webkit-user-select: none;
             user-select: none;
+            background:
+                radial-gradient(40% 50% at 6% 4%,   rgba(255, 90, 74, 0.13), transparent 70%),
+                radial-gradient(55% 65% at 96% 96%, rgba(62, 200, 255, 0.13), transparent 72%),
+                linear-gradient(180deg, var(--ink-2) 0%, var(--ink) 100%);
+        }
+
+        .pph-display { font-family: 'Anton', sans-serif; font-weight: 400; }
+        .pph-mono    { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+        @keyframes pph-flicker { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+        @keyframes pph-pulse-amber {
+            0%,100% { box-shadow: 0 0 0 0 rgba(255, 209, 102, 0.55); opacity: 1; }
+            50%     { box-shadow: 0 0 0 9px rgba(255, 209, 102, 0); opacity: 0.7; }
         }
 
         .remote-container {
+            position: relative;
             display: flex;
             flex-direction: column;
             height: 100%;
+            isolation: isolate;
         }
+        .remote-container::before {
+            content: '';
+            position: absolute; inset: 0;
+            background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 0.95 0 0 0 0 0.85 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+            opacity: 0.06;
+            mix-blend-mode: overlay;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .remote-container > * { position: relative; z-index: 1; }
 
-        /* ===== SCOREBOARD (top ~15%) ===== */
+        /* ===== SCOREBOARD ===== */
         .scoreboard {
             flex-shrink: 0;
-            padding: 12px 16px 8px;
+            padding: calc(18px + env(safe-area-inset-top)) 18px 16px;
             text-align: center;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            background: rgba(255,255,255,0.03);
+            border-bottom: 1px solid var(--paper-line);
+            background: rgba(245, 236, 214, 0.025);
+            position: relative;
+        }
+        /* Center-net dashed line */
+        .scoreboard::after {
+            content: '';
+            position: absolute;
+            left: 50%; transform: translateX(-50%);
+            bottom: 0;
+            width: 64%; height: 2px;
+            background-image: repeating-linear-gradient(90deg, var(--paper) 0 8px, transparent 8px 16px);
+            opacity: 0.2;
         }
 
         .scoreboard-scores {
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 12px;
+            gap: 18px;
         }
-
         .scoreboard-side {
             display: flex;
             flex-direction: column;
             align-items: center;
-            min-width: 80px;
+            min-width: 88px;
+            position: relative;
         }
-
-        .scoreboard-side .score-value {
-            font-size: 4rem;
-            font-weight: 900;
-            line-height: 1;
-        }
-
-        .scoreboard-side.left .score-value { color: #fb7185; }
-        .scoreboard-side.right .score-value { color: #22d3ee; }
-
         .scoreboard-side .player-names {
-            font-size: 0.8rem;
-            font-weight: 700;
-            color: rgba(255,255,255,0.6);
-            margin-top: 2px;
-            max-width: 120px;
+            font-family: 'Anton', sans-serif;
+            font-size: 1rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--paper-faint);
+            max-width: 130px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            margin-bottom: 4px;
+            padding-top: 14px;
         }
-
-        .scoreboard-side.my-side .player-names {
-            color: rgba(255,255,255,0.9);
+        .scoreboard-side .score-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 3.4rem;
+            font-weight: 700;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
         }
-
-        .scoreboard-side.my-side {
-            position: relative;
-        }
-
+        .scoreboard-side.left .score-value  { color: var(--red);  text-shadow: 0 0 22px rgba(255, 90, 74, 0.35); }
+        .scoreboard-side.right .score-value { color: var(--blue); text-shadow: 0 0 22px rgba(62, 200, 255, 0.35); }
+        .scoreboard-side.my-side .player-names { color: var(--paper); }
+        .scoreboard-side.my-side.left  .player-names { color: var(--red); }
+        .scoreboard-side.my-side.right .player-names { color: var(--blue); }
+        .scoreboard-side { margin-top: 14px; }
         .scoreboard-side.my-side::after {
-            content: '';
+            content: 'YOU';
             position: absolute;
-            bottom: -8px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 40px;
-            height: 3px;
-            border-radius: 2px;
+            top: -16px;
+            left: 50%; transform: translateX(-50%);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 8px;
+            font-weight: 700;
+            letter-spacing: 0.22em;
+            line-height: 1;
+            padding: 3px 7px;
+            border-radius: 999px;
+            border: 1px solid currentColor;
+            background: var(--ink);
+            white-space: nowrap;
         }
-
-        .scoreboard-side.my-side.left::after { background: #fb7185; }
-        .scoreboard-side.my-side.right::after { background: #22d3ee; }
+        .scoreboard-side.my-side.left::after  { color: var(--red); }
+        .scoreboard-side.my-side.right::after { color: var(--blue); }
 
         .scoreboard-divider {
+            font-family: 'JetBrains Mono', monospace;
             font-size: 2rem;
-            font-weight: 300;
-            color: rgba(255,255,255,0.2);
-            padding: 0 4px;
+            color: var(--paper-faint);
+            opacity: 0.3;
         }
 
         .serving-info {
-            margin-top: 8px;
-            font-size: 0.75rem;
-            color: rgba(255,255,255,0.4);
+            margin-top: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--paper-faint);
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 6px;
+            gap: 8px;
             min-height: 20px;
         }
-
         .serving-dot {
-            width: 8px;
-            height: 8px;
+            width: 7px;
+            height: 7px;
             border-radius: 50%;
-            background: #fbbf24;
-            animation: pulse-dot 1.5s ease-in-out infinite;
+            background: var(--amber);
+            animation: pph-pulse-amber 1.4s ease-in-out infinite;
         }
-
-        @keyframes pulse-dot {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(0.8); }
-        }
-
         .serving-name {
+            color: var(--amber);
             font-weight: 700;
-            color: #fbbf24;
+            letter-spacing: 0.12em;
         }
 
-        /* ===== PLUS BUTTON (main ~65%) ===== */
+        /* ===== PLUS BUTTON ===== */
         .plus-area {
             flex: 1;
             display: flex;
@@ -142,105 +195,85 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 6rem;
-            font-weight: 900;
+            font-family: 'Anton', sans-serif;
+            font-size: 7rem;
+            font-weight: 400;
+            letter-spacing: 0.04em;
             cursor: pointer;
             border: none;
             position: relative;
             overflow: hidden;
             transition: transform 0.1s ease, filter 0.1s ease;
         }
-
         .btn-plus.left-side {
-            background: rgba(244, 63, 94, 0.12);
-            color: #fb7185;
+            background:
+                radial-gradient(60% 70% at 50% 50%, rgba(255, 90, 74, 0.22), rgba(255, 90, 74, 0.08));
+            color: var(--red);
+            text-shadow: 0 0 40px rgba(255, 90, 74, 0.5);
         }
-
         .btn-plus.right-side {
-            background: rgba(6, 182, 212, 0.12);
-            color: #22d3ee;
+            background:
+                radial-gradient(60% 70% at 50% 50%, rgba(62, 200, 255, 0.22), rgba(62, 200, 255, 0.08));
+            color: var(--blue);
+            text-shadow: 0 0 40px rgba(62, 200, 255, 0.5);
         }
-
-        .btn-plus.left-side.my-serve {
-            animation: pulse-serve-left 1.8s ease-in-out infinite;
-        }
-
-        .btn-plus.right-side.my-serve {
-            animation: pulse-serve-right 1.8s ease-in-out infinite;
-        }
-
+        .btn-plus.left-side.my-serve  { animation: pulse-serve-left  1.8s ease-in-out infinite; }
+        .btn-plus.right-side.my-serve { animation: pulse-serve-right 1.8s ease-in-out infinite; }
         @keyframes pulse-serve-left {
-            0%, 100% { background: rgba(244, 63, 94, 0.12); box-shadow: none; }
-            50% { background: rgba(244, 63, 94, 0.28); box-shadow: inset 0 0 80px rgba(244, 63, 94, 0.15); }
+            0%,100% { box-shadow: inset 0 0 0 0 rgba(255, 209, 102, 0); }
+            50%     { box-shadow: inset 0 0 120px rgba(255, 209, 102, 0.22); }
         }
-
         @keyframes pulse-serve-right {
-            0%, 100% { background: rgba(6, 182, 212, 0.12); box-shadow: none; }
-            50% { background: rgba(6, 182, 212, 0.28); box-shadow: inset 0 0 80px rgba(6, 182, 212, 0.15); }
+            0%,100% { box-shadow: inset 0 0 0 0 rgba(255, 209, 102, 0); }
+            50%     { box-shadow: inset 0 0 120px rgba(255, 209, 102, 0.22); }
         }
-
-        .btn-plus:active {
+        .btn-plus:active, .btn-plus.tapped {
             transform: scale(0.97);
             filter: brightness(1.4);
         }
-
-        .btn-plus.tapped {
-            transform: scale(0.97);
-            filter: brightness(1.4);
-        }
-
         .btn-plus.tapped::after {
             content: '';
             position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 120%;
-            height: 120%;
-            background: radial-gradient(circle, rgba(255,255,255,0.2) 0%, transparent 70%);
+            top: 50%; left: 50%;
+            width: 120%; height: 120%;
+            background: radial-gradient(circle, rgba(245, 236, 214, 0.25) 0%, transparent 70%);
             transform: translate(-50%, -50%) scale(0);
             animation: ripple 0.4s ease-out forwards;
             pointer-events: none;
         }
-
         @keyframes ripple {
-            0% { transform: translate(-50%, -50%) scale(0); opacity: 1; }
-            100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+            0%   { transform: translate(-50%, -50%) scale(0);   opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1);   opacity: 0; }
         }
 
-        /* ===== UNDO BUTTON (bottom ~20%) ===== */
+        /* ===== UNDO BUTTON ===== */
         .undo-area {
             flex-shrink: 0;
-            height: 18vh;
-            min-height: 60px;
+            height: 16vh;
+            min-height: 64px;
             display: flex;
         }
-
         .btn-undo {
             flex: 1;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
-            font-size: 1.4rem;
-            font-weight: 700;
+            gap: 10px;
+            font-family: 'Anton', sans-serif;
+            font-size: 1.5rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
             cursor: pointer;
             border: none;
-            background: rgba(239, 68, 68, 0.08);
-            color: rgba(239, 68, 68, 0.7);
-            border-top: 1px solid rgba(239, 68, 68, 0.15);
+            background: rgba(255, 90, 74, 0.08);
+            color: rgba(255, 90, 74, 0.85);
+            border-top: 1px solid rgba(255, 90, 74, 0.2);
             transition: transform 0.1s ease, filter 0.1s ease;
         }
-
-        .btn-undo:active {
+        .btn-undo:active, .btn-undo.tapped {
             transform: scale(0.97);
-            filter: brightness(1.3);
-            background: rgba(239, 68, 68, 0.15);
-        }
-
-        .btn-undo.tapped {
-            transform: scale(0.97);
-            filter: brightness(1.3);
-            background: rgba(239, 68, 68, 0.15);
+            filter: brightness(1.25);
+            background: rgba(255, 90, 74, 0.16);
         }
 
         /* ===== ABANDON BUTTON ===== */
@@ -248,85 +281,227 @@
             flex-shrink: 0;
             display: flex;
         }
-
         .btn-abandon {
             flex: 1;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 6px;
-            padding: 10px;
-            font-size: 0.85rem;
-            font-weight: 600;
+            padding: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
             cursor: pointer;
             border: none;
-            background: rgba(255, 255, 255, 0.03);
-            color: rgba(255, 255, 255, 0.3);
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            background: rgba(245, 236, 214, 0.02);
+            color: var(--paper-faint);
+            border-top: 1px solid var(--paper-line);
             transition: all 0.15s ease;
         }
-
         .btn-abandon:active {
-            background: rgba(239, 68, 68, 0.15);
-            color: rgba(239, 68, 68, 0.9);
+            background: rgba(255, 90, 74, 0.15);
+            color: var(--red);
         }
 
         /* ===== CONFIRM OVERLAY ===== */
         .confirm-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(6, 8, 27, 0.92);
+            backdrop-filter: blur(8px);
             display: flex;
             align-items: center;
             justify-content: center;
             z-index: 100;
+            padding: 24px;
         }
 
         .confirm-box {
-            background: #1e293b;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 16px;
-            padding: 24px;
+            background: linear-gradient(180deg, rgba(245, 236, 214, 0.05), rgba(245, 236, 214, 0.015));
+            border: 1px solid var(--paper-line);
+            border-radius: 18px;
+            padding: 26px 24px;
             text-align: center;
-            max-width: 300px;
-            width: 90%;
+            max-width: 320px;
+            width: 100%;
+            position: relative;
         }
+        .confirm-box::before, .confirm-box::after {
+            content: '';
+            position: absolute;
+            width: 18px; height: 18px;
+            border-radius: 50%;
+            background: var(--ink);
+            border: 1px solid var(--paper-line);
+            left: 50%; transform: translateX(-50%);
+        }
+        .confirm-box::before { top: -9px; }
+        .confirm-box::after  { bottom: -9px; }
 
         .confirm-box h3 {
-            font-size: 1.2rem;
-            font-weight: 700;
-            margin-bottom: 8px;
+            font-family: 'Anton', sans-serif;
+            font-size: 1.5rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--paper);
+            margin-bottom: 6px;
         }
-
         .confirm-box p {
-            font-size: 0.85rem;
-            color: rgba(255, 255, 255, 0.5);
-            margin-bottom: 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            letter-spacing: 0.06em;
+            color: var(--paper-faint);
+            margin-bottom: 22px;
         }
 
         .confirm-buttons {
             display: flex;
             gap: 12px;
         }
-
         .confirm-buttons button {
             flex: 1;
-            padding: 12px;
+            padding: 14px;
             border: none;
-            border-radius: 10px;
-            font-size: 1rem;
-            font-weight: 700;
+            border-radius: 12px;
+            font-family: 'Anton', sans-serif;
+            font-size: 1.1rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
             cursor: pointer;
         }
-
         .btn-confirm-cancel {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
+            background: rgba(245, 236, 214, 0.08);
+            color: var(--paper);
+            border: 1px solid var(--paper-line) !important;
+        }
+        .btn-confirm-abandon {
+            background: var(--red);
+            color: var(--ink);
         }
 
-        .btn-confirm-abandon {
-            background: #ef4444;
-            color: white;
+        /* ===== TAG SHEET ===== */
+        .tag-sheet {
+            position: fixed;
+            left: 0; right: 0; bottom: 0;
+            background:
+                linear-gradient(180deg, rgba(10, 15, 36, 0.85), rgba(6, 8, 27, 0.97));
+            backdrop-filter: blur(14px);
+            border-top: 1px solid var(--paper-line);
+            padding: 18px 18px calc(20px + env(safe-area-inset-bottom));
+            transform: translateY(110%);
+            transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+            z-index: 80;
+            max-height: 65vh;
+            overflow-y: auto;
+        }
+        .tag-sheet.visible { transform: translateY(0); }
+
+        .tag-sheet-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+        }
+        .tag-sheet-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.24em;
+            color: var(--paper-faint);
+        }
+        .tag-sheet-close {
+            background: none;
+            border: 0;
+            color: var(--paper-faint);
+            font-size: 1.6rem;
+            line-height: 1;
+            cursor: pointer;
+            padding: 4px 12px;
+            min-width: 44px;
+            min-height: 44px;
+        }
+
+        .tag-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .tag-row:last-child { margin-bottom: 0; }
+
+        .tag-chip {
+            flex: 1;
+            min-height: 132px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: rgba(245, 236, 214, 0.04);
+            color: var(--paper-soft);
+            border: 1px solid var(--paper-line);
+            border-radius: 16px;
+            font-family: 'Anton', sans-serif;
+            font-size: 1.15rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.08s ease;
+            padding: 14px;
+        }
+        .tag-chip:active { transform: scale(0.97); }
+        .tag-chip.selected {
+            background: rgba(255, 209, 102, 0.16);
+            color: var(--amber);
+            border-color: rgba(255, 209, 102, 0.55);
+        }
+        .tag-chip.tag-clip.selected {
+            background: rgba(255, 90, 74, 0.18);
+            color: var(--red);
+            border-color: rgba(255, 90, 74, 0.6);
+        }
+        .tag-chip.tag-cause-earned.selected {
+            background: rgba(155, 231, 196, 0.18);
+            color: var(--mint);
+            border-color: rgba(155, 231, 196, 0.6);
+        }
+        .tag-chip.tag-cause-error.selected {
+            background: rgba(245, 236, 214, 0.12);
+            color: var(--paper);
+            border-color: rgba(245, 236, 214, 0.45);
+        }
+        .tag-shot-rows.dimmed {
+            opacity: 0.25;
+            pointer-events: none;
+        }
+        .tag-chip-icon {
+            font-size: 2.2rem;
+            line-height: 1;
+        }
+
+        .tag-confirm {
+            position: fixed;
+            top: 18vh;
+            left: 50%;
+            transform: translate(-50%, -20px);
+            opacity: 0;
+            pointer-events: none;
+            background: var(--mint);
+            color: var(--ink);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            padding: 8px 14px;
+            border-radius: 999px;
+            z-index: 70;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+        .tag-confirm.visible {
+            opacity: 1;
+            transform: translate(-50%, 0);
         }
 
         /* ===== TAG SHEET ===== */
@@ -470,7 +645,10 @@
         .endgame-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.92);
+            background:
+                radial-gradient(60% 50% at 50% 30%, rgba(255, 209, 102, 0.08), transparent 70%),
+                rgba(6, 8, 27, 0.96);
+            backdrop-filter: blur(8px);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -485,76 +663,241 @@
         }
 
         .endgame-result {
-            font-size: 1rem;
-            font-weight: 600;
-            color: rgba(255,255,255,0.5);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--paper-faint);
             text-transform: uppercase;
-            letter-spacing: 0.15em;
-            margin-bottom: 8px;
+            letter-spacing: 0.28em;
+            margin-bottom: 14px;
         }
-
         .endgame-winner {
-            font-size: 2rem;
-            font-weight: 900;
-            margin-bottom: 8px;
+            font-family: 'Anton', sans-serif;
+            font-size: 2.4rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            margin-bottom: 6px;
         }
-
-        .endgame-winner.left { color: #fb7185; }
-        .endgame-winner.right { color: #22d3ee; }
+        .endgame-winner.left  { color: var(--red);  text-shadow: 0 0 30px rgba(255, 90, 74, 0.45); }
+        .endgame-winner.right { color: var(--blue); text-shadow: 0 0 30px rgba(62, 200, 255, 0.45); }
 
         .endgame-score {
-            font-size: 3.5rem;
-            font-weight: 900;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 4rem;
+            font-weight: 700;
             margin-bottom: 32px;
-            color: white;
+            color: var(--paper);
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
         }
-
-        .endgame-score .sep {
-            color: rgba(255,255,255,0.2);
-            margin: 0 8px;
-        }
+        .endgame-score .sep { color: rgba(245, 236, 214, 0.2); margin: 0 10px; }
 
         .endgame-buttons {
             display: flex;
             flex-direction: column;
             gap: 12px;
         }
-
         .endgame-buttons button {
             padding: 16px;
-            border: none;
+            border: 0;
             border-radius: 12px;
-            font-size: 1.1rem;
-            font-weight: 700;
+            font-family: 'Anton', sans-serif;
+            font-size: 1.2rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
             cursor: pointer;
         }
 
         .btn-rematch {
-            background: linear-gradient(135deg, #3b82f6, #06b6d4);
-            color: white;
-            box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
+            background: var(--paper);
+            color: var(--ink);
+            box-shadow: 0 8px 22px rgba(245, 236, 214, 0.22);
         }
-
-        .btn-rematch:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-
-        .btn-rematch:active {
-            transform: scale(0.98);
-        }
-
+        .btn-rematch:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
+        .btn-rematch:active   { transform: scale(0.98); }
         .btn-done {
-            background: rgba(255, 255, 255, 0.08);
-            color: rgba(255, 255, 255, 0.7);
+            background: rgba(245, 236, 214, 0.08);
+            color: var(--paper-soft);
+            border: 1px solid var(--paper-line) !important;
         }
 
         .endgame-hint {
-            font-size: 0.85rem;
-            color: rgba(255,255,255,0.4);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--paper-faint);
             margin-top: 16px;
         }
 
+        /* Hide scrollbars everywhere */
+        *::-webkit-scrollbar { display: none; }
+        * { scrollbar-width: none; }
+
+        /* =====================================================
+           Landscape orientation — phone held sideways.
+           Layout: slim sidebar (scoreboard + undo + abandon) on one edge,
+           massive +1 button taking the rest. The sidebar flips edges based
+           on `data-orientation` set by JS so it sits on the user's dominant-
+           hand side (home indicator points away from thumb).
+           ===================================================== */
+        @media (orientation: landscape) and (max-height: 540px) {
+            .remote-container { flex-direction: row; }
+            body[data-orientation="landscape-right"] .remote-container { flex-direction: row-reverse; }
+
+            /* Scoreboard becomes vertical sidebar */
+            .scoreboard {
+                width: 36%;
+                max-width: 240px;
+                padding: 18px 14px calc(18px + env(safe-area-inset-bottom));
+                border-bottom: none;
+                border-right: 1px solid var(--paper-line);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+            }
+            body[data-orientation="landscape-right"] .scoreboard {
+                border-right: 0;
+                border-left: 1px solid var(--paper-line);
+            }
+            .scoreboard::after { display: none; }
+
+            .scoreboard-scores {
+                flex-direction: column;
+                gap: 14px;
+                width: 100%;
+            }
+            .scoreboard-divider { display: none; }
+            .scoreboard-side { margin-top: 0; }
+            .scoreboard-side .player-names { font-size: 0.85rem; max-width: 180px; }
+            .scoreboard-side .score-value { font-size: 2.6rem; }
+            .scoreboard-side.my-side::after { top: -12px; }
+
+            .serving-info {
+                margin-top: 6px;
+                font-size: 0.6rem;
+                letter-spacing: 0.18em;
+            }
+
+            /* +1 takes the rest */
+            .plus-area { flex: 1; min-width: 0; }
+            .btn-plus { font-size: 6rem; }
+
+            /* Undo + abandon move into the sidebar as slim bottom bars */
+            .undo-area,
+            .abandon-area {
+                position: absolute;
+                left: 0; right: auto;
+                width: 36%;
+                max-width: 240px;
+            }
+            body[data-orientation="landscape-right"] .undo-area,
+            body[data-orientation="landscape-right"] .abandon-area {
+                left: auto; right: 0;
+            }
+            .undo-area {
+                bottom: 36px;
+                height: auto;
+                min-height: 0;
+            }
+            .btn-undo {
+                padding: 12px;
+                font-size: 1.1rem;
+                border-top: 1px solid rgba(255, 90, 74, 0.2);
+            }
+            .abandon-area {
+                bottom: 0;
+            }
+            .btn-abandon { padding: 8px; }
+
+            /* Tag sheet slides from the +1 side (right in landscape-left, left in landscape-right) */
+            .tag-sheet {
+                left: auto;
+                right: 0;
+                top: 0; bottom: 0;
+                width: 64%;
+                max-width: 520px;
+                max-height: none;
+                border-top: 0;
+                border-left: 1px solid var(--paper-line);
+                padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+                transform: translateX(110%);
+                display: flex;
+                flex-direction: column;
+                overflow-y: auto;
+            }
+            .tag-sheet.visible { transform: translateX(0); }
+
+            body[data-orientation="landscape-right"] .tag-sheet {
+                right: auto;
+                left: 0;
+                border-left: 0;
+                border-right: 1px solid var(--paper-line);
+                transform: translateX(-110%);
+            }
+            body[data-orientation="landscape-right"] .tag-sheet.visible { transform: translateX(0); }
+
+            /* Tag sheet fills its height with flex so every row stays on-screen:
+               cause row (2) + optional error row (2) + shot grid (7 chips / 2 rows).
+               Rows flex to share vertical space — chips never clip off the bottom,
+               down to a 44px tap-target floor (then the sheet scrolls as a backstop). */
+            .tag-sheet-header { margin-bottom: 8px; flex: 0 0 auto; }
+            .tag-row {
+                margin-bottom: 8px;
+                gap: 8px;
+                flex: 1 1 0;
+                min-height: 0;
+            }
+            .tag-shot-rows {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                grid-auto-rows: 1fr;
+                gap: 8px;
+                flex: 2 1 0;
+                min-height: 0;
+                margin-bottom: 0;
+            }
+            .tag-shot-rows .tag-row {
+                display: contents;
+            }
+            .tag-chip {
+                min-height: 44px;
+                height: 100%;
+                font-size: 0.8rem;
+                padding: 6px;
+                gap: 4px;
+                border-radius: 12px;
+            }
+            .tag-chip-icon { font-size: 1.3rem; }
+        }
+
+        /* =====================================================
+           Portrait orientation — phone held upright.
+           The shot grid has grown (Table edge, Body hit) and the
+           error-type row appears on "Their error", giving up to 5
+           rows. Compact the chips so the whole stack fits a phone's
+           height (~530px), with a scroll backstop on tiny screens.
+           (The sheet is anchored only at the bottom here, so it has
+           no definite height for flex distribution — hence fixed
+           chip sizing rather than the flex-fill used in landscape.)
+           ===================================================== */
+        @media (orientation: portrait) {
+            .tag-sheet {
+                max-height: 92dvh;
+                overflow-y: auto;
+            }
+            .tag-sheet-header { margin-bottom: 8px; }
+            .tag-row { margin-bottom: 8px; }
+            .tag-chip {
+                min-height: 80px;
+                font-size: 1.1rem;
+                padding: 10px;
+                gap: 6px;
+            }
+            .tag-chip-icon { font-size: 1.8rem; }
+        }
     </style>
 </head>
 <body>
@@ -692,6 +1035,36 @@
     </div>
 
     <script>
+        // ----- Orientation detection -----
+        // Sets body[data-orientation] = portrait | landscape-left | landscape-right
+        // landscape-left  → home indicator on the right (counterclockwise rotation)
+        // landscape-right → home indicator on the left  (clockwise rotation)
+        (function() {
+            function updateOrientation() {
+                const so = window.screen && window.screen.orientation;
+                let value = 'portrait';
+                if (so && so.type) {
+                    if (so.type === 'landscape-primary')   value = 'landscape-left';
+                    else if (so.type === 'landscape-secondary') value = 'landscape-right';
+                    else value = 'portrait';
+                } else {
+                    // Fallback for older iOS Safari
+                    const angle = (typeof window.orientation === 'number') ? window.orientation : 0;
+                    if (angle === 90)  value = 'landscape-left';
+                    else if (angle === -90 || angle === 270) value = 'landscape-right';
+                    else value = 'portrait';
+                }
+                document.body.setAttribute('data-orientation', value);
+            }
+            updateOrientation();
+            window.addEventListener('orientationchange', updateOrientation);
+            if (window.screen && window.screen.orientation) {
+                window.screen.orientation.addEventListener('change', updateOrientation);
+            }
+            // Also listen to resize as a redundancy
+            window.addEventListener('resize', updateOrientation);
+        })();
+
         const MATCH_ID = {{ $matchId }};
         const SIDE = '{{ $side }}';
         const API = '/games/ping-pong/api';

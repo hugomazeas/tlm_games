@@ -1,9 +1,12 @@
 @extends('layouts.app')
 
 @section('title', $player->name . ' - Ping Pong Stats')
-@section('main-class', 'max-w-6xl mx-auto px-6 py-6')
+@section('main-class', 'px-4 py-4')
 
 @section('content')
+@include('games.ping-pong.partials.chrome', ['pageTitle' => $player->name])
+
+<div class="pph-stage relative rounded-3xl p-4 md:p-7 overflow-x-hidden">
 <style>
     .pps .header {
         display: flex;
@@ -589,13 +592,98 @@
     .pps .tag-history-tooltip .tt-count { font-weight: 800; font-size: 1.05rem; margin-top: 2px; }
     .pps .tag-history-tooltip .tt-pct { color: rgba(255,255,255,0.55); font-size: 0.78rem; margin-top: 2px; }
 
+    /* Match score never wraps */
+    .pps .match-score { white-space: nowrap; }
+
+    /* Head-to-head — desktop canvas vs mobile list visibility */
+    .pps .h2h-mobile-list { display: none; flex-direction: column; gap: 6px; }
+    .pps .h2h-mobile-row {
+        display: grid;
+        grid-template-columns: 30px 1fr 80px auto;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 10px;
+        text-decoration: none;
+        color: inherit;
+        transition: background 0.15s, border-color 0.15s;
+    }
+    .pps .h2h-mobile-row:hover {
+        background: rgba(59,130,246,0.08);
+        border-color: rgba(59,130,246,0.25);
+    }
+    .pps .h2h-init {
+        width: 28px; height: 28px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-family: 'Anton', sans-serif;
+        font-size: 14px;
+        background: rgba(15,23,42,0.95);
+        border: 1.5px solid rgba(255,255,255,0.12);
+    }
+    .pps .h2h-init.win { color: #9be7c4; border-color: rgba(155,231,196,0.35); }
+    .pps .h2h-init.loss { color: #ff5a4a; border-color: rgba(255,90,74,0.35); }
+    .pps .h2h-name {
+        font-weight: 600;
+        font-size: 0.92rem;
+        color: rgba(255,255,255,0.9);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .pps .h2h-bar {
+        position: relative;
+        height: 6px;
+        border-radius: 3px;
+        background: rgba(255,90,74,0.45);
+        overflow: hidden;
+    }
+    .pps .h2h-bar-win {
+        position: absolute;
+        left: 0; top: 0; bottom: 0;
+        background: #9be7c4;
+    }
+    .pps .h2h-rec {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.82rem;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+    .pps .h2h-rec .h2h-w { color: #9be7c4; }
+    .pps .h2h-rec .h2h-l { color: #ff5a4a; }
+    .pps .h2h-rec .h2h-dim { color: rgba(255,255,255,0.25); margin: 0 3px; }
+
+    /* Mobile collapse — prevent horizontal overflow */
+    @media (max-width: 768px) {
+        .pps .stats-hero { grid-template-columns: 1fr; }
+        .pps .stats-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+        .pps .stat-card { padding: 12px 10px; }
+        .pps .stat-value { font-size: 1.3rem; }
+        .pps .section { padding: 14px; }
+        .pps .elo-hero { padding: 22px 18px; }
+        .pps .elo-hero-value { font-size: 2.8rem; }
+
+        /* Match History — compact mobile rows */
+        .pps .match-row { gap: 10px; padding: 8px 12px; }
+        .pps .match-result { min-width: 28px; font-size: 0.78rem; padding: 2px 7px; }
+        .pps .match-opponent { min-width: 0; flex: 1; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pps .match-score { min-width: 0; font-size: 0.95rem; }
+        .pps .match-duration { display: none; }
+        .pps .match-time { font-size: 0.72rem; margin-left: 6px; }
+        .pps .match-arrow { display: none; }
+
+        /* Head-to-head — hide canvas, show list instead */
+        .pps .h2h-desktop-only { display: none !important; }
+        .pps .h2h-mobile-list { display: flex !important; }
+        .pps .h2h-grid { grid-template-columns: 1fr; }
+    }
 </style>
 
 <div class="pps" x-data="playerStats()" x-init="init()">
-    <div class="header">
-        <h1><span>{{ $player->name }}</span> - Ping Pong</h1>
-        <a href="{{ url('/games/ping-pong') }}" class="back-link">&larr; Back to Game</a>
-    </div>
 
     <!-- Stats -->
     <div class="stats-hero">
@@ -819,8 +907,26 @@
     <!-- Head to Head -->
     <div class="section">
         <h2>Head-to-Head</h2>
-        <div class="h2h-chart-wrap" x-ref="h2hContainer" x-show="h2h.length > 0">
+        {{-- Desktop: radial canvas chart --}}
+        <div class="h2h-chart-wrap h2h-desktop-only" x-ref="h2hContainer" x-show="h2h.length > 0">
             <canvas x-ref="h2hCanvas"></canvas>
+        </div>
+        {{-- Mobile: clean list of opponents --}}
+        <div class="h2h-mobile-list" x-show="h2h.length > 0">
+            <template x-for="r in h2h" :key="r.opponent.id || r.opponent">
+                <a class="h2h-mobile-row" :href="'/games/ping-pong/players/' + (r.opponent.id || r.opponent_id)">
+                    <span class="h2h-init" :class="((r.wins/(r.wins + r.losses || 1)) >= 0.5) ? 'win' : 'loss'"
+                          x-text="(r.opponent?.name || String(r.opponent)).charAt(0).toUpperCase()"></span>
+                    <span class="h2h-name" x-text="r.opponent?.name || String(r.opponent)"></span>
+                    <span class="h2h-bar">
+                        <span class="h2h-bar-win"
+                              :style="'width:' + Math.round((r.wins / ((r.wins + r.losses) || 1)) * 100) + '%'"></span>
+                    </span>
+                    <span class="h2h-rec">
+                        <span class="h2h-w" x-text="r.wins"></span><span class="h2h-dim">·</span><span class="h2h-l" x-text="r.losses"></span>
+                    </span>
+                </a>
+            </template>
         </div>
         <div class="empty" x-show="h2h.length === 0 && !loadingH2h">No matches yet</div>
         <div class="loading" x-show="loadingH2h">Loading...</div>
@@ -1904,9 +2010,10 @@ function playerStats() {
             const rect = container.getBoundingClientRect();
             if (rect.width <= 0) return;
 
+            const isNarrow = rect.width < 480;
             const dpr = window.devicePixelRatio || 1;
             const w = rect.width;
-            const h = 480;
+            const h = isNarrow ? 420 : 480;
             canvas.width = Math.floor(w * dpr);
             canvas.height = Math.floor(h * dpr);
             canvas.style.width = w + 'px';
@@ -1921,9 +2028,10 @@ function playerStats() {
             const records = this.h2h;
             const n = records.length;
             const maxGames = Math.max(...records.map(r => r.wins + r.losses));
-            const centerR = 38;
-            const outerR = Math.min(w / 2, h / 2) - 80;
-            const nodeR = 26;
+            const centerR = isNarrow ? 30 : 38;
+            const labelBudget = isNarrow ? 64 : 80;
+            const outerR = Math.min(w / 2, h / 2) - labelBudget;
+            const nodeR = isNarrow ? 20 : 26;
 
             // Background grid circles
             for (let r = 1; r <= 3; r++) {
@@ -2055,7 +2163,7 @@ function playerStats() {
                 // Labels — positioned on the outer side of the node
                 const cosA = Math.cos(angle);
                 const sinA = Math.sin(angle);
-                const labelOff = nodeR + 18;
+                const labelOff = nodeR + (isNarrow ? 12 : 18);
                 let lx, nameY, wlY, align;
 
                 if (Math.abs(sinA) > Math.abs(cosA)) {
@@ -2075,11 +2183,25 @@ function playerStats() {
                 ctx.textAlign = align;
                 ctx.textBaseline = 'middle';
                 ctx.fillStyle = 'rgba(255,255,255,0.85)';
-                ctx.font = '600 12px Outfit, sans-serif';
-                ctx.fillText(name, lx, nameY);
+                ctx.font = isNarrow ? '600 11px Outfit, sans-serif' : '600 12px Outfit, sans-serif';
+                // Fit name within available horizontal budget
+                const maxLabelW = align === 'center'
+                    ? Math.min(lx, w - lx) * 2 - 8
+                    : (align === 'left' ? w - lx - 4 : lx - 4);
+                let displayName = name;
+                if (ctx.measureText(name).width > maxLabelW) {
+                    const firstName = name.split(' ')[0];
+                    displayName = ctx.measureText(firstName).width <= maxLabelW
+                        ? firstName
+                        : (firstName.slice(0, 6) + '\u2026');
+                }
+                ctx.fillText(displayName, lx, nameY);
                 ctx.fillStyle = 'rgba(255,255,255,0.45)';
-                ctx.font = '11px Outfit, sans-serif';
-                ctx.fillText(record.wins + 'W \u2013 ' + record.losses + 'L', lx, wlY);
+                ctx.font = isNarrow ? '10px Outfit, sans-serif' : '11px Outfit, sans-serif';
+                const recordText = isNarrow
+                    ? (record.wins + 'W \u00b7 ' + record.losses + 'L')
+                    : (record.wins + 'W \u2013 ' + record.losses + 'L');
+                ctx.fillText(recordText, lx, wlY);
             });
 
             // Center glow
@@ -2294,4 +2416,5 @@ function playerStats() {
     };
 }
 </script>
+</div>{{-- /pph-stage --}}
 @endsection
