@@ -167,20 +167,26 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
+            flex-wrap: wrap;
+            gap: 6px 8px;
             min-height: 20px;
         }
         .serving-dot {
-            width: 7px;
-            height: 7px;
+            width: 10px;
+            height: 10px;
             border-radius: 50%;
             background: var(--amber);
             animation: pph-pulse-amber 1.4s ease-in-out infinite;
+            flex: 0 0 auto;
         }
         .serving-name {
+            font-family: 'Anton', sans-serif;
+            font-weight: 400;
+            font-size: 1.5rem;
+            line-height: 1;
+            letter-spacing: 0.04em;
             color: var(--amber);
-            font-weight: 700;
-            letter-spacing: 0.12em;
+            text-shadow: 0 0 18px rgba(255, 209, 102, 0.35);
         }
 
         /* ===== PLUS BUTTON ===== */
@@ -745,18 +751,21 @@
             .remote-container { flex-direction: row; }
             body[data-orientation="landscape-right"] .remote-container { flex-direction: row-reverse; }
 
-            /* Scoreboard becomes vertical sidebar */
+            /* Scoreboard becomes vertical sidebar. Reserve room at the
+               bottom for the absolutely-positioned undo + abandon bars
+               (~90px) so the serving + scores stay vertically centered
+               in the space above them instead of colliding with them. */
             .scoreboard {
                 width: 36%;
                 max-width: 240px;
-                padding: 18px 14px calc(18px + env(safe-area-inset-bottom));
+                padding: 18px 14px calc(96px + env(safe-area-inset-bottom));
                 border-bottom: none;
                 border-right: 1px solid var(--paper-line);
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                gap: 8px;
+                gap: 16px;
             }
             body[data-orientation="landscape-right"] .scoreboard {
                 border-right: 0;
@@ -776,10 +785,13 @@
             .scoreboard-side.my-side::after { top: -12px; }
 
             .serving-info {
-                margin-top: 6px;
+                order: -1;
+                margin-top: 0;
+                margin-bottom: 28px;
                 font-size: 0.6rem;
                 letter-spacing: 0.18em;
             }
+            .serving-name { font-size: 1.25rem; }
 
             /* +1 takes the rest */
             .plus-area { flex: 1; min-width: 0; }
@@ -812,13 +824,13 @@
             }
             .btn-abandon { padding: 8px; }
 
-            /* Tag sheet slides from the +1 side (right in landscape-left, left in landscape-right) */
+            /* Tag sheet fills the whole screen so chips are large tap targets */
             .tag-sheet {
-                left: auto;
+                left: 0;
                 right: 0;
                 top: 0; bottom: 0;
-                width: 64%;
-                max-width: 520px;
+                width: 100%;
+                max-width: none;
                 max-height: none;
                 border-top: 0;
                 border-left: 1px solid var(--paper-line);
@@ -865,38 +877,55 @@
             .tag-chip {
                 min-height: 44px;
                 height: 100%;
-                font-size: 0.8rem;
-                padding: 6px;
-                gap: 4px;
-                border-radius: 12px;
+                font-size: 1.05rem;
+                padding: 8px;
+                gap: 6px;
+                border-radius: 14px;
             }
-            .tag-chip-icon { font-size: 1.3rem; }
+            .tag-chip-icon { font-size: 2rem; }
         }
 
         /* =====================================================
            Portrait orientation — phone held upright.
-           The shot grid has grown (Table edge, Body hit) and the
-           error-type row appears on "Their error", giving up to 5
-           rows. Compact the chips so the whole stack fits a phone's
-           height (~530px), with a scroll backstop on tiny screens.
-           (The sheet is anchored only at the bottom here, so it has
-           no definite height for flex distribution — hence fixed
-           chip sizing rather than the flex-fill used in landscape.)
+           The sheet fills the whole viewport so every tag chip is a
+           large, easy tap target. Rows flex to share the vertical
+           space: cause row (2) + optional error row (2) + shot grid
+           (7 chips / 3 rows). Chips never clip — they shrink to a 44px
+           tap-target floor, then the sheet scrolls as a backstop.
            ===================================================== */
         @media (orientation: portrait) {
             .tag-sheet {
-                max-height: 92dvh;
+                top: 0;
+                bottom: 0;
+                max-height: none;
+                display: flex;
+                flex-direction: column;
                 overflow-y: auto;
             }
-            .tag-sheet-header { margin-bottom: 8px; }
-            .tag-row { margin-bottom: 8px; }
-            .tag-chip {
-                min-height: 80px;
-                font-size: 1.1rem;
-                padding: 10px;
-                gap: 6px;
+            .tag-sheet-header { margin-bottom: 10px; flex: 0 0 auto; }
+            .tag-row {
+                margin-bottom: 10px;
+                gap: 10px;
+                flex: 1 1 0;
+                min-height: 0;
             }
-            .tag-chip-icon { font-size: 1.8rem; }
+            .tag-shot-rows {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                flex: 3 1 0;
+                min-height: 0;
+                margin-bottom: 0;
+            }
+            .tag-shot-rows .tag-row { margin-bottom: 0; }
+            .tag-chip {
+                min-height: 44px;
+                height: 100%;
+                font-size: 1.3rem;
+                padding: 12px;
+                gap: 8px;
+            }
+            .tag-chip-icon { font-size: 2.4rem; }
         }
     </style>
 </head>
