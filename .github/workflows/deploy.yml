@@ -18,11 +18,11 @@ jobs:
           port: 2222
           username: deploy
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          # Fail the job if any command exits non-zero (e.g. a failed git pull)
-          # instead of letting a later success mask it and report a false green.
+          # Fail the job if the command exits non-zero instead of letting a
+          # later success mask it and report a false green.
           script_stop: true
-          script: |
-            cd /home/tlm/tlm_games
-            git pull
-            make migrate
-            make cache
+          # Run a single script rather than a multi-line block: the action only
+          # executed the last line of a multi-line `script:`, so `git pull` and
+          # `make migrate` were silently skipped. deploy.sh runs `set -e` so any
+          # failed step surfaces. (deploy.sh: pull, migrate, cache, down, up.)
+          script: cd /home/tlm/tlm_games && sh deploy.sh
