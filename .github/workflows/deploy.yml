@@ -18,6 +18,9 @@ jobs:
           port: 2222
           username: deploy
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # Fail the job if any command exits non-zero (e.g. a failed git pull)
+          # instead of letting a later success mask it and report a false green.
+          script_stop: true
           script: |
             cd /home/tlm/tlm_games
             git pull
