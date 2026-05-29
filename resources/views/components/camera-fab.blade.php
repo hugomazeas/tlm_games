@@ -41,7 +41,7 @@
 
 <div x-data="cameraFab()" x-cloak>
     <button
-        x-show="isStandalone"
+        x-show="isMobile"
         @click="open()"
         type="button"
         aria-label="Scan QR code"
@@ -172,7 +172,7 @@
         };
 
         return {
-            isStandalone: false,
+            isMobile: false,
             isOpen: false,
             error: null,
             cameras: [],
@@ -196,9 +196,12 @@
             _elapsedTimer: null,
 
             init() {
-                this.isStandalone =
-                    window.matchMedia('(display-mode: standalone)').matches ||
-                    window.navigator.standalone === true;
+                // Show on any mobile device (not just installed PWAs). A coarse
+                // pointer is the most reliable "this is a phone/tablet" signal;
+                // fall back to a UA sniff for the rare browser that misreports it.
+                this.isMobile =
+                    window.matchMedia('(pointer: coarse)').matches ||
+                    /Android|iPhone|iPad|iPod|Mobile|IEMobile|Opera Mini/i.test(navigator.userAgent);
                 // Load persisted debug preference. Toggle by tapping the small
                 // instruction line under the viewfinder 5 times within 3s.
                 // (No URL-query toggle: installed PWAs launch from the manifest

@@ -148,9 +148,9 @@
         @yield('content')
     </main>
 
-    @unless(request()->is('games/*'))
+    @if(!request()->is('games/*') || request()->is('games/ping-pong*'))
         <x-camera-fab />
-    @endunless
+    @endif
 
     <script>
         if ('serviceWorker' in navigator) {
