@@ -13,7 +13,8 @@
     <link rel="icon" type="image/x-icon" href="{{ url('/favicon.ico') }}">
     <link rel="icon" type="image/svg+xml" href="{{ url('/favicon.svg') }}">
     <link rel="icon" type="image/png" sizes="96x96" href="{{ url('/favicon-96x96.png') }}">
-    <link rel="apple-touch-icon" href="{{ url('/apple-touch-icon.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url('/apple-touch-icon.png') }}">
+    <link rel="apple-touch-icon-precomposed" sizes="180x180" href="{{ url('/apple-touch-icon.png') }}">
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -32,6 +33,10 @@
     </script>
     <style>
         [x-cloak] { display: none !important; }
+        /* Dark root so iOS standalone overscroll / safe-area regions never
+           flash the default white document background behind the body. */
+        html { background-color: #070b27; }
+        html, body { min-height: 100%; }
         body { font-family: 'Outfit', sans-serif; }
         .gradient-bg {
             background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
