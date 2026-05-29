@@ -17,6 +17,7 @@ use App\Games\PingPong\Models\PingPongRatingChange;
 use App\Games\PingPong\Services\ClipExtractionService;
 use App\Games\PingPong\Services\EloService;
 use App\Games\PingPong\Services\PlayerPointTagStatsService;
+use App\Games\PingPong\Services\PracticeInsightsService;
 use App\Games\PingPong\Services\VideoRecordingService;
 use App\Http\Controllers\Controller;
 use App\Models\Office;
@@ -656,8 +657,12 @@ class PingPongApiController extends Controller
         $validated = $request->validate([
             'shot_type' => 'nullable|in:forehand,backhand',
             'net_edge' => 'sometimes|boolean',
+            'table_edge' => 'sometimes|boolean',
             'clip_requested' => 'sometimes|boolean',
             'point_cause' => 'nullable|in:winner,opponent_error',
+            'error_type' => 'nullable|in:net,long_wide',
+            'serve_point' => 'sometimes|boolean',
+            'body_hit' => 'sometimes|boolean',
         ]);
 
         if (array_key_exists('shot_type', $validated)) {
@@ -666,14 +671,26 @@ class PingPongApiController extends Controller
         if (array_key_exists('net_edge', $validated)) {
             $point->net_edge = (bool) $validated['net_edge'];
         }
+        if (array_key_exists('table_edge', $validated)) {
+            $point->table_edge = (bool) $validated['table_edge'];
+        }
         if (array_key_exists('clip_requested', $validated)) {
             $point->clip_requested = (bool) $validated['clip_requested'];
         }
+        if (array_key_exists('error_type', $validated)) {
+            $point->error_type = $validated['error_type'];
+        }
+        if (array_key_exists('serve_point', $validated)) {
+            $point->serve_point = (bool) $validated['serve_point'];
+        }
+        if (array_key_exists('body_hit', $validated)) {
+            $point->body_hit = (bool) $validated['body_hit'];
+        }
         if (array_key_exists('point_cause', $validated)) {
             $point->point_cause = $validated['point_cause'];
-            if ($point->point_cause === 'opponent_error') {
-                $point->shot_type = null;
-                $point->net_edge = false;
+            // error_type only applies to error points; clear it on a winner.
+            if ($point->point_cause === 'winner') {
+                $point->error_type = null;
             }
         }
 
@@ -683,8 +700,12 @@ class PingPongApiController extends Controller
             'id' => $point->id,
             'shot_type' => $point->shot_type,
             'net_edge' => $point->net_edge,
+            'table_edge' => $point->table_edge,
             'clip_requested' => $point->clip_requested,
             'point_cause' => $point->point_cause,
+            'error_type' => $point->error_type,
+            'serve_point' => $point->serve_point,
+            'body_hit' => $point->body_hit,
         ]);
     }
 
@@ -1373,6 +1394,12 @@ class PingPongApiController extends Controller
         }
 
         return response()->json($history);
+    }
+
+    public function practiceInsights(int $id, PracticeInsightsService $service): JsonResponse
+    {
+        Player::findOrFail($id);
+        return response()->json($service->forPlayer($id));
     }
 
     public function eloHistory(Request $request, int $id): JsonResponse
