@@ -17,6 +17,7 @@ use App\Games\PingPong\Models\PingPongRatingChange;
 use App\Games\PingPong\Services\ClipExtractionService;
 use App\Games\PingPong\Services\EloService;
 use App\Games\PingPong\Services\PlayerPointTagStatsService;
+use App\Games\PingPong\Services\PointAwardsService;
 use App\Games\PingPong\Services\PracticeInsightsService;
 use App\Games\PingPong\Services\VideoRecordingService;
 use App\Http\Controllers\Controller;
@@ -1400,6 +1401,16 @@ class PingPongApiController extends Controller
     {
         Player::findOrFail($id);
         return response()->json($service->forPlayer($id));
+    }
+
+    public function awards(Request $request, PointAwardsService $service): JsonResponse
+    {
+        $window = $request->query('window') === 'month' ? 'month' : 'all';
+
+        return response()->json([
+            'window' => $window,
+            'awards' => $service->getAwards($window),
+        ]);
     }
 
     public function eloHistory(Request $request, int $id): JsonResponse
