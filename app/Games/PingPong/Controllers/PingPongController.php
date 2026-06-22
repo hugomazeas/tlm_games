@@ -4,14 +4,26 @@ namespace App\Games\PingPong\Controllers;
 
 use App\Games\PingPong\Models\PingPongLobby;
 use App\Games\PingPong\Models\PingPongMatch;
+use App\Games\PingPong\Services\PointAwardsService;
 use App\Http\Controllers\Controller;
 use App\Models\Player;
+use Illuminate\Http\Request;
 
 class PingPongController extends Controller
 {
     public function play()
     {
         return view('games.ping-pong.play');
+    }
+
+    public function awardDetail(Request $request, string $key, PointAwardsService $service)
+    {
+        $window = $request->query('window') === 'all' ? 'all' : 'month';
+        $detail = $service->getAwardDetail($key, $window);
+
+        abort_if($detail === null, 404);
+
+        return view('games.ping-pong.award-detail', compact('detail', 'window'));
     }
 
     public function lobbyJoin(string $code)

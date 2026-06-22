@@ -8,6 +8,62 @@
 
 <div class="pph-stage relative rounded-3xl p-4 md:p-7 overflow-x-hidden" x-data="ppStats()" x-init="init()">
 
+    {{-- Hall of Fame — bragging-rights awards from point tags (1v1) --}}
+    <section class="pph-panel p-5 md:p-6 mb-5" x-show="awardsLoaded" x-cloak>
+        <div class="flex items-baseline justify-between flex-wrap gap-3 mb-4">
+            <div class="flex items-baseline gap-2.5">
+                <span class="pph-display text-[22px] tracking-[0.04em] uppercase text-[#f5ecd6]">Hall of Fame</span>
+                <span class="pph-mono text-[10px] tracking-[0.28em] uppercase text-[#f5ecd6]/45">Singles · tagged points</span>
+            </div>
+            <div class="inline-flex rounded-full border border-[#f5ecd6]/15 bg-[#f5ecd6]/[0.03] p-0.5">
+                <template x-for="opt in [{k:'month',l:'This month'},{k:'all',l:'All-time'}]" :key="opt.k">
+                    <button type="button"
+                            @click="setAwardsWindow(opt.k)"
+                            class="pph-mono text-[10px] tracking-[0.16em] uppercase px-3 py-1.5 rounded-full transition"
+                            :class="awardsWindow === opt.k ? 'bg-[#f5ecd6]/[0.12] text-[#f5ecd6]' : 'text-[#f5ecd6]/45 hover:text-[#f5ecd6]/70'"
+                            x-text="opt.l"></button>
+                </template>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <template x-for="a in awards" :key="a.key">
+                <a :href="'/games/ping-pong/awards/' + a.key + '?window=' + awardsWindow"
+                   class="flex flex-col gap-1.5 px-4 py-3.5 rounded-[12px] border no-underline transition group"
+                   :class="a.holder_player_id
+                       ? 'border-[#f5ecd6]/15 bg-[#f5ecd6]/[0.03] hover:bg-[#f5ecd6]/[0.06] hover:border-[#f5ecd6]/30'
+                       : 'border-dashed border-[#f5ecd6]/12 bg-transparent hover:border-[#f5ecd6]/25'">
+                    <div class="flex items-center gap-2">
+                        <span class="text-[20px] leading-none" x-text="a.emoji"></span>
+                        <span class="pph-mono text-[10px] font-bold tracking-[0.16em] uppercase text-[#f5ecd6]/60" x-text="a.title"></span>
+                        <span class="ml-auto text-[#3ec8ff]/0 group-hover:text-[#3ec8ff]/70 transition text-sm">›</span>
+                    </div>
+
+                    {{-- Claimed --}}
+                    <template x-if="a.holder_player_id">
+                        <div>
+                            <div class="flex items-baseline gap-2 mt-0.5">
+                                <span class="font-semibold text-[15px] text-[#f5ecd6] truncate" x-text="a.holder_name"></span>
+                                <span class="pph-mono font-bold text-[13px] text-[#3ec8ff] tabular-nums shrink-0" x-text="a.value_label"></span>
+                            </div>
+                            <div class="pph-mono text-[10px] tracking-[0.06em] text-[#f5ecd6]/35 mt-1"
+                                 x-show="a.runner_up_name"
+                                 x-text="'chased by ' + a.runner_up_name + ' · ' + a.runner_up_value_label"></div>
+                        </div>
+                    </template>
+
+                    {{-- Unclaimed --}}
+                    <template x-if="!a.holder_player_id">
+                        <div class="font-semibold text-[15px] text-[#f5ecd6]/35 mt-0.5">Unclaimed</div>
+                    </template>
+
+                    {{-- Compute transparency: how this award is calculated --}}
+                    <div class="pph-mono text-[10px] tracking-[0.04em] text-[#f5ecd6]/30 mt-1 leading-snug" x-text="a.formula"></div>
+                </a>
+            </template>
+        </div>
+    </section>
+
     {{-- Recent games --}}
     <section class="pph-panel p-5 md:p-6 mb-5" x-show="recentGamesLoaded">
         <div class="flex items-baseline gap-2.5 mb-4">
@@ -53,8 +109,12 @@ function ppStats() {
         leaderboard: [],
         recentGames: [],
         recentGamesLoaded: false,
+        awards: [],
+        awardsWindow: 'month',
+        awardsLoaded: false,
 
         async init() {
+            this.loadAwards();
             const [lbRes, recentRes] = await Promise.all([
                 fetch(`${this.API}/leaderboard?mode=1v1`),
                 fetch(`${this.API}/matches/recent`),
@@ -63,6 +123,19 @@ function ppStats() {
             this.recentGames = await recentRes.json();
             this.recentGamesLoaded = true;
             this.$nextTick(() => this.renderEloDistribution());
+        },
+
+        async loadAwards() {
+            const res = await fetch(`${this.API}/awards?window=${this.awardsWindow}`);
+            const data = await res.json();
+            this.awards = data.awards || [];
+            this.awardsLoaded = true;
+        },
+
+        setAwardsWindow(w) {
+            if (this.awardsWindow === w) return;
+            this.awardsWindow = w;
+            this.loadAwards();
         },
 
         renderEloDistribution() {

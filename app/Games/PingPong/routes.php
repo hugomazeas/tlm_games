@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/games/ping-pong', [PingPongController::class, 'play']);
 Route::get('/games/ping-pong/stats', [PingPongController::class, 'stats']);
+Route::get('/games/ping-pong/awards/{key}', [PingPongController::class, 'awardDetail']);
 Route::get('/games/ping-pong/players/{id}', [PingPongController::class, 'playerStats']);
 Route::get('/games/ping-pong/lobby/{code}', [PingPongController::class, 'lobbyJoin']);
 
@@ -19,6 +20,7 @@ Route::patch('/games/ping-pong/api/points/{id}', [PingPongApiController::class, 
 Route::post('/games/ping-pong/api/matches/{id}/connect', [PingPongApiController::class, 'connectRemote']);
 Route::post('/games/ping-pong/api/matches/{id}/rematch', [PingPongApiController::class, 'rematch']);
 Route::delete('/games/ping-pong/api/matches/{id}', [PingPongApiController::class, 'abandonMatch']);
+Route::get('/games/ping-pong/api/awards', [PingPongApiController::class, 'awards']);
 Route::get('/games/ping-pong/api/players/{id}/stats', [PingPongApiController::class, 'playerStatsApi']);
 Route::get('/games/ping-pong/api/players/{id}/point-tags', [PingPongApiController::class, 'playerPointTags']);
 Route::get('/games/ping-pong/api/players/{id}/point-tags/history', [PingPongApiController::class, 'playerPointTagsComparativeHistory']);
