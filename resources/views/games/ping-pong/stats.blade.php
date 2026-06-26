@@ -64,6 +64,17 @@
         </div>
     </section>
 
+    {{-- ELO Over Time — every leaderboard player's rating history overlaid --}}
+    <section class="pph-panel p-5 md:p-6 mb-5" x-show="eloSeries.length > 0" x-cloak>
+        <div class="flex items-baseline gap-2.5 mb-4">
+            <span class="pph-display text-[22px] tracking-[0.04em] uppercase text-[#f5ecd6]">ELO Over Time</span>
+            <span class="pph-mono text-[10px] tracking-[0.28em] uppercase text-[#f5ecd6]/45">Singles · leaderboard</span>
+        </div>
+        <div class="relative overflow-visible">
+            <canvas id="eloOverlayCanvas" style="width: 100%; height: 560px;"></canvas>
+        </div>
+    </section>
+
     {{-- Recent games --}}
     <section class="pph-panel p-5 md:p-6 mb-5" x-show="recentGamesLoaded">
         <div class="flex items-baseline gap-2.5 mb-4">
@@ -107,6 +118,7 @@ function ppStats() {
     return {
         API: '/games/ping-pong/api',
         leaderboard: [],
+        eloSeries: [],
         recentGames: [],
         recentGamesLoaded: false,
         awards: [],
@@ -123,6 +135,20 @@ function ppStats() {
             this.recentGames = await recentRes.json();
             this.recentGamesLoaded = true;
             this.$nextTick(() => this.renderEloDistribution());
+            this.loadEloSeries();
+        },
+
+        async loadEloSeries() {
+            const series = await Promise.all(
+                this.leaderboard.map(e =>
+                    fetch(`${this.API}/players/${e.player_id}/elo-history?mode=1v1`)
+                        .then(r => r.json())
+                        .then(d => ({ id: e.player_id, name: e.player_name, history: d.history || [] }))
+                        .catch(() => ({ id: e.player_id, name: e.player_name, history: [] }))
+                )
+            );
+            this.eloSeries = series.filter(s => s.history.length > 0);
+            this.$nextTick(() => this.renderEloOverlay());
         },
 
         async loadAwards() {
@@ -424,6 +450,140 @@ function ppStats() {
                 lbl.addEventListener('mouseenter', hoverIn);
                 lbl.addEventListener('mouseleave', hoverOut);
             }
+        },
+
+        renderEloOverlay() {
+            const canvas = document.getElementById('eloOverlayCanvas');
+            if (!canvas || !this.eloSeries.length) return;
+
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return;
+            canvas.width = Math.floor(rect.width * dpr);
+            canvas.height = Math.floor(rect.height * dpr);
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            const W = rect.width;
+            const H = rect.height;
+
+            // Calendar X axis: day 0 = earliest first-day across all series; all series run to today.
+            const DAY = 86400000;
+            const dayOf = (iso) => Math.floor(new Date(iso).getTime() / DAY);
+            let minDay = Infinity;
+            let maxDay = -Infinity;
+            for (const s of this.eloSeries) {
+                for (const p of s.history) {
+                    const d = dayOf(p.created_at);
+                    if (d < minDay) { minDay = d; }
+                    if (d > maxDay) { maxDay = d; }
+                }
+            }
+            const totalDays = Math.max(1, maxDay - minDay);
+
+            // Y axis: min/max across every point and the 1200 baseline, rounded to 50 (matches profile chart).
+            let rawMin = 1200;
+            let rawMax = 1200;
+            for (const s of this.eloSeries) {
+                for (const p of s.history) {
+                    if (p.rating_after < rawMin) { rawMin = p.rating_after; }
+                    if (p.rating_after > rawMax) { rawMax = p.rating_after; }
+                }
+            }
+            const minY = Math.floor((rawMin - 40) / 50) * 50;
+            const maxY = Math.ceil((rawMax + 40) / 50) * 50;
+            const yRange = (maxY - minY) || 100;
+            const yStep = (maxY - minY) / 6 <= 50 ? 50 : ((maxY - minY) / 6 <= 100 ? 100 : 200);
+
+            const pad = { left: 58, right: 130, top: 18, bottom: 36 };
+            const chartL = pad.left;
+            const chartR = W - pad.right;
+            const chartT = pad.top;
+            const chartB = H - pad.bottom;
+            const chartW = chartR - chartL;
+            const chartH = chartB - chartT;
+
+            const toX = (iso) => chartL + ((dayOf(iso) - minDay) / totalDays) * chartW;
+            const toY = (v) => chartT + chartH - ((v - minY) / yRange) * chartH;
+
+            ctx.clearRect(0, 0, W, H);
+
+            // Horizontal grid lines + ELO labels
+            ctx.font = '500 16px "Outfit", system-ui, sans-serif';
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'right';
+            for (let v = Math.ceil(minY / yStep) * yStep; v <= maxY; v += yStep) {
+                const y = toY(v);
+                ctx.strokeStyle = v === 1200 ? 'rgba(148,163,184,0.22)' : 'rgba(148,163,184,0.07)';
+                ctx.lineWidth = v === 1200 ? 1 : 0.5;
+                ctx.beginPath();
+                ctx.moveTo(chartL, y);
+                ctx.lineTo(chartR, y);
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(245,236,214,0.8)';
+                ctx.fillText(String(v), chartL - 8, y);
+            }
+
+            // X axis date labels
+            ctx.font = '500 15px "Outfit", system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            const nTicks = 5;
+            for (let i = 0; i <= nTicks; i++) {
+                const day = minDay + Math.round((totalDays * i) / nTicks);
+                const x = chartL + (chartW * i) / nTicks;
+                const d = new Date(day * DAY);
+                ctx.fillStyle = 'rgba(245,236,214,0.8)';
+                ctx.fillText(d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), x, chartB + 6);
+            }
+
+            // One polyline per player, color-matched.
+            const n = this.eloSeries.length;
+            const ends = [];
+            for (let i = 0; i < n; i++) {
+                const s = this.eloSeries[i];
+                const color = `hsl(${Math.round((i * 360) / n)}, 70%, 60%)`;
+                const pts = s.history;
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.moveTo(toX(pts[0].created_at), toY(pts[0].rating_after));
+                for (let j = 1; j < pts.length; j++) {
+                    ctx.lineTo(toX(pts[j].created_at), toY(pts[j].rating_after));
+                }
+                ctx.stroke();
+                const last = pts[pts.length - 1];
+                const ex = toX(last.created_at);
+                const ey = toY(last.rating_after);
+                // End dot
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(ex, ey, 5, 0, Math.PI * 2);
+                ctx.fill();
+                ends.push({ id: s.id, name: s.name, color, x: ex, y: ey });
+            }
+
+            // End-of-line name labels as clickable overlays. De-collide on Y only (X fixed at right edge).
+            const container = canvas.parentElement;
+            container.querySelectorAll('.elo-overlay-label').forEach(el => el.remove());
+            const labelH = 24;
+            ends.sort((a, b) => a.y - b.y);
+            for (let i = 1; i < ends.length; i++) {
+                if (ends[i].y - ends[i - 1].y < labelH) {
+                    ends[i].y = ends[i - 1].y + labelH;
+                }
+            }
+            for (const e of ends) {
+                const lbl = document.createElement('a');
+                lbl.className = 'elo-overlay-label';
+                lbl.href = '/games/ping-pong/players/' + e.id;
+                lbl.textContent = e.name;
+                lbl.style.cssText = `position:absolute;left:${e.x + 12}px;top:${e.y}px;transform:translateY(-50%);font-family:"Outfit",system-ui,sans-serif;font-size:20px;font-weight:600;color:${e.color};white-space:nowrap;text-decoration:none;line-height:1;cursor:pointer;z-index:4;transition:filter 0.2s;`;
+                lbl.addEventListener('mouseenter', () => { lbl.style.filter = 'brightness(1.4)'; });
+                lbl.addEventListener('mouseleave', () => { lbl.style.filter = 'none'; });
+                container.appendChild(lbl);
+            }
+
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
         },
     };
 }
