@@ -1487,6 +1487,125 @@ class PingPongApiController extends Controller
         ]);
     }
 
+    /**
+     * ELO over time for the top N ranked players, aligned on a shared daily axis.
+     * Powers the multi-line league chart on the ping-pong home page.
+     */
+    public function topEloHistory(Request $request): JsonResponse
+    {
+        $mode = $request->query('mode', '1v1');
+        $limit = max(1, min((int) $request->query('limit', 6), 12));
+
+        // Candidate players: anyone who has played a completed match in this mode.
+        $matchQuery = PingPongMatch::whereNotNull('ended_at')->where('mode', $mode);
+        $playerIds = (clone $matchQuery)->select('player_left_id')->distinct()->pluck('player_left_id')
+            ->merge((clone $matchQuery)->select('player_right_id')->distinct()->pluck('player_right_id'));
+        if ($mode === '2v2') {
+            $playerIds = $playerIds
+                ->merge((clone $matchQuery)->whereNotNull('team_left_player2_id')->select('team_left_player2_id')->distinct()->pluck('team_left_player2_id'))
+                ->merge((clone $matchQuery)->whereNotNull('team_right_player2_id')->select('team_right_player2_id')->distinct()->pluck('team_right_player2_id'));
+        }
+        $playerIds = $playerIds->unique();
+
+        // Keep only players active within the last 2 weeks (mirrors the leaderboard).
+        $activityCutoff = now()->subWeeks(2);
+        $playerIds = $playerIds->filter(function ($playerId) use ($mode, $activityCutoff) {
+            return PingPongMatch::whereNotNull('ended_at')
+                ->where('mode', $mode)
+                ->where('ended_at', '>=', $activityCutoff)
+                ->where(function ($q) use ($playerId) {
+                    $q->where('player_left_id', $playerId)
+                      ->orWhere('player_right_id', $playerId)
+                      ->orWhere('team_left_player2_id', $playerId)
+                      ->orWhere('team_right_player2_id', $playerId);
+                })
+                ->exists();
+        });
+
+        // Rank by current ELO desc, take top N (mirrors the leaderboard ordering).
+        $ranked = $playerIds
+            ->map(function ($playerId) use ($mode) {
+                $player = Player::find($playerId);
+                if (! $player) {
+                    return null;
+                }
+                $rating = PingPongRating::where('player_id', $playerId)->where('mode', $mode)->first();
+
+                return [
+                    'player_id' => $playerId,
+                    'player_name' => $player->name,
+                    'elo_rating' => $rating ? $rating->elo_rating : 1200,
+                ];
+            })
+            ->filter()
+            ->sortByDesc('elo_rating')
+            ->take($limit)
+            ->values();
+
+        if ($ranked->isEmpty()) {
+            return response()->json(['mode' => $mode, 'dates' => [], 'series' => []]);
+        }
+
+        // Pull every rating change for the ranked players in chronological order.
+        $changes = PingPongRatingChange::whereIn('player_id', $ranked->pluck('player_id'))
+            ->where('mode', $mode)
+            ->orderBy('created_at')
+            ->get();
+
+        $deltasByPlayerDay = []; // [playerId][dateStr] => list<int>
+        $firstDayByPlayer = [];
+        foreach ($changes as $change) {
+            $dayStr = $change->created_at->copy()->startOfDay()->toDateString();
+            $deltasByPlayerDay[$change->player_id][$dayStr][] = (int) $change->rating_change;
+            if (! isset($firstDayByPlayer[$change->player_id])) {
+                $firstDayByPlayer[$change->player_id] = $dayStr;
+            }
+        }
+
+        if (empty($firstDayByPlayer)) {
+            return response()->json(['mode' => $mode, 'dates' => [], 'series' => []]);
+        }
+
+        // Shared date axis from the earliest first-match day to today.
+        $globalStart = Carbon::parse(min($firstDayByPlayer))->startOfDay();
+        $endDate = now()->startOfDay();
+        $dates = [];
+        for ($d = $globalStart->copy(); $d->lte($endDate); $d->addDay()) {
+            $dates[] = $d->toDateString();
+        }
+
+        // Per-player daily close, carried forward; null before the player's first match.
+        $series = $ranked->map(function ($entry) use ($dates, $deltasByPlayerDay, $firstDayByPlayer) {
+            $pid = $entry['player_id'];
+            $firstDay = $firstDayByPlayer[$pid] ?? null;
+            $running = 1200;
+            $values = [];
+            foreach ($dates as $dayStr) {
+                if ($firstDay === null || $dayStr < $firstDay) {
+                    $values[] = null;
+                    continue;
+                }
+                foreach ($deltasByPlayerDay[$pid][$dayStr] ?? [] as $delta) {
+                    $running += $delta;
+                }
+                $values[] = $running;
+            }
+
+            return [
+                'player_id' => $pid,
+                'player_name' => $entry['player_name'],
+                'elo_rating' => $entry['elo_rating'],
+                'values' => $values,
+            ];
+        })->values();
+
+        return response()->json([
+            'mode' => $mode,
+            'dates' => $dates,
+            'series' => $series,
+        ]);
+    }
+
     public function playerMatches(Request $request, int $id): JsonResponse
     {
         $player = Player::findOrFail($id);

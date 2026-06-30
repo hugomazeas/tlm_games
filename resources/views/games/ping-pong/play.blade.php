@@ -134,6 +134,40 @@
                 {{-- ----- RIGHT: feed -------------------------------- --}}
                 <section class="flex flex-col gap-4 min-h-0">
 
+                    {{-- ELO over time --}}
+                    <div x-show="topEloSeries.length > 0"
+                         class="flex-shrink-0 rounded-2xl border border-[#f5ecd6]/15 bg-gradient-to-b from-[#f5ecd6]/[0.03] to-[#f5ecd6]/[0.01] px-4 md:px-5 pt-4 pb-3.5">
+                        <div class="flex items-center gap-x-2.5 gap-y-1.5 mb-2.5 flex-wrap">
+                            <span class="pph-display text-base tracking-[0.14em] uppercase text-[#f5ecd6]">ELO Over Time</span>
+                            <span class="pph-mono text-[10px] tracking-[0.22em] uppercase text-[#f5ecd6]/45">Singles · Top <span x-text="topEloSeries.length"></span></span>
+                            {{-- Legend --}}
+                            <div class="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 justify-end">
+                                <template x-for="(s, i) in topEloSeries" :key="s.player_id">
+                                    <span class="inline-flex items-center gap-1.5 pph-mono text-[11px] text-[#f5ecd6]/70">
+                                        <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" :style="'background:' + eloColor(i)"></span>
+                                        <span class="truncate max-w-[90px]" x-text="s.player_name"></span>
+                                    </span>
+                                </template>
+                            </div>
+                        </div>
+                        <div class="relative h-[190px] md:h-[220px]" x-ref="topEloContainer"
+                             @mousemove="onTopEloMouseMove($event)" @mouseleave="topEloTooltip.show = false">
+                            <canvas id="topEloChart"></canvas>
+                            <div class="absolute pointer-events-none z-10 rounded-lg border border-[#f5ecd6]/15 bg-[#06081b]/95 px-3 py-2 shadow-xl min-w-[140px]"
+                                 x-show="topEloTooltip.show" x-cloak
+                                 :style="'left:' + topEloTooltip.x + 'px; top:' + topEloTooltip.y + 'px;'">
+                                <div class="pph-mono text-[10px] tracking-[0.18em] uppercase text-[#f5ecd6]/50 mb-1.5" x-text="topEloTooltip.date"></div>
+                                <template x-for="row in topEloTooltip.rows" :key="row.player_id">
+                                    <div class="flex items-center gap-2 text-[12px] leading-snug">
+                                        <span class="w-2 h-2 rounded-full flex-shrink-0" :style="'background:' + row.color"></span>
+                                        <span class="text-[#f5ecd6]/75 mr-2 truncate" x-text="row.name"></span>
+                                        <span class="ml-auto font-bold text-[#f5ecd6] pph-mono" x-text="row.value"></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+
                     {{-- Live --}}
                     <div x-show="liveMatches.length > 0" class="flex-shrink-0 rounded-2xl border border-[#ff5a4a]/30 bg-gradient-to-b from-[#ff5a4a]/[0.07] to-[#ff5a4a]/[0.02] p-3.5">
                         <div class="flex items-center gap-2.5 mb-2.5">
@@ -429,6 +463,13 @@ function pingPong() {
         officeLeaderboards: [],
         leaderboardTab: 'all',
 
+        // ELO over time (league chart) — fixed to Singles, all offices
+        topEloDates: [],
+        topEloSeries: [],
+        topEloColors: ['#ff5a4a', '#3ec8ff', '#ffd166', '#9be7c4', '#c792ea', '#f78fb3', '#7bd88f', '#f5ecd6'],
+        topEloChartData: null,
+        topEloTooltip: { show: false, x: 0, y: 0, date: '', rows: [] },
+
         // Lobby state
         lobbyCode: '',
         hostToken: '',
@@ -470,6 +511,10 @@ function pingPong() {
             await this.loadLeaderboard();
             await this.loadLiveMatches();
             this.subscribeLive();
+            this.loadTopEloHistory();
+            window.addEventListener('resize', () => {
+                if (this.topEloSeries.length > 0) this.renderTopEloChart();
+            });
 
             const params = new URLSearchParams(window.location.search);
             const existingLobby = params.get('lobby');
@@ -581,6 +626,137 @@ function pingPong() {
             if (this.leaderboardTab !== 'all' && !this.officeLeaderboards.some((b) => b.id === this.leaderboardTab)) {
                 this.leaderboardTab = 'all';
             }
+        },
+
+        // --- ELO OVER TIME (league chart) ---
+
+        eloColor(i) {
+            return this.topEloColors[i % this.topEloColors.length];
+        },
+
+        async loadTopEloHistory() {
+            try {
+                const res = await fetch(`${this.API}/elo-history/top?mode=1v1&limit=6`);
+                const data = await res.json();
+                this.topEloDates = data.dates || [];
+                this.topEloSeries = data.series || [];
+                this.$nextTick(() => this.renderTopEloChart());
+            } catch (err) {
+                console.error('Error loading ELO over time:', err);
+                this.topEloDates = [];
+                this.topEloSeries = [];
+            }
+        },
+
+        renderTopEloChart() {
+            if (this.topEloSeries.length === 0 || this.topEloDates.length === 0) return;
+            const canvas = document.getElementById('topEloChart');
+            const container = this.$refs.topEloContainer;
+            if (!canvas || !container) return;
+            const rect = container.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return;
+
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = Math.floor(rect.width * dpr);
+            canvas.height = Math.floor(rect.height * dpr);
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            const w = rect.width, h = rect.height;
+            ctx.clearRect(0, 0, w, h);
+
+            const dates = this.topEloDates;
+            const series = this.topEloSeries;
+
+            // Y range across every series, always anchored on the 1200 baseline.
+            let rawMin = 1200, rawMax = 1200;
+            series.forEach((s) => s.values.forEach((v) => {
+                if (v !== null) { rawMin = Math.min(rawMin, v); rawMax = Math.max(rawMax, v); }
+            }));
+            const minY = Math.floor((rawMin - 40) / 50) * 50;
+            const maxY = Math.ceil((rawMax + 40) / 50) * 50;
+            const roughStep = (maxY - minY) / 5;
+            const yStep = roughStep <= 25 ? 25 : (roughStep <= 50 ? 50 : (roughStep <= 100 ? 100 : 200));
+            const yTicks = [];
+            for (let v = Math.ceil(minY / yStep) * yStep; v <= maxY; v += yStep) yTicks.push(v);
+            if (yTicks.length === 0) yTicks.push(1200);
+            const chartMinY = yTicks[0];
+            const chartMaxY = Math.max(yTicks[yTicks.length - 1], chartMinY + 50);
+
+            const pad = { left: 44, right: 16, top: 12, bottom: 26 };
+            const chartW = w - pad.left - pad.right;
+            const chartH = h - pad.top - pad.bottom;
+            const yRange = chartMaxY - chartMinY || 100;
+            const toY = (v) => pad.top + chartH - ((v - chartMinY) / yRange) * chartH;
+            const toX = (i) => pad.left + (i / Math.max(1, dates.length - 1)) * chartW;
+
+            ctx.font = '10px ui-monospace, monospace';
+            yTicks.forEach((v) => {
+                const y = toY(v);
+                ctx.beginPath();
+                ctx.moveTo(pad.left, y);
+                ctx.lineTo(pad.left + chartW, y);
+                ctx.strokeStyle = 'rgba(245,236,214,0.08)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(245,236,214,0.45)';
+                ctx.textAlign = 'right';
+                ctx.fillText(String(v), pad.left - 8, y + 3);
+            });
+
+            const xStep = Math.max(1, Math.floor(dates.length / 6));
+            ctx.fillStyle = 'rgba(245,236,214,0.45)';
+            for (let i = 0; i < dates.length; i += xStep) {
+                const d = new Date(dates[i]);
+                const label = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                ctx.textAlign = i === 0 ? 'left' : 'center';
+                ctx.fillText(label, toX(i), pad.top + chartH + 16);
+            }
+
+            series.forEach((s, si) => {
+                ctx.beginPath();
+                let started = false;
+                for (let i = 0; i < s.values.length; i++) {
+                    const v = s.values[i];
+                    if (v === null) { started = false; continue; }
+                    const x = toX(i), y = toY(v);
+                    if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
+                }
+                ctx.strokeStyle = this.eloColor(si);
+                ctx.lineWidth = 2;
+                ctx.lineJoin = 'round';
+                ctx.stroke();
+            });
+
+            this.topEloChartData = { pad, chartW, chartH, n: dates.length, toX };
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+        },
+
+        onTopEloMouseMove(e) {
+            const cd = this.topEloChartData;
+            if (!cd || this.topEloSeries.length === 0) return;
+            const rect = this.$refs.topEloContainer.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const ratio = (mx - cd.pad.left) / (cd.chartW || 1);
+            let idx = Math.round(ratio * (cd.n - 1));
+            idx = Math.max(0, Math.min(cd.n - 1, idx));
+
+            const rows = this.topEloSeries
+                .map((s, si) => ({ player_id: s.player_id, name: s.player_name, value: s.values[idx], color: this.eloColor(si) }))
+                .filter((r) => r.value !== null)
+                .sort((a, b) => b.value - a.value);
+            if (rows.length === 0) { this.topEloTooltip.show = false; return; }
+
+            const d = new Date(this.topEloDates[idx]);
+            const tipX = Math.max(8, Math.min(cd.toX(idx) + 12, rect.width - 150));
+            this.topEloTooltip = {
+                show: true,
+                x: tipX,
+                y: 8,
+                date: d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' }),
+                rows,
+            };
         },
 
         // --- LIVE MATCHES ---

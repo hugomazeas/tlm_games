@@ -26,6 +26,7 @@ Route::get('/games/ping-pong/api/players/{id}/point-tags', [PingPongApiControlle
 Route::get('/games/ping-pong/api/players/{id}/point-tags/history', [PingPongApiController::class, 'playerPointTagsComparativeHistory']);
 Route::get('/games/ping-pong/api/players/{id}/point-tags/{tag}/history', [PingPongApiController::class, 'playerPointTagHistory']);
 Route::get('/games/ping-pong/api/players/{id}/practice-insights', [PingPongApiController::class, 'practiceInsights']);
+Route::get('/games/ping-pong/api/elo-history/top', [PingPongApiController::class, 'topEloHistory']);
 Route::get('/games/ping-pong/api/players/{id}/elo-history', [PingPongApiController::class, 'eloHistory']);
 Route::get('/games/ping-pong/api/players/{id}/matches', [PingPongApiController::class, 'playerMatches']);
 Route::get('/games/ping-pong/api/players/{id}/head-to-head', [PingPongApiController::class, 'headToHead']);
