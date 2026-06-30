@@ -681,8 +681,10 @@ function pingPong() {
             const yTicks = [];
             for (let v = Math.ceil(minY / yStep) * yStep; v <= maxY; v += yStep) yTicks.push(v);
             if (yTicks.length === 0) yTicks.push(1200);
-            const chartMinY = yTicks[0];
-            const chartMaxY = Math.max(yTicks[yTicks.length - 1], chartMinY + 50);
+            // Plot range must contain the full padded data range so no line clips,
+            // even when the data ceiling sits between two round gridlines.
+            const chartMinY = Math.min(yTicks[0], minY);
+            const chartMaxY = Math.max(yTicks[yTicks.length - 1], maxY, chartMinY + 50);
 
             const pad = { left: 44, right: 16, top: 12, bottom: 26 };
             const chartW = w - pad.left - pad.right;
