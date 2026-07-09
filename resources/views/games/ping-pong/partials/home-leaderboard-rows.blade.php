@@ -8,13 +8,20 @@
     $entriesExpr = $entriesExpr ?? 'leaderboard';
 @endphp
 
-<div class="flex flex-col gap-px">
+<div class="flex flex-col gap-px md:min-w-[760px]">
     {{-- Header (md+) --}}
-    <div class="hidden md:grid grid-cols-[50px_1fr_88px_110px_130px_72px_auto] items-center gap-3 px-3 pt-1 pb-2 mb-1 pph-mono text-[10px] tracking-[0.24em] uppercase text-[#f5ecd6]/45 border-b border-[#f5ecd6]/15 sticky top-0 bg-[#0a0f24] z-10">
+    <div class="hidden md:grid items-center gap-2.5 px-3 pt-1 pb-2 mb-1 pph-mono text-[10px] tracking-[0.24em] uppercase text-[#f5ecd6]/45 border-b border-[#f5ecd6]/15 sticky top-0 bg-[#0a0f24] z-10"
+         :class="mode === '2v2'
+            ? 'grid-cols-[46px_1fr_76px_72px_80px_120px_60px]'
+            : 'grid-cols-[46px_1fr_72px_66px_76px_88px_104px_56px_auto]'">
         <span>Rank</span>
         <span>Player</span>
         <span>ELO</span>
         <span class="text-center">W·L</span>
+        <span class="text-center" title="Lifetime win rate / last 30 days">Win %</span>
+        <template x-if="mode !== '2v2'">
+            <span class="text-center" title="Times beaten the reigning #1 · title defenses as #1">Champion</span>
+        </template>
         <span class="text-center">Last 10</span>
         <span class="text-center">Streak</span>
         <template x-if="mode !== '2v2'">
@@ -24,9 +31,11 @@
 
     <template x-for="(entry, i) in {{ $entriesExpr }}" :key="entry.player_id">
         <a :href="'/games/ping-pong/players/' + entry.player_id"
-           class="relative grid grid-cols-[40px_1fr_auto_auto] md:grid-cols-[50px_1fr_88px_110px_130px_72px_auto] items-center gap-x-2.5 md:gap-x-3 gap-y-1 px-3 py-2.5 md:py-2 rounded-[10px] no-underline text-[#f5ecd6]/80 hover:bg-[#f5ecd6]/[0.05] transition
+           class="relative grid grid-cols-[40px_1fr_auto_auto] items-center gap-x-2.5 gap-y-1 px-3 py-2.5 md:py-2 rounded-[10px] no-underline text-[#f5ecd6]/80 hover:bg-[#f5ecd6]/[0.05] transition
                   before:content-[''] before:absolute before:left-0.5 before:top-2.5 before:bottom-2.5 before:w-[3px] before:rounded-sm before:bg-transparent hover:before:bg-[#f5ecd6]"
            :class="{
+               'md:grid-cols-[46px_1fr_72px_66px_76px_88px_104px_56px_auto]': mode !== '2v2',
+               'md:grid-cols-[46px_1fr_76px_72px_80px_120px_60px]': mode === '2v2',
                'pph-rank-1 before:!bg-[#ffd166]': i === 0,
                'pph-rank-2 before:!bg-[#f5ecd6]/70': i === 1,
                'pph-rank-3 before:!bg-[#c98a5a]': i === 2,
@@ -53,8 +62,32 @@
                 <span class="pph-mono text-[13px] font-bold whitespace-nowrap">
                     <span class="text-[#9be7c4]" x-text="entry.wins"></span><span class="text-[#f5ecd6]/25 mx-1">·</span><span class="text-[#ff5a4a]" x-text="entry.losses"></span>
                 </span>
-                <span class="pph-mono text-[11px] text-[#f5ecd6]/45 tracking-wide" x-text="entry.win_rate + '%'"></span>
             </span>
+
+            {{-- Win % (lifetime + rolling 30 days) --}}
+            <span class="hidden md:flex flex-col items-center leading-tight gap-px">
+                <span class="pph-mono text-[13px] font-bold text-[#f5ecd6]" x-text="entry.win_rate + '%'"></span>
+                <span class="pph-mono text-[10px] text-[#f5ecd6]/45 tracking-wide"
+                      x-text="(entry.win_rate_30d === null ? '—' : entry.win_rate_30d + '%') + ' · 30d'"></span>
+            </span>
+
+            {{-- Champion: beats (wins over the #1) and title defenses, 1v1 only --}}
+            <template x-if="mode !== '2v2'">
+                <span class="hidden md:flex items-center justify-center gap-3 leading-none">
+                    <span class="flex flex-col items-center gap-0.5" title="Wins over the reigning #1">
+                        <span class="pph-mono text-[13px] font-bold"
+                              :class="entry.champion_beats > 0 ? 'text-[#ffd166]' : 'text-[#f5ecd6]/25'"
+                              x-text="entry.champion_beats"></span>
+                        <span class="pph-mono text-[9px] tracking-[0.14em] text-[#f5ecd6]/40">BEAT</span>
+                    </span>
+                    <span class="flex flex-col items-center gap-0.5" title="Title defenses while ranked #1">
+                        <span class="pph-mono text-[13px] font-bold"
+                              :class="entry.title_defenses > 0 ? 'text-[#9be7c4]' : 'text-[#f5ecd6]/25'"
+                              x-text="entry.title_defenses"></span>
+                        <span class="pph-mono text-[9px] tracking-[0.14em] text-[#f5ecd6]/40">DEF</span>
+                    </span>
+                </span>
+            </template>
 
             {{-- Last 10 --}}
             <span class="hidden md:block text-center">

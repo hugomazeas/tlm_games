@@ -37,7 +37,7 @@
             </header>
 
             {{-- ====== Body grid ===================================== --}}
-            <div class="grid grid-cols-1 lg:grid-cols-[minmax(330px,380px)_1fr] gap-5 flex-1 min-h-0">
+            <div class="grid grid-cols-1 lg:grid-cols-[minmax(330px,380px)_minmax(0,1fr)] gap-5 flex-1 min-h-0">
 
                 {{-- ----- LEFT: ticket-style lobby ------------------- --}}
                 <aside class="pph-ticket-notch relative flex flex-col gap-4 rounded-2xl border border-[#f5ecd6]/15 bg-gradient-to-b from-[#f5ecd6]/[0.045] to-[#f5ecd6]/[0.015] p-5 md:p-6 overflow-y-auto overflow-x-hidden">
@@ -132,7 +132,7 @@
                 </aside>
 
                 {{-- ----- RIGHT: feed -------------------------------- --}}
-                <section class="flex flex-col gap-4 min-h-0">
+                <section class="flex flex-col gap-4 min-h-0 min-w-0">
 
                     {{-- ELO over time --}}
                     <div x-show="topEloSeries.length > 0"
@@ -220,7 +220,7 @@
                     </div>
 
                     {{-- Leaderboard --}}
-                    <div class="flex flex-col flex-1 min-h-0 rounded-2xl border border-[#f5ecd6]/15 bg-gradient-to-b from-[#f5ecd6]/[0.03] to-[#f5ecd6]/[0.01] px-4 md:px-5 pt-4 pb-1">
+                    <div class="flex flex-col flex-1 min-h-0 min-w-0 rounded-2xl border border-[#f5ecd6]/15 bg-gradient-to-b from-[#f5ecd6]/[0.03] to-[#f5ecd6]/[0.01] px-4 md:px-5 pt-4 pb-1">
                         <div class="grid grid-cols-1 md:grid-cols-[auto_1fr_auto] items-center gap-3 mb-3 flex-shrink-0">
                             <h2 class="flex items-baseline gap-2.5 m-0 min-w-0">
                                 <span class="pph-display text-[26px] tracking-[0.04em] uppercase text-[#f5ecd6]"
@@ -252,7 +252,7 @@
                             </div>
                         </div>
 
-                        <div class="overflow-y-auto flex-1 min-h-0 pb-3 -mx-1 px-1">
+                        <div class="overflow-y-auto overflow-x-auto flex-1 min-h-0 pb-3 -mx-1 px-1">
                             {{-- All players --}}
                             <div x-show="leaderboardTab === 'all'">
                                 <template x-if="leaderboard.length > 0">

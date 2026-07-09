@@ -131,6 +131,12 @@ class PingPongApiController extends Controller
         $cutoff30 = $today->copy()->subDays(29);
         $cutoff7Str = $cutoff7->toDateString();
 
+        // Rolling one-month window for the short-term win rate.
+        $monthCutoff = $today->copy()->subDays(29)->startOfDay();
+
+        // Reigning-champion history (who was #1 when each match was played).
+        $championStats = $this->computeChampionStats($mode);
+
         $recentMatches = PingPongMatch::whereNotNull('ended_at')
             ->where('ended_at', '>=', $cutoff30)
             ->get(['player_left_id', 'player_right_id', 'team_left_player2_id', 'team_right_player2_id', 'ended_at']);
@@ -159,7 +165,7 @@ class PingPongApiController extends Controller
             }
         }
 
-        $entries = $playerIds->map(function ($playerId) use ($mode, $playerDates, $cutoff7Str, $workdays7, $workdays30) {
+        $entries = $playerIds->map(function ($playerId) use ($mode, $playerDates, $cutoff7Str, $workdays7, $workdays30, $monthCutoff, $championStats) {
             $player = Player::find($playerId);
             if (!$player) {
                 return null;
@@ -168,42 +174,15 @@ class PingPongApiController extends Controller
             $rating = PingPongRating::where('player_id', $playerId)->where('mode', $mode)->first();
             $elo = $rating ? $rating->elo_rating : 1200;
 
-            $totalGames = PingPongMatch::whereNotNull('ended_at')
-                ->where('mode', $mode)
-                ->where(function ($q) use ($playerId) {
-                    $q->where('player_left_id', $playerId)
-                      ->orWhere('player_right_id', $playerId)
-                      ->orWhere('team_left_player2_id', $playerId)
-                      ->orWhere('team_right_player2_id', $playerId);
-                })
-                ->count();
-
-            // Wins: player was on the winning side
-            $wins = PingPongMatch::whereNotNull('ended_at')
-                ->where('mode', $mode)
-                ->whereNotNull('winner_id')
-                ->where(function ($q) use ($playerId) {
-                    // Left team won and player was on left team
-                    $q->where(function ($q2) use ($playerId) {
-                        $q2->whereColumn('winner_id', 'player_left_id')
-                            ->where(function ($q3) use ($playerId) {
-                                $q3->where('player_left_id', $playerId)
-                                   ->orWhere('team_left_player2_id', $playerId);
-                            });
-                    })
-                    // Right team won and player was on right team
-                    ->orWhere(function ($q2) use ($playerId) {
-                        $q2->whereColumn('winner_id', 'player_right_id')
-                            ->where(function ($q3) use ($playerId) {
-                                $q3->where('player_right_id', $playerId)
-                                   ->orWhere('team_right_player2_id', $playerId);
-                            });
-                    });
-                })
-                ->count();
-
+            $totalGames = $this->countGames($playerId, $mode);
+            $wins = $this->countWins($playerId, $mode);
             $losses = $totalGames - $wins;
             $winRate = $totalGames > 0 ? round(($wins / $totalGames) * 100) : 0;
+
+            // Rolling one-month win rate; null when the player hasn't played this month.
+            $games30 = $this->countGames($playerId, $mode, $monthCutoff);
+            $wins30 = $this->countWins($playerId, $mode, $monthCutoff);
+            $winRate30 = $games30 > 0 ? round(($wins30 / $games30) * 100) : null;
 
             $winStreak = $this->getCurrentWinStreak($playerId, $mode);
             $losingStreak = $this->getCurrentLosingStreak($playerId, $mode);
@@ -223,6 +202,9 @@ class PingPongApiController extends Controller
                 'wins' => $wins,
                 'losses' => $losses,
                 'win_rate' => $winRate,
+                'win_rate_30d' => $winRate30,
+                'champion_beats' => $championStats['beats'][$playerId] ?? 0,
+                'title_defenses' => $championStats['defenses'][$playerId] ?? 0,
                 'win_streak' => $winStreak,
                 'losing_streak' => $losingStreak,
                 'games_played' => $totalGames,
@@ -326,6 +308,161 @@ class PingPongApiController extends Controller
         }
 
         return array_reverse($results);
+    }
+
+    /**
+     * Count a player's completed wins in a mode, optionally only since a moment.
+     * Handles both singles and doubles (player on the winning side).
+     */
+    private function countWins(int $playerId, string $mode, ?Carbon $since = null): int
+    {
+        $query = PingPongMatch::whereNotNull('ended_at')
+            ->where('mode', $mode)
+            ->whereNotNull('winner_id')
+            ->where(function ($q) use ($playerId) {
+                // Left side won and player was on the left side.
+                $q->where(function ($q2) use ($playerId) {
+                    $q2->whereColumn('winner_id', 'player_left_id')
+                        ->where(function ($q3) use ($playerId) {
+                            $q3->where('player_left_id', $playerId)
+                                ->orWhere('team_left_player2_id', $playerId);
+                        });
+                })
+                    // Right side won and player was on the right side.
+                    ->orWhere(function ($q2) use ($playerId) {
+                        $q2->whereColumn('winner_id', 'player_right_id')
+                            ->where(function ($q3) use ($playerId) {
+                                $q3->where('player_right_id', $playerId)
+                                    ->orWhere('team_right_player2_id', $playerId);
+                            });
+                    });
+            });
+
+        if ($since !== null) {
+            $query->where('ended_at', '>=', $since);
+        }
+
+        return $query->count();
+    }
+
+    /**
+     * Count a player's completed games in a mode, optionally only since a moment.
+     */
+    private function countGames(int $playerId, string $mode, ?Carbon $since = null): int
+    {
+        $query = PingPongMatch::whereNotNull('ended_at')
+            ->where('mode', $mode)
+            ->where(function ($q) use ($playerId) {
+                $q->where('player_left_id', $playerId)
+                    ->orWhere('player_right_id', $playerId)
+                    ->orWhere('team_left_player2_id', $playerId)
+                    ->orWhere('team_right_player2_id', $playerId);
+            });
+
+        if ($since !== null) {
+            $query->where('ended_at', '>=', $since);
+        }
+
+        return $query->count();
+    }
+
+    /**
+     * Count, per player, how many times they beat the reigning champion and how
+     * many times they defended the title, by replaying rating history in match
+     * order. The "champion" before any match is the unique player with the
+     * strictly highest reconstructed ELO at that moment (ties yield no champion).
+     *
+     * Only meaningful for singles; returns empty maps for other modes.
+     *
+     * @return array{beats: array<int, int>, defenses: array<int, int>}
+     */
+    private function computeChampionStats(string $mode): array
+    {
+        $beats = [];
+        $defenses = [];
+
+        if ($mode !== '1v1') {
+            return ['beats' => $beats, 'defenses' => $defenses];
+        }
+
+        $matches = PingPongMatch::whereNotNull('ended_at')
+            ->where('mode', '1v1')
+            ->whereNotNull('winner_id')
+            ->orderBy('ended_at')
+            ->orderBy('id')
+            ->get(['id', 'player_left_id', 'player_right_id', 'winner_id']);
+
+        if ($matches->isEmpty()) {
+            return ['beats' => $beats, 'defenses' => $defenses];
+        }
+
+        // Sum every rating delta per match so we can advance ELO match-by-match.
+        $deltasByMatch = [];
+        PingPongRatingChange::where('mode', '1v1')
+            ->get(['match_id', 'player_id', 'rating_change'])
+            ->each(function ($change) use (&$deltasByMatch) {
+                $deltasByMatch[$change->match_id][$change->player_id] =
+                    ($deltasByMatch[$change->match_id][$change->player_id] ?? 0) + (int) $change->rating_change;
+            });
+
+        $elo = [];    // playerId => reconstructed ELO
+        $played = []; // playerId => true once they have entered the pool
+
+        foreach ($matches as $match) {
+            $left = $match->player_left_id;
+            $right = $match->player_right_id;
+            $winner = $match->winner_id;
+            $loser = $winner === $left ? $right : $left;
+
+            $champion = $this->reigningChampion($elo, $played);
+
+            if ($champion !== null) {
+                if ($winner === $champion) {
+                    $defenses[$champion] = ($defenses[$champion] ?? 0) + 1;
+                } elseif ($loser === $champion) {
+                    $beats[$winner] = ($beats[$winner] ?? 0) + 1;
+                }
+            }
+
+            // Advance ELO to the state *after* this match for the next iteration.
+            foreach ($deltasByMatch[$match->id] ?? [] as $pid => $delta) {
+                $elo[$pid] = ($elo[$pid] ?? 1200) + $delta;
+                $played[$pid] = true;
+            }
+            foreach ([$left, $right] as $pid) {
+                $elo[$pid] = $elo[$pid] ?? 1200;
+                $played[$pid] = true;
+            }
+        }
+
+        return ['beats' => $beats, 'defenses' => $defenses];
+    }
+
+    /**
+     * The reigning champion: the player with the strictly highest current ELO.
+     * Returns null when nobody has played yet or the top ELO is tied.
+     *
+     * @param  array<int, int>  $elo  playerId => current ELO
+     * @param  array<int, bool>  $played  playerId => has entered the pool
+     */
+    private function reigningChampion(array $elo, array $played): ?int
+    {
+        $bestId = null;
+        $bestElo = null;
+        $tied = false;
+
+        foreach (array_keys($played) as $pid) {
+            $value = $elo[$pid] ?? 1200;
+            if ($bestElo === null || $value > $bestElo) {
+                $bestElo = $value;
+                $bestId = $pid;
+                $tied = false;
+            } elseif ($value === $bestElo) {
+                $tied = true;
+            }
+        }
+
+        return $tied ? null : $bestId;
     }
 
     public function liveMatches(): JsonResponse
