@@ -217,7 +217,42 @@ class PingPongApiController extends Controller
         ->sortByDesc('elo_rating')
         ->values();
 
+        $entries = $this->attachRankDeltas($entries, $mode);
+
         return response()->json($entries);
+    }
+
+    /**
+     * Add a `rank_delta` to each entry: how many positions the player moved
+     * versus the ranking as it stood at the start of today (positive = climbed).
+     * Prior ELO is reconstructed as current ELO minus today's rating changes —
+     * the same summation the live ELO uses.
+     *
+     * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $entries
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function attachRankDeltas($entries, string $mode)
+    {
+        $todayDelta = PingPongRatingChange::where('mode', $mode)
+            ->where('created_at', '>=', Carbon::today())
+            ->selectRaw('player_id, SUM(rating_change) as delta')
+            ->groupBy('player_id')
+            ->pluck('delta', 'player_id');
+
+        // ponytail: reconstruct start-of-day ELO from the change log; no snapshot table needed.
+        $priorElo = $entries->mapWithKeys(fn ($e) => [
+            $e['player_id'] => $e['elo_rating'] - (int) ($todayDelta[$e['player_id']] ?? 0),
+        ]);
+
+        $priorRank = $entries->pluck('player_id')
+            ->sortByDesc(fn ($pid) => $priorElo[$pid])
+            ->values()
+            ->flip(); // player_id => prior index
+
+        return $entries->map(fn ($entry, $i) => [
+            ...$entry,
+            'rank_delta' => $priorRank[$entry['player_id']] - $i,
+        ]);
     }
 
     /**
