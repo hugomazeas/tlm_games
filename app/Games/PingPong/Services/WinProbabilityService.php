@@ -3,18 +3,26 @@
 namespace App\Games\PingPong\Services;
 
 use App\Games\PingPong\Models\PingPongMatch;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Live win-probability for 1v1 ping pong.
  *
  * Builds a pre-match prior p0 (probability the LEFT player wins the match) from
- * three signals, then projects it forward through the current score:
+ * three signals, then projects it forward through the current score, correcting
+ * the projection with historical "game shape" data:
  *
  *   1. Elo skill        — each player's current rating (EloService).
  *   2. Recent form      — last-N win rate, shrunk toward .500, applied as an Elo delta.
  *   3. Head-to-head     — this pairing's record, Beta-shrunk toward the form-adjusted Elo.
  *
- * p0 -> per-point win prob q -> P(reach 11, win by 2, from the current score).
+ * Score projection: p0 -> per-point win prob q -> P(reach 11 win-by-2). The raw
+ * race-DP is then blended, by sample size, with the EMPIRICAL win-rate observed
+ * historically at the same (points-scored, margin) — so the live number tracks
+ * what actually happens from a given lead, not just the theory. In the deuce
+ * region each player's historical clutch delta nudges the result.
+ *
  * At 0-0 the result is p0; as the score moves the margin dominates the prior.
  */
 class WinProbabilityService
@@ -30,6 +38,18 @@ class WinProbabilityService
 
     /** Cap on the Elo swing a hot/cold streak may contribute (points). */
     private const FORM_ELO_CAP = 100.0;
+
+    /** Empirical (state) trust: pseudo-games pulling a state's win-rate toward theory. */
+    private const EMPIRICAL_PRIOR_WEIGHT = 30.0;
+
+    /** Below this many games observed at a state, ignore the empirical table entirely. */
+    private const EMPIRICAL_MIN_GAMES = 20;
+
+    /** Clutch trust: deuce-games pulling a player's clutch delta toward zero. */
+    private const CLUTCH_PRIOR_WEIGHT = 40.0;
+
+    /** How long the historical shape tables stay cached (seconds). */
+    private const SHAPE_CACHE_TTL = 3600;
 
     public function __construct(private EloService $eloService) {}
 
@@ -50,6 +70,8 @@ class WinProbabilityService
             $p0,
             $match->player_left_score ?? 0,
             $match->player_right_score ?? 0,
+            $match->player_left_id,
+            $match->player_right_id,
         );
 
         $leftPct = (int) round($pLeft * 100);
@@ -149,16 +171,179 @@ class WinProbabilityService
     /**
      * P(left wins the match | current score), games to 11 win-by-2.
      *
-     * A per-point win prob q gets *amplified* by a race to 11, so we can't use p0
-     * as q directly. Instead we calibrate: find the q whose race-from-0-0 equals
-     * p0 (bisection — the race prob is monotonic in q), so at 0-0 the displayed
-     * number is exactly the pre-match prior. From there the live score drives it.
+     * Starts from the calibrated race-DP (q chosen so the 0-0 value equals p0),
+     * then corrects it with the two data-backed "shape" signals:
+     *   - empirical margin recalibration: blend the theoretical value with the
+     *     historical win-rate seen at this (points-scored, margin), by sample size;
+     *   - clutch: in the deuce region, nudge by each player's historical deuce delta.
      */
-    private function matchWinProbability(float $p0, int $left, int $right): float
+    private function matchWinProbability(float $p0, int $left, int $right, int $leftId, int $rightId): float
     {
         $q = $this->calibratePointProbability($p0);
+        $theoretical = $this->raceProbability($q, $left, $right);
 
-        return $this->raceProbability($q, $left, $right);
+        $p = $this->blendWithEmpirical($theoretical, $p0, $left, $right);
+        $p = $this->applyClutch($p, $left, $right, $leftId, $rightId);
+
+        return min(max($p, 0.0), 1.0);
+    }
+
+    /**
+     * Blend the theoretical race prob with the historical win-rate observed at the
+     * same (total points, margin). The empirical table is measured over the average
+     * matchup, so we re-center it by how skewed this matchup is (p0 vs .500) before
+     * blending. Below EMPIRICAL_MIN_GAMES observed, we trust theory alone.
+     */
+    private function blendWithEmpirical(float $theoretical, float $p0, int $left, int $right): float
+    {
+        // Only meaningful pre-deuce; deuce is handled by the DP + clutch.
+        if ($left >= 10 && $right >= 10) {
+            return $theoretical;
+        }
+
+        $table = $this->empiricalStateTable();
+        $key = ($left + $right) . ':' . ($left - $right);
+
+        if (! isset($table[$key])) {
+            return $theoretical;
+        }
+
+        [$games, $leftWins] = $table[$key];
+        if ($games < self::EMPIRICAL_MIN_GAMES) {
+            return $theoretical;
+        }
+
+        // Historical rate for an even matchup at this state...
+        $rawRate = $leftWins / $games;
+        // ...re-centered in logit space toward this matchup's skew, so a strong
+        // favorite leading 2-0 reads higher than an even player leading 2-0.
+        $empirical = $this->logisticShift($rawRate, $this->logit($p0));
+
+        // Sample-size weighted blend toward the empirical observation.
+        $w = $games / ($games + self::EMPIRICAL_PRIOR_WEIGHT);
+
+        return $w * $empirical + (1 - $w) * $theoretical;
+    }
+
+    /**
+     * In the deuce region (both >= 10, undecided), nudge the probability by each
+     * player's historical clutch delta (deuce win-rate vs. their baseline), shrunk
+     * toward zero for players with few deuce games. Applied in logit space.
+     */
+    private function applyClutch(float $p, int $left, int $right, int $leftId, int $rightId): float
+    {
+        if ($left < 10 || $right < 10 || $p <= 0.0 || $p >= 1.0) {
+            return $p;
+        }
+
+        $clutch = $this->clutchTable();
+        $delta = ($clutch[$leftId] ?? 0.0) - ($clutch[$rightId] ?? 0.0);
+
+        if ($delta === 0.0) {
+            return $p;
+        }
+
+        return 1 / (1 + exp(-($this->logit($p) + $delta)));
+    }
+
+    private function logit(float $p): float
+    {
+        $p = min(max($p, 0.0001), 0.9999);
+
+        return log($p / (1 - $p));
+    }
+
+    /** Apply a logit-space shift to a probability. */
+    private function logisticShift(float $p, float $shift): float
+    {
+        return 1 / (1 + exp(-($this->logit($p) + $shift)));
+    }
+
+    /**
+     * Historical outcome by mid-game state, keyed "total:margin" => [games, leftWins].
+     * Cached — one game only adds a handful of point-rows, so hourly is plenty fresh.
+     *
+     * @return array<string, array{0: int, 1: int}>
+     */
+    private function empiricalStateTable(): array
+    {
+        return Cache::remember('pp.winprob.states', self::SHAPE_CACHE_TTL, function (): array {
+            $rows = DB::table('ping_pong_points as p')
+                ->join('ping_pong_matches as m', 'm.id', '=', 'p.match_id')
+                ->whereNotNull('m.ended_at')
+                ->where('m.mode', '1v1')
+                ->whereColumn('p.left_score_after', '<', DB::raw('11'))
+                ->whereColumn('p.right_score_after', '<', DB::raw('11'))
+                ->selectRaw('(p.left_score_after + p.right_score_after) as total')
+                ->selectRaw('(p.left_score_after - p.right_score_after) as margin')
+                ->selectRaw('COUNT(*) as games')
+                ->selectRaw('SUM(CASE WHEN m.winner_id = m.player_left_id THEN 1 ELSE 0 END) as left_wins')
+                ->groupBy('total', 'margin')
+                ->get();
+
+            $table = [];
+            foreach ($rows as $r) {
+                $table[$r->total . ':' . $r->margin] = [(int) $r->games, (int) $r->left_wins];
+            }
+
+            return $table;
+        });
+    }
+
+    /**
+     * Per-player clutch delta in logit units: how much better/worse a player does
+     * in deuce games than their overall baseline, shrunk toward zero by deuce count.
+     * Cached hourly.
+     *
+     * @return array<int, float>
+     */
+    private function clutchTable(): array
+    {
+        return Cache::remember('pp.winprob.clutch', self::SHAPE_CACHE_TTL, function (): array {
+            $deuce = DB::table('ping_pong_matches')
+                ->whereNotNull('ended_at')
+                ->where('mode', '1v1')
+                ->where('player_left_score', '>=', 10)
+                ->where('player_right_score', '>=', 10)
+                ->get(['player_left_id', 'player_right_id', 'winner_id']);
+
+            $overall = DB::table('ping_pong_matches')
+                ->whereNotNull('ended_at')
+                ->where('mode', '1v1')
+                ->get(['player_left_id', 'player_right_id', 'winner_id']);
+
+            $overallGames = [];
+            $overallWins = [];
+            foreach ($overall as $m) {
+                foreach ([$m->player_left_id, $m->player_right_id] as $pid) {
+                    $overallGames[$pid] = ($overallGames[$pid] ?? 0) + 1;
+                }
+                $overallWins[$m->winner_id] = ($overallWins[$m->winner_id] ?? 0) + 1;
+            }
+
+            $deuceGames = [];
+            $deuceWins = [];
+            foreach ($deuce as $m) {
+                foreach ([$m->player_left_id, $m->player_right_id] as $pid) {
+                    $deuceGames[$pid] = ($deuceGames[$pid] ?? 0) + 1;
+                }
+                $deuceWins[$m->winner_id] = ($deuceWins[$m->winner_id] ?? 0) + 1;
+            }
+
+            $table = [];
+            foreach ($deuceGames as $pid => $dg) {
+                $baseRate = ($overallWins[$pid] ?? 0) / max(1, $overallGames[$pid] ?? 1);
+                $deuceRate = ($deuceWins[$pid] ?? 0) / $dg;
+
+                // Shrink the observed deuce rate toward the player's baseline by count.
+                $w = $dg / ($dg + self::CLUTCH_PRIOR_WEIGHT);
+                $shrunkRate = $w * $deuceRate + (1 - $w) * $baseRate;
+
+                $table[$pid] = $this->logit($shrunkRate) - $this->logit($baseRate);
+            }
+
+            return $table;
+        });
     }
 
     /**

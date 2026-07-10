@@ -4,23 +4,54 @@ namespace Tests\Unit;
 
 use App\Games\PingPong\Services\EloService;
 use App\Games\PingPong\Services\WinProbabilityService;
+use Illuminate\Support\Facades\Cache;
 use ReflectionMethod;
 use Tests\TestCase;
 
 /**
  * Exercises the pure score-projection math directly (no DB): given a pre-match
  * prior p0 and a current score, P(left wins) must obey the sanity properties of
- * a to-11, win-by-2 game.
+ * a to-11, win-by-2 game. The historical "shape" tables are stubbed via cache so
+ * these tests stay DB-free; the empirical blend and clutch nudge get their own
+ * tests below with injected tables.
  */
 class WinProbabilityServiceTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Empty shape tables -> matchWinProbability falls back to pure theory.
+        Cache::put('pp.winprob.states', [], 60);
+        Cache::put('pp.winprob.clutch', [], 60);
+    }
+
     private function project(float $p0, int $left, int $right): float
     {
+        // Re-prime empty tables so this stays pure regardless of call order after
+        // a projectWith() has stashed shape data in the cache.
+        Cache::put('pp.winprob.states', [], 60);
+        Cache::put('pp.winprob.clutch', [], 60);
+
         $service = new WinProbabilityService(new EloService());
         $method = new ReflectionMethod($service, 'matchWinProbability');
         $method->setAccessible(true);
 
-        return $method->invoke($service, $p0, $left, $right);
+        // Player IDs 0/0 have no historical shape data, so this exercises the pure
+        // theoretical race-DP (empirical blend and clutch both no-op).
+        return $method->invoke($service, $p0, $left, $right, 0, 0);
+    }
+
+    /** Blend/clutch tests inject their own tables, so start each from empty. */
+    private function projectWith(float $p0, int $left, int $right, int $leftId, int $rightId, array $states, array $clutch): float
+    {
+        Cache::put('pp.winprob.states', $states, 60);
+        Cache::put('pp.winprob.clutch', $clutch, 60);
+
+        $service = new WinProbabilityService(new EloService());
+        $method = new ReflectionMethod($service, 'matchWinProbability');
+        $method->setAccessible(true);
+
+        return $method->invoke($service, $p0, $left, $right, $leftId, $rightId);
     }
 
     public function test_even_match_at_start_is_fifty_fifty(): void
@@ -74,5 +105,45 @@ class WinProbabilityServiceTest extends TestCase
     {
         $this->assertEqualsWithDelta(1.0, $this->project(0.5, 11, 9), 0.001);
         $this->assertEqualsWithDelta(0.0, $this->project(0.5, 9, 11), 0.001);
+    }
+
+    public function test_empirical_table_pulls_toward_observed_rate(): void
+    {
+        // Theory says ~70% at 4-2. Say history (plenty of games) shows leads at this
+        // state actually convert 90% of the time -> the blend must read higher.
+        $states = ['6:2' => [500, 450]]; // 500 games, 450 left wins = 90%
+        $withHistory = $this->projectWith(0.5, 4, 2, 1, 2, $states, []);
+        $pureTheory = $this->project(0.5, 4, 2);
+
+        $this->assertGreaterThan($pureTheory, $withHistory);
+    }
+
+    public function test_empirical_table_ignored_below_min_games(): void
+    {
+        // Only 5 games observed -> below threshold -> pure theory, unchanged.
+        $states = ['6:2' => [5, 5]];
+        $withThin = $this->projectWith(0.5, 4, 2, 1, 2, $states, []);
+        $this->assertEqualsWithDelta($this->project(0.5, 4, 2), $withThin, 0.001);
+    }
+
+    public function test_clutch_favors_the_stronger_deuce_player(): void
+    {
+        // At deuce with an even prior, a positive clutch delta for the left player
+        // (and negative for the right) must push the probability above .500.
+        $clutch = [1 => 0.5, 2 => -0.5];
+        $p = $this->projectWith(0.5, 10, 10, 1, 2, [], $clutch);
+        $this->assertGreaterThan(0.5, $p);
+
+        // Mirror: swap the clutch and it must fall below .500.
+        $pMirror = $this->projectWith(0.5, 10, 10, 1, 2, [], [1 => -0.5, 2 => 0.5]);
+        $this->assertLessThan(0.5, $pMirror);
+    }
+
+    public function test_clutch_does_not_fire_before_deuce(): void
+    {
+        // Same clutch data, but not yet in deuce -> no effect.
+        $clutch = [1 => 0.5, 2 => -0.5];
+        $withClutch = $this->projectWith(0.5, 8, 8, 1, 2, [], $clutch);
+        $this->assertEqualsWithDelta($this->project(0.5, 8, 8), $withClutch, 0.001);
     }
 }
