@@ -314,6 +314,22 @@
                 </div>
             </div>
 
+            {{-- ===== Live win-probability ===== --}}
+            <div x-show="mode === '1v1' && match.win_probability && !match.is_complete"
+                 class="mb-2 md:mb-3">
+                <div class="flex items-center justify-between pph-mono text-[11px] md:text-[13px] font-bold tracking-[0.14em] uppercase mb-1">
+                    <span class="text-[#ff5a4a] truncate max-w-[45%]"
+                          x-text="(match.player_left?.name || 'Left') + ' ' + (match.win_probability?.left ?? 50) + '%'"></span>
+                    <span class="text-[#f5ecd6]/40 text-[10px] tracking-[0.2em]">WIN CHANCE</span>
+                    <span class="text-[#3ec8ff] truncate max-w-[45%] text-right"
+                          x-text="(match.player_right?.name || 'Right') + ' ' + (match.win_probability?.right ?? 50) + '%'"></span>
+                </div>
+                <div class="relative h-2.5 md:h-3 rounded-full overflow-hidden bg-[#3ec8ff]/25 border border-[#f5ecd6]/10">
+                    <div class="absolute inset-y-0 left-0 bg-gradient-to-r from-[#ff5a4a] to-[#ff8a6a] transition-[width] duration-500 ease-out shadow-[0_0_12px_rgba(255,90,74,0.5)]"
+                         :style="`width: ${match.win_probability?.left ?? 50}%`"></div>
+                </div>
+            </div>
+
             {{-- ===== Two-side scoreboard ===== --}}
             <div class="grid grid-cols-2 gap-4 md:gap-6 flex-1 min-h-0">
 
