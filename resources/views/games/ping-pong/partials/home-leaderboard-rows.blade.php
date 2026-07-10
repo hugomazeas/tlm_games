@@ -49,8 +49,17 @@
                                  : 'text-[#f5ecd6]/45'"
                   x-text="String(i + 1).padStart(2, '0')"></span>
 
-            {{-- Name --}}
-            <span class="font-bold text-[15px] md:text-base text-[#f5ecd6] truncate" x-text="entry.player_name"></span>
+            {{-- Name + position movement since start of day --}}
+            <span class="flex items-center gap-2 min-w-0">
+                <span class="font-bold text-[15px] md:text-base text-[#f5ecd6] truncate" x-text="entry.player_name"></span>
+                <template x-if="entry.rank_delta">
+                    <span class="inline-flex items-center gap-0.5 pph-mono text-[13px] md:text-[14px] font-bold leading-none shrink-0"
+                          :class="entry.rank_delta > 0 ? 'text-[#9be7c4]' : 'text-[#ff5a4a]'"
+                          :title="(entry.rank_delta > 0 ? 'Up ' : 'Down ') + Math.abs(entry.rank_delta) + ' since start of day'">
+                        <span x-text="entry.rank_delta > 0 ? '▲' : '▼'"></span><span x-text="Math.abs(entry.rank_delta)"></span>
+                    </span>
+                </template>
+            </span>
 
             {{-- ELO --}}
             <span class="pph-mono font-bold text-[13px] md:text-[15px] tracking-tight px-2.5 py-1 rounded-md justify-self-end md:justify-self-start"

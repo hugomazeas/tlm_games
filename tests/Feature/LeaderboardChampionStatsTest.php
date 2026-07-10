@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Games\PingPong\Models\PingPongMatch;
+use App\Games\PingPong\Models\PingPongRating;
 use App\Games\PingPong\Models\PingPongRatingChange;
 use App\Models\Player;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -34,15 +35,30 @@ class LeaderboardChampionStatsTest extends TestCase
     /**
      * Record the ELO deltas produced by a match for the two participants.
      */
-    private function rating(PingPongMatch $match, int $playerId, int $delta): void
+    private function rating(PingPongMatch $match, int $playerId, int $delta, ?Carbon $at = null): void
     {
-        PingPongRatingChange::create([
+        $change = PingPongRatingChange::create([
             'player_id' => $playerId,
             'match_id' => $match->id,
             'mode' => '1v1',
             'type' => 'match',
             'rating_change' => $delta,
         ]);
+
+        if ($at !== null) {
+            $change->forceFill(['created_at' => $at])->save();
+        }
+    }
+
+    /**
+     * Set a player's current ELO (the leaderboard reads this, not the change log).
+     */
+    private function currentRating(int $playerId, int $elo): void
+    {
+        PingPongRating::updateOrCreate(
+            ['player_id' => $playerId, 'mode' => '1v1'],
+            ['elo_rating' => $elo],
+        );
     }
 
     /** @return array<int, array> leaderboard entries keyed by player_id */
@@ -111,6 +127,33 @@ class LeaderboardChampionStatsTest extends TestCase
         $this->assertSame(0, $entries[$dave->id]['title_defenses']);
         $this->assertSame(0, $entries[$eve->id]['champion_beats']);
         $this->assertSame(0, $entries[$eve->id]['title_defenses']);
+    }
+
+    public function test_rank_delta_reflects_positions_moved_since_start_of_day(): void
+    {
+        $alice = Player::create(['name' => 'Alice']);
+        $bob = Player::create(['name' => 'Bob']);
+
+        // Yesterday: Bob wins and climbs above Alice. These changes are dated
+        // before today, so they set the start-of-day standing (Bob 1240, Alice 1160).
+        $y1 = $this->match($bob->id, $alice->id, $bob->id, now()->subDay());
+        $this->rating($y1, $bob->id, 40, now()->subDay());
+        $this->rating($y1, $alice->id, -40, now()->subDay());
+
+        // Today: Alice beats Bob and leapfrogs back to #1 (Alice 1210, Bob 1190).
+        $t1 = $this->match($bob->id, $alice->id, $alice->id, now());
+        $this->rating($t1, $alice->id, 50);
+        $this->rating($t1, $bob->id, -50);
+
+        // Current ratings mirror the change log (as EloService keeps them in sync).
+        $this->currentRating($alice->id, 1210);
+        $this->currentRating($bob->id, 1190);
+
+        $entries = $this->leaderboardByPlayer();
+
+        // Alice was #2 at start of day, now #1 -> +1. Bob is the mirror -> -1.
+        $this->assertSame(1, $entries[$alice->id]['rank_delta']);
+        $this->assertSame(-1, $entries[$bob->id]['rank_delta']);
     }
 
     public function test_lifetime_and_one_month_win_rates_are_reported_separately(): void
