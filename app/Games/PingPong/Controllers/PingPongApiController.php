@@ -20,6 +20,7 @@ use App\Games\PingPong\Services\PlayerPointTagStatsService;
 use App\Games\PingPong\Services\PointAwardsService;
 use App\Games\PingPong\Services\PracticeInsightsService;
 use App\Games\PingPong\Services\VideoRecordingService;
+use App\Games\PingPong\Services\WinProbabilityService;
 use App\Http\Controllers\Controller;
 use App\Models\Office;
 use App\Models\Player;
@@ -37,6 +38,7 @@ class PingPongApiController extends Controller
         private EloService $eloService,
         private VideoRecordingService $videoRecordingService,
         private PlayerPointTagStatsService $pointTagStatsService,
+        private WinProbabilityService $winProbabilityService,
     ) {}
 
     public function offices(): JsonResponse
@@ -568,6 +570,10 @@ class PingPongApiController extends Controller
         $response['left_remote_connected'] = $match->left_remote_connected_at !== null;
         $response['right_remote_connected'] = $match->right_remote_connected_at !== null;
 
+        if (! $match->is_complete) {
+            $response['win_probability'] = $this->winProbabilityService->forMatch($match);
+        }
+
         if ($match->recording) {
             $response['recording'] = [
                 'id' => $match->recording->id,
@@ -791,6 +797,10 @@ class PingPongApiController extends Controller
         }
 
         $match->load(['playerLeft', 'playerRight', 'currentServer', 'winner', 'teamLeftPlayer2', 'teamRightPlayer2']);
+
+        // Live win-probability, recomputed after every point. Set as an attribute so
+        // it rides along in both the broadcast payload (toArray) and the response.
+        $match->setAttribute('win_probability', $this->winProbabilityService->forMatch($match));
 
         broadcast(new MatchScoreUpdated($match));
 
