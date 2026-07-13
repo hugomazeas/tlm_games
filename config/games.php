@@ -16,6 +16,7 @@ return [
     'modules' => [
         App\Games\Archery\Providers\ArcheryServiceProvider::class,
         App\Games\PingPong\Providers\PingPongServiceProvider::class,
+        App\Games\Putter\Providers\PutterServiceProvider::class,
     ],
 
     /*

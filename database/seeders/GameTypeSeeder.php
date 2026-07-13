@@ -70,6 +70,36 @@ class GameTypeSeeder extends Seeder
             ]
         );
 
+        $putter = GameType::updateOrCreate(
+            ['slug' => 'putter'],
+            [
+                'name' => 'Putter',
+                'description' => 'Sink 5 balls, one stroke each. Track your make percentage.',
+                'icon' => "\xE2\x9B\xB3",
+                'color' => '#22c55e',
+                'is_active' => true,
+                'min_players' => 1,
+                'max_players' => 1,
+                'leaderboard_columns' => null,
+            ]
+        );
+
+        GameMode::updateOrCreate(
+            ['game_type_id' => $putter->id, 'slug' => 'career-make-percentage'],
+            [
+                'name' => 'Career Make %',
+                'description' => 'Total makes divided by total balls across all rounds.',
+                'is_active' => true,
+                'sort_order' => 0,
+                'leaderboard_columns' => [
+                    ['key' => 'make_pct', 'label' => 'Make %', 'sortable' => true],
+                    ['key' => 'total_makes', 'label' => 'Makes', 'sortable' => true],
+                    ['key' => 'total_balls', 'label' => 'Balls', 'sortable' => true],
+                    ['key' => 'games_played', 'label' => 'Rounds', 'sortable' => true],
+                ],
+            ]
+        );
+
         GameMode::updateOrCreate(
             ['game_type_id' => $pingPong->id, 'slug' => 'doubles-elo-ranking'],
             [
