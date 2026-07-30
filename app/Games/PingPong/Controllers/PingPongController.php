@@ -44,6 +44,16 @@ class PingPongController extends Controller
         return view('games.ping-pong.player', compact('player'));
     }
 
+    public function matchup(int $playerA, int $playerB)
+    {
+        abort_if($playerA === $playerB, 404);
+
+        return view('games.ping-pong.matchup', [
+            'playerA' => Player::findOrFail($playerA),
+            'playerB' => Player::findOrFail($playerB),
+        ]);
+    }
+
     public function stats()
     {
         return view('games.ping-pong.stats');
@@ -73,7 +83,7 @@ class PingPongController extends Controller
         $match = PingPongMatch::findOrFail($id);
 
         if ($match->is_complete) {
-            return redirect('/games/ping-pong/matches/' . $match->id);
+            return redirect('/games/ping-pong/matches/'.$match->id);
         }
 
         return view('games.ping-pong.play', [
@@ -81,7 +91,7 @@ class PingPongController extends Controller
         ]);
     }
 
-public function embedLive()
+    public function embedLive()
     {
         return view('games.ping-pong.embed-live');
     }

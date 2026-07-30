@@ -16,6 +16,7 @@ use App\Games\PingPong\Models\PingPongRecording;
 use App\Games\PingPong\Models\PingPongRatingChange;
 use App\Games\PingPong\Services\ClipExtractionService;
 use App\Games\PingPong\Services\EloService;
+use App\Games\PingPong\Services\MatchupAnalysisService;
 use App\Games\PingPong\Services\PlayerPointTagStatsService;
 use App\Games\PingPong\Services\PointAwardsService;
 use App\Games\PingPong\Services\PracticeInsightsService;
@@ -1724,6 +1725,33 @@ class PingPongApiController extends Controller
             'player' => ['id' => $player->id, 'name' => $player->name],
             'records' => $records,
         ]);
+    }
+
+    public function matchup(
+        Request $request,
+        int $playerA,
+        int $playerB,
+        MatchupAnalysisService $service,
+    ): JsonResponse {
+        [$a, $b] = $this->resolveMatchupPlayers($playerA, $playerB);
+
+        $limit = (int) $request->query('limit', MatchupAnalysisService::DEFAULT_GAME_LIMIT);
+        $limit = max(1, min($limit, MatchupAnalysisService::MAX_GAME_LIMIT));
+        $offset = max(0, (int) $request->query('offset', 0));
+
+        return response()->json($service->forPlayers($a, $b, $limit, $offset));
+    }
+
+    /**
+     * A matchup needs two distinct, existing players.
+     *
+     * @return array{0: Player, 1: Player}
+     */
+    private function resolveMatchupPlayers(int $playerA, int $playerB): array
+    {
+        abort_if($playerA === $playerB, 404);
+
+        return [Player::findOrFail($playerA), Player::findOrFail($playerB)];
     }
 
     public function weeklyStats(int $id): JsonResponse

@@ -1,7 +1,7 @@
 <?php
 
-use App\Games\PingPong\Controllers\PingPongController;
 use App\Games\PingPong\Controllers\PingPongApiController;
+use App\Games\PingPong\Controllers\PingPongController;
 use App\Games\PingPong\Controllers\PingPongLobbyApiController;
 use Illuminate\Support\Facades\Route;
 
@@ -9,6 +9,7 @@ Route::get('/games/ping-pong', [PingPongController::class, 'play']);
 Route::get('/games/ping-pong/stats', [PingPongController::class, 'stats']);
 Route::get('/games/ping-pong/awards/{key}', [PingPongController::class, 'awardDetail']);
 Route::get('/games/ping-pong/players/{id}', [PingPongController::class, 'playerStats']);
+Route::get('/games/ping-pong/matchup/{playerA}/{playerB}', [PingPongController::class, 'matchup']);
 Route::get('/games/ping-pong/lobby/{code}', [PingPongController::class, 'lobbyJoin']);
 
 Route::get('/games/ping-pong/api/players', [PingPongApiController::class, 'players']);
@@ -30,6 +31,7 @@ Route::get('/games/ping-pong/api/elo-history/top', [PingPongApiController::class
 Route::get('/games/ping-pong/api/players/{id}/elo-history', [PingPongApiController::class, 'eloHistory']);
 Route::get('/games/ping-pong/api/players/{id}/matches', [PingPongApiController::class, 'playerMatches']);
 Route::get('/games/ping-pong/api/players/{id}/head-to-head', [PingPongApiController::class, 'headToHead']);
+Route::get('/games/ping-pong/api/matchup/{playerA}/{playerB}', [PingPongApiController::class, 'matchup']);
 Route::get('/games/ping-pong/api/players/{id}/weekly-stats', [PingPongApiController::class, 'weeklyStats']);
 Route::get('/games/ping-pong/api/matches/live', [PingPongApiController::class, 'liveMatches']);
 Route::get('/games/ping-pong/api/matches/recent', [PingPongApiController::class, 'recentMatches']);
