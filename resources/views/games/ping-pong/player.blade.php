@@ -909,12 +909,14 @@
         <h2>Head-to-Head</h2>
         {{-- Desktop: radial canvas chart --}}
         <div class="h2h-chart-wrap h2h-desktop-only" x-ref="h2hContainer" x-show="h2h.length > 0">
-            <canvas x-ref="h2hCanvas"></canvas>
+            <canvas x-ref="h2hCanvas"
+                    @click="openH2hNode($event)"
+                    @mousemove="$event.target.style.cursor = h2hNodeAt($event) ? 'pointer' : 'default'"></canvas>
         </div>
         {{-- Mobile: clean list of opponents --}}
         <div class="h2h-mobile-list" x-show="h2h.length > 0">
             <template x-for="r in h2h" :key="r.opponent.id || r.opponent">
-                <a class="h2h-mobile-row" :href="'/games/ping-pong/players/' + (r.opponent.id || r.opponent_id)">
+                <a class="h2h-mobile-row" :href="matchupUrl(r)">
                     <span class="h2h-init" :class="((r.wins/(r.wins + r.losses || 1)) >= 0.5) ? 'win' : 'loss'"
                           x-text="(r.opponent?.name || String(r.opponent)).charAt(0).toUpperCase()"></span>
                     <span class="h2h-name" x-text="r.opponent?.name || String(r.opponent)"></span>
@@ -985,6 +987,7 @@ function playerStats() {
         playerName: '{{ $player->name }}',
         stats: {},
         h2h: [],
+        h2hNodes: [],
         matches: [],
         eloHistory: [],
         eloCandles: [],
@@ -2003,6 +2006,30 @@ function playerStats() {
             this.loadingEloHistory = false;
         },
 
+        /** Head-to-head entries link to the matchup page; doubles teams have no single opponent id. */
+        matchupUrl(record) {
+            const opponentId = record.opponent?.id;
+            return opponentId
+                ? `/games/ping-pong/matchup/${this.playerId}/${opponentId}`
+                : `/games/ping-pong/players/${this.playerId}`;
+        },
+
+        h2hNodeAt(event) {
+            const rect = event.target.getBoundingClientRect();
+            const px = event.clientX - rect.left;
+            const py = event.clientY - rect.top;
+            return (this.h2hNodes || []).find(
+                (node) => Math.hypot(px - node.x, py - node.y) <= node.r + 5
+            );
+        },
+
+        openH2hNode(event) {
+            const node = this.h2hNodeAt(event);
+            if (node?.record?.opponent?.id) {
+                window.location.href = this.matchupUrl(node.record);
+            }
+        },
+
         renderH2hChart() {
             const canvas = this.$refs.h2hCanvas;
             const container = this.$refs.h2hContainer;
@@ -2089,6 +2116,7 @@ function playerStats() {
             }
 
             // Each spoke + node
+            this.h2hNodes = [];
             records.forEach((record, i) => {
                 const angle = (i / n) * Math.PI * 2 - Math.PI / 2;
                 const total = record.wins + record.losses;
@@ -2097,6 +2125,7 @@ function playerStats() {
 
                 const ox = cx + Math.cos(angle) * outerR;
                 const oy = cy + Math.sin(angle) * outerR;
+                this.h2hNodes.push({ x: ox, y: oy, r: nodeR, record });
 
                 // Spoke line
                 const lineW = 2 + (total / maxGames) * 5;

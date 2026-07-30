@@ -624,6 +624,15 @@
 
                 {{-- Bottom net line --}}
                 <div aria-hidden="true" class="mt-8 h-[2px] [background-image:repeating-linear-gradient(90deg,#f5ecd6_0_10px,transparent_10px_20px)] opacity-20"></div>
+
+                <template x-if="match.mode === '1v1'">
+                    <div class="mt-5 text-center">
+                        <a :href="'/games/ping-pong/matchup/' + match.player_left_id + '/' + match.player_right_id"
+                           class="pph-mono text-[11px] tracking-[0.08em] uppercase text-[#f5ecd6]/55 hover:text-[#f5ecd6] no-underline border-b border-[#f5ecd6]/20 hover:border-[#f5ecd6]/60 pb-0.5 transition">
+                            Every game <span x-text="leftName()"></span> vs <span x-text="rightName()"></span> →
+                        </a>
+                    </div>
+                </template>
             </section>
 
             <!-- Match Recording + Point Timeline -->
