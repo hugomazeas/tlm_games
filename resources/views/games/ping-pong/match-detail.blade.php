@@ -546,9 +546,6 @@
             {{-- ====== After-game Hero ====== --}}
             <section class="relative overflow-hidden rounded-2xl border border-[#f5ecd6]/15 bg-gradient-to-b from-[#f5ecd6]/[0.04] to-[#f5ecd6]/[0.01] px-3 md:px-10 py-6 md:py-10 mb-6">
 
-                {{-- Center-line netting at the vertical midline --}}
-                <div aria-hidden="true" class="absolute top-8 bottom-8 left-1/2 -translate-x-1/2 w-px [background-image:repeating-linear-gradient(180deg,rgba(245,236,214,0.22)_0_8px,transparent_8px_16px)] pointer-events-none"></div>
-
                 {{-- Eyebrow --}}
                 <div class="flex items-center justify-between gap-4 mb-6">
                     <div class="flex items-center gap-2.5">
