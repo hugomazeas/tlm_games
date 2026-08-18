@@ -546,9 +546,6 @@
             {{-- ====== After-game Hero ====== --}}
             <section class="relative overflow-hidden rounded-2xl border border-[#f5ecd6]/15 bg-gradient-to-b from-[#f5ecd6]/[0.04] to-[#f5ecd6]/[0.01] px-3 md:px-10 py-6 md:py-10 mb-6">
 
-                {{-- Center-line netting at the vertical midline --}}
-                <div aria-hidden="true" class="absolute top-8 bottom-8 left-1/2 -translate-x-1/2 w-px [background-image:repeating-linear-gradient(180deg,rgba(245,236,214,0.22)_0_8px,transparent_8px_16px)] pointer-events-none"></div>
-
                 {{-- Eyebrow --}}
                 <div class="flex items-center justify-between gap-4 mb-6">
                     <div class="flex items-center gap-2.5">
@@ -621,6 +618,22 @@
                         </div>
                     </div>
                 </div>
+
+                {{-- Result attribution --}}
+                <template x-if="match.result_attribution">
+                    <div class="mt-6 flex flex-col items-center gap-1 text-center">
+                        <span class="pph-mono text-[10px] md:text-[11px] font-bold tracking-[0.22em] uppercase px-3 py-1 rounded-full"
+                              :class="{
+                                  'bg-[#ff5a4a]/15 text-[#ff5a4a] pph-glow-red': match.result_attribution.verdict === 'lost',
+                                  'bg-[#ffd166]/15 text-[#ffd166] pph-glow-amber': match.result_attribution.verdict === 'won',
+                                  'bg-[#f5ecd6]/10 text-[#f5ecd6]/70': match.result_attribution.verdict === 'contested'
+                              }"
+                              x-text="attributionHeadline()"></span>
+                        <span class="pph-mono text-[10px] tracking-[0.04em] text-[#f5ecd6]/50"
+                              x-show="match.result_attribution.verdict !== 'contested'"
+                              x-text="attributionDetail()"></span>
+                    </div>
+                </template>
 
                 {{-- Bottom net line --}}
                 <div aria-hidden="true" class="mt-8 h-[2px] [background-image:repeating-linear-gradient(90deg,#f5ecd6_0_10px,transparent_10px_20px)] opacity-20"></div>
@@ -1097,6 +1110,24 @@ function matchDetail() {
             const m = this.match;
             if (!m) return '';
             return m.winner_id === m.player_left_id ? this.leftName() : this.rightName();
+        },
+
+        attributionHeadline() {
+            const a = this.match?.result_attribution;
+            if (!a) return '';
+            if (a.verdict === 'won') return 'Won by ' + (a.player?.name || this.winnerName());
+            if (a.verdict === 'lost') return 'Lost by ' + (a.player?.name || '?');
+            return 'Hard-fought';
+        },
+
+        attributionDetail() {
+            const a = this.match?.result_attribution;
+            if (!a) return '';
+            if (a.verdict === 'won') return `${a.player?.name || 'Winner'} earned ${a.earned} of ${a.tagged} decisive points`;
+            if (a.verdict === 'lost') return a.player?.name
+                ? `${a.gift} of ${a.tagged} points were ${a.player.name}'s errors`
+                : `${a.gift} of ${a.tagged} points were unforced errors`;
+            return '';
         },
 
         formattedDate() {

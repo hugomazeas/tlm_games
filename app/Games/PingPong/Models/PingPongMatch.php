@@ -143,6 +143,52 @@ class PingPongMatch extends Model
         return $this->winner_id === $this->player_left_id ? $this->playerRight : $this->playerLeft;
     }
 
+    /**
+     * Was this match decided by the winner's skill or the loser's errors?
+     *
+     * Looks only at tagged points (point_cause of 'winner' or 'opponent_error') that
+     * fell on the match winner's side, and compares each share against its own p75
+     * (derived from 385 real singles matches). Whichever share is more exceptional
+     * wins the headline. Returns null for doubles, incomplete matches, or when too
+     * few points are tagged to judge.
+     *
+     * @return array{verdict: 'won'|'lost'|'contested', player: ?Player, earned: int, gift: int, tagged: int}|null
+     */
+    public function resultAttribution(): ?array
+    {
+        // ponytail: winner-side p75 from 303 real 1v1 matches; tune here if the meta shifts.
+        // Denominator is winner-benefiting points only (earned + gift), so the two shares sum to 1.
+        $minWinnerSide = 6;
+        $earnedP75 = 0.46;
+        $giftP75 = 0.80;
+
+        if (!$this->winner_id || $this->isDoubles()) {
+            return null;
+        }
+
+        $tagged = $this->points->whereIn('point_cause', ['winner', 'opponent_error']);
+        $winnerSide = $this->winner_id === $this->player_left_id ? 'left' : 'right';
+        $earned = $tagged->where('point_cause', 'winner')->where('scoring_side', $winnerSide)->count();
+        $gift = $tagged->where('point_cause', 'opponent_error')->where('scoring_side', $winnerSide)->count();
+
+        $total = $earned + $gift;
+        if ($total < $minWinnerSide) {
+            return null;
+        }
+
+        $earnedExcess = ($earned / $total) - $earnedP75;
+        $giftExcess = ($gift / $total) - $giftP75;
+
+        if ($earnedExcess >= 0 && $earnedExcess >= $giftExcess) {
+            return ['verdict' => 'won', 'player' => $this->winner, 'earned' => $earned, 'gift' => $gift, 'tagged' => $total];
+        }
+        if ($giftExcess >= 0) {
+            return ['verdict' => 'lost', 'player' => $this->loser, 'earned' => $earned, 'gift' => $gift, 'tagged' => $total];
+        }
+
+        return ['verdict' => 'contested', 'player' => null, 'earned' => $earned, 'gift' => $gift, 'tagged' => $total];
+    }
+
     public function checkWinCondition(): ?int
     {
         $left = $this->player_left_score;

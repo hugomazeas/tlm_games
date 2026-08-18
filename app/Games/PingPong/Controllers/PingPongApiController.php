@@ -571,6 +571,16 @@ class PingPongApiController extends Controller
         $response['left_remote_connected'] = $match->left_remote_connected_at !== null;
         $response['right_remote_connected'] = $match->right_remote_connected_at !== null;
 
+        if ($attribution = $match->resultAttribution()) {
+            $response['result_attribution'] = [
+                'verdict' => $attribution['verdict'],
+                'player' => $attribution['player'] ? ['id' => $attribution['player']->id, 'name' => $attribution['player']->name] : null,
+                'earned' => $attribution['earned'],
+                'gift' => $attribution['gift'],
+                'tagged' => $attribution['tagged'],
+            ];
+        }
+
         if (! $match->is_complete) {
             $response['win_probability'] = $this->winProbabilityService->forMatch($match);
         }
