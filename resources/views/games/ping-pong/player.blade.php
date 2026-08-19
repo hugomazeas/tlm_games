@@ -18,7 +18,7 @@
     }
 
     .pps h1 {
-        font-size: 2rem;
+        font-size: 2.2rem;
         font-weight: 800;
     }
 
@@ -59,7 +59,7 @@
     }
 
     .pps .elo-hero-value {
-        font-size: 3.5rem;
+        font-size: 3.85rem;
         font-weight: 900;
         color: #3b82f6;
         line-height: 1;
@@ -67,7 +67,7 @@
 
     .pps .elo-hero-label {
         color: rgba(255,255,255,0.5);
-        font-size: 0.9rem;
+        font-size: 1.12rem;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.08em;
@@ -79,7 +79,7 @@
         padding: 4px 14px;
         background: rgba(255,255,255,0.06);
         border-radius: 999px;
-        font-size: 0.85rem;
+        font-size: 1.06rem;
         color: rgba(255,255,255,0.5);
     }
 
@@ -90,7 +90,7 @@
 
     .pps .elo-hero-streak {
         margin-top: 14px;
-        font-size: 0.9rem;
+        font-size: 1.12rem;
     }
 
     .pps .stats-grid {
@@ -108,19 +108,19 @@
     }
 
     .pps .stat-value {
-        font-size: 1.6rem;
+        font-size: 1.89rem;
         font-weight: 800;
         color: #3b82f6;
     }
 
     .pps .stat-label {
         color: rgba(255,255,255,0.5);
-        font-size: 0.8rem;
+        font-size: 1rem;
         margin-top: 2px;
     }
 
     .pps .stat-sub {
-        font-size: 0.75rem;
+        font-size: 0.94rem;
         color: rgba(255,255,255,0.35);
         margin-top: 2px;
     }
@@ -134,7 +134,7 @@
     }
 
     .pps .section h2 {
-        font-size: 1.3rem;
+        font-size: 1.53rem;
         font-weight: 700;
         margin-bottom: 16px;
         color: #3b82f6;
@@ -158,7 +158,7 @@
 
     .pps .h2h-name {
         font-weight: 700;
-        font-size: 1rem;
+        font-size: 1.18rem;
     }
 
     .pps .h2h-record {
@@ -200,7 +200,7 @@
 
     .pps .match-result {
         font-weight: 800;
-        font-size: 0.85rem;
+        font-size: 1.06rem;
         padding: 3px 10px;
         border-radius: 999px;
         min-width: 40px;
@@ -225,19 +225,19 @@
     .pps .match-score {
         font-weight: 700;
         font-family: monospace;
-        font-size: 1.1rem;
+        font-size: 1.3rem;
         min-width: 60px;
     }
 
     .pps .match-duration {
         color: rgba(255,255,255,0.4);
-        font-size: 0.85rem;
+        font-size: 1.06rem;
         min-width: 60px;
     }
 
     .pps .match-time {
         color: rgba(255,255,255,0.3);
-        font-size: 0.8rem;
+        font-size: 1rem;
         margin-left: auto;
     }
 
@@ -258,7 +258,7 @@
         padding: 2px 8px;
         border-radius: 999px;
         font-weight: 700;
-        font-size: 0.85rem;
+        font-size: 1.06rem;
     }
 
     .pps .streak-badge.W {
@@ -294,7 +294,7 @@
         padding: 6px 14px;
         border-radius: 8px;
         font-weight: 600;
-        font-size: 0.9rem;
+        font-size: 1.12rem;
         cursor: pointer;
         background: rgba(255,255,255,0.05);
         border: 1px solid rgba(255,255,255,0.1);
@@ -321,13 +321,13 @@
         background: rgba(15, 23, 42, 0.95);
         border: 1px solid rgba(59, 130, 246, 0.4);
         border-radius: 8px;
-        font-size: 0.875rem;
+        font-size: 1.09rem;
         pointer-events: none;
         box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
 
-    .pps .elo-tooltip .tooltip-date { color: rgba(255,255,255,0.7); font-size: 0.8rem; }
-    .pps .elo-tooltip .tooltip-rating { color: #3b82f6; font-weight: 700; font-size: 1.1rem; }
+    .pps .elo-tooltip .tooltip-date { color: rgba(255,255,255,0.7); font-size: 1rem; }
+    .pps .elo-tooltip .tooltip-rating { color: #3b82f6; font-weight: 700; font-size: 1.3rem; }
 
     /* Match row clickable */
     .pps .match-row {
@@ -340,7 +340,7 @@
     }
     .pps .match-row .match-arrow {
         color: rgba(255,255,255,0.2);
-        font-size: 1.1rem;
+        font-size: 1.3rem;
         transition: color 0.15s, transform 0.15s;
     }
     .pps .match-row:hover .match-arrow {
@@ -376,7 +376,7 @@
     }
     .pps .highlight-card .hl-matchup {
         font-weight: 700;
-        font-size: 0.92rem;
+        font-size: 1.15rem;
         color: rgba(255,255,255,0.9);
         overflow: hidden;
         text-overflow: ellipsis;
@@ -385,14 +385,14 @@
     .pps .highlight-card .hl-score {
         font-variant-numeric: tabular-nums;
         color: rgba(255,255,255,0.5);
-        font-size: 0.85rem;
+        font-size: 1.06rem;
     }
     .pps .highlight-card .hl-foot {
         display: flex;
         justify-content: space-between;
         align-items: center;
         margin-top: 4px;
-        font-size: 0.8rem;
+        font-size: 1rem;
         color: rgba(255,255,255,0.4);
     }
     .pps .highlight-card .hl-foot a {
@@ -424,7 +424,7 @@
 
     .pps .weekly-hint {
         text-align: center;
-        font-size: 0.75rem;
+        font-size: 0.94rem;
         color: rgba(255,255,255,0.35);
         margin-top: 8px;
     }
@@ -439,7 +439,7 @@
         padding: 6px 14px;
         border-radius: 8px;
         font-weight: 600;
-        font-size: 0.9rem;
+        font-size: 1.12rem;
         cursor: pointer;
         background: rgba(255,255,255,0.05);
         border: 1px solid rgba(255,255,255,0.1);
@@ -464,17 +464,17 @@
         background: rgba(15, 23, 42, 0.95);
         border: 1px solid rgba(59, 130, 246, 0.4);
         border-radius: 8px;
-        font-size: 0.875rem;
+        font-size: 1.09rem;
         pointer-events: none;
         box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
-    .pps .weekly-tooltip .tt-week { color: rgba(255,255,255,0.7); font-size: 0.78rem; }
-    .pps .weekly-tooltip .tt-rate { font-weight: 800; font-size: 1.05rem; margin-top: 2px; }
-    .pps .weekly-tooltip .tt-wl { color: rgba(255,255,255,0.55); font-size: 0.78rem; margin-top: 2px; }
+    .pps .weekly-tooltip .tt-week { color: rgba(255,255,255,0.7); font-size: 0.98rem; }
+    .pps .weekly-tooltip .tt-rate { font-weight: 800; font-size: 1.24rem; margin-top: 2px; }
+    .pps .weekly-tooltip .tt-wl { color: rgba(255,255,255,0.55); font-size: 0.98rem; margin-top: 2px; }
 
     .pps .point-tags-summary {
         color: rgba(255,255,255,0.45);
-        font-size: 0.85rem;
+        font-size: 1.06rem;
         margin-bottom: 16px;
     }
     .pps .point-tags-summary strong {
@@ -502,7 +502,7 @@
         border-color: rgba(59, 130, 246, 0.35);
     }
     .pps .shot-row-label {
-        font-size: 0.85rem;
+        font-size: 1.06rem;
         color: rgba(255,255,255,0.7);
         font-weight: 600;
     }
@@ -524,7 +524,7 @@
     .pps .shot-row-fill.untagged { background: rgba(255,255,255,0.15); }
     .pps .shot-row-count {
         font-weight: 700;
-        font-size: 0.9rem;
+        font-size: 1.12rem;
         text-align: right;
         color: rgba(255,255,255,0.8);
         font-variant-numeric: tabular-nums;
@@ -536,7 +536,7 @@
         border-top: 1px solid rgba(255,255,255,0.08);
     }
     .pps .tag-history-title {
-        font-size: 1rem;
+        font-size: 1.18rem;
         font-weight: 700;
         color: #3b82f6;
         margin-bottom: 12px;
@@ -552,7 +552,7 @@
         height: 100%;
     }
     .pps .tag-history-hint {
-        font-size: 0.75rem;
+        font-size: 0.94rem;
         color: rgba(255,255,255,0.35);
         margin-top: 8px;
     }
@@ -566,7 +566,7 @@
         display: flex;
         align-items: center;
         gap: 6px;
-        font-size: 0.8rem;
+        font-size: 1rem;
         color: rgba(255,255,255,0.65);
         font-weight: 600;
     }
@@ -584,13 +584,13 @@
         background: rgba(15, 23, 42, 0.95);
         border: 1px solid rgba(59, 130, 246, 0.4);
         border-radius: 8px;
-        font-size: 0.875rem;
+        font-size: 1.09rem;
         pointer-events: none;
         box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
-    .pps .tag-history-tooltip .tt-week { color: rgba(255,255,255,0.7); font-size: 0.8rem; }
-    .pps .tag-history-tooltip .tt-count { font-weight: 800; font-size: 1.05rem; margin-top: 2px; }
-    .pps .tag-history-tooltip .tt-pct { color: rgba(255,255,255,0.55); font-size: 0.78rem; margin-top: 2px; }
+    .pps .tag-history-tooltip .tt-week { color: rgba(255,255,255,0.7); font-size: 1rem; }
+    .pps .tag-history-tooltip .tt-count { font-weight: 800; font-size: 1.24rem; margin-top: 2px; }
+    .pps .tag-history-tooltip .tt-pct { color: rgba(255,255,255,0.55); font-size: 0.98rem; margin-top: 2px; }
 
     /* Match score never wraps */
     .pps .match-score { white-space: nowrap; }
@@ -621,7 +621,7 @@
         align-items: center;
         justify-content: center;
         font-family: 'Anton', sans-serif;
-        font-size: 14px;
+        font-size: 18px;
         background: rgba(15,23,42,0.95);
         border: 1.5px solid rgba(255,255,255,0.12);
     }
@@ -629,7 +629,7 @@
     .pps .h2h-init.loss { color: #ff5a4a; border-color: rgba(255,90,74,0.35); }
     .pps .h2h-name {
         font-weight: 600;
-        font-size: 0.92rem;
+        font-size: 1.15rem;
         color: rgba(255,255,255,0.9);
         overflow: hidden;
         text-overflow: ellipsis;
@@ -649,7 +649,7 @@
     }
     .pps .h2h-rec {
         font-family: 'JetBrains Mono', monospace;
-        font-size: 0.82rem;
+        font-size: 1.02rem;
         font-weight: 700;
         white-space: nowrap;
     }
@@ -662,18 +662,18 @@
         .pps .stats-hero { grid-template-columns: 1fr; }
         .pps .stats-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
         .pps .stat-card { padding: 12px 10px; }
-        .pps .stat-value { font-size: 1.3rem; }
+        .pps .stat-value { font-size: 1.53rem; }
         .pps .section { padding: 14px; }
         .pps .elo-hero { padding: 22px 18px; }
-        .pps .elo-hero-value { font-size: 2.8rem; }
+        .pps .elo-hero-value { font-size: 3.08rem; }
 
         /* Match History — compact mobile rows */
         .pps .match-row { gap: 10px; padding: 8px 12px; }
-        .pps .match-result { min-width: 28px; font-size: 0.78rem; padding: 2px 7px; }
-        .pps .match-opponent { min-width: 0; flex: 1; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .pps .match-score { min-width: 0; font-size: 0.95rem; }
+        .pps .match-result { min-width: 28px; font-size: 0.98rem; padding: 2px 7px; }
+        .pps .match-opponent { min-width: 0; flex: 1; font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pps .match-score { min-width: 0; font-size: 1.19rem; }
         .pps .match-duration { display: none; }
-        .pps .match-time { font-size: 0.72rem; margin-left: 6px; }
+        .pps .match-time { font-size: 0.9rem; margin-left: 6px; }
         .pps .match-arrow { display: none; }
 
         /* Head-to-head — hide canvas, show list instead */
@@ -791,7 +791,7 @@
                     <div class="tooltip-rating" x-text="eloTooltip.rating ? 'ELO ' + eloTooltip.rating : ''"></div>
                 </template>
                 <template x-if="eloChartView === 'candle'">
-                    <div style="margin-top: 6px; font-size: 0.8rem; line-height: 1.45; color: rgba(255,255,255,0.85);">
+                    <div style="margin-top: 6px; font-size: 1rem; line-height: 1.45; color: rgba(255,255,255,0.85);">
                         <div x-text="'O ' + eloTooltip.o + ' · H ' + eloTooltip.h"></div>
                         <div x-text="'L ' + eloTooltip.l + ' · C ' + eloTooltip.c"></div>
                     </div>

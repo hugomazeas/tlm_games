@@ -17,7 +17,7 @@
         padding-bottom: 16px;
         border-bottom: 2px solid rgba(255,255,255,0.1);
     }
-    .md .header h1 { font-size: 1.6rem; font-weight: 800; color: #3b82f6; }
+    .md .header h1 { font-size: 1.89rem; font-weight: 800; color: #3b82f6; }
     .md .back-link {
         color: #3b82f6;
         text-decoration: none;
@@ -45,7 +45,7 @@
         gap: 20px;
         margin-bottom: 12px;
     }
-    .md .player-name { font-weight: 700; font-size: 1.2rem; }
+    .md .player-name { font-weight: 700; font-size: 1.42rem; }
     .md .player-name a { text-decoration: none; transition: opacity 0.15s; }
     .md .player-name a:hover { opacity: 0.8; }
     .md .player-name.left, .md .player-name.left a { color: #fb7185; }
@@ -60,7 +60,7 @@
         padding: 4px 16px;
         border-radius: 999px;
         font-weight: 700;
-        font-size: 0.9rem;
+        font-size: 1.12rem;
         background: rgba(34, 197, 94, 0.15);
         color: #22c55e;
     }
@@ -69,7 +69,7 @@
         justify-content: center;
         gap: 24px;
         margin-top: 12px;
-        font-size: 0.9rem;
+        font-size: 1.12rem;
         color: rgba(255,255,255,0.4);
     }
 
@@ -82,7 +82,7 @@
         margin-bottom: 24px;
     }
     .md .section h2 {
-        font-size: 1.1rem;
+        font-size: 1.3rem;
         font-weight: 700;
         margin-bottom: 16px;
         color: #3b82f6;
@@ -106,7 +106,7 @@
         padding: 16px;
         text-align: center;
     }
-    .md .elo-card .name { font-weight: 700; font-size: 1rem; margin-bottom: 8px; }
+    .md .elo-card .name { font-weight: 700; font-size: 1.18rem; margin-bottom: 8px; }
     .md .elo-card .name.left { color: #fb7185; }
     .md .elo-card .name.right { color: #22d3ee; }
     .md .elo-card .elo-flow {
@@ -114,10 +114,10 @@
         align-items: center;
         justify-content: center;
         gap: 8px;
-        font-size: 0.95rem;
+        font-size: 1.19rem;
         color: rgba(255,255,255,0.6);
     }
-    .md .elo-card .elo-change { font-weight: 800; font-size: 1.3rem; margin-top: 6px; }
+    .md .elo-card .elo-change { font-weight: 800; font-size: 1.53rem; margin-top: 6px; }
     .md .elo-card .elo-change.pos { color: #22c55e; }
     .md .elo-card .elo-change.neg { color: #ef4444; }
     .md .elo-card .streak-bonus {
@@ -129,7 +129,7 @@
         background: rgba(250, 204, 21, 0.15);
         border: 1px solid rgba(250, 204, 21, 0.3);
         border-radius: 6px;
-        font-size: 0.75rem;
+        font-size: 0.94rem;
         font-weight: 600;
         color: #facc15;
     }
@@ -142,7 +142,7 @@
         background: rgba(251, 146, 60, 0.15);
         border: 1px solid rgba(251, 146, 60, 0.3);
         border-radius: 6px;
-        font-size: 0.75rem;
+        font-size: 0.94rem;
         font-weight: 600;
         color: #fb923c;
     }
@@ -152,7 +152,7 @@
         margin-top: 8px;
         padding-top: 8px;
         border-top: 1px solid rgba(255,255,255,0.06);
-        font-size: 0.85rem;
+        font-size: 1.06rem;
         color: rgba(255,255,255,0.4);
     }
     .md .elo-sub-row {
@@ -175,7 +175,7 @@
     }
     .md .shot-card.left { border-top: 3px solid #fb7185; }
     .md .shot-card.right { border-top: 3px solid #22d3ee; }
-    .md .shot-card-name { font-weight: 700; font-size: 1rem; margin-bottom: 4px; }
+    .md .shot-card-name { font-weight: 700; font-size: 1.18rem; margin-bottom: 4px; }
     .md .shot-card-name.left { color: #fb7185; }
     .md .shot-card-name.right { color: #22d3ee; }
     .md .shot-card-total {
@@ -185,13 +185,13 @@
         margin-bottom: 14px;
     }
     .md .shot-card-total > span:first-child {
-        font-size: 1.8rem;
+        font-size: 2.12rem;
         font-weight: 800;
         line-height: 1;
         color: rgba(255,255,255,0.9);
     }
     .md .shot-total-label {
-        font-size: 0.75rem;
+        font-size: 0.94rem;
         text-transform: uppercase;
         letter-spacing: 0.06em;
         color: rgba(255,255,255,0.4);
@@ -205,7 +205,7 @@
         gap: 10px;
     }
     .md .shot-row-label {
-        font-size: 0.85rem;
+        font-size: 1.06rem;
         color: rgba(255,255,255,0.7);
         font-weight: 600;
     }
@@ -231,7 +231,7 @@
     .md .shot-row-fill.untagged       { background: rgba(255,255,255,0.15); }
     .md .shot-row-count {
         font-weight: 700;
-        font-size: 0.9rem;
+        font-size: 1.12rem;
         text-align: right;
         color: rgba(255,255,255,0.8);
         font-variant-numeric: tabular-nums;
@@ -251,11 +251,11 @@
         text-align: center;
     }
     .md .stat-card .label {
-        font-size: 0.8rem;
+        font-size: 1rem;
         color: rgba(255,255,255,0.4);
         margin-bottom: 6px;
     }
-    .md .stat-card .value { font-weight: 800; font-size: 1.4rem; }
+    .md .stat-card .value { font-weight: 800; font-size: 1.65rem; }
 
     .md .loading {
         text-align: center;
@@ -273,7 +273,7 @@
         background: rgba(59, 130, 246, 0.1);
         border: 1px solid rgba(59, 130, 246, 0.25);
         border-radius: 10px;
-        font-size: 0.9rem;
+        font-size: 1.12rem;
         color: rgba(255,255,255,0.7);
     }
     .md .countdown-bar .timer {
@@ -288,7 +288,7 @@
         border: none;
         border-radius: 6px;
         font-weight: 600;
-        font-size: 0.85rem;
+        font-size: 1.06rem;
         cursor: pointer;
         transition: background 0.15s;
     }
@@ -331,7 +331,7 @@
         backdrop-filter: blur(8px);
         padding: 12px 14px;
         font-weight: 700;
-        font-size: 0.85rem;
+        font-size: 1.06rem;
         color: rgba(255,255,255,0.5);
         text-transform: uppercase;
         letter-spacing: 0.05em;
@@ -350,7 +350,7 @@
     .md .timeline-item:hover { background: rgba(255,255,255,0.06); }
     .md .timeline-item.active { background: rgba(59, 130, 246, 0.15); }
     .md .timeline-item .pt-num {
-        font-size: 0.75rem;
+        font-size: 0.94rem;
         font-weight: 700;
         color: rgba(255,255,255,0.3);
         min-width: 20px;
@@ -366,12 +366,12 @@
     .md .timeline-item .pt-dot.right { background: #22d3ee; }
     .md .timeline-item .pt-score {
         font-weight: 700;
-        font-size: 0.9rem;
+        font-size: 1.12rem;
         color: rgba(255,255,255,0.8);
         flex: 1;
     }
     .md .timeline-item .pt-time {
-        font-size: 0.8rem;
+        font-size: 1rem;
         color: rgba(255,255,255,0.35);
         font-variant-numeric: tabular-nums;
     }
@@ -390,7 +390,7 @@
     }
     .md .clip-field { display: flex; flex-direction: column; gap: 4px; min-width: 120px; }
     .md .clip-field label {
-        font-size: 0.72rem;
+        font-size: 0.9rem;
         text-transform: uppercase;
         letter-spacing: 0.06em;
         color: rgba(255,255,255,0.45);
@@ -404,7 +404,7 @@
         border: 1px solid rgba(255,255,255,0.12);
         border-radius: 6px;
         padding: 7px 9px;
-        font-size: 0.9rem;
+        font-size: 1.12rem;
         font-family: inherit;
         min-width: 0;
         flex: 1;
@@ -419,7 +419,7 @@
         border: 1px solid rgba(59,130,246,0.35);
         border-radius: 6px;
         cursor: pointer;
-        font-size: 0.85rem;
+        font-size: 1.06rem;
         font-weight: 700;
         transition: background 0.15s;
     }
@@ -431,7 +431,7 @@
         border: none;
         border-radius: 6px;
         font-weight: 700;
-        font-size: 0.9rem;
+        font-size: 1.12rem;
         cursor: pointer;
         transition: background 0.15s;
     }
@@ -439,7 +439,7 @@
     .md .clip-bar .save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .md .clip-msg {
         flex-basis: 100%;
-        font-size: 0.85rem;
+        font-size: 1.06rem;
         padding: 6px 10px;
         border-radius: 6px;
     }
@@ -453,7 +453,7 @@
         border-top: 1px solid rgba(255,255,255,0.08);
     }
     .md .clips-strip-title {
-        font-size: 0.78rem;
+        font-size: 0.98rem;
         text-transform: uppercase;
         letter-spacing: 0.08em;
         color: rgba(255,255,255,0.45);
@@ -473,7 +473,7 @@
         display: flex;
         flex-direction: column;
         gap: 4px;
-        font-size: 0.85rem;
+        font-size: 1.06rem;
     }
     .md .clip-card .clip-player {
         font-weight: 700;
@@ -485,7 +485,7 @@
     .md .clip-card .clip-times {
         font-variant-numeric: tabular-nums;
         color: rgba(255,255,255,0.6);
-        font-size: 0.82rem;
+        font-size: 1.02rem;
     }
     .md .clip-card .clip-actions {
         display: flex;
@@ -497,7 +497,7 @@
         color: #3b82f6;
         text-decoration: none;
         font-weight: 600;
-        font-size: 0.82rem;
+        font-size: 1.02rem;
     }
     .md .clip-card a:hover { text-decoration: underline; }
     .md .clip-card .delete-btn {
@@ -505,7 +505,7 @@
         border: none;
         color: rgba(255,255,255,0.35);
         cursor: pointer;
-        font-size: 1rem;
+        font-size: 1.18rem;
         line-height: 1;
         padding: 2px 6px;
         border-radius: 4px;
@@ -521,7 +521,7 @@
         .md .stats-grid { grid-template-columns: repeat(2, 1fr); }
         .md .elo-grid { grid-template-columns: 1fr; }
         .md .shot-grid { grid-template-columns: 1fr; }
-        .md .big-score { font-size: 3rem; }
+        .md .big-score { font-size: 3.3rem; }
         .md .players { flex-direction: column; gap: 4px; }
     }
 </style>
@@ -532,10 +532,10 @@
     <div class="flex items-center justify-end gap-2 mb-4" x-show="fromGame" x-cloak>
         <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[#f5ecd6]/15 bg-[#f5ecd6]/[0.04]">
             <span class="pph-flicker w-1.5 h-1.5 rounded-full bg-[#ffd166]"></span>
-            <span class="pph-mono text-[10px] tracking-[0.18em] uppercase text-[#f5ecd6]/70">Lobby in</span>
-            <span class="pph-mono font-bold text-[12px] text-[#f5ecd6] tabular-nums" x-text="countdown + 's'"></span>
+            <span class="pph-mono text-[14px] tracking-[0.18em] uppercase text-[#f5ecd6]/70">Lobby in</span>
+            <span class="pph-mono font-bold text-[15px] text-[#f5ecd6] tabular-nums" x-text="countdown + 's'"></span>
         </div>
-        <button class="px-3 py-1.5 rounded-full bg-[#f5ecd6] text-[#06081b] pph-mono text-[10px] uppercase tracking-[0.18em] font-bold border-0 cursor-pointer hover:bg-white transition"
+        <button class="px-3 py-1.5 rounded-full bg-[#f5ecd6] text-[#06081b] pph-mono text-[14px] uppercase tracking-[0.18em] font-bold border-0 cursor-pointer hover:bg-white transition"
                 @click="window.location.href='/games/ping-pong'">Go now</button>
     </div>
 
@@ -552,10 +552,10 @@
                 {{-- Eyebrow --}}
                 <div class="flex items-center justify-between gap-4 mb-6">
                     <div class="flex items-center gap-2.5">
-                        <span class="pph-display text-[clamp(20px,2vw,28px)] tracking-[0.06em] uppercase text-[#f5ecd6]">Final</span>
-                        <span class="pph-mono text-[10px] tracking-[0.28em] uppercase text-[#f5ecd6]/45" x-text="match.mode?.toUpperCase() + ' · First to 11'"></span>
+                        <span class="pph-display text-[clamp(24px,2vw,33px)] tracking-[0.06em] uppercase text-[#f5ecd6]">Final</span>
+                        <span class="pph-mono text-[14px] tracking-[0.28em] uppercase text-[#f5ecd6]/45" x-text="match.mode?.toUpperCase() + ' · First to 11'"></span>
                     </div>
-                    <div class="pph-mono text-[10px] tracking-[0.18em] uppercase text-[#f5ecd6]/45">
+                    <div class="pph-mono text-[14px] tracking-[0.18em] uppercase text-[#f5ecd6]/45">
                         <span x-show="match.duration_formatted" x-text="match.duration_formatted"></span>
                         <span class="text-[#f5ecd6]/25 mx-2">·</span>
                         <span x-text="formattedDate()"></span>
@@ -569,10 +569,10 @@
                          :class="{ 'opacity-100': match.player_left_score > match.player_right_score, 'opacity-60': match.player_left_score < match.player_right_score }">
                         <div class="flex items-center justify-end gap-2 mb-1.5">
                             <template x-if="match.player_left_score > match.player_right_score">
-                                <span class="pph-mono text-[9px] font-bold tracking-[0.22em] uppercase px-2 py-0.5 rounded-full bg-[#ffd166]/15 text-[#ffd166] pph-glow-amber">★ Winner</span>
+                                <span class="pph-mono text-[12px] font-bold tracking-[0.22em] uppercase px-2 py-0.5 rounded-full bg-[#ffd166]/15 text-[#ffd166] pph-glow-amber">★ Winner</span>
                             </template>
                         </div>
-                        <div class="pph-display uppercase tracking-[0.015em] text-[clamp(20px,3.4vw,52px)] text-[#ff5a4a] leading-[0.95] truncate"
+                        <div class="pph-display uppercase tracking-[0.015em] text-[clamp(24px,3.4vw,57px)] text-[#ff5a4a] leading-[0.95] truncate"
                              :class="match.player_left_score > match.player_right_score ? 'pph-glow-red' : ''">
                             <template x-if="match.mode === '1v1'">
                                 <a :href="'/games/ping-pong/players/' + match.player_left_id" class="no-underline text-inherit hover:opacity-80 transition" x-text="leftName()"></a>
@@ -581,7 +581,7 @@
                                 <span x-text="leftName()"></span>
                             </template>
                         </div>
-                        <div class="pph-mono text-[11px] tracking-[0.06em] text-[#f5ecd6]/55"
+                        <div class="pph-mono text-[15px] tracking-[0.06em] text-[#f5ecd6]/55"
                              x-show="match.elo_changes">
                             <span x-text="eloBefore('left') + ' → ' + eloAfter('left')"></span>
                             <span class="ml-2 font-bold" :class="eloChange('left') >= 0 ? 'text-[#9be7c4]' : 'text-[#ff5a4a]'"
@@ -591,9 +591,9 @@
 
                     {{-- Score numerals --}}
                     <div class="flex items-baseline gap-2 md:gap-5 pph-mono tabular-nums leading-none">
-                        <span class="text-[clamp(56px,11vw,148px)] font-bold text-[#ff5a4a] pph-glow-red" x-text="match.player_left_score"></span>
-                        <span class="text-[clamp(28px,5vw,72px)] text-[#f5ecd6]/30 -translate-y-2">·</span>
-                        <span class="text-[clamp(56px,11vw,148px)] font-bold text-[#3ec8ff] pph-glow-blue" x-text="match.player_right_score"></span>
+                        <span class="text-[clamp(62px,11vw,148px)] font-bold text-[#ff5a4a] pph-glow-red" x-text="match.player_left_score"></span>
+                        <span class="text-[clamp(33px,5vw,72px)] text-[#f5ecd6]/30 -translate-y-2">·</span>
+                        <span class="text-[clamp(62px,11vw,148px)] font-bold text-[#3ec8ff] pph-glow-blue" x-text="match.player_right_score"></span>
                     </div>
 
                     {{-- Right side --}}
@@ -601,10 +601,10 @@
                          :class="{ 'opacity-100': match.player_right_score > match.player_left_score, 'opacity-60': match.player_right_score < match.player_left_score }">
                         <div class="flex items-center justify-start gap-2 mb-1.5">
                             <template x-if="match.player_right_score > match.player_left_score">
-                                <span class="pph-mono text-[9px] font-bold tracking-[0.22em] uppercase px-2 py-0.5 rounded-full bg-[#ffd166]/15 text-[#ffd166] pph-glow-amber">★ Winner</span>
+                                <span class="pph-mono text-[12px] font-bold tracking-[0.22em] uppercase px-2 py-0.5 rounded-full bg-[#ffd166]/15 text-[#ffd166] pph-glow-amber">★ Winner</span>
                             </template>
                         </div>
-                        <div class="pph-display uppercase tracking-[0.015em] text-[clamp(20px,3.4vw,52px)] text-[#3ec8ff] leading-[0.95] truncate"
+                        <div class="pph-display uppercase tracking-[0.015em] text-[clamp(24px,3.4vw,57px)] text-[#3ec8ff] leading-[0.95] truncate"
                              :class="match.player_right_score > match.player_left_score ? 'pph-glow-blue' : ''">
                             <template x-if="match.mode === '1v1'">
                                 <a :href="'/games/ping-pong/players/' + match.player_right_id" class="no-underline text-inherit hover:opacity-80 transition" x-text="rightName()"></a>
@@ -613,7 +613,7 @@
                                 <span x-text="rightName()"></span>
                             </template>
                         </div>
-                        <div class="pph-mono text-[11px] tracking-[0.06em] text-[#f5ecd6]/55"
+                        <div class="pph-mono text-[15px] tracking-[0.06em] text-[#f5ecd6]/55"
                              x-show="match.elo_changes">
                             <span x-text="eloBefore('right') + ' → ' + eloAfter('right')"></span>
                             <span class="ml-2 font-bold" :class="eloChange('right') >= 0 ? 'text-[#9be7c4]' : 'text-[#ff5a4a]'"
@@ -709,8 +709,8 @@
             <template x-if="match.elo_changes">
                 <section class="rounded-2xl border border-[#f5ecd6]/15 bg-gradient-to-b from-[#f5ecd6]/[0.03] to-[#f5ecd6]/[0.01] p-5 md:p-6 mb-6">
                     <div class="flex items-baseline gap-2.5 mb-4">
-                        <span class="pph-display text-[22px] tracking-[0.04em] uppercase text-[#f5ecd6]">ELO Movement</span>
-                        <span class="pph-mono text-[10px] tracking-[0.28em] uppercase text-[#f5ecd6]/45">Rating impact</span>
+                        <span class="pph-display text-[26px] tracking-[0.04em] uppercase text-[#f5ecd6]">ELO Movement</span>
+                        <span class="pph-mono text-[14px] tracking-[0.28em] uppercase text-[#f5ecd6]/45">Rating impact</span>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {{-- Left card --}}
@@ -719,31 +719,31 @@
                             <div class="absolute left-0 top-3 bottom-3 w-[3px] rounded-r"
                                  :class="eloChange('left') > 0 ? 'bg-[#ffd166]' : 'bg-[#ff5a4a]/40'"></div>
                             <div class="flex items-baseline justify-between gap-3 mb-3">
-                                <div class="pph-display text-[clamp(20px,1.8vw,26px)] tracking-[0.02em] uppercase text-[#ff5a4a] pph-glow-red truncate" x-text="leftName()"></div>
+                                <div class="pph-display text-[clamp(24px,1.8vw,31px)] tracking-[0.02em] uppercase text-[#ff5a4a] pph-glow-red truncate" x-text="leftName()"></div>
                                 <template x-if="eloChange('left') > 0">
-                                    <span class="pph-mono text-[9px] font-bold tracking-[0.22em] uppercase px-2 py-0.5 rounded-full bg-[#ffd166]/15 text-[#ffd166] shrink-0">★ Win</span>
+                                    <span class="pph-mono text-[12px] font-bold tracking-[0.22em] uppercase px-2 py-0.5 rounded-full bg-[#ffd166]/15 text-[#ffd166] shrink-0">★ Win</span>
                                 </template>
                             </div>
                             <div class="flex items-baseline gap-3">
-                                <div class="pph-mono text-[13px] text-[#f5ecd6]/55 tabular-nums">
+                                <div class="pph-mono text-[16px] text-[#f5ecd6]/55 tabular-nums">
                                     <span x-text="eloBefore('left')"></span>
                                     <span class="text-[#f5ecd6]/25 mx-1.5">→</span>
                                     <span class="text-[#f5ecd6] font-bold" x-text="eloAfter('left')"></span>
                                 </div>
-                                <div class="ml-auto pph-display text-[clamp(28px,3vw,40px)] tracking-[0.02em] leading-none"
+                                <div class="ml-auto pph-display text-[clamp(33px,3vw,44px)] tracking-[0.02em] leading-none"
                                      :class="eloChange('left') >= 0 ? 'text-[#9be7c4]' : 'text-[#ff5a4a]'"
                                      x-text="(eloChange('left') >= 0 ? '+' : '') + eloChange('left')"></div>
                             </div>
                             <div class="flex flex-wrap gap-1.5 mt-3">
                                 <template x-if="streakBonus('left') > 0">
-                                    <span class="inline-flex items-center gap-1 pph-mono text-[10px] font-bold tracking-[0.12em] uppercase px-2 py-1 rounded-md bg-[#ffd166]/15 border border-[#ffd166]/30 text-[#ffd166]">+<span x-text="streakBonus('left')"></span> Streak bonus</span>
+                                    <span class="inline-flex items-center gap-1 pph-mono text-[14px] font-bold tracking-[0.12em] uppercase px-2 py-1 rounded-md bg-[#ffd166]/15 border border-[#ffd166]/30 text-[#ffd166]">+<span x-text="streakBonus('left')"></span> Streak bonus</span>
                                 </template>
                                 <template x-if="streakBreakerBonus('left') > 0">
-                                    <span class="inline-flex items-center gap-1 pph-mono text-[10px] font-bold tracking-[0.12em] uppercase px-2 py-1 rounded-md bg-[#fb923c]/15 border border-[#fb923c]/30 text-[#fb923c]">+<span x-text="streakBreakerBonus('left')"></span> Streak breaker</span>
+                                    <span class="inline-flex items-center gap-1 pph-mono text-[14px] font-bold tracking-[0.12em] uppercase px-2 py-1 rounded-md bg-[#fb923c]/15 border border-[#fb923c]/30 text-[#fb923c]">+<span x-text="streakBreakerBonus('left')"></span> Streak breaker</span>
                                 </template>
                             </div>
                             <template x-if="match.mode === '2v2' && match.elo_changes?.left?.player1">
-                                <div class="mt-3 pt-3 border-t border-[#f5ecd6]/10 pph-mono text-[11px] text-[#f5ecd6]/55 space-y-1">
+                                <div class="mt-3 pt-3 border-t border-[#f5ecd6]/10 pph-mono text-[15px] text-[#f5ecd6]/55 space-y-1">
                                     <div class="flex justify-between"><span x-text="match.player_left?.name"></span><span x-text="match.elo_changes.left.player1.before + ' → ' + match.elo_changes.left.player1.after"></span></div>
                                     <div class="flex justify-between"><span x-text="match.team_left_player2?.name"></span><span x-text="match.elo_changes.left.player2.before + ' → ' + match.elo_changes.left.player2.after"></span></div>
                                 </div>
@@ -756,31 +756,31 @@
                             <div class="absolute left-0 top-3 bottom-3 w-[3px] rounded-r"
                                  :class="eloChange('right') > 0 ? 'bg-[#ffd166]' : 'bg-[#ff5a4a]/40'"></div>
                             <div class="flex items-baseline justify-between gap-3 mb-3">
-                                <div class="pph-display text-[clamp(20px,1.8vw,26px)] tracking-[0.02em] uppercase text-[#3ec8ff] pph-glow-blue truncate" x-text="rightName()"></div>
+                                <div class="pph-display text-[clamp(24px,1.8vw,31px)] tracking-[0.02em] uppercase text-[#3ec8ff] pph-glow-blue truncate" x-text="rightName()"></div>
                                 <template x-if="eloChange('right') > 0">
-                                    <span class="pph-mono text-[9px] font-bold tracking-[0.22em] uppercase px-2 py-0.5 rounded-full bg-[#ffd166]/15 text-[#ffd166] shrink-0">★ Win</span>
+                                    <span class="pph-mono text-[12px] font-bold tracking-[0.22em] uppercase px-2 py-0.5 rounded-full bg-[#ffd166]/15 text-[#ffd166] shrink-0">★ Win</span>
                                 </template>
                             </div>
                             <div class="flex items-baseline gap-3">
-                                <div class="pph-mono text-[13px] text-[#f5ecd6]/55 tabular-nums">
+                                <div class="pph-mono text-[16px] text-[#f5ecd6]/55 tabular-nums">
                                     <span x-text="eloBefore('right')"></span>
                                     <span class="text-[#f5ecd6]/25 mx-1.5">→</span>
                                     <span class="text-[#f5ecd6] font-bold" x-text="eloAfter('right')"></span>
                                 </div>
-                                <div class="ml-auto pph-display text-[clamp(28px,3vw,40px)] tracking-[0.02em] leading-none"
+                                <div class="ml-auto pph-display text-[clamp(33px,3vw,44px)] tracking-[0.02em] leading-none"
                                      :class="eloChange('right') >= 0 ? 'text-[#9be7c4]' : 'text-[#ff5a4a]'"
                                      x-text="(eloChange('right') >= 0 ? '+' : '') + eloChange('right')"></div>
                             </div>
                             <div class="flex flex-wrap gap-1.5 mt-3">
                                 <template x-if="streakBonus('right') > 0">
-                                    <span class="inline-flex items-center gap-1 pph-mono text-[10px] font-bold tracking-[0.12em] uppercase px-2 py-1 rounded-md bg-[#ffd166]/15 border border-[#ffd166]/30 text-[#ffd166]">+<span x-text="streakBonus('right')"></span> Streak bonus</span>
+                                    <span class="inline-flex items-center gap-1 pph-mono text-[14px] font-bold tracking-[0.12em] uppercase px-2 py-1 rounded-md bg-[#ffd166]/15 border border-[#ffd166]/30 text-[#ffd166]">+<span x-text="streakBonus('right')"></span> Streak bonus</span>
                                 </template>
                                 <template x-if="streakBreakerBonus('right') > 0">
-                                    <span class="inline-flex items-center gap-1 pph-mono text-[10px] font-bold tracking-[0.12em] uppercase px-2 py-1 rounded-md bg-[#fb923c]/15 border border-[#fb923c]/30 text-[#fb923c]">+<span x-text="streakBreakerBonus('right')"></span> Streak breaker</span>
+                                    <span class="inline-flex items-center gap-1 pph-mono text-[14px] font-bold tracking-[0.12em] uppercase px-2 py-1 rounded-md bg-[#fb923c]/15 border border-[#fb923c]/30 text-[#fb923c]">+<span x-text="streakBreakerBonus('right')"></span> Streak breaker</span>
                                 </template>
                             </div>
                             <template x-if="match.mode === '2v2' && match.elo_changes?.right?.player1">
-                                <div class="mt-3 pt-3 border-t border-[#f5ecd6]/10 pph-mono text-[11px] text-[#f5ecd6]/55 space-y-1">
+                                <div class="mt-3 pt-3 border-t border-[#f5ecd6]/10 pph-mono text-[15px] text-[#f5ecd6]/55 space-y-1">
                                     <div class="flex justify-between"><span x-text="match.player_right?.name"></span><span x-text="match.elo_changes.right.player1.before + ' → ' + match.elo_changes.right.player1.after"></span></div>
                                     <div class="flex justify-between"><span x-text="match.team_right_player2?.name"></span><span x-text="match.elo_changes.right.player2.before + ' → ' + match.elo_changes.right.player2.after"></span></div>
                                 </div>

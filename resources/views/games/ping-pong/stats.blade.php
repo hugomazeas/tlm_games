@@ -12,14 +12,14 @@
     <section class="pph-panel p-5 md:p-6 mb-5" x-show="awardsLoaded" x-cloak>
         <div class="flex items-baseline justify-between flex-wrap gap-3 mb-4">
             <div class="flex items-baseline gap-2.5">
-                <span class="pph-display text-[22px] tracking-[0.04em] uppercase text-[#f5ecd6]">Hall of Fame</span>
-                <span class="pph-mono text-[10px] tracking-[0.28em] uppercase text-[#f5ecd6]/45">Singles · tagged points</span>
+                <span class="pph-display text-[26px] tracking-[0.04em] uppercase text-[#f5ecd6]">Hall of Fame</span>
+                <span class="pph-mono text-[14px] tracking-[0.28em] uppercase text-[#f5ecd6]/45">Singles · tagged points</span>
             </div>
             <div class="inline-flex rounded-full border border-[#f5ecd6]/15 bg-[#f5ecd6]/[0.03] p-0.5">
                 <template x-for="opt in [{k:'month',l:'This month'},{k:'all',l:'All-time'}]" :key="opt.k">
                     <button type="button"
                             @click="setAwardsWindow(opt.k)"
-                            class="pph-mono text-[10px] tracking-[0.16em] uppercase px-3 py-1.5 rounded-full transition"
+                            class="pph-mono text-[14px] tracking-[0.16em] uppercase px-3 py-1.5 rounded-full transition"
                             :class="awardsWindow === opt.k ? 'bg-[#f5ecd6]/[0.12] text-[#f5ecd6]' : 'text-[#f5ecd6]/45 hover:text-[#f5ecd6]/70'"
                             x-text="opt.l"></button>
                 </template>
@@ -34,8 +34,8 @@
                        ? 'border-[#f5ecd6]/15 bg-[#f5ecd6]/[0.03] hover:bg-[#f5ecd6]/[0.06] hover:border-[#f5ecd6]/30'
                        : 'border-dashed border-[#f5ecd6]/12 bg-transparent hover:border-[#f5ecd6]/25'">
                     <div class="flex items-center gap-2">
-                        <span class="text-[20px] leading-none" x-text="a.emoji"></span>
-                        <span class="pph-mono text-[10px] font-bold tracking-[0.16em] uppercase text-[#f5ecd6]/60" x-text="a.title"></span>
+                        <span class="text-[24px] leading-none" x-text="a.emoji"></span>
+                        <span class="pph-mono text-[14px] font-bold tracking-[0.16em] uppercase text-[#f5ecd6]/60" x-text="a.title"></span>
                         <span class="ml-auto text-[#3ec8ff]/0 group-hover:text-[#3ec8ff]/70 transition text-sm">›</span>
                     </div>
 
@@ -43,10 +43,10 @@
                     <template x-if="a.holder_player_id">
                         <div>
                             <div class="flex items-baseline gap-2 mt-0.5">
-                                <span class="font-semibold text-[15px] text-[#f5ecd6] truncate" x-text="a.holder_name"></span>
-                                <span class="pph-mono font-bold text-[13px] text-[#3ec8ff] tabular-nums shrink-0" x-text="a.value_label"></span>
+                                <span class="font-semibold text-[19px] text-[#f5ecd6] truncate" x-text="a.holder_name"></span>
+                                <span class="pph-mono font-bold text-[16px] text-[#3ec8ff] tabular-nums shrink-0" x-text="a.value_label"></span>
                             </div>
-                            <div class="pph-mono text-[10px] tracking-[0.06em] text-[#f5ecd6]/35 mt-1"
+                            <div class="pph-mono text-[14px] tracking-[0.06em] text-[#f5ecd6]/35 mt-1"
                                  x-show="a.runner_up_name"
                                  x-text="'chased by ' + a.runner_up_name + ' · ' + a.runner_up_value_label"></div>
                         </div>
@@ -54,11 +54,11 @@
 
                     {{-- Unclaimed --}}
                     <template x-if="!a.holder_player_id">
-                        <div class="font-semibold text-[15px] text-[#f5ecd6]/35 mt-0.5">Unclaimed</div>
+                        <div class="font-semibold text-[19px] text-[#f5ecd6]/35 mt-0.5">Unclaimed</div>
                     </template>
 
                     {{-- Compute transparency: how this award is calculated --}}
-                    <div class="pph-mono text-[10px] tracking-[0.04em] text-[#f5ecd6]/30 mt-1 leading-snug" x-text="a.formula"></div>
+                    <div class="pph-mono text-[14px] tracking-[0.04em] text-[#f5ecd6]/30 mt-1 leading-snug" x-text="a.formula"></div>
                 </a>
             </template>
         </div>
@@ -67,8 +67,8 @@
     {{-- ELO Over Time — every leaderboard player's rating history overlaid --}}
     <section class="pph-panel p-5 md:p-6 mb-5" x-show="eloSeries.length > 0" x-cloak>
         <div class="flex items-baseline gap-2.5 mb-4">
-            <span class="pph-display text-[22px] tracking-[0.04em] uppercase text-[#f5ecd6]">ELO Over Time</span>
-            <span class="pph-mono text-[10px] tracking-[0.28em] uppercase text-[#f5ecd6]/45">Singles · leaderboard</span>
+            <span class="pph-display text-[26px] tracking-[0.04em] uppercase text-[#f5ecd6]">ELO Over Time</span>
+            <span class="pph-mono text-[14px] tracking-[0.28em] uppercase text-[#f5ecd6]/45">Singles · leaderboard</span>
         </div>
         <div class="relative overflow-visible">
             <canvas id="eloOverlayCanvas" style="width: 100%; height: 560px;"></canvas>
@@ -78,22 +78,22 @@
     {{-- Recent games --}}
     <section class="pph-panel p-5 md:p-6 mb-5" x-show="recentGamesLoaded">
         <div class="flex items-baseline gap-2.5 mb-4">
-            <span class="pph-display text-[22px] tracking-[0.04em] uppercase text-[#f5ecd6]">Recent</span>
-            <span class="pph-mono text-[10px] tracking-[0.28em] uppercase text-[#f5ecd6]/45">Completed matches</span>
+            <span class="pph-display text-[26px] tracking-[0.04em] uppercase text-[#f5ecd6]">Recent</span>
+            <span class="pph-mono text-[14px] tracking-[0.28em] uppercase text-[#f5ecd6]/45">Completed matches</span>
         </div>
-        <p class="pph-mono text-[12px] tracking-[0.14em] uppercase text-[#f5ecd6]/45" x-show="recentGames.length === 0">No completed matches yet.</p>
+        <p class="pph-mono text-[15px] tracking-[0.14em] uppercase text-[#f5ecd6]/45" x-show="recentGames.length === 0">No completed matches yet.</p>
         <div class="max-h-[min(70vh,720px)] overflow-y-auto" x-show="recentGames.length > 0">
             <div class="flex flex-col gap-2">
                 <template x-for="g in recentGames" :key="g.id">
                     <a class="flex items-center flex-wrap gap-x-3.5 gap-y-2.5 px-4 py-3 rounded-[10px] border border-[#f5ecd6]/15 bg-[#f5ecd6]/[0.03] no-underline text-[#f5ecd6]/82 transition hover:bg-[#f5ecd6]/[0.06] hover:border-[#f5ecd6]/30"
                        :href="'/games/ping-pong/matches/' + g.id">
-                        <span class="pph-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#f5ecd6]/55 bg-[#f5ecd6]/[0.06] px-2 py-0.5 rounded-md shrink-0" x-text="g.mode === '2v2' ? '2v2' : '1v1'"></span>
+                        <span class="pph-mono text-[14px] font-bold uppercase tracking-[0.16em] text-[#f5ecd6]/55 bg-[#f5ecd6]/[0.06] px-2 py-0.5 rounded-md shrink-0" x-text="g.mode === '2v2' ? '2v2' : '1v1'"></span>
                         <div class="flex items-center flex-wrap gap-x-3 gap-y-1 flex-1 min-w-0 font-semibold text-sm">
                             <span :class="g.left_won ? 'text-[#9be7c4]' : 'text-[#ff5a4a]/70'" x-text="g.left_label"></span>
-                            <span class="pph-mono font-bold text-[15px] text-[#f5ecd6] tracking-tight tabular-nums" x-text="g.player_left_score + ' · ' + g.player_right_score"></span>
+                            <span class="pph-mono font-bold text-[19px] text-[#f5ecd6] tracking-tight tabular-nums" x-text="g.player_left_score + ' · ' + g.player_right_score"></span>
                             <span :class="g.left_won ? 'text-[#ff5a4a]/70' : 'text-[#9be7c4]'" x-text="g.right_label"></span>
                         </div>
-                        <span class="ml-auto pph-mono text-[11px] tracking-[0.06em] text-[#f5ecd6]/45 shrink-0" x-text="g.ended_at_human"></span>
+                        <span class="ml-auto pph-mono text-[15px] tracking-[0.06em] text-[#f5ecd6]/45 shrink-0" x-text="g.ended_at_human"></span>
                         <span class="text-[#3ec8ff]/70 text-lg shrink-0">›</span>
                     </a>
                 </template>
@@ -104,8 +104,8 @@
     {{-- ELO Distribution Chart --}}
     <section class="pph-panel p-5 md:p-6" x-show="leaderboard.length > 0">
         <div class="flex items-baseline gap-2.5 mb-4">
-            <span class="pph-display text-[22px] tracking-[0.04em] uppercase text-[#f5ecd6]">ELO Distribution</span>
-            <span class="pph-mono text-[10px] tracking-[0.28em] uppercase text-[#f5ecd6]/45">Singles · live</span>
+            <span class="pph-display text-[26px] tracking-[0.04em] uppercase text-[#f5ecd6]">ELO Distribution</span>
+            <span class="pph-mono text-[14px] tracking-[0.28em] uppercase text-[#f5ecd6]/45">Singles · live</span>
         </div>
         <div class="relative overflow-visible">
             <canvas id="eloDistCanvas" style="width: 100%; height: 500px;"></canvas>
@@ -577,7 +577,7 @@ function ppStats() {
                 lbl.className = 'elo-overlay-label';
                 lbl.href = '/games/ping-pong/players/' + e.id;
                 lbl.textContent = e.name;
-                lbl.style.cssText = `position:absolute;left:${e.x + 12}px;top:${e.y}px;transform:translateY(-50%);font-family:"Outfit",system-ui,sans-serif;font-size:20px;font-weight:600;color:${e.color};white-space:nowrap;text-decoration:none;line-height:1;cursor:pointer;z-index:4;transition:filter 0.2s;`;
+                lbl.style.cssText = `position:absolute;left:${e.x + 12}px;top:${e.y}px;transform:translateY(-50%);font-family:"Outfit",system-ui,sans-serif;font-size:24px;font-weight:600;color:${e.color};white-space:nowrap;text-decoration:none;line-height:1;cursor:pointer;z-index:4;transition:filter 0.2s;`;
                 lbl.addEventListener('mouseenter', () => { lbl.style.filter = 'brightness(1.4)'; });
                 lbl.addEventListener('mouseleave', () => { lbl.style.filter = 'none'; });
                 container.appendChild(lbl);

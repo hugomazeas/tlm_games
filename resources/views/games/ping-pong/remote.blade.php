@@ -106,7 +106,7 @@
         }
         .scoreboard-side .player-names {
             font-family: 'Anton', sans-serif;
-            font-size: 1rem;
+            font-size: 1.18rem;
             letter-spacing: 0.04em;
             text-transform: uppercase;
             color: var(--paper-faint);
@@ -119,7 +119,7 @@
         }
         .scoreboard-side .score-value {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 3.4rem;
+            font-size: 3.74rem;
             font-weight: 700;
             line-height: 1;
             font-variant-numeric: tabular-nums;
@@ -136,7 +136,7 @@
             top: -16px;
             left: 50%; transform: translateX(-50%);
             font-family: 'JetBrains Mono', monospace;
-            font-size: 8px;
+            font-size: 11px;
             font-weight: 700;
             letter-spacing: 0.22em;
             line-height: 1;
@@ -151,7 +151,7 @@
 
         .scoreboard-divider {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 2rem;
+            font-size: 2.2rem;
             color: var(--paper-faint);
             opacity: 0.3;
         }
@@ -159,7 +159,7 @@
         .serving-info {
             margin-top: 12px;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 0.65rem;
+            font-size: 0.81rem;
             font-weight: 700;
             letter-spacing: 0.2em;
             text-transform: uppercase;
@@ -182,7 +182,7 @@
         .serving-name {
             font-family: 'Anton', sans-serif;
             font-weight: 400;
-            font-size: 1.5rem;
+            font-size: 1.77rem;
             line-height: 1;
             letter-spacing: 0.04em;
             color: var(--amber);
@@ -266,7 +266,7 @@
             justify-content: center;
             gap: 10px;
             font-family: 'Anton', sans-serif;
-            font-size: 1.5rem;
+            font-size: 1.77rem;
             letter-spacing: 0.08em;
             text-transform: uppercase;
             cursor: pointer;
@@ -294,7 +294,7 @@
             justify-content: center;
             padding: 12px;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 10px;
+            font-size: 14px;
             font-weight: 700;
             letter-spacing: 0.22em;
             text-transform: uppercase;
@@ -347,7 +347,7 @@
 
         .confirm-box h3 {
             font-family: 'Anton', sans-serif;
-            font-size: 1.5rem;
+            font-size: 1.77rem;
             letter-spacing: 0.04em;
             text-transform: uppercase;
             color: var(--paper);
@@ -355,7 +355,7 @@
         }
         .confirm-box p {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 0.72rem;
+            font-size: 0.9rem;
             letter-spacing: 0.06em;
             color: var(--paper-faint);
             margin-bottom: 22px;
@@ -371,7 +371,7 @@
             border: none;
             border-radius: 12px;
             font-family: 'Anton', sans-serif;
-            font-size: 1.1rem;
+            font-size: 1.3rem;
             letter-spacing: 0.06em;
             text-transform: uppercase;
             cursor: pointer;
@@ -411,7 +411,7 @@
         }
         .tag-sheet-title {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 10px;
+            font-size: 14px;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.24em;
@@ -421,7 +421,7 @@
             background: none;
             border: 0;
             color: var(--paper-faint);
-            font-size: 1.6rem;
+            font-size: 1.89rem;
             line-height: 1;
             cursor: pointer;
             padding: 4px 12px;
@@ -449,7 +449,7 @@
             border: 1px solid var(--paper-line);
             border-radius: 16px;
             font-family: 'Anton', sans-serif;
-            font-size: 1.15rem;
+            font-size: 1.36rem;
             letter-spacing: 0.06em;
             text-transform: uppercase;
             cursor: pointer;
@@ -482,7 +482,7 @@
             pointer-events: none;
         }
         .tag-chip-icon {
-            font-size: 2.2rem;
+            font-size: 2.42rem;
             line-height: 1;
         }
 
@@ -496,7 +496,7 @@
             background: var(--mint);
             color: var(--ink);
             font-family: 'JetBrains Mono', monospace;
-            font-size: 11px;
+            font-size: 15px;
             font-weight: 700;
             letter-spacing: 0.16em;
             text-transform: uppercase;
@@ -539,7 +539,7 @@
         }
 
         .tag-sheet-title {
-            font-size: 0.75rem;
+            font-size: 0.94rem;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.12em;
@@ -550,7 +550,7 @@
             background: none;
             border: none;
             color: rgba(255, 255, 255, 0.5);
-            font-size: 1.8rem;
+            font-size: 2.12rem;
             line-height: 1;
             cursor: pointer;
             padding: 6px 14px;
@@ -580,7 +580,7 @@
             color: rgba(255, 255, 255, 0.8);
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 18px;
-            font-size: 1.4rem;
+            font-size: 1.65rem;
             font-weight: 700;
             cursor: pointer;
             transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.08s ease;
@@ -621,7 +621,7 @@
         }
 
         .tag-chip-icon {
-            font-size: 2.4rem;
+            font-size: 2.64rem;
             line-height: 1;
         }
 
@@ -634,7 +634,7 @@
             pointer-events: none;
             background: rgba(34, 197, 94, 0.92);
             color: white;
-            font-size: 0.85rem;
+            font-size: 1.06rem;
             font-weight: 700;
             padding: 8px 14px;
             border-radius: 999px;
@@ -670,7 +670,7 @@
 
         .endgame-result {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 10px;
+            font-size: 14px;
             font-weight: 700;
             color: var(--paper-faint);
             text-transform: uppercase;
@@ -679,7 +679,7 @@
         }
         .endgame-winner {
             font-family: 'Anton', sans-serif;
-            font-size: 2.4rem;
+            font-size: 2.64rem;
             letter-spacing: 0.04em;
             text-transform: uppercase;
             margin-bottom: 6px;
@@ -708,7 +708,7 @@
             border: 0;
             border-radius: 12px;
             font-family: 'Anton', sans-serif;
-            font-size: 1.2rem;
+            font-size: 1.42rem;
             letter-spacing: 0.06em;
             text-transform: uppercase;
             cursor: pointer;
@@ -729,7 +729,7 @@
 
         .endgame-hint {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 11px;
+            font-size: 15px;
             letter-spacing: 0.14em;
             text-transform: uppercase;
             color: var(--paper-faint);
@@ -780,18 +780,18 @@
             }
             .scoreboard-divider { display: none; }
             .scoreboard-side { margin-top: 0; }
-            .scoreboard-side .player-names { font-size: 0.85rem; max-width: 180px; }
-            .scoreboard-side .score-value { font-size: 2.6rem; }
+            .scoreboard-side .player-names { font-size: 1.06rem; max-width: 180px; }
+            .scoreboard-side .score-value { font-size: 2.86rem; }
             .scoreboard-side.my-side::after { top: -12px; }
 
             .serving-info {
                 order: -1;
                 margin-top: 0;
                 margin-bottom: 28px;
-                font-size: 0.6rem;
+                font-size: 0.75rem;
                 letter-spacing: 0.18em;
             }
-            .serving-name { font-size: 1.25rem; }
+            .serving-name { font-size: 1.47rem; }
 
             /* +1 takes the rest */
             .plus-area { flex: 1; min-width: 0; }
@@ -816,7 +816,7 @@
             }
             .btn-undo {
                 padding: 12px;
-                font-size: 1.1rem;
+                font-size: 1.3rem;
                 border-top: 1px solid rgba(255, 90, 74, 0.2);
             }
             .abandon-area {
@@ -877,12 +877,12 @@
             .tag-chip {
                 min-height: 44px;
                 height: 100%;
-                font-size: 1.05rem;
+                font-size: 1.24rem;
                 padding: 8px;
                 gap: 6px;
                 border-radius: 14px;
             }
-            .tag-chip-icon { font-size: 2rem; }
+            .tag-chip-icon { font-size: 2.2rem; }
         }
 
         /* =====================================================
@@ -921,11 +921,11 @@
             .tag-chip {
                 min-height: 44px;
                 height: 100%;
-                font-size: 1.3rem;
+                font-size: 1.53rem;
                 padding: 12px;
                 gap: 8px;
             }
-            .tag-chip-icon { font-size: 2.4rem; }
+            .tag-chip-icon { font-size: 2.64rem; }
         }
     </style>
 </head>

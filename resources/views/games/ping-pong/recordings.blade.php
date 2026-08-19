@@ -20,8 +20,8 @@
     <template x-if="!loading && recordings.length === 0">
         <div class="text-center py-16 px-5">
             <div class="text-5xl mb-4">📼</div>
-            <h2 class="pph-display text-[24px] tracking-[0.04em] uppercase text-[#f5ecd6] mb-2">No recordings yet</h2>
-            <p class="pph-mono text-[12px] tracking-[0.14em] text-[#f5ecd6]/45">Match recordings will appear here once you start recording games.</p>
+            <h2 class="pph-display text-[28px] tracking-[0.04em] uppercase text-[#f5ecd6] mb-2">No recordings yet</h2>
+            <p class="pph-mono text-[15px] tracking-[0.14em] text-[#f5ecd6]/45">Match recordings will appear here once you start recording games.</p>
         </div>
     </template>
 
@@ -41,12 +41,12 @@
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 mb-1.5 font-bold text-base text-[#f5ecd6]">
                         <span class="text-[#ff5a4a] truncate" x-text="rec.player_left || '?'"></span>
-                        <span class="pph-mono text-[10px] uppercase tracking-[0.18em] text-[#f5ecd6]/30">vs</span>
+                        <span class="pph-mono text-[14px] uppercase tracking-[0.18em] text-[#f5ecd6]/30">vs</span>
                         <span class="text-[#3ec8ff] truncate" x-text="rec.player_right || '?'"></span>
-                        <span class="pph-mono ml-2 font-bold text-[13px] text-[#f5ecd6]/55 tabular-nums" x-text="rec.player_left_score + ' · ' + rec.player_right_score"></span>
+                        <span class="pph-mono ml-2 font-bold text-[16px] text-[#f5ecd6]/55 tabular-nums" x-text="rec.player_left_score + ' · ' + rec.player_right_score"></span>
                     </div>
-                    <div class="flex items-center flex-wrap gap-3 pph-mono text-[11px] tracking-[0.06em] text-[#f5ecd6]/45">
-                        <span class="px-2 py-0.5 rounded font-bold text-[10px] uppercase tracking-[0.14em]"
+                    <div class="flex items-center flex-wrap gap-3 pph-mono text-[15px] tracking-[0.06em] text-[#f5ecd6]/45">
+                        <span class="px-2 py-0.5 rounded font-bold text-[14px] uppercase tracking-[0.14em]"
                               :class="{
                                   'bg-[#9be7c4]/15 text-[#9be7c4]': rec.status === 'completed',
                                   'bg-[#ff5a4a]/15 text-[#ff5a4a]': rec.status === 'recording',
@@ -73,10 +73,10 @@
                     </template>
                     <template x-if="confirmId === rec.id">
                         <div class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-[#ff5a4a]/15 border border-[#ff5a4a]/40">
-                            <span class="pph-mono text-[10px] uppercase tracking-[0.14em] text-[#f5ecd6]/70">Delete?</span>
-                            <button class="px-2.5 py-0.5 rounded-full bg-[#ff5a4a] text-[#06081b] font-bold text-[10px] uppercase tracking-[0.1em] cursor-pointer hover:bg-[#ff7a6a]"
+                            <span class="pph-mono text-[14px] uppercase tracking-[0.14em] text-[#f5ecd6]/70">Delete?</span>
+                            <button class="px-2.5 py-0.5 rounded-full bg-[#ff5a4a] text-[#06081b] font-bold text-[14px] uppercase tracking-[0.1em] cursor-pointer hover:bg-[#ff7a6a]"
                                     @click="deleteRecording(rec.id)">Yes</button>
-                            <button class="px-2.5 py-0.5 rounded-full bg-[#f5ecd6]/10 text-[#f5ecd6]/70 font-bold text-[10px] uppercase tracking-[0.1em] cursor-pointer hover:bg-[#f5ecd6]/15"
+                            <button class="px-2.5 py-0.5 rounded-full bg-[#f5ecd6]/10 text-[#f5ecd6]/70 font-bold text-[14px] uppercase tracking-[0.1em] cursor-pointer hover:bg-[#f5ecd6]/15"
                                     @click="confirmId = null">No</button>
                         </div>
                     </template>

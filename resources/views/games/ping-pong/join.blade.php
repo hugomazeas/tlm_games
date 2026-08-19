@@ -100,7 +100,7 @@
         }
         .join-header .word {
             font-family: 'Anton', sans-serif;
-            font-size: clamp(22px, 6vw, 32px);
+            font-size: clamp(26px, 6vw, 35px);
             letter-spacing: 0.015em;
             text-transform: uppercase;
         }
@@ -116,7 +116,7 @@
         .join-header .lobby-code {
             margin-top: 10px;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 11px;
+            font-size: 15px;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.22em;
@@ -150,7 +150,7 @@
             border-radius: 12px;
             color: var(--paper);
             font-family: 'Bricolage Grotesque', sans-serif;
-            font-size: 0.95rem;
+            font-size: 1.19rem;
             font-weight: 500;
             outline: none;
             transition: border-color 0.18s, background 0.18s;
@@ -172,7 +172,7 @@
             border-radius: 12px;
             font-family: 'Anton', sans-serif;
             font-weight: 400;
-            font-size: 1rem;
+            font-size: 1.18rem;
             letter-spacing: 0.06em;
             text-transform: uppercase;
             cursor: pointer;
@@ -222,7 +222,7 @@
         .player-item .name {
             font-family: 'Anton', sans-serif;
             font-weight: 400;
-            font-size: 1.2rem;
+            font-size: 1.42rem;
             letter-spacing: 0.02em;
             text-transform: uppercase;
             color: var(--paper);
@@ -230,7 +230,7 @@
         .player-item .elo {
             font-family: 'JetBrains Mono', monospace;
             color: var(--paper-faint);
-            font-size: 0.85rem;
+            font-size: 1.06rem;
             letter-spacing: 0.06em;
             font-weight: 700;
         }
@@ -277,7 +277,7 @@
 
         .side-label {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 10px;
+            font-size: 14px;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.28em;
@@ -293,7 +293,7 @@
             margin-bottom: 6px;
             font-family: 'Anton', sans-serif;
             font-weight: 400;
-            font-size: 1rem;
+            font-size: 1.18rem;
             letter-spacing: 0.02em;
             text-transform: uppercase;
             color: var(--paper);
@@ -318,7 +318,7 @@
             border: 1px solid var(--paper-line);
             background: rgba(245, 236, 214, 0.04);
             font-family: 'Anton', sans-serif;
-            font-size: 1rem;
+            font-size: 1.18rem;
             letter-spacing: 0.04em;
             text-transform: uppercase;
             color: var(--paper);
@@ -332,12 +332,12 @@
         .reselect-player::before {
             content: '↺';
             color: var(--amber);
-            font-size: 0.9rem;
+            font-size: 1.12rem;
         }
 
         .reselect-hint {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 10px;
+            font-size: 14px;
             letter-spacing: 0.18em;
             text-transform: uppercase;
             color: var(--paper-faint);
@@ -355,7 +355,7 @@
         }
         .qr-label {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 10px;
+            font-size: 14px;
             font-weight: 700;
             letter-spacing: 0.28em;
             text-transform: uppercase;
@@ -388,14 +388,14 @@
 
         .qr-lobby-code {
             font-family: 'Anton', sans-serif;
-            font-size: 2rem;
+            font-size: 2.2rem;
             letter-spacing: 0.18em;
             color: var(--paper);
             text-shadow: 0 0 22px rgba(245, 236, 214, 0.25);
         }
         .qr-join-url {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 10px;
+            font-size: 14px;
             color: var(--paper-fainter);
             word-break: break-all;
             text-align: center;
@@ -415,7 +415,7 @@
             border: none;
             border-radius: 14px;
             font-family: 'Anton', sans-serif;
-            font-size: 1.2rem;
+            font-size: 1.42rem;
             letter-spacing: 0.06em;
             text-transform: uppercase;
             cursor: pointer;
@@ -436,7 +436,7 @@
             padding: 14px 16px;
             color: var(--paper-faint);
             font-family: 'JetBrains Mono', monospace;
-            font-size: 11px;
+            font-size: 15px;
             letter-spacing: 0.16em;
             text-transform: uppercase;
         }
@@ -450,7 +450,7 @@
             text-align: center;
             padding: 24px 12px;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 11px;
+            font-size: 15px;
             color: var(--paper-faint);
             letter-spacing: 0.1em;
             line-height: 1.6;
@@ -471,7 +471,7 @@
         }
         .error-title {
             font-family: 'Anton', sans-serif;
-            font-size: 1.6rem;
+            font-size: 1.89rem;
             letter-spacing: 0.04em;
             text-transform: uppercase;
             color: var(--red);
@@ -480,7 +480,7 @@
         }
         .error-message {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 12px;
+            font-size: 15px;
             letter-spacing: 0.12em;
             text-transform: uppercase;
             color: var(--paper-faint);
@@ -503,7 +503,7 @@
                 text-align: left;
             }
             .join-header::after { left: 0; right: 0; }
-            .join-header .word { font-size: clamp(18px, 3vw, 26px); }
+            .join-header .word { font-size: clamp(21px, 3vw, 31px); }
             .join-header .ball { width: 9px; height: 9px; }
             .join-header .lobby-code { margin-top: 0; }
 
@@ -531,8 +531,8 @@
                 padding: 10px 12px;
                 margin-bottom: 5px;
             }
-            .select-layout .player-item .name { font-size: 1rem; }
-            .select-layout .player-item .elo { font-size: 0.75rem; }
+            .select-layout .player-item .name { font-size: 1.18rem; }
+            .select-layout .player-item .elo { font-size: 0.94rem; }
 
             /* ===== Waiting screen — 2-column: QR left, side panels right ===== */
             .waiting-layout {
@@ -570,9 +570,9 @@
                 display: block !important;
             }
             .waiting-layout #joinQrContainer canvas { display: none !important; }
-            .waiting-layout .qr-lobby-code { font-size: 1.3rem; letter-spacing: 0.14em; }
+            .waiting-layout .qr-lobby-code { font-size: 1.53rem; letter-spacing: 0.14em; }
             .waiting-layout .qr-join-url { display: none; }
-            .waiting-layout .qr-label { font-size: 9px; letter-spacing: 0.22em; }
+            .waiting-layout .qr-label { font-size: 12px; letter-spacing: 0.22em; }
 
             .waiting-layout .side-panels {
                 grid-area: side;
@@ -587,17 +587,17 @@
                 min-height: 0;
                 height: auto;            /* size to content (label + up to 2 cards) */
             }
-            .waiting-layout .side-panel .side-label { margin-bottom: 6px; font-size: 9px; }
-            .waiting-layout .side-player { padding: 6px 8px; font-size: 0.85rem; margin-bottom: 4px; }
+            .waiting-layout .side-panel .side-label { margin-bottom: 6px; font-size: 12px; }
+            .waiting-layout .side-player { padding: 6px 8px; font-size: 1.06rem; margin-bottom: 4px; }
 
             .waiting-layout .start-row {
                 grid-area: start;
                 padding: 0;
             }
-            .waiting-layout .start-btn { padding: 12px; font-size: 1rem; }
-            .waiting-layout .waiting-indicator { padding: 8px; font-size: 10px; }
+            .waiting-layout .start-btn { padding: 12px; font-size: 1.18rem; }
+            .waiting-layout .waiting-indicator { padding: 8px; font-size: 14px; }
 
-            .reselect-hint { font-size: 9px; letter-spacing: 0.14em; }
+            .reselect-hint { font-size: 12px; letter-spacing: 0.14em; }
         }
     </style>
 </head>

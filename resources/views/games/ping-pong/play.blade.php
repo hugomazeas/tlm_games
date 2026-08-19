@@ -17,13 +17,13 @@
             {{-- ====== Masthead (slim) ============================== --}}
             <header class="pph-net relative flex items-center justify-between gap-6 pb-3 flex-shrink-0">
                 <div class="flex items-center gap-2.5 leading-none select-none">
-                    <span class="pph-display uppercase tracking-[0.015em] text-[clamp(24px,2.6vw,38px)] text-[#ff5a4a] pph-glow-red">PING</span>
+                    <span class="pph-display uppercase tracking-[0.015em] text-[clamp(28px,2.6vw,42px)] text-[#ff5a4a] pph-glow-red">PING</span>
                     <span aria-hidden="true" class="pph-ball block rounded-full w-[clamp(12px,1.1vw,16px)] h-[clamp(12px,1.1vw,16px)]"></span>
-                    <span class="pph-display uppercase tracking-[0.015em] text-[clamp(24px,2.6vw,38px)] text-[#3ec8ff] pph-glow-blue">PONG</span>
-                    <span class="hidden md:inline-block ml-3 pph-mono text-[10px] tracking-[0.28em] uppercase text-[#f5ecd6]/40">TLM Office League</span>
+                    <span class="pph-display uppercase tracking-[0.015em] text-[clamp(28px,2.6vw,42px)] text-[#3ec8ff] pph-glow-blue">PONG</span>
+                    <span class="hidden md:inline-block ml-3 pph-mono text-[14px] tracking-[0.28em] uppercase text-[#f5ecd6]/40">TLM Office League</span>
                 </div>
 
-                <div class="inline-flex items-center gap-2 pph-mono text-[11px] uppercase tracking-[0.12em] text-[#f5ecd6]/80">
+                <div class="inline-flex items-center gap-2 pph-mono text-[15px] uppercase tracking-[0.12em] text-[#f5ecd6]/80">
                     <span class="w-2 h-2 rounded-full"
                           :class="{
                               'bg-[#9be7c4] shadow-[0_0_10px_#9be7c4]': wsStatus === 'connected',
@@ -67,7 +67,7 @@
                                     <span></span><span></span><span></span><span></span>
                                 </div>
                                 <div id="lobbyQrContainer" class="w-full h-full"></div>
-                                <div class="absolute left-0 right-0 top-[calc(100%+6px)] text-center pph-mono text-[10px] tracking-[0.3em] uppercase text-[#f5ecd6]/45">Scan to join</div>
+                                <div class="absolute left-0 right-0 top-[calc(100%+6px)] text-center pph-mono text-[14px] tracking-[0.3em] uppercase text-[#f5ecd6]/45">Scan to join</div>
                             </div>
 
                             {{-- Perforation --}}
@@ -76,10 +76,10 @@
                             {{-- Sides roster --}}
                             <div class="grid grid-cols-[1fr_auto_1fr] gap-2 items-start">
                                 <div class="flex flex-col gap-1.5 min-w-0">
-                                    <span class="pph-mono text-[10px] tracking-[0.3em] uppercase text-[#ff5a4a]">Left</span>
+                                    <span class="pph-mono text-[14px] tracking-[0.3em] uppercase text-[#ff5a4a]">Left</span>
                                     <div class="flex flex-col gap-1.5">
                                         <template x-for="p in lobbyLeftPlayers" :key="p.player_id">
-                                            <div class="pph-slot-in pph-shadow-left rounded-lg px-3 py-2.5 font-semibold text-[13px] text-[#f5ecd6] bg-[#f5ecd6]/[0.06] border border-[#f5ecd6]/15 border-l-[3px] border-l-[#ff5a4a] truncate">
+                                            <div class="pph-slot-in pph-shadow-left rounded-lg px-3 py-2.5 font-semibold text-[16px] text-[#f5ecd6] bg-[#f5ecd6]/[0.06] border border-[#f5ecd6]/15 border-l-[3px] border-l-[#ff5a4a] truncate">
                                                 <span x-text="p.player_name"></span>
                                             </div>
                                         </template>
@@ -88,14 +88,14 @@
                                         </template>
                                     </div>
                                 </div>
-                                <div class="relative self-center pt-4 pph-display text-[22px] tracking-[0.06em] text-[#f5ecd6]
+                                <div class="relative self-center pt-4 pph-display text-[26px] tracking-[0.06em] text-[#f5ecd6]
                                             before:content-[''] before:absolute before:left-1/2 before:-translate-x-1/2 before:top-0.5 before:w-px before:h-2.5 before:bg-[#f5ecd6]/15
                                             after:content-[''] after:absolute after:left-1/2 after:-translate-x-1/2 after:bottom-0.5 after:w-px after:h-2.5 after:bg-[#f5ecd6]/15">VS</div>
                                 <div class="flex flex-col gap-1.5 min-w-0 text-right items-end">
-                                    <span class="pph-mono text-[10px] tracking-[0.3em] uppercase text-[#3ec8ff]">Right</span>
+                                    <span class="pph-mono text-[14px] tracking-[0.3em] uppercase text-[#3ec8ff]">Right</span>
                                     <div class="flex flex-col gap-1.5 w-full">
                                         <template x-for="p in lobbyRightPlayers" :key="p.player_id">
-                                            <div class="pph-slot-in pph-shadow-right rounded-lg px-3 py-2.5 font-semibold text-[13px] text-[#f5ecd6] bg-[#f5ecd6]/[0.06] border border-[#f5ecd6]/15 border-r-[3px] border-r-[#3ec8ff] truncate text-right">
+                                            <div class="pph-slot-in pph-shadow-right rounded-lg px-3 py-2.5 font-semibold text-[16px] text-[#f5ecd6] bg-[#f5ecd6]/[0.06] border border-[#f5ecd6]/15 border-r-[3px] border-r-[#3ec8ff] truncate text-right">
                                                 <span x-text="p.player_name"></span>
                                             </div>
                                         </template>
@@ -107,18 +107,18 @@
                             </div>
 
                             {{-- Start --}}
-                            <button class="appearance-none border-0 mt-0.5 bg-[#f5ecd6] text-[#06081b] px-5 py-3.5 rounded-xl pph-display text-[22px] tracking-[0.06em] uppercase cursor-pointer transition shadow-[0_8px_22px_rgba(245,236,214,0.18)] hover:enabled:-translate-y-px hover:enabled:bg-[#fffaf0] hover:enabled:shadow-[0_12px_30px_rgba(245,236,214,0.28)] disabled:opacity-[0.35] disabled:cursor-not-allowed disabled:shadow-none disabled:bg-[#f5ecd6]/40"
+                            <button class="appearance-none border-0 mt-0.5 bg-[#f5ecd6] text-[#06081b] px-5 py-3.5 rounded-xl pph-display text-[26px] tracking-[0.06em] uppercase cursor-pointer transition shadow-[0_8px_22px_rgba(245,236,214,0.18)] hover:enabled:-translate-y-px hover:enabled:bg-[#fffaf0] hover:enabled:shadow-[0_12px_30px_rgba(245,236,214,0.28)] disabled:opacity-[0.35] disabled:cursor-not-allowed disabled:shadow-none disabled:bg-[#f5ecd6]/40"
                                     :disabled="!lobbyReady || loading || !hostToken"
                                     @click="startLobbyMatch()"
                                     x-show="hostToken">
                                 <span x-show="!loading">Start match →</span>
                                 <span x-show="loading">Starting…</span>
                             </button>
-                            <div class="pph-mono text-[11px] tracking-[0.18em] uppercase text-[#f5ecd6]/45 text-center"
+                            <div class="pph-mono text-[15px] tracking-[0.18em] uppercase text-[#f5ecd6]/45 text-center"
                                  x-show="!hostToken && lobbyCode">
                                 Waiting for host to start…
                             </div>
-                            <div class="pph-mono text-[10px] text-[#f5ecd6]/25 break-all text-center tracking-wide"
+                            <div class="pph-mono text-[14px] text-[#f5ecd6]/25 break-all text-center tracking-wide"
                                  x-text="lobbyJoinUrl"></div>
                         </div>
                     </template>
@@ -139,11 +139,11 @@
                          class="flex-shrink-0 rounded-2xl border border-[#f5ecd6]/15 bg-gradient-to-b from-[#f5ecd6]/[0.03] to-[#f5ecd6]/[0.01] px-4 md:px-5 pt-4 pb-3.5">
                         <div class="flex items-center gap-x-2.5 gap-y-1.5 mb-2.5 flex-wrap">
                             <span class="pph-display text-base tracking-[0.14em] uppercase text-[#f5ecd6]">ELO Over Time</span>
-                            <span class="pph-mono text-[10px] tracking-[0.22em] uppercase text-[#f5ecd6]/45">Singles · Top <span x-text="topEloSeries.length"></span></span>
+                            <span class="pph-mono text-[14px] tracking-[0.22em] uppercase text-[#f5ecd6]/45">Singles · Top <span x-text="topEloSeries.length"></span></span>
                             {{-- Legend --}}
                             <div class="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 justify-end">
                                 <template x-for="(s, i) in topEloSeries" :key="s.player_id">
-                                    <span class="inline-flex items-center gap-1.5 pph-mono text-[11px] text-[#f5ecd6]/70">
+                                    <span class="inline-flex items-center gap-1.5 pph-mono text-[15px] text-[#f5ecd6]/70">
                                         <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" :style="'background:' + eloColor(i)"></span>
                                         <span class="truncate max-w-[90px]" x-text="s.player_name"></span>
                                     </span>
@@ -156,9 +156,9 @@
                             <div class="absolute pointer-events-none z-10 rounded-lg border border-[#f5ecd6]/15 bg-[#06081b]/95 px-3 py-2 shadow-xl min-w-[140px]"
                                  x-show="topEloTooltip.show" x-cloak
                                  :style="'left:' + topEloTooltip.x + 'px; top:' + topEloTooltip.y + 'px;'">
-                                <div class="pph-mono text-[10px] tracking-[0.18em] uppercase text-[#f5ecd6]/50 mb-1.5" x-text="topEloTooltip.date"></div>
+                                <div class="pph-mono text-[14px] tracking-[0.18em] uppercase text-[#f5ecd6]/50 mb-1.5" x-text="topEloTooltip.date"></div>
                                 <template x-for="row in topEloTooltip.rows" :key="row.player_id">
-                                    <div class="flex items-center gap-2 text-[12px] leading-snug">
+                                    <div class="flex items-center gap-2 text-[15px] leading-snug">
                                         <span class="w-2 h-2 rounded-full flex-shrink-0" :style="'background:' + row.color"></span>
                                         <span class="text-[#f5ecd6]/75 mr-2 truncate" x-text="row.name"></span>
                                         <span class="ml-auto font-bold text-[#f5ecd6] pph-mono" x-text="row.value"></span>
@@ -173,7 +173,7 @@
                         <div class="flex items-center gap-2.5 mb-2.5">
                             <span class="pph-pulse-dot w-2 h-2 rounded-full bg-[#ff5a4a]"></span>
                             <span class="pph-display text-base tracking-[0.14em] uppercase text-[#ff5a4a]">On Court Now</span>
-                            <span class="ml-auto pph-mono text-[10px] tracking-[0.22em] uppercase text-[#f5ecd6]/45" x-text="liveMatches.length + ' active'"></span>
+                            <span class="ml-auto pph-mono text-[14px] tracking-[0.22em] uppercase text-[#f5ecd6]/45" x-text="liveMatches.length + ' active'"></span>
                         </div>
                         <div class="flex flex-col gap-1.5">
                             <template x-for="lm in liveMatches" :key="lm.id">
@@ -181,7 +181,7 @@
                                      class="relative grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-3.5 py-2.5 rounded-[10px] border border-[#f5ecd6]/15 bg-[#f5ecd6]/[0.03] cursor-pointer transition hover:border-[#f5ecd6]/30 hover:bg-[#f5ecd6]/[0.05] hover:-translate-y-px"
                                      :class="{ '!border-[#ffd166]/60 !bg-[#ffd166]/[0.08]': lm._flash }">
                                     <template x-if="lm.recording && lm.recording.status === 'recording'">
-                                        <div class="absolute top-1.5 right-2 flex items-center gap-1 bg-[#ff5a4a]/20 rounded px-1.5 py-0.5 pph-mono text-[9px] font-bold tracking-[0.14em] text-[#ff5a4a]">
+                                        <div class="absolute top-1.5 right-2 flex items-center gap-1 bg-[#ff5a4a]/20 rounded px-1.5 py-0.5 pph-mono text-[12px] font-bold tracking-[0.14em] text-[#ff5a4a]">
                                             <span class="pph-flicker w-1.5 h-1.5 rounded-full bg-[#ff5a4a]"></span>REC
                                         </div>
                                     </template>
@@ -198,10 +198,10 @@
                                     </div>
 
                                     <div class="relative flex items-baseline gap-1.5 pph-mono leading-none pb-2.5">
-                                        <span class="text-[22px] font-bold text-[#ff5a4a] min-w-[26px] text-center" x-text="lm.player_left_score ?? 0"></span>
+                                        <span class="text-[26px] font-bold text-[#ff5a4a] min-w-[26px] text-center" x-text="lm.player_left_score ?? 0"></span>
                                         <span class="text-[#f5ecd6]/25">·</span>
-                                        <span class="text-[22px] font-bold text-[#3ec8ff] min-w-[26px] text-center" x-text="lm.player_right_score ?? 0"></span>
-                                        <span class="absolute -bottom-0.5 left-1/2 -translate-x-1/2 pph-mono text-[9px] tracking-[0.22em] uppercase text-[#f5ecd6]/25" x-text="lm.mode"></span>
+                                        <span class="text-[26px] font-bold text-[#3ec8ff] min-w-[26px] text-center" x-text="lm.player_right_score ?? 0"></span>
+                                        <span class="absolute -bottom-0.5 left-1/2 -translate-x-1/2 pph-mono text-[12px] tracking-[0.22em] uppercase text-[#f5ecd6]/25" x-text="lm.mode"></span>
                                     </div>
 
                                     <div class="flex flex-col gap-px text-left min-w-0">
@@ -223,9 +223,9 @@
                     <div class="flex flex-col flex-1 min-h-0 rounded-2xl border border-[#f5ecd6]/15 bg-gradient-to-b from-[#f5ecd6]/[0.03] to-[#f5ecd6]/[0.01] px-4 md:px-5 pt-4 pb-1">
                         <div class="grid grid-cols-1 md:grid-cols-[auto_1fr_auto] items-center gap-3 mb-3 flex-shrink-0">
                             <h2 class="flex items-baseline gap-2.5 m-0 min-w-0">
-                                <span class="pph-display text-[26px] tracking-[0.04em] uppercase text-[#f5ecd6]"
+                                <span class="pph-display text-[31px] tracking-[0.04em] uppercase text-[#f5ecd6]"
                                       x-text="mode === '2v2' ? 'Doubles' : 'Singles'"></span>
-                                <span class="pph-mono text-[10px] tracking-[0.28em] uppercase text-[#f5ecd6]/45">ELO Standings</span>
+                                <span class="pph-mono text-[14px] tracking-[0.28em] uppercase text-[#f5ecd6]/45">ELO Standings</span>
                             </h2>
                             <div class="pph-tabs-row flex flex-nowrap gap-1 overflow-x-auto py-0.5 min-w-0 md:justify-self-start">
                                 <button type="button"
@@ -289,15 +289,15 @@
             {{-- ===== Top bar: mode + clock + timer ===== --}}
             <header class="pph-net relative flex items-center justify-between gap-4 pb-3 flex-shrink-0">
                 <div class="flex items-center gap-3">
-                    <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#ff5a4a]/15 border border-[#ff5a4a]/35 text-[#ff5a4a] pph-mono text-[10px] font-bold tracking-[0.18em] uppercase">
+                    <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#ff5a4a]/15 border border-[#ff5a4a]/35 text-[#ff5a4a] pph-mono text-[14px] font-bold tracking-[0.18em] uppercase">
                         <span class="pph-flicker w-1.5 h-1.5 rounded-full bg-[#ff5a4a]"></span>
                         Live ·
                         <span x-text="mode === '2v2' ? '2v2 · First to 11' : 'First to 11'"></span>
                     </span>
                 </div>
                 <div class="flex items-baseline gap-5">
-                    <span class="pph-mono font-bold text-[#f5ecd6] text-[clamp(28px,2.8vw,40px)] tracking-[0.06em] tabular-nums" x-text="clockDisplay"></span>
-                    <span class="pph-mono text-[#f5ecd6]/50 text-[clamp(14px,1.4vw,18px)] tabular-nums tracking-[0.04em]" x-text="timerDisplay"></span>
+                    <span class="pph-mono font-bold text-[#f5ecd6] text-[clamp(33px,2.8vw,44px)] tracking-[0.06em] tabular-nums" x-text="clockDisplay"></span>
+                    <span class="pph-mono text-[#f5ecd6]/50 text-[clamp(18px,1.4vw,21px)] tabular-nums tracking-[0.04em]" x-text="timerDisplay"></span>
                 </div>
             </header>
 
@@ -305,12 +305,12 @@
             <div x-show="hlsInstance" class="flex justify-center mb-1">
                 <div class="relative w-full max-w-[480px] aspect-video bg-black rounded-xl overflow-hidden border border-[#f5ecd6]/15">
                     <video id="livePlayer" muted autoplay playsinline class="w-full h-full object-cover"></video>
-                    <div class="absolute top-2 left-2 inline-flex items-center gap-1.5 bg-black/60 px-2 py-0.5 rounded-md pph-mono text-[10px] font-bold tracking-[0.16em] uppercase text-white">
+                    <div class="absolute top-2 left-2 inline-flex items-center gap-1.5 bg-black/60 px-2 py-0.5 rounded-md pph-mono text-[14px] font-bold tracking-[0.16em] uppercase text-white">
                         <span class="pph-flicker w-1.5 h-1.5 rounded-full bg-[#ff5a4a]"></span>
                         Live
                     </div>
                     <a :href="'/games/ping-pong/watch'" target="_blank"
-                       class="absolute top-2 right-2 bg-black/60 px-2 py-0.5 rounded-md text-white pph-mono text-[10px] uppercase tracking-[0.14em] no-underline">Full screen →</a>
+                       class="absolute top-2 right-2 bg-black/60 px-2 py-0.5 rounded-md text-white pph-mono text-[14px] uppercase tracking-[0.14em] no-underline">Full screen →</a>
                 </div>
             </div>
 
@@ -323,27 +323,27 @@
 
                     {{-- Player name(s) --}}
                     <template x-if="mode === '1v1'">
-                        <div class="pph-display text-[clamp(20px,4vw,56px)] tracking-[0.02em] uppercase text-[#ff5a4a] pph-glow-red text-center leading-none truncate max-w-full"
+                        <div class="pph-display text-[clamp(24px,4vw,62px)] tracking-[0.02em] uppercase text-[#ff5a4a] pph-glow-red text-center leading-none truncate max-w-full"
                              x-text="match.player_left?.name || ''"></div>
                     </template>
                     <template x-if="mode === '2v2'">
                         <div class="flex flex-col items-center gap-0.5">
                             <div class="pph-display tracking-[0.02em] uppercase truncate max-w-full transition-all duration-300"
                                  :class="isPlayerServing(match.player_left_id)
-                                    ? 'text-[clamp(32px,4.5vw,60px)] text-[#ff5a4a] pph-glow-red font-bold'
-                                    : 'text-[clamp(22px,3vw,42px)] text-[#f5ecd6]/50'"
+                                    ? 'text-[clamp(35px,4.5vw,66px)] text-[#ff5a4a] pph-glow-red font-bold'
+                                    : 'text-[clamp(26px,3vw,46px)] text-[#f5ecd6]/50'"
                                  x-text="match.player_left?.name || ''"></div>
                             <div class="pph-display tracking-[0.02em] uppercase truncate max-w-full transition-all duration-300"
                                  :class="isPlayerServing(match.team_left_player2_id)
-                                    ? 'text-[clamp(32px,4.5vw,60px)] text-[#ff5a4a] pph-glow-red font-bold'
-                                    : 'text-[clamp(22px,3vw,42px)] text-[#f5ecd6]/50'"
+                                    ? 'text-[clamp(35px,4.5vw,66px)] text-[#ff5a4a] pph-glow-red font-bold'
+                                    : 'text-[clamp(26px,3vw,46px)] text-[#f5ecd6]/50'"
                                  x-text="match.team_left_player2?.name || ''"></div>
                         </div>
                     </template>
 
                     {{-- Serving badge --}}
                     <div class="mt-3 mb-3" :class="{ 'invisible': !isServing('left') }">
-                        <span class="inline-flex items-center gap-1.5 pph-mono text-[11px] md:text-[13px] font-bold tracking-[0.22em] uppercase px-3 py-1 rounded-full bg-[#ffd166]/15 border border-[#ffd166]/40 text-[#ffd166] pph-flicker">
+                        <span class="inline-flex items-center gap-1.5 pph-mono text-[15px] md:text-[16px] font-bold tracking-[0.22em] uppercase px-3 py-1 rounded-full bg-[#ffd166]/15 border border-[#ffd166]/40 text-[#ffd166] pph-flicker">
                             <span class="w-1.5 h-1.5 rounded-full bg-[#ffd166] shadow-[0_0_10px_#ffd166]"></span>
                             Serving
                         </span>
@@ -369,26 +369,26 @@
                      :class="isServing('right') ? '!border-[#3ec8ff]/75 !bg-[#3ec8ff]/[0.18] shadow-[inset_0_0_80px_rgba(62,200,255,0.16),0_0_40px_rgba(62,200,255,0.18)]' : ''">
 
                     <template x-if="mode === '1v1'">
-                        <div class="pph-display text-[clamp(20px,4vw,56px)] tracking-[0.02em] uppercase text-[#3ec8ff] pph-glow-blue text-center leading-none truncate max-w-full"
+                        <div class="pph-display text-[clamp(24px,4vw,62px)] tracking-[0.02em] uppercase text-[#3ec8ff] pph-glow-blue text-center leading-none truncate max-w-full"
                              x-text="match.player_right?.name || ''"></div>
                     </template>
                     <template x-if="mode === '2v2'">
                         <div class="flex flex-col items-center gap-0.5">
                             <div class="pph-display tracking-[0.02em] uppercase truncate max-w-full transition-all duration-300"
                                  :class="isPlayerServing(match.player_right_id)
-                                    ? 'text-[clamp(32px,4.5vw,60px)] text-[#3ec8ff] pph-glow-blue font-bold'
-                                    : 'text-[clamp(22px,3vw,42px)] text-[#f5ecd6]/50'"
+                                    ? 'text-[clamp(35px,4.5vw,66px)] text-[#3ec8ff] pph-glow-blue font-bold'
+                                    : 'text-[clamp(26px,3vw,46px)] text-[#f5ecd6]/50'"
                                  x-text="match.player_right?.name || ''"></div>
                             <div class="pph-display tracking-[0.02em] uppercase truncate max-w-full transition-all duration-300"
                                  :class="isPlayerServing(match.team_right_player2_id)
-                                    ? 'text-[clamp(32px,4.5vw,60px)] text-[#3ec8ff] pph-glow-blue font-bold'
-                                    : 'text-[clamp(22px,3vw,42px)] text-[#f5ecd6]/50'"
+                                    ? 'text-[clamp(35px,4.5vw,66px)] text-[#3ec8ff] pph-glow-blue font-bold'
+                                    : 'text-[clamp(26px,3vw,46px)] text-[#f5ecd6]/50'"
                                  x-text="match.team_right_player2?.name || ''"></div>
                         </div>
                     </template>
 
                     <div class="mt-3 mb-3" :class="{ 'invisible': !isServing('right') }">
-                        <span class="inline-flex items-center gap-1.5 pph-mono text-[11px] md:text-[13px] font-bold tracking-[0.22em] uppercase px-3 py-1 rounded-full bg-[#ffd166]/15 border border-[#ffd166]/40 text-[#ffd166] pph-flicker">
+                        <span class="inline-flex items-center gap-1.5 pph-mono text-[15px] md:text-[16px] font-bold tracking-[0.22em] uppercase px-3 py-1 rounded-full bg-[#ffd166]/15 border border-[#ffd166]/40 text-[#ffd166] pph-flicker">
                             <span class="w-1.5 h-1.5 rounded-full bg-[#ffd166] shadow-[0_0_10px_#ffd166]"></span>
                             Serving
                         </span>
@@ -409,19 +409,19 @@
             </div>
 
             {{-- ===== Bottom hint ===== --}}
-            <div class="text-center pph-mono text-[10px] tracking-[0.16em] uppercase text-[#f5ecd6]/35 flex-shrink-0" x-show="!readOnly">
+            <div class="text-center pph-mono text-[14px] tracking-[0.16em] uppercase text-[#f5ecd6]/35 flex-shrink-0" x-show="!readOnly">
                 <span class="inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
-                    <span><kbd class="inline-block px-1.5 py-0.5 rounded bg-[#f5ecd6]/[0.08] border border-[#f5ecd6]/15 text-[#f5ecd6]/70 text-[10px]">↑</kbd> left +1</span>
-                    <span><kbd class="inline-block px-1.5 py-0.5 rounded bg-[#f5ecd6]/[0.08] border border-[#f5ecd6]/15 text-[#f5ecd6]/70 text-[10px]">↓</kbd> left −1</span>
-                    <span><kbd class="inline-block px-1.5 py-0.5 rounded bg-[#f5ecd6]/[0.08] border border-[#f5ecd6]/15 text-[#f5ecd6]/70 text-[10px]">→</kbd> right +1</span>
-                    <span><kbd class="inline-block px-1.5 py-0.5 rounded bg-[#f5ecd6]/[0.08] border border-[#f5ecd6]/15 text-[#f5ecd6]/70 text-[10px]">←</kbd> right −1</span>
+                    <span><kbd class="inline-block px-1.5 py-0.5 rounded bg-[#f5ecd6]/[0.08] border border-[#f5ecd6]/15 text-[#f5ecd6]/70 text-[14px]">↑</kbd> left +1</span>
+                    <span><kbd class="inline-block px-1.5 py-0.5 rounded bg-[#f5ecd6]/[0.08] border border-[#f5ecd6]/15 text-[#f5ecd6]/70 text-[14px]">↓</kbd> left −1</span>
+                    <span><kbd class="inline-block px-1.5 py-0.5 rounded bg-[#f5ecd6]/[0.08] border border-[#f5ecd6]/15 text-[#f5ecd6]/70 text-[14px]">→</kbd> right +1</span>
+                    <span><kbd class="inline-block px-1.5 py-0.5 rounded bg-[#f5ecd6]/[0.08] border border-[#f5ecd6]/15 text-[#f5ecd6]/70 text-[14px]">←</kbd> right −1</span>
                     <span class="text-[#f5ecd6]/25">·</span>
-                    <span><kbd class="inline-block px-1.5 py-0.5 rounded bg-[#f5ecd6]/[0.08] border border-[#f5ecd6]/15 text-[#f5ecd6]/70 text-[10px]">⌫</kbd> abandon</span>
+                    <span><kbd class="inline-block px-1.5 py-0.5 rounded bg-[#f5ecd6]/[0.08] border border-[#f5ecd6]/15 text-[#f5ecd6]/70 text-[14px]">⌫</kbd> abandon</span>
                 </span>
             </div>
             <div class="text-center flex-shrink-0" x-show="readOnly">
                 <a href="/games/ping-pong/watch"
-                   class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[#f5ecd6]/15 text-[#f5ecd6]/65 no-underline pph-mono text-[11px] tracking-[0.16em] uppercase hover:text-[#f5ecd6] hover:border-[#f5ecd6]/30 hover:bg-[#f5ecd6]/[0.04] transition">
+                   class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[#f5ecd6]/15 text-[#f5ecd6]/65 no-underline pph-mono text-[15px] tracking-[0.16em] uppercase hover:text-[#f5ecd6] hover:border-[#f5ecd6]/30 hover:bg-[#f5ecd6]/[0.04] transition">
                     ← Watch live stream
                 </a>
             </div>

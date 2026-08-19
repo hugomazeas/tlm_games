@@ -84,7 +84,7 @@
                                                         @foreach($results as $r)
                                                             <span class="inline-block w-[7px] h-[7px] rounded-full {{ $r === 'W' ? 'bg-green-500' : 'bg-red-500' }}"></span>
                                                         @endforeach
-                                                        <span class="text-[9px] text-white/25 ml-0.5">&#9656;</span>
+                                                        <span class="text-[12px] text-white/25 ml-0.5">&#9656;</span>
                                                     </div>
                                                 </div>
                                             @else
@@ -94,12 +94,12 @@
                                     @elseif(($col['type'] ?? null) === 'record')
                                         <td class="px-3 sm:px-5 py-3 whitespace-nowrap">
                                             <div class="flex flex-col items-center">
-                                                <span class="text-[15px] font-semibold">
+                                                <span class="text-[19px] font-semibold">
                                                     @php $parts = explode('-', $entry[$col['key']] ?? '0-0'); @endphp
                                                     <span class="text-green-500">{{ $parts[0] }}</span><span class="text-white/30">-</span><span class="text-red-500">{{ $parts[1] ?? 0 }}</span>
                                                 </span>
                                                 @if(isset($entry['win_rate']))
-                                                    <span class="text-[11px] text-white/40">{{ $entry['win_rate'] }}</span>
+                                                    <span class="text-[15px] text-white/40">{{ $entry['win_rate'] }}</span>
                                                 @endif
                                             </div>
                                         </td>

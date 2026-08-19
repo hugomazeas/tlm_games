@@ -131,7 +131,7 @@
     }
     .pph-table th {
         font-family: 'JetBrains Mono', monospace;
-        font-size: 10px;
+        font-size: 14px;
         letter-spacing: 0.24em;
         text-transform: uppercase;
         color: rgba(245, 236, 214, 0.45);
@@ -168,12 +168,12 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
             </a>
             <div class="flex items-center gap-2 leading-none select-none min-w-0">
-                <span class="pph-display uppercase tracking-[0.015em] text-[clamp(20px,2.2vw,30px)] text-[#ff5a4a] pph-glow-red">PING</span>
+                <span class="pph-display uppercase tracking-[0.015em] text-[clamp(24px,2.2vw,35px)] text-[#ff5a4a] pph-glow-red">PING</span>
                 <span aria-hidden="true" class="pph-ball block rounded-full w-3 h-3 md:w-3.5 md:h-3.5 shrink-0"></span>
-                <span class="pph-display uppercase tracking-[0.015em] text-[clamp(20px,2.2vw,30px)] text-[#3ec8ff] pph-glow-blue">PONG</span>
+                <span class="pph-display uppercase tracking-[0.015em] text-[clamp(24px,2.2vw,35px)] text-[#3ec8ff] pph-glow-blue">PONG</span>
             </div>
-            <span class="hidden md:inline-block ml-2 pph-mono text-[10px] tracking-[0.28em] uppercase text-[#f5ecd6]/40 truncate">{{ $pageEyebrow }}</span>
+            <span class="hidden md:inline-block ml-2 pph-mono text-[14px] tracking-[0.28em] uppercase text-[#f5ecd6]/40 truncate">{{ $pageEyebrow }}</span>
         </div>
-        <h1 class="pph-display uppercase tracking-[0.04em] text-[clamp(22px,2.4vw,32px)] text-[#f5ecd6] m-0 truncate">{{ $pageTitle }}</h1>
+        <h1 class="pph-display uppercase tracking-[0.04em] text-[clamp(26px,2.4vw,35px)] text-[#f5ecd6] m-0 truncate">{{ $pageTitle }}</h1>
     </header>
 @endif

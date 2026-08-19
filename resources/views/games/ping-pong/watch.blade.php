@@ -12,9 +12,9 @@
     <template x-if="!matchActive">
         <div class="text-center text-[#f5ecd6]/70">
             <div class="text-5xl mb-4">🏓</div>
-            <h2 class="pph-display text-[clamp(28px,3vw,40px)] tracking-[0.04em] uppercase text-[#f5ecd6] mb-2">No live match</h2>
-            <p class="pph-mono text-[12px] tracking-[0.14em] uppercase text-[#f5ecd6]/45 mb-5">No match is being played right now.</p>
-            <p class="pph-mono text-[10px] tracking-[0.2em] uppercase text-[#f5ecd6]/30" x-text="'Re-checking in ' + countdown + 's…'"></p>
+            <h2 class="pph-display text-[clamp(33px,3vw,44px)] tracking-[0.04em] uppercase text-[#f5ecd6] mb-2">No live match</h2>
+            <p class="pph-mono text-[15px] tracking-[0.14em] uppercase text-[#f5ecd6]/45 mb-5">No match is being played right now.</p>
+            <p class="pph-mono text-[14px] tracking-[0.2em] uppercase text-[#f5ecd6]/30" x-text="'Re-checking in ' + countdown + 's…'"></p>
             <a href="/games/ping-pong"
                class="inline-block mt-5 px-5 py-2 rounded-full bg-[#f5ecd6] text-[#06081b] no-underline pph-display text-base tracking-[0.04em] uppercase hover:bg-white transition">
                 ← Back to Ping Pong
@@ -34,7 +34,7 @@
                 <div class="flex flex-col items-center gap-6">
                     <div class="flex items-center gap-8">
                         <div class="text-center">
-                            <div class="text-[#ff5a4a] text-[1.6rem] font-bold pph-glow-red" x-text="match?.player_left?.name || 'Left'"></div>
+                            <div class="text-[#ff5a4a] text-[1.89rem] font-bold pph-glow-red" x-text="match?.player_left?.name || 'Left'"></div>
                             <template x-if="match?.mode === '2v2' && match?.team_left_player2">
                                 <div class="text-[#ff5a4a]/70 text-base font-medium" x-text="match.team_left_player2.name"></div>
                             </template>
@@ -45,33 +45,33 @@
                             <span class="text-white text-[5rem] font-extrabold" x-text="match?.player_right_score ?? 0"></span>
                         </div>
                         <div class="text-center">
-                            <div class="text-[#3ec8ff] text-[1.6rem] font-bold pph-glow-blue" x-text="match?.player_right?.name || 'Right'"></div>
+                            <div class="text-[#3ec8ff] text-[1.89rem] font-bold pph-glow-blue" x-text="match?.player_right?.name || 'Right'"></div>
                             <template x-if="match?.mode === '2v2' && match?.team_right_player2">
                                 <div class="text-[#3ec8ff]/70 text-base font-medium" x-text="match.team_right_player2.name"></div>
                             </template>
                         </div>
                     </div>
-                    <div class="pph-mono text-[11px] tracking-[0.3em] uppercase text-[#f5ecd6]/30" x-text="match?.mode?.toUpperCase()"></div>
+                    <div class="pph-mono text-[15px] tracking-[0.3em] uppercase text-[#f5ecd6]/30" x-text="match?.mode?.toUpperCase()"></div>
                 </div>
             </template>
 
             {{-- LIVE badge --}}
             <div class="absolute top-4 left-4 flex items-center gap-1.5 bg-black/70 px-3 py-1 rounded-md backdrop-blur-sm">
                 <span class="pph-flicker w-2 h-2 rounded-full bg-[#ff5a4a]"></span>
-                <span class="pph-mono text-white text-[11px] font-bold tracking-[0.18em]">LIVE</span>
+                <span class="pph-mono text-white text-[15px] font-bold tracking-[0.18em]">LIVE</span>
             </div>
 
             {{-- Corner scores over video --}}
             <template x-if="hasVideo && match">
                 <div>
                     <div class="absolute bottom-6 left-6 flex flex-col items-center">
-                        <span class="text-[#ff5a4a] text-[2.5rem] font-bold pph-glow-red [text-shadow:0_2px_8px_rgba(0,0,0,0.8)]" x-text="match?.player_left?.name || 'Left'"></span>
-                        <span x-show="isServingLeft()" class="pph-mono text-[#ffd166] text-[10px] tracking-[0.22em] font-bold [text-shadow:0_1px_4px_rgba(0,0,0,0.8)]">SERVING</span>
+                        <span class="text-[#ff5a4a] text-[2.75rem] font-bold pph-glow-red [text-shadow:0_2px_8px_rgba(0,0,0,0.8)]" x-text="match?.player_left?.name || 'Left'"></span>
+                        <span x-show="isServingLeft()" class="pph-mono text-[#ffd166] text-[14px] tracking-[0.22em] font-bold [text-shadow:0_1px_4px_rgba(0,0,0,0.8)]">SERVING</span>
                         <span class="text-white text-[10rem] font-black leading-none pph-mono [text-shadow:0_4px_16px_rgba(0,0,0,0.8)]" x-text="match?.player_left_score ?? 0"></span>
                     </div>
                     <div class="absolute bottom-6 right-6 flex flex-col items-center">
-                        <span class="text-[#3ec8ff] text-[2.5rem] font-bold pph-glow-blue [text-shadow:0_2px_8px_rgba(0,0,0,0.8)]" x-text="match?.player_right?.name || 'Right'"></span>
-                        <span x-show="isServingRight()" class="pph-mono text-[#ffd166] text-[10px] tracking-[0.22em] font-bold [text-shadow:0_1px_4px_rgba(0,0,0,0.8)]">SERVING</span>
+                        <span class="text-[#3ec8ff] text-[2.75rem] font-bold pph-glow-blue [text-shadow:0_2px_8px_rgba(0,0,0,0.8)]" x-text="match?.player_right?.name || 'Right'"></span>
+                        <span x-show="isServingRight()" class="pph-mono text-[#ffd166] text-[14px] tracking-[0.22em] font-bold [text-shadow:0_1px_4px_rgba(0,0,0,0.8)]">SERVING</span>
                         <span class="text-white text-[10rem] font-black leading-none pph-mono [text-shadow:0_4px_16px_rgba(0,0,0,0.8)]" x-text="match?.player_right_score ?? 0"></span>
                     </div>
                 </div>

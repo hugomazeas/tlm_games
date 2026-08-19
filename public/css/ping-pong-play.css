@@ -52,19 +52,19 @@
 
     .pp-grid .pp-start-panel .pp-mode-btn {
         padding: 8px 16px;
-        font-size: 1rem;
+        font-size: 1.18rem;
     }
 
     .pp-grid .pp-start-panel .pp-start-btn {
         margin-top: 0;
         padding: 10px 20px;
-        font-size: 1rem;
+        font-size: 1.18rem;
         border-radius: 12px;
         white-space: nowrap;
     }
 
     .pp-leaderboard-table {
-        font-size: 0.95rem;
+        font-size: 1.19rem;
     }
 
     .pp-leaderboard-table th,
@@ -98,7 +98,7 @@
     width: 100%;
     table-layout: fixed;
     border-collapse: collapse;
-    font-size: 1.45rem;
+    font-size: 1.71rem;
 }
 
 .pp-leaderboard-table th:nth-child(1),
@@ -115,7 +115,7 @@
     text-align: left;
     padding: 8px 10px;
     color: rgba(255,255,255,0.5);
-    font-size: 1.1rem;
+    font-size: 1.3rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     border-bottom: 1px solid rgba(255,255,255,0.1);
@@ -147,7 +147,7 @@
     padding: 2px 8px;
     border-radius: 999px;
     font-weight: 700;
-    font-size: 0.85rem;
+    font-size: 1.06rem;
 }
 
 .pp-leaderboard-table .streak-badge.W {
@@ -174,7 +174,7 @@
     padding: 8px 24px;
     border-radius: 8px;
     font-weight: 700;
-    font-size: 1.15rem;
+    font-size: 1.36rem;
     cursor: pointer;
     border: none;
     background: transparent;
@@ -195,7 +195,7 @@
 .pp-start-btn {
     padding: 16px 48px;
     border-radius: 16px;
-    font-size: 1.5rem;
+    font-size: 1.77rem;
     font-weight: 700;
     cursor: pointer;
     border: none;
@@ -247,7 +247,7 @@
 }
 
 .pp-lobby-side .side-label {
-    font-size: 1.5rem;
+    font-size: 1.77rem;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.1em;
@@ -269,12 +269,12 @@
 
 .pp-lobby-player-card .name {
     font-weight: 700;
-    font-size: 1.3rem;
+    font-size: 1.53rem;
 }
 
 .pp-lobby-player-card .elo {
     color: rgba(255,255,255,0.4);
-    font-size: 0.9rem;
+    font-size: 1.12rem;
     margin-top: 2px;
 }
 
@@ -286,7 +286,7 @@
     margin-bottom: 10px;
     text-align: center;
     color: rgba(255,255,255,0.2);
-    font-size: 0.9rem;
+    font-size: 1.12rem;
 }
 
 .pp-lobby-center {
@@ -304,14 +304,14 @@
 }
 
 .pp-lobby-code {
-    font-size: 3rem;
+    font-size: 3.3rem;
     font-weight: 900;
     letter-spacing: 0.15em;
     color: #3b82f6;
 }
 
 .pp-lobby-url {
-    font-size: 0.85rem;
+    font-size: 1.06rem;
     color: rgba(255,255,255,0.3);
     word-break: break-all;
     text-align: center;
@@ -334,19 +334,19 @@
     color: #3b82f6;
     padding: 8px 20px;
     border-radius: 999px;
-    font-size: 1.25rem;
+    font-size: 1.47rem;
     font-weight: 700;
 }
 
 .pp-timer {
     font-family: monospace;
-    font-size: 1.5rem;
+    font-size: 1.77rem;
     color: rgba(255,255,255,0.4);
 }
 
 .pp-clock {
     font-family: monospace;
-    font-size: 3rem;
+    font-size: 3.3rem;
     font-weight: 700;
     color: rgba(255,255,255,0.85);
     letter-spacing: 0.05em;
@@ -396,14 +396,14 @@
 }
 
 .pp-score-panel .player-name {
-    font-size: 2.5rem;
+    font-size: 2.75rem;
     font-weight: 700;
     margin-bottom: 4px;
     color: rgba(255,255,255,0.9);
 }
 
 .pp-score-panel .player-name-doubles {
-    font-size: 2.8rem;
+    font-size: 3.08rem;
     font-weight: 700;
     margin-bottom: 2px;
     line-height: 1.2;
@@ -412,7 +412,7 @@
 }
 
 .pp-score-panel .player-name-doubles.serving-player {
-    font-size: 3.6rem;
+    font-size: 3.96rem;
     font-weight: 800;
     color: rgba(255,255,255,1);
 }
@@ -428,7 +428,7 @@
 }
 
 .pp-serve-indicator {
-    font-size: 2.5rem;
+    font-size: 2.75rem;
     font-weight: 700;
     margin-bottom: 24px;
     min-height: 50px;
@@ -472,7 +472,7 @@
     border: 3px solid rgba(255,255,255,0.2);
     background: rgba(255,255,255,0.05);
     color: white;
-    font-size: 2.4rem;
+    font-size: 2.64rem;
     font-weight: 700;
     cursor: pointer;
     transition: all 0.15s;
@@ -493,7 +493,7 @@
 
 .pp-hint {
     color: rgba(255,255,255,0.3);
-    font-size: 1.15rem;
+    font-size: 1.36rem;
     margin-top: 12px;
 }
 
@@ -503,14 +503,14 @@
 }
 
 .pp-header h2 {
-    font-size: 2.2rem;
+    font-size: 2.42rem;
     font-weight: 800;
     color: #3b82f6;
 }
 
 .pp-header-sub {
     color: rgba(255,255,255,0.5);
-    font-size: 1.2rem;
+    font-size: 1.42rem;
 }
 
 .pp-confirm-overlay {
@@ -533,7 +533,7 @@
 }
 
 .pp-confirm-box h3 {
-    font-size: 2rem;
+    font-size: 2.2rem;
     font-weight: 700;
     margin-bottom: 12px;
 }
@@ -541,7 +541,7 @@
 .pp-confirm-box p {
     color: rgba(255,255,255,0.5);
     margin-bottom: 24px;
-    font-size: 1.3rem;
+    font-size: 1.53rem;
 }
 
 .pp-confirm-buttons {
@@ -556,7 +556,7 @@
     font-weight: 600;
     cursor: pointer;
     border: none;
-    font-size: 1.3rem;
+    font-size: 1.53rem;
 }
 
 /* Live Games */
@@ -582,7 +582,7 @@
 }
 
 .pp-live-title {
-    font-size: 1.1rem;
+    font-size: 1.3rem;
     font-weight: 800;
     color: #ef4444;
     text-transform: uppercase;
@@ -590,7 +590,7 @@
 }
 
 .pp-live-count {
-    font-size: 0.9rem;
+    font-size: 1.12rem;
     color: rgba(255,255,255,0.4);
     font-weight: 600;
 }
@@ -635,7 +635,7 @@
 
 .pp-live-player {
     font-weight: 700;
-    font-size: 1.3rem;
+    font-size: 1.53rem;
     color: rgba(255,255,255,0.9);
 }
 
@@ -645,7 +645,7 @@
 
 .pp-live-player.serving::after {
     content: '\25CF';
-    font-size: 0.6rem;
+    font-size: 0.75rem;
     color: #fbbf24;
     margin-left: 6px;
     vertical-align: middle;
@@ -657,7 +657,7 @@
 
 .pp-live-side.left .pp-live-player.serving::before {
     content: '\25CF';
-    font-size: 0.6rem;
+    font-size: 0.75rem;
     color: #fbbf24;
     margin-right: 6px;
     vertical-align: middle;
@@ -670,7 +670,7 @@
 }
 
 .pp-live-score {
-    font-size: 2.2rem;
+    font-size: 2.42rem;
     font-weight: 900;
     font-family: monospace;
     min-width: 38px;
@@ -682,12 +682,12 @@
 
 .pp-live-dash {
     color: rgba(255,255,255,0.2);
-    font-size: 1.5rem;
+    font-size: 1.77rem;
     font-weight: 300;
 }
 
 .pp-live-mode {
-    font-size: 0.75rem;
+    font-size: 0.94rem;
     color: rgba(255,255,255,0.3);
     text-transform: uppercase;
     font-weight: 600;
@@ -709,7 +709,7 @@
 
 .pp-duration {
     color: rgba(255,255,255,0.5);
-    font-size: 1.5rem;
+    font-size: 1.77rem;
 }
 
 .pp-lb-panel-body {
@@ -735,7 +735,7 @@
     padding: 6px 14px;
     border-radius: 8px;
     font-weight: 600;
-    font-size: 1rem;
+    font-size: 1.18rem;
     cursor: pointer;
     border: none;
     background: rgba(255,255,255,0.06);

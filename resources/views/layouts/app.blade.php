@@ -27,6 +27,23 @@
                     fontFamily: {
                         'body': ['Outfit', 'sans-serif'],
                     },
+                    /* Bumped type scale — the hub is read off a wall screen from
+                       ~3ft (and ~10ft mid-game), so the whole ramp is shifted up.
+                       Body/label sizes gain the most (+25% at xs); display sizes
+                       taper off (+7% at 6xl) so fixed-height scoreboards on the
+                       in-game views don't overflow. 7xl-9xl keep their defaults. */
+                    fontSize: {
+                        'xs':   ['0.94rem', { lineHeight: '1.35rem' }],
+                        'sm':   ['1.06rem', { lineHeight: '1.5rem' }],
+                        'base': ['1.19rem', { lineHeight: '1.75rem' }],
+                        'lg':   ['1.31rem', { lineHeight: '1.9rem' }],
+                        'xl':   ['1.44rem', { lineHeight: '2rem' }],
+                        '2xl':  ['1.75rem', { lineHeight: '2.25rem' }],
+                        '3xl':  ['2.13rem', { lineHeight: '2.5rem' }],
+                        '4xl':  ['2.5rem',  { lineHeight: '2.75rem' }],
+                        '5xl':  ['3.25rem', { lineHeight: '1.05' }],
+                        '6xl':  ['4rem',    { lineHeight: '1.05' }],
+                    },
                 }
             }
         }

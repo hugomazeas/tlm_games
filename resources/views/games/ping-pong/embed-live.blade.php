@@ -26,10 +26,10 @@
     <!-- No live match -->
     <template x-if="!matchActive">
         <div style="text-align:center;color:rgba(255,255,255,0.6);">
-            <div style="font-size:3rem;margin-bottom:16px;">&#127955;</div>
-            <h2 style="color:#fff;font-size:1.4rem;margin-bottom:8px;">No Live Match</h2>
-            <p style="font-size:0.9rem;">No match is being played right now.</p>
-            <p style="font-size:0.8rem;color:rgba(255,255,255,0.3);margin-top:12px;" x-text="'Checking again in ' + countdown + 's...'"></p>
+            <div style="font-size:3.3rem;margin-bottom:16px;">&#127955;</div>
+            <h2 style="color:#fff;font-size:1.65rem;margin-bottom:8px;">No Live Match</h2>
+            <p style="font-size:1.12rem;">No match is being played right now.</p>
+            <p style="font-size:1rem;color:rgba(255,255,255,0.3);margin-top:12px;" x-text="'Checking again in ' + countdown + 's...'"></p>
         </div>
     </template>
 
@@ -45,12 +45,12 @@
             <!-- Overlay: LIVE badge -->
             <div style="position:absolute;top:16px;left:16px;display:flex;align-items:center;gap:6px;background:rgba(0,0,0,0.7);padding:4px 12px;border-radius:6px;">
                 <span class="pp-rec-dot"></span>
-                <span style="color:white;font-size:0.9rem;font-weight:700;">LIVE</span>
+                <span style="color:white;font-size:1.12rem;font-weight:700;">LIVE</span>
             </div>
 
             <!-- Overlay: Share embed button -->
             <button type="button" @click="shareEmbed()"
-                    style="position:absolute;top:16px;right:16px;background:rgba(0,0,0,0.6);padding:4px 12px;border-radius:6px;color:white;border:0;cursor:pointer;font-size:0.8rem;display:inline-flex;align-items:center;gap:6px;opacity:0.7;transition:opacity 0.15s;"
+                    style="position:absolute;top:16px;right:16px;background:rgba(0,0,0,0.6);padding:4px 12px;border-radius:6px;color:white;border:0;cursor:pointer;font-size:1rem;display:inline-flex;align-items:center;gap:6px;opacity:0.7;transition:opacity 0.15s;"
                     @mouseenter="$el.style.opacity=1" @mouseleave="$el.style.opacity=0.7">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
@@ -63,12 +63,12 @@
             <template x-if="hasVideo && match">
                 <div>
                     <div style="position:absolute;bottom:24px;left:24px;display:flex;flex-direction:column;align-items:center;">
-                        <span style="color:#22d3ee;font-size:2.5rem;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,0.8);" x-text="match?.player_right?.name || 'Right'"></span>
+                        <span style="color:#22d3ee;font-size:2.75rem;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,0.8);" x-text="match?.player_right?.name || 'Right'"></span>
                         <span x-show="isServingRight()" style="background:#fbbf24;color:#000;font-size:4rem;font-weight:800;padding:8px 36px;border-radius:999px;animation:servePulse 1.5s ease-in-out infinite;text-transform:uppercase;letter-spacing:0.05em;text-shadow:none;">SERVING</span>
                         <span style="color:white;font-size:10rem;font-weight:900;line-height:1;text-shadow:0 4px 16px rgba(0,0,0,0.8);" x-text="match?.player_right_score ?? 0"></span>
                     </div>
                     <div style="position:absolute;bottom:24px;right:24px;display:flex;flex-direction:column;align-items:center;">
-                        <span style="color:#fb7185;font-size:2.5rem;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,0.8);" x-text="match?.player_left?.name || 'Left'"></span>
+                        <span style="color:#fb7185;font-size:2.75rem;font-weight:700;text-shadow:0 2px 8px rgba(0,0,0,0.8);" x-text="match?.player_left?.name || 'Left'"></span>
                         <span x-show="isServingLeft()" style="background:#fbbf24;color:#000;font-size:4rem;font-weight:800;padding:8px 36px;border-radius:999px;animation:servePulse 1.5s ease-in-out infinite;text-transform:uppercase;letter-spacing:0.05em;text-shadow:none;">SERVING</span>
                         <span style="color:white;font-size:10rem;font-weight:900;line-height:1;text-shadow:0 4px 16px rgba(0,0,0,0.8);" x-text="match?.player_left_score ?? 0"></span>
                     </div>
