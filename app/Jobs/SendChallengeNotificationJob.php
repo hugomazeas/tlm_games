@@ -63,7 +63,8 @@ class SendChallengeNotificationJob implements ShouldQueue
 
             $delivered += $sender->send(
                 $player->pushSubscriptions,
-                $this->payload($challenge, $player, $opponent)
+                $this->payload($challenge, $player, $opponent),
+                ['TTL' => $this->remainingSeconds($challenge)]
             );
         }
 
@@ -108,6 +109,19 @@ class SendChallengeNotificationJob implements ShouldQueue
                 'url' => url('/games/ping-pong/watch'),
             ]
         );
+    }
+
+    /**
+     * How long a push service may keep trying, in seconds.
+     *
+     * Tied to the challenge window rather than a fixed TTL: if a phone is off
+     * for an hour, waking it to "table's free for the next 45 minutes" long
+     * after the challenge died is worse than never telling it at all. The push
+     * service drops the message instead.
+     */
+    private function remainingSeconds(PingPongChallenge $challenge): int
+    {
+        return max(0, (int) Carbon::now()->diffInSeconds($challenge->expires_at, false));
     }
 
     /**

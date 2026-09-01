@@ -171,6 +171,24 @@ class PingPongChallengeNotificationTest extends TestCase
         $this->assertCount(2, $this->sender->sends, 'Only the two personal notifications.');
     }
 
+    public function test_the_ttl_is_capped_to_the_remaining_challenge_window(): void
+    {
+        $ada = $this->player('Ada');
+        $bo = $this->player('Bo');
+        // Twenty minutes left, not the default half hour.
+        $challenge = $this->challenge($ada, $bo, overrides: [
+            'expires_at' => Carbon::now()->addMinutes(20),
+        ]);
+
+        (new SendChallengeNotificationJob($challenge->id))->handle($this->sender);
+
+        $ttl = $this->sender->sends[0]['options']['TTL'];
+
+        // Waking a phone to "the table is free" after the challenge died is
+        // worse than staying quiet, so the push service must drop it by then.
+        $this->assertEqualsWithDelta(20 * 60, $ttl, 5);
+    }
+
     public function test_it_stamps_notified_at(): void
     {
         $ada = $this->player('Ada');
@@ -220,7 +238,7 @@ class RecordingWebPushSender extends WebPushSender
         return true;
     }
 
-    public function send(Collection $subscriptions, array $payload): int
+    public function send(Collection $subscriptions, array $payload, array $options = []): int
     {
         if ($subscriptions->isEmpty()) {
             return 0;
@@ -229,6 +247,7 @@ class RecordingWebPushSender extends WebPushSender
         $this->sends[] = [
             'subscriptions' => $subscriptions->all(),
             'payload' => $payload,
+            'options' => $options,
         ];
 
         return $subscriptions->count();
