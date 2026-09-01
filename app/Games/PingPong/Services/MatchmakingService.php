@@ -40,7 +40,7 @@ class MatchmakingService
      * Creates the challenge and the lobby but sends nothing — notification is
      * the caller's job, so this stays testable without a push service.
      */
-    public function drawForOffice(Office $office, bool $dryRun = false): MatchmakingResult
+    public function drawForOffice(Office $office, bool $dryRun = false, array $excludePlayerIds = []): MatchmakingResult
     {
         if (! $office->participatesInMatchmaking()) {
             return MatchmakingResult::skipped(MatchmakingResult::OFFICE_DISABLED);
@@ -68,6 +68,19 @@ class MatchmakingService
 
         $eligible = $this->eligiblePlayers($optedIn, $presence);
 
+        // A re-roll asks us to avoid the pair just rejected, but only while
+        // that still leaves a draw possible. In a three-person office,
+        // insisting on it would mean never re-rolling at all.
+        if ($excludePlayerIds !== []) {
+            $narrowed = $eligible->reject(
+                fn (Player $player) => in_array($player->id, $excludePlayerIds, true)
+            )->values();
+
+            if ($narrowed->count() >= 2) {
+                $eligible = $narrowed;
+            }
+        }
+
         if ($eligible->count() < 2) {
             return MatchmakingResult::skipped(
                 MatchmakingResult::NOT_ENOUGH_PLAYERS,
@@ -90,6 +103,34 @@ class MatchmakingService
         );
 
         return MatchmakingResult::created($challenge, $eligible->count());
+    }
+
+    /**
+     * Replaces a challenge nobody can honour with a fresh pick.
+     *
+     * The hourly draw trusts Buro, and Buro only knows who booked a desk this
+     * morning — not who slipped out at three. When it names someone who has
+     * already gone, anyone can re-roll rather than waiting an hour for a draw
+     * that will make the same mistake.
+     *
+     * Naming the absent player is the important half: it marks them away so
+     * the next few draws skip them too. Without it this is just a re-shuffle.
+     */
+    public function redraw(PingPongChallenge $challenge, ?int $absentPlayerId = null): MatchmakingResult
+    {
+        if ($challenge->status !== PingPongChallenge::STATUS_PENDING) {
+            return MatchmakingResult::skipped(MatchmakingResult::NOT_REDRAWABLE);
+        }
+
+        if ($absentPlayerId !== null && in_array($absentPlayerId, $challenge->playerIds(), true)) {
+            Player::find($absentPlayerId)?->markAway();
+        }
+
+        // Retire the old one first, so its players stop counting as recently
+        // challenged and the fresh draw sees an honest field.
+        $challenge->forceFill(['status' => PingPongChallenge::STATUS_SUPERSEDED])->save();
+
+        return $this->drawForOffice($challenge->office, false, $challenge->playerIds());
     }
 
     /**
@@ -131,6 +172,7 @@ class MatchmakingService
 
         return $players
             ->filter(fn (Player $player) => $player->hasPushSubscription())
+            ->reject(fn (Player $player) => $player->isUnavailable())
             ->reject(fn (Player $player) => in_array($player->id, $busy, true))
             ->reject(fn (Player $player) => in_array($player->id, $onCooldown, true))
             ->values();

@@ -3,7 +3,9 @@
 namespace App\Games\PingPong\Controllers;
 
 use App\Games\PingPong\Models\PingPongChallenge;
+use App\Games\PingPong\Services\MatchmakingService;
 use App\Http\Controllers\Controller;
+use App\Jobs\SendChallengeNotificationJob;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -50,6 +52,46 @@ class PingPongChallengeApiController extends Controller
 
         return response()->json($this->present($challenge->fresh(['playerOne', 'playerTwo', 'lobby'])) + [
             'recorded' => $recorded,
+        ]);
+    }
+
+    /**
+     * Re-rolls a challenge nobody can honour.
+     *
+     * Open to anyone, like every other write in this app: whoever is standing
+     * at the table is exactly the person who knows the drawn player went home,
+     * and making them find an admin would guarantee nobody ever does it.
+     */
+    public function redraw(Request $request, int $id, MatchmakingService $matchmaking): JsonResponse
+    {
+        $validated = $request->validate([
+            'absent_player_id' => 'nullable|integer|exists:players,id',
+        ]);
+
+        $challenge = PingPongChallenge::with(['office', 'playerOne', 'playerTwo'])->findOrFail($id);
+
+        if ($challenge->status !== PingPongChallenge::STATUS_PENDING) {
+            return response()->json([
+                'error' => 'That challenge has already been resolved.',
+                'status' => $challenge->status,
+            ], 422);
+        }
+
+        $result = $matchmaking->redraw($challenge, $validated['absent_player_id'] ?? null);
+
+        if (! $result->created || $result->challenge === null) {
+            return response()->json([
+                'redrawn' => false,
+                'reason' => $result->reason,
+                'eligible' => $result->eligibleCount,
+            ]);
+        }
+
+        SendChallengeNotificationJob::dispatch($result->challenge->id);
+
+        return response()->json([
+            'redrawn' => true,
+            'challenge' => $this->present($result->challenge->fresh(['playerOne', 'playerTwo', 'lobby'])),
         ]);
     }
 

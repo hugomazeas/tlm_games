@@ -28,6 +28,9 @@ class PingPongChallenge extends Model
 
     public const STATUS_PLAYED = 'played';
 
+    /** Replaced by a re-roll, because someone drawn was not actually around. */
+    public const STATUS_SUPERSEDED = 'superseded';
+
     public const RESPONSE_ACCEPTED = 'accepted';
 
     public const RESPONSE_DECLINED = 'declined';

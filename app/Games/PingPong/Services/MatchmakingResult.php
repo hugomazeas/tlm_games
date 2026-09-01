@@ -27,6 +27,8 @@ class MatchmakingResult
 
     public const DRY_RUN = 'dry_run';
 
+    public const NOT_REDRAWABLE = 'not_redrawable';
+
     private function __construct(
         public readonly bool $created,
         public readonly string $reason,

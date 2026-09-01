@@ -74,6 +74,8 @@ Route::delete('/games/ping-pong/api/lobbies/{code}', [PingPongLobbyApiController
 // notification action buttons from a background context with no access to the
 // CSRF meta tag. It is gated instead on the per-player HMAC carried in the push
 // payload -- see PingPongChallenge::responseTokenFor().
+Route::get('/games/ping-pong/challenges', [PingPongController::class, 'challenges']);
 Route::get('/games/ping-pong/api/challenges/{id}', [PingPongChallengeApiController::class, 'show']);
+Route::post('/games/ping-pong/api/challenges/{id}/redraw', [PingPongChallengeApiController::class, 'redraw']);
 Route::post('/games/ping-pong/api/challenges/{id}/respond', [PingPongChallengeApiController::class, 'respond'])
     ->withoutMiddleware([VerifyCsrfToken::class]);

@@ -42,6 +42,11 @@ return [
 
         // Hard ceiling per player per office-local day.
         'max_challenges_per_day' => (int) env('PINGPONG_MAX_CHALLENGES_PER_DAY', 1),
+
+        // How long "not here" keeps someone out of the draw. Long enough to
+        // cover the rest of a working day, since the usual reason is that
+        // they went home.
+        'away_hours' => (int) env('PINGPONG_AWAY_HOURS', 8),
     ],
 
     /*
