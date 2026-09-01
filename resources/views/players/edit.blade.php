@@ -24,6 +24,19 @@
             </div>
 
             <div class="mb-6">
+                <label for="email" class="block text-sm font-medium text-white/70 mb-2">Work email</label>
+                <input type="email" id="email" name="email" value="{{ old('email', $player->email) }}"
+                       placeholder="name@tlmgo.com"
+                       class="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white placeholder-white/40 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                <p class="text-xs text-white/40 mt-2">
+                    Used to match this player to their Buro account for hourly matchmaking. Leave blank to opt out entirely.
+                </p>
+                @error('email')
+                    <p class="text-red-400 text-xs mt-2">{{ $message }}</p>
+                @enderror
+            </div>
+
+            <div class="mb-6">
                 <label for="office_id" class="block text-sm font-medium text-white/70 mb-2">Office</label>
                 <select id="office_id" name="office_id"
                         class="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">

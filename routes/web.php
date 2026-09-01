@@ -3,8 +3,10 @@
 use App\Http\Controllers\DeployController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\LeaderboardController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OfficeController;
 use App\Http\Controllers\PlayerController;
+use App\Http\Controllers\PushSubscriptionController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [HomeController::class, 'index']);
@@ -20,6 +22,12 @@ Route::get('/players/{player}', [PlayerController::class, 'show']);
 Route::get('/players/{player}/edit', [PlayerController::class, 'edit']);
 Route::put('/players/{player}', [PlayerController::class, 'update']);
 Route::delete('/players/{player}', [PlayerController::class, 'destroy']);
+
+Route::get('/notifications', [NotificationController::class, 'index']);
+Route::get('/push/config', [PushSubscriptionController::class, 'index']);
+Route::post('/push/subscribe', [PushSubscriptionController::class, 'store']);
+Route::post('/push/unsubscribe', [PushSubscriptionController::class, 'destroy']);
+Route::post('/push/test', [PushSubscriptionController::class, 'test']);
 
 Route::get('/leaderboards', [LeaderboardController::class, 'index']);
 Route::get('/leaderboards/{gameType:slug}', [LeaderboardController::class, 'show']);

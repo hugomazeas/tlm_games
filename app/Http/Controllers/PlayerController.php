@@ -40,7 +40,7 @@ class PlayerController extends Controller
                 if ($stats) {
                     $mode = $gameType->gameModes()->where('slug', $modeSlug)->first();
                     $gameStats[] = [
-                        'name' => $gameType->name . ($mode ? ' - ' . $mode->name : ''),
+                        'name' => $gameType->name.($mode ? ' - '.$mode->name : ''),
                         'icon' => $gameType->icon,
                         'color' => $gameType->color,
                         'stats' => $stats,
@@ -66,13 +66,14 @@ class PlayerController extends Controller
     public function update(Request $request, Player $player)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255|unique:players,name,' . $player->id,
+            'name' => 'required|string|max:255|unique:players,name,'.$player->id,
+            'email' => 'nullable|email|max:255|unique:players,email,'.$player->id,
             'office_id' => 'nullable|exists:offices,id',
         ]);
 
         $player->update($validated);
 
-        return redirect('/players/' . $player->id)->with('success', 'Player updated.');
+        return redirect('/players/'.$player->id)->with('success', 'Player updated.');
     }
 
     public function destroy(Player $player)
