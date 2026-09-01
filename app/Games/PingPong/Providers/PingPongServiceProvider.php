@@ -4,6 +4,8 @@ namespace App\Games\PingPong\Providers;
 
 use App\Games\PingPong\Console\Commands\GenerateVapidKeysCommand;
 use App\Games\PingPong\Console\Commands\MatchmakeCommand;
+use App\Games\PingPong\Models\PingPongMatch;
+use App\Games\PingPong\Observers\PingPongMatchObserver;
 use App\Games\PingPong\Services\Leaderboards\DoublesEloRankingProvider;
 use App\Games\PingPong\Services\Leaderboards\EloRankingProvider;
 use App\Services\LeaderboardService;
@@ -28,6 +30,10 @@ class PingPongServiceProvider extends ServiceProvider
                 GenerateVapidKeysCommand::class,
             ]);
         }
+
+        // Closes a challenge the moment the two players start a match, no
+        // matter which code path created it.
+        PingPongMatch::observe(PingPongMatchObserver::class);
 
         $leaderboard = $this->app->make(LeaderboardService::class);
         $leaderboard->register(new EloRankingProvider);

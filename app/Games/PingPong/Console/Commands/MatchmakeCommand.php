@@ -3,6 +3,7 @@
 namespace App\Games\PingPong\Console\Commands;
 
 use App\Games\PingPong\Models\PingPongChallenge;
+use App\Games\PingPong\Services\ChallengeReconciler;
 use App\Games\PingPong\Services\MatchmakingResult;
 use App\Games\PingPong\Services\MatchmakingService;
 use App\Jobs\SendChallengeNotificationJob;
@@ -24,8 +25,17 @@ class MatchmakeCommand extends Command
 
     protected $description = 'Pair two colleagues who are in the office for a ping pong match';
 
-    public function handle(MatchmakingService $matchmaking): int
+    public function handle(MatchmakingService $matchmaking, ChallengeReconciler $reconciler): int
     {
+        // Before anything is expired: a pair who walked to the table and
+        // played without touching the lobby honoured their challenge, and it
+        // must be recorded as played rather than swept up as expired.
+        $played = $reconciler->reconcilePending();
+
+        if ($played > 0) {
+            $this->line("Closed {$played} ".str('challenge')->plural($played).' the players had already played.');
+        }
+
         $expired = PingPongChallenge::expireStale();
 
         if ($expired > 0) {
