@@ -29,6 +29,14 @@
             Notifications are blocked for this site. Re-allow them in your browser settings, then reload.
         </div>
 
+        <div x-show="pushServiceBroken" x-cloak
+             class="bg-amber-500/20 border border-amber-500/30 text-amber-200 px-4 py-3 rounded-lg text-sm mb-6">
+            This browser couldn't reach its own push service, so it can't receive notifications.
+            That's a known problem with <strong>Firefox on Android</strong> — open
+            <span class="font-mono text-xs bg-black/30 px-1.5 py-0.5 rounded">games.tlmhub.space/notifications</span>
+            in Chrome instead and enable it there.
+        </div>
+
         <div class="bg-white/5 border border-white/10 rounded-xl p-5 sm:p-6 space-y-5">
             <div>
                 <label for="player" class="block text-sm font-medium text-white/70 mb-2">Who are you?</label>
@@ -86,6 +94,7 @@
                 vapidKey: @json($vapidPublicKey),
                 denied: false,
                 subscribed: false,
+                pushServiceBroken: false,
                 busy: false,
                 message: '',
                 error: false,
@@ -100,12 +109,25 @@
 
                     // Reflect a subscription this browser already holds, so the
                     // page doesn't offer to enable something that is already on.
-                    const registration = await navigator.serviceWorker.ready;
-                    const existing = await registration.pushManager.getSubscription();
-                    if (existing) {
-                        this.subscribed = true;
-                        const stored = localStorage.getItem('pingpong-player-id');
-                        if (stored) this.playerId = stored;
+                    //
+                    // Everything here is best-effort. getSubscription() rejects
+                    // outright on some browsers when the push service can't be
+                    // reached — Firefox for Android throws AbortError — and an
+                    // unhandled rejection in init() takes the whole component
+                    // down, leaving a page that can neither explain itself nor
+                    // let anyone retry. Failing to read existing state must
+                    // never be worse than having no state.
+                    try {
+                        const registration = await navigator.serviceWorker.ready;
+                        const existing = await registration.pushManager.getSubscription();
+                        if (existing) {
+                            this.subscribed = true;
+                            const stored = localStorage.getItem('pingpong-player-id');
+                            if (stored) this.playerId = stored;
+                        }
+                    } catch (err) {
+                        this.pushServiceBroken = err.name === 'AbortError';
+                        console.warn('Could not read the existing push subscription:', err);
                     }
                 },
 
@@ -136,10 +158,22 @@
 
                         localStorage.setItem('pingpong-player-id', this.playerId);
                         this.subscribed = true;
+                        this.pushServiceBroken = false;
                         this.message = "You're in. We'll ping you when you're drawn.";
                     } catch (err) {
                         this.error = true;
-                        this.message = err.message || 'Could not enable notifications.';
+
+                        // AbortError means the browser could not register with
+                        // its own push service. Nothing on our side can fix
+                        // that, so say so plainly rather than surfacing a raw
+                        // "Error retrieving push subscription."
+                        if (err.name === 'AbortError') {
+                            this.pushServiceBroken = true;
+                            this.message = "Your browser couldn't reach its push service. "
+                                + 'This is a known problem with Firefox on Android — try Chrome instead.';
+                        } else {
+                            this.message = err.message || 'Could not enable notifications.';
+                        }
                     } finally {
                         this.busy = false;
                     }
