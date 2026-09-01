@@ -60,6 +60,12 @@ return [
         'private_key' => env('VAPID_PRIVATE_KEY'),
         'subject' => env('VAPID_SUBJECT', 'mailto:games@tlmgo.com'),
         'ttl' => (int) env('VAPID_TTL', 1800),
+
+        // RFC 8030 urgency: very-low | low | normal | high. Anything below
+        // "high" lets Android hold the push in Doze until the handset next
+        // wakes, which turned a match invitation into a ten-minute-late
+        // notification in practice.
+        'urgency' => env('VAPID_URGENCY', 'high'),
     ],
 
 ];

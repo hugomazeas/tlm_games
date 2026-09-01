@@ -35,9 +35,10 @@ class WebPushSender
      *
      * @param  Collection<int, PushSubscription>  $subscriptions
      * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $options  Per-send overrides, chiefly `TTL`.
      * @return int Number of endpoints that accepted the notification.
      */
-    public function send(Collection $subscriptions, array $payload): int
+    public function send(Collection $subscriptions, array $payload, array $options = []): int
     {
         if ($subscriptions->isEmpty()) {
             return 0;
@@ -64,7 +65,7 @@ class WebPushSender
 
         foreach ($subscriptions as $subscription) {
             try {
-                $webPush->queueNotification($this->toSubscription($subscription), $encoded);
+                $webPush->queueNotification($this->toSubscription($subscription), $encoded, $options);
                 $byEndpoint[$subscription->endpoint] = $subscription;
             } catch (ErrorException $exception) {
                 // A malformed row can never succeed, so drop it rather than
@@ -117,7 +118,16 @@ class WebPushSender
                     'privateKey' => (string) config('pingpong.webpush.private_key'),
                 ],
             ],
-            ['TTL' => (int) config('pingpong.webpush.ttl')],
+            [
+                'TTL' => (int) config('pingpong.webpush.ttl'),
+                // Without this, pushes go out at normal urgency and Android
+                // holds them in Doze until the phone next wakes — observed as
+                // a ten-minute delay on an idle handset, by which point a
+                // match invitation is half dead. "high" is the top of the
+                // RFC 8030 scale (very-low / low / normal / high) and is what
+                // time-sensitive notifications are meant to use.
+                'urgency' => (string) config('pingpong.webpush.urgency'),
+            ],
         );
     }
 
