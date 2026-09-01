@@ -106,6 +106,7 @@
                 <a href="{{ url('/offices') }}" class="text-white/70 hover:text-white transition {{ request()->is('offices*') ? 'text-white' : '' }}">Offices</a>
                 <a href="{{ url('/players') }}" class="text-white/70 hover:text-white transition {{ request()->is('players*') ? 'text-white' : '' }}">Players</a>
                 <a href="{{ url('/leaderboards') }}" class="text-white/70 hover:text-white transition {{ request()->is('leaderboards*') ? 'text-white' : '' }}">Leaderboards</a>
+                <a href="{{ url('/notifications') }}" class="text-white/70 hover:text-white transition {{ request()->is('notifications') ? 'text-white' : '' }}">Notifications</a>
             </div>
 
             {{-- Mobile hamburger --}}
@@ -133,6 +134,7 @@
                 <a href="{{ url('/offices') }}" class="block px-3 py-2.5 rounded-lg text-sm font-medium transition {{ request()->is('offices*') ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white' }}">Offices</a>
                 <a href="{{ url('/players') }}" class="block px-3 py-2.5 rounded-lg text-sm font-medium transition {{ request()->is('players*') ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white' }}">Players</a>
                 <a href="{{ url('/leaderboards') }}" class="block px-3 py-2.5 rounded-lg text-sm font-medium transition {{ request()->is('leaderboards*') ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white' }}">Leaderboards</a>
+                <a href="{{ url('/notifications') }}" class="block px-3 py-2.5 rounded-lg text-sm font-medium transition {{ request()->is('notifications') ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white' }}">Notifications</a>
             </div>
         </div>
     </nav>

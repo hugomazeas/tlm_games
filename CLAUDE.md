@@ -48,7 +48,54 @@ PUT  /players/{player}              Update player
 DELETE /players/{player}            Delete player
 GET  /leaderboards                  All game types
 GET  /leaderboards/{gameType:slug}  Per-game leaderboard (dynamic columns)
+GET  /notifications                 Web push opt-in (pick your player, enable)
+GET  /push/config                   VAPID public key + whether push is set up
+POST /push/subscribe                Register a browser against a player
+POST /push/unsubscribe              Drop a browser registration
+POST /push/test                     Send yourself a test notification
 ```
+
+## Hourly Ping Pong Matchmaking
+
+Every weekday at :30 past the hour, two people who are actually in the office
+get drawn for a match and pushed a notification; everyone else in the office
+gets told who's playing.
+
+**Who knows who's in:** Buro (`../tlmgo-buro`), the seat-booking app. It exposes
+`GET /api/integrations/presence?officeId=…` behind a shared bearer token
+(`INTEGRATION_TOKEN` there, `BURO_INTEGRATION_TOKEN` here). Both containers sit
+on the shared `proxy` Docker network, so `http://buro:3000` resolves directly.
+Buro bookings are **date-only** — presence means "booked a desk today", and the
+payload carries the office-local clock and weekday so this app never guesses a
+timezone.
+
+**Four independent opt-ins** must all be true before someone is drawn:
+1. their office has `matchmaking_enabled` and a `buro_office_id` (Offices → Edit);
+2. they have an `active` Buro booking for today;
+3. their Buro profile carries the opt-in flag (`PINGPONG_OPT_IN_FLAG`, default "Ping Pong");
+4. they enabled push at `/notifications`.
+
+Plus a cooldown (`PINGPONG_PLAYER_COOLDOWN_HOURS`) and a daily cap
+(`PINGPONG_MAX_CHALLENGES_PER_DAY`). Anyone mid-match is skipped.
+
+The **announcement audience** is wider on purpose: everyone present with a push
+registration, flag or no flag. Enabling notifications without wanting to be
+volunteered is a valid position.
+
+**Scheduling:** `routes/console.php` registers `pingpong:matchmake` at
+`hourlyAt(30)` with no time window — each office's hours live on its own row and
+are checked against its own local clock, so a second timezone needs no code
+change. This requires the `[program:scheduler]` entry in
+`docker/supervisor/supervisord.conf` (`php artisan schedule:work`); without it
+nothing scheduled ever runs.
+
+**Setup:** `php artisan pingpong:vapid-keys` once per environment, put the pair
+in `.env`. Rotating them invalidates every stored browser subscription.
+Link players to Buro by setting their work email on the player edit page; the
+matchmaker caches `buro_user_id` on first match.
+
+Useful: `php artisan pingpong:matchmake --dry-run` reports who would be drawn
+without creating or sending anything; `--office=<id>` restricts it to one office.
 
 ## Architecture
 
