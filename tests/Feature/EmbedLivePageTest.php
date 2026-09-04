@@ -8,7 +8,7 @@ class EmbedLivePageTest extends TestCase
 {
     public function test_embed_live_page_loads(): void
     {
-        $response = $this->get('/games/ping-pong/embed/live');
+        $response = $this->get('/games/ping-pong/embed-live');
 
         $response->assertOk();
         $response->assertSee('embedLive()');
@@ -17,7 +17,7 @@ class EmbedLivePageTest extends TestCase
 
     public function test_embed_live_page_allows_iframing(): void
     {
-        $response = $this->get('/games/ping-pong/embed/live');
+        $response = $this->get('/games/ping-pong/embed-live');
 
         $response->assertOk();
         $response->assertHeader('X-Frame-Options', 'ALLOWALL');
@@ -26,7 +26,7 @@ class EmbedLivePageTest extends TestCase
 
     public function test_embed_live_page_has_no_nav(): void
     {
-        $response = $this->get('/games/ping-pong/embed/live');
+        $response = $this->get('/games/ping-pong/embed-live');
 
         $response->assertOk();
         $response->assertDontSee('Games Hub</span>');
@@ -34,7 +34,7 @@ class EmbedLivePageTest extends TestCase
 
     public function test_embed_live_page_has_og_tags(): void
     {
-        $response = $this->get('/games/ping-pong/embed/live');
+        $response = $this->get('/games/ping-pong/embed-live');
 
         $response->assertOk();
         $response->assertSee('og:title', false);

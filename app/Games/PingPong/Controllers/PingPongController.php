@@ -112,9 +112,21 @@ class PingPongController extends Controller
         ]);
     }
 
+    /**
+     * The chrome-less live view, for embedding in Slack, YouTube or any iframe.
+     *
+     * Framing is opt-in here and nowhere else, so it says so explicitly rather
+     * than relying on the absence of a header. `frame-ancestors` is the
+     * directive browsers actually honour; `ALLOWALL` is not a real
+     * X-Frame-Options value, but it is what older embedders look for and an
+     * unrecognised value is ignored rather than treated as DENY.
+     */
     public function embedLive()
     {
-        return view('games.ping-pong.embed-live');
+        return response()
+            ->view('games.ping-pong.embed-live')
+            ->header('X-Frame-Options', 'ALLOWALL')
+            ->header('Content-Security-Policy', 'frame-ancestors *');
     }
 
     public function remote(int $id, string $side)
