@@ -294,7 +294,12 @@ class MatchmakingService
         $since = Carbon::now()->subHours(max($cooldownHours, 0));
         $dayStart = $localNow->copy()->startOfDay()->utc();
 
+        // Superseded rows are the one status that must not count. A re-roll
+        // retires the old challenge precisely because it never happened, so
+        // letting it keep its players on cooldown would bench the person who
+        // pressed the button for the rest of the day.
         $recent = PingPongChallenge::query()
+            ->where('status', '!=', PingPongChallenge::STATUS_SUPERSEDED)
             ->where(function ($query) use ($since, $dayStart) {
                 $query->where('scheduled_for', '>=', $since)
                     ->orWhere('scheduled_for', '>=', $dayStart);

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Games\PingPong\Events\ChallengeUpdated;
 use App\Games\PingPong\Models\PingPongChallenge;
 use App\Games\PingPong\Services\MatchmakingResult;
 use App\Games\PingPong\Services\MatchmakingService;
@@ -11,6 +12,7 @@ use App\Models\Player;
 use App\Models\PushSubscription;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
@@ -225,6 +227,30 @@ class PingPongChallengeRedrawTest extends TestCase
         $this->assertEquals(PingPongChallenge::STATUS_PLAYED, $challenge->fresh()->status);
     }
 
+    public function test_a_reroll_at_production_defaults_still_draws_a_new_pair(): void
+    {
+        // The shipped defaults are a 24-hour cooldown and one challenge per
+        // player per day. Superseding has to take the old row out of both
+        // counts, or the person who pressed the button -- who is standing at
+        // the table wanting to play -- is benched for the rest of the day.
+        config([
+            'pingpong.matchmaking.player_cooldown_hours' => 24,
+            'pingpong.matchmaking.max_challenges_per_day' => 1,
+        ]);
+
+        $ada = $this->player('Ada');
+        $bo = $this->player('Bo');
+        $cy = $this->player('Cy');
+        $this->fakeBuro([$ada, $bo, $cy]);
+
+        $challenge = $this->challenge($ada, $bo);
+
+        $result = app(MatchmakingService::class)->redraw($challenge, $ada->id);
+
+        $this->assertTrue($result->created, 'Re-roll found nobody to play: '.$result->reason);
+        $this->assertEqualsCanonicalizing([$bo->id, $cy->id], $result->challenge->playerIds());
+    }
+
     public function test_it_reports_when_nobody_is_left_to_play(): void
     {
         $ada = $this->player('Ada');
@@ -272,6 +298,93 @@ class PingPongChallengeRedrawTest extends TestCase
             ->assertStatus(422);
 
         Queue::assertNothingPushed();
+    }
+
+    public function test_a_reroll_announces_the_retirement_and_the_new_draw(): void
+    {
+        Event::fake([ChallengeUpdated::class]);
+
+        $ada = $this->player('Ada');
+        $bo = $this->player('Bo');
+        $cy = $this->player('Cy');
+        $di = $this->player('Di');
+        $this->fakeBuro([$ada, $bo, $cy, $di]);
+
+        $challenge = $this->challenge($ada, $bo);
+
+        $this->postJson("/games/ping-pong/api/challenges/{$challenge->id}/redraw", [
+            'absent_player_id' => $ada->id,
+        ])->assertOk();
+
+        // Two announcements: the screens showing Ada vs Bo have to drop them,
+        // and the screens have to pick up whoever replaced them.
+        Event::assertDispatchedTimes(ChallengeUpdated::class, 2);
+
+        Event::assertDispatched(
+            ChallengeUpdated::class,
+            fn (ChallengeUpdated $event) => $event->challenge['id'] === $challenge->id
+                && $event->challenge['status'] === PingPongChallenge::STATUS_SUPERSEDED
+        );
+
+        Event::assertDispatched(
+            ChallengeUpdated::class,
+            fn (ChallengeUpdated $event) => $event->challenge['id'] !== $challenge->id
+                && $event->challenge['status'] === PingPongChallenge::STATUS_PENDING
+        );
+    }
+
+    public function test_a_reroll_that_finds_nobody_still_announces_the_retirement(): void
+    {
+        Event::fake([ChallengeUpdated::class]);
+
+        $ada = $this->player('Ada');
+        $bo = $this->player('Bo');
+        $this->fakeBuro([$ada, $bo]);
+
+        $challenge = $this->challenge($ada, $bo);
+
+        // Only two people in, so marking one away leaves no possible pair --
+        // but the panel still has to stop showing the pair that just died.
+        $this->postJson("/games/ping-pong/api/challenges/{$challenge->id}/redraw", [
+            'absent_player_id' => $ada->id,
+        ])->assertOk()->assertJsonPath('redrawn', false);
+
+        Event::assertDispatchedTimes(ChallengeUpdated::class, 1);
+        Event::assertDispatched(
+            ChallengeUpdated::class,
+            fn (ChallengeUpdated $event) => $event->challenge['status'] === PingPongChallenge::STATUS_SUPERSEDED
+        );
+    }
+
+    public function test_the_hourly_draw_announces_the_new_challenge(): void
+    {
+        Event::fake([ChallengeUpdated::class]);
+
+        $ada = $this->player('Ada');
+        $bo = $this->player('Bo');
+        $this->fakeBuro([$ada, $bo]);
+
+        $this->artisan('pingpong:matchmake')->assertSuccessful();
+
+        Event::assertDispatchedTimes(ChallengeUpdated::class, 1);
+        Event::assertDispatched(
+            ChallengeUpdated::class,
+            fn (ChallengeUpdated $event) => $event->challenge['status'] === PingPongChallenge::STATUS_PENDING
+                && $event->challenge['office'] === 'Quebec'
+        );
+    }
+
+    public function test_a_dry_run_announces_nothing(): void
+    {
+        Event::fake([ChallengeUpdated::class]);
+
+        $ada = $this->player('Ada');
+        $bo = $this->player('Bo');
+        $this->fakeBuro([$ada, $bo]);
+
+        $this->artisan('pingpong:matchmake --dry-run')->assertSuccessful();
+
+        Event::assertNotDispatched(ChallengeUpdated::class);
     }
 
     public function test_the_page_lists_the_pending_challenge_with_reroll_controls(): void

@@ -40,16 +40,17 @@ class PingPongController extends Controller
 
     public function challenges()
     {
-        $today = now()->subHours(12);
+        // Far enough back to cover a working day without dragging yesterday
+        // afternoon's draws onto this morning's page.
+        $earliest = now()->subHours(12);
 
         return view('games.ping-pong.challenges', [
             'challenges' => PingPongChallenge::with(['office', 'playerOne', 'playerTwo', 'lobby'])
-                ->pending()
-                ->where('expires_at', '>', now())
+                ->live()
                 ->orderBy('scheduled_for')
                 ->get(),
             'recent' => PingPongChallenge::with(['playerOne', 'playerTwo'])
-                ->where('scheduled_for', '>=', $today)
+                ->where('scheduled_for', '>=', $earliest)
                 ->whereIn('status', ['played', 'declined', 'expired', 'superseded'])
                 ->latest('scheduled_for')
                 ->take(8)
