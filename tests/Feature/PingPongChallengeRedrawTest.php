@@ -112,6 +112,27 @@ class PingPongChallengeRedrawTest extends TestCase
         ]);
     }
 
+    /**
+     * The switch is read before the old challenge is retired — otherwise a
+     * re-roll would bin a live challenge and put nothing in its place.
+     */
+    public function test_a_redraw_is_refused_and_retires_nothing_when_challenges_are_disabled(): void
+    {
+        config(['pingpong.challenges_enabled' => false]);
+
+        $ada = $this->player('Ada');
+        $bo = $this->player('Bo');
+        $this->player('Cy');
+        $challenge = $this->challenge($ada, $bo);
+
+        $result = app(MatchmakingService::class)->redraw($challenge);
+
+        $this->assertFalse($result->created);
+        $this->assertEquals(MatchmakingResult::CHALLENGES_DISABLED, $result->reason);
+        $this->assertEquals(PingPongChallenge::STATUS_PENDING, $challenge->fresh()->status);
+        Queue::assertNothingPushed();
+    }
+
     public function test_it_supersedes_the_old_challenge_and_draws_a_new_one(): void
     {
         $ada = $this->player('Ada');

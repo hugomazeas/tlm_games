@@ -61,6 +61,14 @@ Every weekday at :30 past the hour, two people who are actually in the office
 get drawn for a match and pushed a notification; everyone else in the office
 gets told who's playing.
 
+**Master switch — currently OFF in production.** `CHALLENGES_ENABLED` (config
+`pingpong.challenges_enabled`). With it `false` the scheduler still runs, so
+challenges already in flight are still reconciled and expired, but no new
+challenge is drawn, re-rolls are refused, and no push goes out to anybody. It
+is off while a different strategy for alerting players is worked out. Nothing
+is destroyed by switching it off: players, push registrations and challenge
+history are untouched, so turning it back on is only an env change.
+
 **Who knows who's in:** Buro (`../tlmgo-buro`), the seat-booking app. It exposes
 `GET /api/integrations/presence?officeId=…` behind a shared bearer token
 (`INTEGRATION_TOKEN` there, `BURO_INTEGRATION_TOKEN` here). Both containers sit

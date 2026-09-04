@@ -28,6 +28,17 @@ class SendChallengeNotificationJob implements ShouldQueue
 
     public function handle(WebPushSender $sender): void
     {
+        // Belt and braces. With challenges off nothing should be dispatching
+        // this, but a job queued moments before the switch flipped must not
+        // still go out.
+        if (! config('pingpong.challenges_enabled')) {
+            Log::info('SendChallengeNotificationJob: challenges are disabled; notifying nobody.', [
+                'challenge_id' => $this->challengeId,
+            ]);
+
+            return;
+        }
+
         $challenge = PingPongChallenge::with([
             'playerOne.pushSubscriptions',
             'playerTwo.pushSubscriptions',

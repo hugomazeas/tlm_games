@@ -265,6 +265,31 @@ class PingPongMatchmakingTest extends TestCase
     }
 
     /**
+     * The kill switch is asked first, before Buro is even called: with the
+     * feature off the draw must cost nothing and touch nothing.
+     */
+    public function test_it_draws_nothing_when_challenges_are_disabled(): void
+    {
+        config(['pingpong.challenges_enabled' => false]);
+
+        $office = $this->office();
+        $this->player('Ada', 'ada@tlmgo.com');
+        $this->player('Bo', 'bo@tlmgo.com');
+
+        $this->fakeBuro([
+            $this->buroUser('buro-1', 'Ada', 'ada@tlmgo.com'),
+            $this->buroUser('buro-2', 'Bo', 'bo@tlmgo.com'),
+        ]);
+
+        $result = app(MatchmakingService::class)->drawForOffice($office);
+
+        $this->assertFalse($result->created);
+        $this->assertEquals(MatchmakingResult::CHALLENGES_DISABLED, $result->reason);
+        $this->assertDatabaseCount('ping_pong_challenges', 0);
+        Http::assertNothingSent();
+    }
+
+    /**
      * Push is how someone is told they were drawn, not a condition of being
      * drawn.
      */

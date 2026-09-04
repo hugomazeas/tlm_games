@@ -4,6 +4,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Challenges
+    |--------------------------------------------------------------------------
+    |
+    | Master switch for the hourly draw. Off means no challenge is created and
+    | none is announced: the scheduler still runs, so challenges already in
+    | flight are reconciled and expired as usual, but nobody new is volunteered
+    | and nobody is pushed to.
+    |
+    | Switching it off destroys nothing. Players, push registrations and the
+    | challenge history are all left alone, so turning it back on is only ever
+    | an env change.
+    |
+    */
+
+    'challenges_enabled' => (bool) env('CHALLENGES_ENABLED', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | Buro Integration
     |--------------------------------------------------------------------------
     |

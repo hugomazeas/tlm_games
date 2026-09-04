@@ -104,6 +104,24 @@ class PingPongMatchmakeCommandTest extends TestCase
         Queue::assertPushed(SendChallengeNotificationJob::class, 1);
     }
 
+    public function test_it_draws_and_notifies_nothing_when_challenges_are_disabled(): void
+    {
+        config(['pingpong.challenges_enabled' => false]);
+
+        $this->office('Quebec', 'buro-quebec');
+        $this->player('Ada', 'ada@tlmgo.com');
+        $this->player('Bo', 'bo@tlmgo.com');
+        $this->fakeBuroFor('buro-quebec', ['ada@tlmgo.com', 'bo@tlmgo.com']);
+
+        $this->artisan('pingpong:matchmake')
+            ->assertExitCode(0)
+            ->expectsOutputToContain('challenges_disabled');
+
+        $this->assertDatabaseCount('ping_pong_challenges', 0);
+        Queue::assertNothingPushed();
+        Http::assertNothingSent();
+    }
+
     public function test_it_reports_and_queues_nothing_when_no_office_participates(): void
     {
         $this->office('Quebec', 'buro-quebec', enabled: false);

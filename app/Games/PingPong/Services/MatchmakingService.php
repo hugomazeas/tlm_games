@@ -34,6 +34,9 @@ use Illuminate\Support\Str;
  * On top of that, whoever was drawn last time is stepped around so nobody is
  * volunteered twice on the trot, anyone mid-match is left alone, and an
  * optional cooldown and per-day cap can thin the field further.
+ *
+ * All of it sits behind `pingpong.challenges_enabled`. With that off both the
+ * draw and the re-roll are no-ops, and nothing is announced to anyone.
  */
 class MatchmakingService
 {
@@ -47,6 +50,10 @@ class MatchmakingService
      */
     public function drawForOffice(Office $office, bool $dryRun = false, array $excludePlayerIds = []): MatchmakingResult
     {
+        if (! config('pingpong.challenges_enabled')) {
+            return MatchmakingResult::skipped(MatchmakingResult::CHALLENGES_DISABLED);
+        }
+
         if (! $office->participatesInMatchmaking()) {
             return MatchmakingResult::skipped(MatchmakingResult::OFFICE_DISABLED);
         }
@@ -128,6 +135,12 @@ class MatchmakingService
      */
     public function redraw(PingPongChallenge $challenge, ?int $absentPlayerId = null): MatchmakingResult
     {
+        // Asked before anything is retired: a re-roll that cannot draw a
+        // replacement must not supersede the challenge it was handed.
+        if (! config('pingpong.challenges_enabled')) {
+            return MatchmakingResult::skipped(MatchmakingResult::CHALLENGES_DISABLED);
+        }
+
         if ($challenge->status !== PingPongChallenge::STATUS_PENDING) {
             return MatchmakingResult::skipped(MatchmakingResult::NOT_REDRAWABLE);
         }

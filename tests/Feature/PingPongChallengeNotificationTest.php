@@ -200,6 +200,20 @@ class PingPongChallengeNotificationTest extends TestCase
         $this->assertNotNull($challenge->fresh()->notified_at);
     }
 
+    public function test_it_sends_nothing_when_challenges_are_disabled(): void
+    {
+        config(['pingpong.challenges_enabled' => false]);
+
+        $ada = $this->player('Ada');
+        $bo = $this->player('Bo');
+        $challenge = $this->challenge($ada, $bo, audience: [$this->player('Cy')->id]);
+
+        (new SendChallengeNotificationJob($challenge->id))->handle($this->sender);
+
+        $this->assertSame([], $this->sender->sends);
+        $this->assertNull($challenge->fresh()->notified_at);
+    }
+
     public function test_it_sends_nothing_for_an_expired_challenge(): void
     {
         $ada = $this->player('Ada');

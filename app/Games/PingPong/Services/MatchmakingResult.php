@@ -13,6 +13,8 @@ use App\Games\PingPong\Models\PingPongChallenge;
  */
 class MatchmakingResult
 {
+    public const CHALLENGES_DISABLED = 'challenges_disabled';
+
     public const OFFICE_DISABLED = 'office_disabled';
 
     public const BURO_UNAVAILABLE = 'buro_unavailable';

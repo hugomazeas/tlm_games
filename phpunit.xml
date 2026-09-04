@@ -32,6 +32,12 @@
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
+        <!--
+            The suite exercises the draw end to end, so it must not inherit the
+            production kill switch from .env. Tests that want it off set
+            `pingpong.challenges_enabled` themselves.
+        -->
+        <env name="CHALLENGES_ENABLED" value="true"/>
         <env name="DB_CONNECTION" value="sqlite"/>
         <env name="DB_DATABASE" value=":memory:"/>
         <env name="MAIL_MAILER" value="array"/>
