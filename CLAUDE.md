@@ -69,11 +69,15 @@ Buro bookings are **date-only** — presence means "booked a desk today", and th
 payload carries the office-local clock and weekday so this app never guesses a
 timezone.
 
-**Four independent opt-ins** must all be true before someone is drawn:
+**Three independent opt-ins** must all be true before someone is drawn:
 1. their office has `matchmaking_enabled` and a `buro_office_id` (Offices → Edit);
 2. they have an `active` Buro booking for today;
-3. their Buro profile carries the opt-in flag (`PINGPONG_OPT_IN_FLAG`, default "Ping Pong");
-4. they enabled push at `/notifications`.
+3. their Buro profile carries the opt-in flag (`PINGPONG_OPT_IN_FLAG`, default "Ping Pong").
+
+Enabling push at `/notifications` is **not** required to be drawn — it only
+decides whether the draw reaches your phone. Gating the draw on it used to
+shrink the pool to whoever had installed the PWA, which cost whole hours in a
+small office.
 
 Plus a cooldown (`PINGPONG_PLAYER_COOLDOWN_HOURS`) and a daily cap
 (`PINGPONG_MAX_CHALLENGES_PER_DAY`). Anyone mid-match is skipped.

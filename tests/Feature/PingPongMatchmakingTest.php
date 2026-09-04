@@ -264,7 +264,11 @@ class PingPongMatchmakingTest extends TestCase
         $this->assertEquals(MatchmakingResult::NO_OPT_INS, $result->reason);
     }
 
-    public function test_it_ignores_players_who_never_enabled_push(): void
+    /**
+     * Push is how someone is told they were drawn, not a condition of being
+     * drawn.
+     */
+    public function test_it_draws_players_who_never_enabled_push(): void
     {
         $office = $this->office();
         $this->player('Ada', 'ada@tlmgo.com');
@@ -277,8 +281,42 @@ class PingPongMatchmakingTest extends TestCase
 
         $result = app(MatchmakingService::class)->drawForOffice($office);
 
-        $this->assertEquals(MatchmakingResult::NOT_ENOUGH_PLAYERS, $result->reason);
-        $this->assertEquals(1, $result->eligibleCount);
+        $this->assertTrue($result->created, 'Reason: '.$result->reason);
+        $this->assertEquals(2, $result->eligibleCount);
+    }
+
+    /**
+     * The draw that went missing: a four-person office where the pair drawn an
+     * hour ago is still at the table, and of the two left standing only one had
+     * push enabled. Gating on push emptied the hat and skipped the hour.
+     */
+    public function test_a_mid_match_pair_still_leaves_a_draw_for_those_without_push(): void
+    {
+        $office = $this->office();
+        $ada = $this->player('Ada', 'ada@tlmgo.com');
+        $bo = $this->player('Bo', 'bo@tlmgo.com');
+        $cy = $this->player('Cy', 'cy@tlmgo.com', withPush: false);
+        $di = $this->player('Di', 'di@tlmgo.com');
+
+        PingPongMatch::create([
+            'player_left_id' => $ada->id,
+            'player_right_id' => $bo->id,
+            'started_at' => Carbon::now()->subMinutes(4),
+            'last_score_activity_at' => Carbon::now(),
+        ]);
+
+        $this->fakeBuro([
+            $this->buroUser('buro-1', 'Ada', 'ada@tlmgo.com'),
+            $this->buroUser('buro-2', 'Bo', 'bo@tlmgo.com'),
+            $this->buroUser('buro-3', 'Cy', 'cy@tlmgo.com'),
+            $this->buroUser('buro-4', 'Di', 'di@tlmgo.com'),
+        ]);
+
+        $result = app(MatchmakingService::class)->drawForOffice($office);
+
+        $this->assertTrue($result->created, 'Reason: '.$result->reason);
+        $this->assertEquals(2, $result->eligibleCount);
+        $this->assertEqualsCanonicalizing([$cy->id, $di->id], $result->challenge->playerIds());
     }
 
     public function test_it_ignores_buro_users_with_no_matching_player(): void

@@ -19,13 +19,17 @@ use Illuminate\Support\Str;
 /**
  * Draws two colleagues who are actually in the office and pairs them up.
  *
- * Eligibility is deliberately conservative — four independent opt-outs have to
- * all say yes before someone is volunteered:
+ * Eligibility is deliberately conservative — three independent opt-outs have
+ * to all say yes before someone is volunteered:
  *
  *  1. their office has matchmaking enabled and is mapped to a Buro office;
  *  2. they booked a seat in that office today (Buro `active` bookings only);
- *  3. they carry the opt-in flag on their Buro profile;
- *  4. they turned on push notifications in the Games Hub PWA.
+ *  3. they carry the opt-in flag on their Buro profile.
+ *
+ * A push registration is deliberately not among them. It is how someone is
+ * told they were drawn, not permission to draw them, and gating on it quietly
+ * shrank the hat to whoever had installed the PWA — enough, in a four-person
+ * office, to lose a whole hour's draw.
  *
  * On top of that, whoever was drawn last time is stepped around so nobody is
  * volunteered twice on the trot, anyone mid-match is left alone, and an
@@ -166,10 +170,12 @@ class MatchmakingService
     /**
      * Everyone in the office today who can be told a match is on.
      *
-     * Deliberately wider than the draw pool: this ignores the opt-in flag and
-     * asks only for a push registration. Turning on notifications without
-     * wanting to be volunteered is a reasonable position, and the whole point
-     * of the announcement is that the office knows who is playing.
+     * Cuts across the draw pool rather than sitting inside it. The opt-in flag
+     * is ignored, because turning on notifications without wanting to be
+     * volunteered is a reasonable position and the whole point of the
+     * announcement is that the office knows who is playing. A push
+     * registration is still required, though — unlike the draw, this list
+     * exists purely to be delivered to.
      *
      * @return array<int, int>
      */
@@ -186,6 +192,9 @@ class MatchmakingService
     /**
      * Players who could be drawn right now.
      *
+     * Note what is absent: nothing here asks whether the player can be
+     * notified. Being in the office with the flag is the whole ask.
+     *
      * @param  Collection<int, BuroPresentUser>  $optedIn
      * @return Collection<int, Player>
      */
@@ -201,7 +210,6 @@ class MatchmakingService
         $onCooldown = $this->playersOnCooldown($players->pluck('id')->all(), $presence);
 
         return $players
-            ->filter(fn (Player $player) => $player->hasPushSubscription())
             ->reject(fn (Player $player) => $player->isUnavailable())
             ->reject(fn (Player $player) => in_array($player->id, $busy, true))
             ->reject(fn (Player $player) => in_array($player->id, $onCooldown, true))
