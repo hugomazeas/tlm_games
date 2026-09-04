@@ -27,8 +27,9 @@ use Illuminate\Support\Str;
  *  3. they carry the opt-in flag on their Buro profile;
  *  4. they turned on push notifications in the Games Hub PWA.
  *
- * On top of that a cooldown and a per-day cap stop the same pair being drawn
- * every hour, and anyone mid-match is left alone.
+ * On top of that, whoever was drawn last time is stepped around so nobody is
+ * volunteered twice on the trot, anyone mid-match is left alone, and an
+ * optional cooldown and per-day cap can thin the field further.
  */
 class MatchmakingService
 {
@@ -68,12 +69,17 @@ class MatchmakingService
 
         $eligible = $this->eligiblePlayers($optedIn, $presence);
 
-        // A re-roll asks us to avoid the pair just rejected, but only while
-        // that still leaves a draw possible. In a three-person office,
-        // insisting on it would mean never re-rolling at all.
-        if ($excludePlayerIds !== []) {
+        // Who to step around: the pair a re-roll just rejected, or otherwise
+        // whoever was drawn last time. Either way it is a preference, not a
+        // rule -- in a three-person office, insisting on it would mean never
+        // drawing anyone again.
+        $avoid = $excludePlayerIds !== []
+            ? $excludePlayerIds
+            : $this->previouslyDrawnPlayerIds($office);
+
+        if ($avoid !== []) {
             $narrowed = $eligible->reject(
-                fn (Player $player) => in_array($player->id, $excludePlayerIds, true)
+                fn (Player $player) => in_array($player->id, $avoid, true)
             )->values();
 
             if ($narrowed->count() >= 2) {
@@ -131,6 +137,30 @@ class MatchmakingService
         $challenge->forceFill(['status' => PingPongChallenge::STATUS_SUPERSEDED])->save();
 
         return $this->drawForOffice($challenge->office, false, $challenge->playerIds());
+    }
+
+    /**
+     * The two people this office drew last time.
+     *
+     * Nobody wants to be volunteered twice on the trot, and with the cooldown
+     * and the daily cap both switched off nothing else prevents it. One draw's
+     * grace is enough: they are back in the hat the round after.
+     *
+     * Superseded rows are skipped — a re-rolled draw never happened, so the
+     * pair to step around is the last one that actually stood.
+     *
+     * @return array<int, int>
+     */
+    private function previouslyDrawnPlayerIds(Office $office): array
+    {
+        $previous = PingPongChallenge::query()
+            ->where('office_id', $office->id)
+            ->where('status', '!=', PingPongChallenge::STATUS_SUPERSEDED)
+            ->orderByDesc('scheduled_for')
+            ->orderByDesc('id')
+            ->first(['player_one_id', 'player_two_id']);
+
+        return $previous?->playerIds() ?? [];
     }
 
     /**

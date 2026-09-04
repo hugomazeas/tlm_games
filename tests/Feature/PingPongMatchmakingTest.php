@@ -410,6 +410,164 @@ class PingPongMatchmakingTest extends TestCase
         $this->assertTrue(app(MatchmakingService::class)->drawForOffice($office)->created);
     }
 
+    /**
+     * Production runs with the cooldown and the daily cap switched off, so the
+     * only thing standing between someone and two draws in a row is this gate.
+     */
+    private function withoutCooldowns(): void
+    {
+        config([
+            'pingpong.matchmaking.player_cooldown_hours' => 0,
+            'pingpong.matchmaking.max_challenges_per_day' => 0,
+        ]);
+    }
+
+    private function pastChallenge(Office $office, Player $one, Player $two, string $ago, string $status = PingPongChallenge::STATUS_EXPIRED): PingPongChallenge
+    {
+        return PingPongChallenge::create([
+            'office_id' => $office->id,
+            'player_one_id' => $one->id,
+            'player_two_id' => $two->id,
+            'status' => $status,
+            'scheduled_for' => Carbon::parse(self::FROZEN_UTC, 'UTC')->sub($ago),
+            'expires_at' => Carbon::parse(self::FROZEN_UTC, 'UTC')->sub($ago)->addMinutes(50),
+        ]);
+    }
+
+    public function test_it_does_not_draw_the_same_people_two_draws_running(): void
+    {
+        $this->withoutCooldowns();
+
+        $office = $this->office();
+        $ada = $this->player('Ada', 'ada@tlmgo.com');
+        $bo = $this->player('Bo', 'bo@tlmgo.com');
+        $cy = $this->player('Cy', 'cy@tlmgo.com');
+        $di = $this->player('Di', 'di@tlmgo.com');
+
+        $this->pastChallenge($office, $ada, $bo, '1 hour');
+
+        $this->fakeBuro([
+            $this->buroUser('buro-1', 'Ada', 'ada@tlmgo.com'),
+            $this->buroUser('buro-2', 'Bo', 'bo@tlmgo.com'),
+            $this->buroUser('buro-3', 'Cy', 'cy@tlmgo.com'),
+            $this->buroUser('buro-4', 'Di', 'di@tlmgo.com'),
+        ]);
+
+        $result = app(MatchmakingService::class)->drawForOffice($office);
+
+        $this->assertTrue($result->created);
+        $this->assertEquals(2, $result->eligibleCount, 'Last hour\'s pair should have been set aside.');
+        $this->assertEqualsCanonicalizing([$cy->id, $di->id], $result->challenge->playerIds());
+    }
+
+    public function test_the_gap_lasts_exactly_one_draw(): void
+    {
+        $this->withoutCooldowns();
+
+        $office = $this->office();
+        $ada = $this->player('Ada', 'ada@tlmgo.com');
+        $bo = $this->player('Bo', 'bo@tlmgo.com');
+        $cy = $this->player('Cy', 'cy@tlmgo.com');
+        $di = $this->player('Di', 'di@tlmgo.com');
+
+        // Ada and Bo played two draws ago, Cy and Di last time round: it is
+        // Ada and Bo's turn again.
+        $this->pastChallenge($office, $ada, $bo, '2 hours');
+        $this->pastChallenge($office, $cy, $di, '1 hour');
+
+        $this->fakeBuro([
+            $this->buroUser('buro-1', 'Ada', 'ada@tlmgo.com'),
+            $this->buroUser('buro-2', 'Bo', 'bo@tlmgo.com'),
+            $this->buroUser('buro-3', 'Cy', 'cy@tlmgo.com'),
+            $this->buroUser('buro-4', 'Di', 'di@tlmgo.com'),
+        ]);
+
+        $result = app(MatchmakingService::class)->drawForOffice($office);
+
+        $this->assertTrue($result->created);
+        $this->assertEquals(2, $result->eligibleCount, 'Only last round\'s pair should have been set aside.');
+        $this->assertEqualsCanonicalizing([$ada->id, $bo->id], $result->challenge->playerIds());
+    }
+
+    public function test_a_small_office_repeats_someone_rather_than_skipping_the_draw(): void
+    {
+        $this->withoutCooldowns();
+
+        $office = $this->office();
+        $ada = $this->player('Ada', 'ada@tlmgo.com');
+        $bo = $this->player('Bo', 'bo@tlmgo.com');
+        $cy = $this->player('Cy', 'cy@tlmgo.com');
+
+        $this->pastChallenge($office, $ada, $bo, '1 hour');
+
+        $this->fakeBuro([
+            $this->buroUser('buro-1', 'Ada', 'ada@tlmgo.com'),
+            $this->buroUser('buro-2', 'Bo', 'bo@tlmgo.com'),
+            $this->buroUser('buro-3', 'Cy', 'cy@tlmgo.com'),
+        ]);
+
+        // Setting both aside would leave only Cy, so a repeat beats no game.
+        $result = app(MatchmakingService::class)->drawForOffice($office);
+
+        $this->assertTrue($result->created, 'Reason: '.$result->reason);
+        $this->assertEquals(3, $result->eligibleCount);
+        $this->assertCount(2, $result->challenge->playerIds());
+    }
+
+    public function test_a_superseded_draw_is_not_the_one_to_step_around(): void
+    {
+        $this->withoutCooldowns();
+
+        $office = $this->office();
+        $ada = $this->player('Ada', 'ada@tlmgo.com');
+        $bo = $this->player('Bo', 'bo@tlmgo.com');
+        $cy = $this->player('Cy', 'cy@tlmgo.com');
+        $di = $this->player('Di', 'di@tlmgo.com');
+
+        // Cy and Di were the last pair who actually stood: the draw naming Ada
+        // and Bo was re-rolled minutes ago and never happened.
+        $this->pastChallenge($office, $cy, $di, '1 hour');
+        $this->pastChallenge($office, $ada, $bo, '5 minutes', PingPongChallenge::STATUS_SUPERSEDED);
+
+        $this->fakeBuro([
+            $this->buroUser('buro-1', 'Ada', 'ada@tlmgo.com'),
+            $this->buroUser('buro-2', 'Bo', 'bo@tlmgo.com'),
+            $this->buroUser('buro-3', 'Cy', 'cy@tlmgo.com'),
+            $this->buroUser('buro-4', 'Di', 'di@tlmgo.com'),
+        ]);
+
+        $result = app(MatchmakingService::class)->drawForOffice($office);
+
+        $this->assertTrue($result->created);
+        $this->assertEquals(2, $result->eligibleCount, 'Cy and Di should have been set aside, not Ada and Bo.');
+        $this->assertEqualsCanonicalizing([$ada->id, $bo->id], $result->challenge->playerIds());
+    }
+
+    public function test_another_office_draw_does_not_gate_this_one(): void
+    {
+        $this->withoutCooldowns();
+
+        $office = $this->office();
+        $montreal = $this->office(['name' => 'Montreal', 'buro_office_id' => 'buro-office-montreal']);
+
+        $ada = $this->player('Ada', 'ada@tlmgo.com');
+        $bo = $this->player('Bo', 'bo@tlmgo.com');
+
+        // Quebec has drawn nobody yet today; Montreal's last draw is none of
+        // its business.
+        $this->pastChallenge($montreal, $ada, $bo, '1 hour');
+
+        $this->fakeBuro([
+            $this->buroUser('buro-1', 'Ada', 'ada@tlmgo.com'),
+            $this->buroUser('buro-2', 'Bo', 'bo@tlmgo.com'),
+        ]);
+
+        $result = app(MatchmakingService::class)->drawForOffice($office);
+
+        $this->assertTrue($result->created, 'Reason: '.$result->reason);
+        $this->assertEqualsCanonicalizing([$ada->id, $bo->id], $result->challenge->playerIds());
+    }
+
     public function test_the_announcement_audience_includes_people_who_opted_out_of_the_draw(): void
     {
         $office = $this->office();
