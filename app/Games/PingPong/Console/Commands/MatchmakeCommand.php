@@ -2,6 +2,7 @@
 
 namespace App\Games\PingPong\Console\Commands;
 
+use App\Games\PingPong\Events\ChallengeUpdated;
 use App\Games\PingPong\Models\PingPongChallenge;
 use App\Games\PingPong\Services\ChallengeReconciler;
 use App\Games\PingPong\Services\MatchmakingResult;
@@ -63,6 +64,10 @@ class MatchmakeCommand extends Command
 
             if ($result->created && $result->challenge !== null) {
                 SendChallengeNotificationJob::dispatch($result->challenge->id);
+
+                // Pushes reach the two players; this reaches the screen by the
+                // table, which nobody is holding.
+                broadcast(new ChallengeUpdated($result->challenge));
             }
         }
 

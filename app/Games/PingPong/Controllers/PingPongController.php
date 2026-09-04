@@ -2,6 +2,7 @@
 
 namespace App\Games\PingPong\Controllers;
 
+use App\Games\PingPong\Models\PingPongChallenge;
 use App\Games\PingPong\Models\PingPongLobby;
 use App\Games\PingPong\Models\PingPongMatch;
 use App\Games\PingPong\Services\PointAwardsService;
@@ -34,6 +35,26 @@ class PingPongController extends Controller
             'lobbyCode' => $lobby->code,
             'lobbyMode' => $lobby->mode,
             'remoteUrl' => config('games.remote_url'),
+        ]);
+    }
+
+    public function challenges()
+    {
+        // Far enough back to cover a working day without dragging yesterday
+        // afternoon's draws onto this morning's page.
+        $earliest = now()->subHours(12);
+
+        return view('games.ping-pong.challenges', [
+            'challenges' => PingPongChallenge::with(['office', 'playerOne', 'playerTwo', 'lobby'])
+                ->live()
+                ->orderBy('scheduled_for')
+                ->get(),
+            'recent' => PingPongChallenge::with(['playerOne', 'playerTwo'])
+                ->where('scheduled_for', '>=', $earliest)
+                ->whereIn('status', ['played', 'declined', 'expired', 'superseded'])
+                ->latest('scheduled_for')
+                ->take(8)
+                ->get(),
         ]);
     }
 
@@ -91,9 +112,21 @@ class PingPongController extends Controller
         ]);
     }
 
+    /**
+     * The chrome-less live view, for embedding in Slack, YouTube or any iframe.
+     *
+     * Framing is opt-in here and nowhere else, so it says so explicitly rather
+     * than relying on the absence of a header. `frame-ancestors` is the
+     * directive browsers actually honour; `ALLOWALL` is not a real
+     * X-Frame-Options value, but it is what older embedders look for and an
+     * unrecognised value is ignored rather than treated as DENY.
+     */
     public function embedLive()
     {
-        return view('games.ping-pong.embed-live');
+        return response()
+            ->view('games.ping-pong.embed-live')
+            ->header('X-Frame-Options', 'ALLOWALL')
+            ->header('Content-Security-Policy', 'frame-ancestors *');
     }
 
     public function remote(int $id, string $side)

@@ -28,6 +28,9 @@ class PingPongChallenge extends Model
 
     public const STATUS_PLAYED = 'played';
 
+    /** Replaced by a re-roll, because someone drawn was not actually around. */
+    public const STATUS_SUPERSEDED = 'superseded';
+
     public const RESPONSE_ACCEPTED = 'accepted';
 
     public const RESPONSE_DECLINED = 'declined';
@@ -119,9 +122,48 @@ class PingPongChallenge extends Model
         });
     }
 
+    /** Still pending, and its window has not closed yet. */
+    public function scopeLive(Builder $query): Builder
+    {
+        return $query->pending()->where('expires_at', '>', Carbon::now());
+    }
+
     public function isExpired(): bool
     {
         return $this->expires_at->isPast();
+    }
+
+    /**
+     * The shape every consumer gets: the API, and the broadcast payload.
+     *
+     * Kept on the model rather than in a controller because the panel on the
+     * home screen reads it over HTTP once and then over the websocket, and the
+     * two have to agree.
+     *
+     * @return array<string, mixed>
+     */
+    public function toApiArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'status' => $this->status,
+            'office' => $this->office?->name,
+            'lobby_code' => $this->lobby?->code,
+            'scheduled_for' => $this->scheduled_for?->toIso8601String(),
+            'expires_at' => $this->expires_at?->toIso8601String(),
+            'players' => [
+                [
+                    'id' => $this->player_one_id,
+                    'name' => $this->playerOne?->name,
+                    'response' => $this->player_one_response,
+                ],
+                [
+                    'id' => $this->player_two_id,
+                    'name' => $this->playerTwo?->name,
+                    'response' => $this->player_two_response,
+                ],
+            ],
+        ];
     }
 
     /**

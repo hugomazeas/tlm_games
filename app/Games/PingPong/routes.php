@@ -69,11 +69,19 @@ Route::post('/games/ping-pong/api/lobbies/{code}/start', [PingPongLobbyApiContro
 Route::delete('/games/ping-pong/api/lobbies/{code}', [PingPongLobbyApiController::class, 'closeLobby']);
 
 // Challenge API
-//
-// The respond route is exempt from CSRF because the service worker answers
-// notification action buttons from a background context with no access to the
-// CSRF meta tag. It is gated instead on the per-player HMAC carried in the push
-// payload -- see PingPongChallenge::responseTokenFor().
-Route::get('/games/ping-pong/api/challenges/{id}', [PingPongChallengeApiController::class, 'show']);
+Route::get('/games/ping-pong/challenges', [PingPongController::class, 'challenges']);
+
+// Before the {id} route, which would otherwise swallow "current".
+Route::get('/games/ping-pong/api/challenges/current', [PingPongChallengeApiController::class, 'current']);
+Route::get('/games/ping-pong/api/challenges/{id}', [PingPongChallengeApiController::class, 'show'])
+    ->whereNumber('id');
+Route::post('/games/ping-pong/api/challenges/{id}/redraw', [PingPongChallengeApiController::class, 'redraw'])
+    ->whereNumber('id');
+
+// Respond is exempt from CSRF because the service worker answers notification
+// action buttons from a background context with no access to the CSRF meta
+// tag. It is gated instead on the per-player HMAC carried in the push payload
+// -- see PingPongChallenge::responseTokenFor().
 Route::post('/games/ping-pong/api/challenges/{id}/respond', [PingPongChallengeApiController::class, 'respond'])
+    ->whereNumber('id')
     ->withoutMiddleware([VerifyCsrfToken::class]);

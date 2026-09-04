@@ -18,7 +18,16 @@
         </include>
     </source>
     <php>
-        <env name="APP_ENV" value="testing"/>
+        <!--
+            APP_ENV has to be forced, and forced into $_SERVER as well as the
+            environment: docker-compose injects APP_ENV=local into the
+            container, and Dotenv reads $_SERVER before $_ENV, so a plain <env>
+            entry loses to it. When it loses, app()->environment() is "local",
+            Laravel stops recognising the run as a test, and the CSRF middleware
+            answers every POST in the suite with a 419.
+        -->
+        <env name="APP_ENV" value="testing" force="true"/>
+        <server name="APP_ENV" value="testing" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>

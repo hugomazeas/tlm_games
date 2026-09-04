@@ -27,8 +27,9 @@ use Illuminate\Support\Str;
  *  3. they carry the opt-in flag on their Buro profile;
  *  4. they turned on push notifications in the Games Hub PWA.
  *
- * On top of that a cooldown and a per-day cap stop the same pair being drawn
- * every hour, and anyone mid-match is left alone.
+ * On top of that, whoever was drawn last time is stepped around so nobody is
+ * volunteered twice on the trot, anyone mid-match is left alone, and an
+ * optional cooldown and per-day cap can thin the field further.
  */
 class MatchmakingService
 {
@@ -40,7 +41,7 @@ class MatchmakingService
      * Creates the challenge and the lobby but sends nothing — notification is
      * the caller's job, so this stays testable without a push service.
      */
-    public function drawForOffice(Office $office, bool $dryRun = false): MatchmakingResult
+    public function drawForOffice(Office $office, bool $dryRun = false, array $excludePlayerIds = []): MatchmakingResult
     {
         if (! $office->participatesInMatchmaking()) {
             return MatchmakingResult::skipped(MatchmakingResult::OFFICE_DISABLED);
@@ -68,6 +69,24 @@ class MatchmakingService
 
         $eligible = $this->eligiblePlayers($optedIn, $presence);
 
+        // Who to step around: the pair a re-roll just rejected, or otherwise
+        // whoever was drawn last time. Either way it is a preference, not a
+        // rule -- in a three-person office, insisting on it would mean never
+        // drawing anyone again.
+        $avoid = $excludePlayerIds !== []
+            ? $excludePlayerIds
+            : $this->previouslyDrawnPlayerIds($office);
+
+        if ($avoid !== []) {
+            $narrowed = $eligible->reject(
+                fn (Player $player) => in_array($player->id, $avoid, true)
+            )->values();
+
+            if ($narrowed->count() >= 2) {
+                $eligible = $narrowed;
+            }
+        }
+
         if ($eligible->count() < 2) {
             return MatchmakingResult::skipped(
                 MatchmakingResult::NOT_ENOUGH_PLAYERS,
@@ -90,6 +109,58 @@ class MatchmakingService
         );
 
         return MatchmakingResult::created($challenge, $eligible->count());
+    }
+
+    /**
+     * Replaces a challenge nobody can honour with a fresh pick.
+     *
+     * The hourly draw trusts Buro, and Buro only knows who booked a desk this
+     * morning — not who slipped out at three. When it names someone who has
+     * already gone, anyone can re-roll rather than waiting an hour for a draw
+     * that will make the same mistake.
+     *
+     * Naming the absent player is the important half: it marks them away so
+     * the next few draws skip them too. Without it this is just a re-shuffle.
+     */
+    public function redraw(PingPongChallenge $challenge, ?int $absentPlayerId = null): MatchmakingResult
+    {
+        if ($challenge->status !== PingPongChallenge::STATUS_PENDING) {
+            return MatchmakingResult::skipped(MatchmakingResult::NOT_REDRAWABLE);
+        }
+
+        if ($absentPlayerId !== null && in_array($absentPlayerId, $challenge->playerIds(), true)) {
+            Player::find($absentPlayerId)?->markAway();
+        }
+
+        // Retire the old one first, so its players stop counting as recently
+        // challenged and the fresh draw sees an honest field.
+        $challenge->forceFill(['status' => PingPongChallenge::STATUS_SUPERSEDED])->save();
+
+        return $this->drawForOffice($challenge->office, false, $challenge->playerIds());
+    }
+
+    /**
+     * The two people this office drew last time.
+     *
+     * Nobody wants to be volunteered twice on the trot, and with the cooldown
+     * and the daily cap both switched off nothing else prevents it. One draw's
+     * grace is enough: they are back in the hat the round after.
+     *
+     * Superseded rows are skipped — a re-rolled draw never happened, so the
+     * pair to step around is the last one that actually stood.
+     *
+     * @return array<int, int>
+     */
+    private function previouslyDrawnPlayerIds(Office $office): array
+    {
+        $previous = PingPongChallenge::query()
+            ->where('office_id', $office->id)
+            ->where('status', '!=', PingPongChallenge::STATUS_SUPERSEDED)
+            ->orderByDesc('scheduled_for')
+            ->orderByDesc('id')
+            ->first(['player_one_id', 'player_two_id']);
+
+        return $previous?->playerIds() ?? [];
     }
 
     /**
@@ -131,6 +202,7 @@ class MatchmakingService
 
         return $players
             ->filter(fn (Player $player) => $player->hasPushSubscription())
+            ->reject(fn (Player $player) => $player->isUnavailable())
             ->reject(fn (Player $player) => in_array($player->id, $busy, true))
             ->reject(fn (Player $player) => in_array($player->id, $onCooldown, true))
             ->values();
@@ -252,7 +324,12 @@ class MatchmakingService
         $since = Carbon::now()->subHours(max($cooldownHours, 0));
         $dayStart = $localNow->copy()->startOfDay()->utc();
 
+        // Superseded rows are the one status that must not count. A re-roll
+        // retires the old challenge precisely because it never happened, so
+        // letting it keep its players on cooldown would bench the person who
+        // pressed the button for the rest of the day.
         $recent = PingPongChallenge::query()
+            ->where('status', '!=', PingPongChallenge::STATUS_SUPERSEDED)
             ->where(function ($query) use ($since, $dayStart) {
                 $query->where('scheduled_for', '>=', $since)
                     ->orWhere('scheduled_for', '>=', $dayStart);

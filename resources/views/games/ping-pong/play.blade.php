@@ -70,6 +70,82 @@
                                 <div class="absolute left-0 right-0 top-[calc(100%+6px)] text-center pph-mono text-[10px] tracking-[0.3em] uppercase text-[#f5ecd6]/45">Scan to join</div>
                             </div>
 
+                            {{-- ====== Match of the hour ===================== --}}
+                            {{--
+                                The hourly draw, on the screen next to the table.
+                                Buro knows who booked a desk this morning, not who
+                                went home at three, so whoever is standing here is
+                                the only one who can correct a bad draw.
+                            --}}
+                            <div class="rounded-xl border border-[#f5ecd6]/15 bg-[#f5ecd6]/[0.035] px-4 py-3.5">
+                                <div class="flex items-center justify-between gap-2 mb-3">
+                                    <span class="pph-mono text-[10px] tracking-[0.28em] uppercase text-[#f5ecd6]/45">Match of the hour</span>
+                                    <span class="inline-flex items-center gap-1.5 pph-mono text-[9px] tracking-[0.16em] uppercase text-[#f5ecd6]/55"
+                                          :title="'Challenge feed: ' + challengeWsStatus">
+                                        <span class="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                              :class="{
+                                                  'bg-[#9be7c4] shadow-[0_0_8px_#9be7c4]': challengeWsStatus === 'connected',
+                                                  'bg-[#ffd166] pph-flicker': challengeWsStatus === 'connecting',
+                                                  'bg-[#ff5a4a]': challengeWsStatus === 'error' || challengeWsStatus === 'disconnected',
+                                              }"></span>
+                                        <span x-text="challengeFeedLabel()"></span>
+                                    </span>
+                                </div>
+
+                                <template x-for="challenge in challenges" :key="challenge.id">
+                                    <div class="pb-3 mb-3 border-b border-dashed border-[#f5ecd6]/10 last:pb-0 last:mb-0 last:border-b-0">
+                                        <div class="flex items-baseline justify-between gap-2 pph-mono text-[9px] tracking-[0.2em] uppercase text-[#f5ecd6]/35">
+                                            <span x-text="challenge.office || 'Office'"></span>
+                                            <span x-text="challengeWindow(challenge)"></span>
+                                        </div>
+
+                                        <div class="mt-1.5 font-semibold text-[15px] leading-tight text-[#f5ecd6]">
+                                            <span x-text="challenge.players[0].name"></span>
+                                            <span class="pph-mono text-[11px] text-[#f5ecd6]/35 mx-1">vs</span>
+                                            <span x-text="challenge.players[1].name"></span>
+                                        </div>
+
+                                        <a x-show="challenge.lobby_code"
+                                           :href="'/games/ping-pong/lobby/' + challenge.lobby_code"
+                                           class="inline-block mt-2 pph-mono text-[10px] tracking-[0.16em] uppercase text-[#3ec8ff] hover:text-[#f5ecd6] transition">
+                                            Open lobby <span x-text="challenge.lobby_code"></span> →
+                                        </a>
+
+                                        <div class="mt-2.5 pt-2.5 border-t border-[#f5ecd6]/10">
+                                            <div class="pph-mono text-[9px] tracking-[0.2em] uppercase text-[#f5ecd6]/35 mb-2">Someone already left?</div>
+                                            <div class="flex flex-wrap gap-1.5">
+                                                <template x-for="player in challenge.players" :key="player.id">
+                                                    <button type="button"
+                                                            @click="redrawChallenge(challenge.id, player.id)"
+                                                            :disabled="challengeBusy"
+                                                            class="appearance-none cursor-pointer rounded-lg border border-[#ff5a4a]/35 bg-[#ff5a4a]/10 px-2.5 py-1.5 pph-mono text-[10px] tracking-[0.08em] uppercase text-[#f5ecd6] transition hover:enabled:bg-[#ff5a4a]/20 disabled:opacity-40 disabled:cursor-not-allowed">
+                                                        <span x-text="player.name"></span> is gone
+                                                    </button>
+                                                </template>
+                                                <button type="button"
+                                                        @click="redrawChallenge(challenge.id, null)"
+                                                        :disabled="challengeBusy"
+                                                        class="appearance-none cursor-pointer rounded-lg border border-[#f5ecd6]/15 bg-[#f5ecd6]/[0.06] px-2.5 py-1.5 pph-mono text-[10px] tracking-[0.08em] uppercase text-[#f5ecd6]/70 transition hover:enabled:text-[#f5ecd6] hover:enabled:bg-[#f5ecd6]/10 disabled:opacity-40 disabled:cursor-not-allowed">
+                                                    Just re-roll
+                                                </button>
+                                            </div>
+                                            <div class="pph-mono text-[9px] leading-relaxed tracking-[0.04em] text-[#f5ecd6]/25 mt-2">
+                                                Naming someone keeps them out of the next few draws.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+
+                                <div x-show="challenges.length === 0"
+                                     class="pph-mono text-[10px] leading-relaxed tracking-[0.08em] uppercase text-[#f5ecd6]/30">
+                                    No draw right now — the next one lands on the half hour.
+                                </div>
+
+                                <p x-show="challengeMessage" x-cloak x-text="challengeMessage"
+                                   class="mt-2.5 pph-mono text-[10px] leading-relaxed tracking-[0.04em]"
+                                   :class="challengeError ? 'text-[#ff5a4a]' : 'text-[#9be7c4]'"></p>
+                            </div>
+
                             {{-- Perforation --}}
                             <div class="h-[2px] [background-image:repeating-linear-gradient(90deg,rgba(245,236,214,0.14)_0_5px,transparent_5px_10px)]"></div>
 
@@ -496,6 +572,16 @@ function pingPong() {
         liveMatches: [],
         liveChannel: null,
 
+        // Match of the hour
+        challenges: [],
+        challengeChannel: null,
+        challengeWsStatus: 'connecting',
+        challengeBusy: false,
+        challengeMessage: '',
+        challengeError: false,
+        challengeTick: Date.now(),
+        challengeRefreshInterval: null,
+
         // Match state
         match: {},
         eloPreview: null,
@@ -527,6 +613,8 @@ function pingPong() {
             await this.loadLeaderboard();
             await this.loadLiveMatches();
             this.subscribeLive();
+            await this.loadChallenges();
+            this.subscribeChallenges();
             this.loadTopEloHistory();
             window.addEventListener('resize', () => {
                 if (this.topEloSeries.length > 0) this.renderTopEloChart();
@@ -579,6 +667,7 @@ function pingPong() {
         updateClock() {
             const now = new Date();
             this.clockDisplay = now.toLocaleTimeString('en-US', { hour12: false });
+            this.challengeTick = now.getTime();
             this.pruneStaleLiveMatches();
         },
 
@@ -807,13 +896,119 @@ function pingPong() {
                 this.echo.connector.pusher.connection.bind('error', (err) => {
                     console.error('[WS] Connection error:', err);
                     this.wsStatus = 'error';
+                    this.challengeWsStatus = 'error';
                 });
                 this.echo.connector.pusher.connection.bind('disconnected', () => {
                     console.warn('[WS] Disconnected');
                     this.wsStatus = 'disconnected';
+                    // A dead socket means a dead channel; the panel's own pill
+                    // waits for its subscription to come back before claiming
+                    // to be live again.
+                    this.challengeWsStatus = 'disconnected';
                 });
             }
             return this.echo;
+        },
+
+        // ===== Match of the hour =====================================
+        //
+        // Read once over HTTP, then kept fresh by the challenge channel. Every
+        // announcement triggers a refetch rather than patching the list in
+        // place: a re-roll retires one challenge and creates another, and the
+        // list is small enough that asking the server is simpler than
+        // reconciling two events client-side.
+
+        async loadChallenges() {
+            try {
+                const res = await fetch(`${this.API}/challenges/current`);
+                if (!res.ok) return;
+                const data = await res.json();
+                this.challenges = data.challenges || [];
+            } catch (err) {
+                // Keep the last known draw on screen; the pill already says
+                // the feed is unhealthy.
+                console.warn('[Challenges] Could not refresh:', err);
+            }
+        },
+
+        subscribeChallenges() {
+            this.ensureEcho();
+
+            if (this.challengeChannel) return;
+
+            this.challengeChannel = this.echo.channel('ping-pong.challenges');
+
+            this.challengeChannel
+                .listen('.challenge.updated', () => this.loadChallenges())
+                .subscribed(() => {
+                    this.challengeWsStatus = 'connected';
+                    this.loadChallenges();
+                })
+                .error(() => {
+                    this.challengeWsStatus = 'error';
+                });
+
+            // A socket that stays down would otherwise leave a stale pair on a
+            // screen claiming to be live, so re-read on a slow timer too.
+            if (!this.challengeRefreshInterval) {
+                this.challengeRefreshInterval = setInterval(() => this.loadChallenges(), 60_000);
+            }
+        },
+
+        challengeFeedLabel() {
+            if (this.challengeWsStatus === 'connected') return 'Live';
+            if (this.challengeWsStatus === 'connecting') return 'Syncing';
+            return 'Offline';
+        },
+
+        /** "42 min left", or the draw time once the window has closed. */
+        challengeWindow(challenge) {
+            if (!challenge.expires_at) return '';
+
+            const minutes = Math.round((new Date(challenge.expires_at).getTime() - this.challengeTick) / 60_000);
+
+            return minutes > 0 ? `${minutes} min left` : 'Time up';
+        },
+
+        async redrawChallenge(challengeId, absentPlayerId) {
+            if (this.challengeBusy) return;
+
+            this.challengeBusy = true;
+            this.challengeError = false;
+            this.challengeMessage = 'Re-rolling…';
+
+            try {
+                const res = await fetch(`${this.API}/challenges/${challengeId}/redraw`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': this.csrf,
+                    },
+                    body: JSON.stringify({ absent_player_id: absentPlayerId }),
+                });
+
+                const result = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(result.error || 'That did not work.');
+                }
+
+                if (!result.redrawn) {
+                    this.challengeError = true;
+                    this.challengeMessage = result.reason === 'not_enough_players'
+                        ? 'Nobody else is free to play right now.'
+                        : `Could not re-roll (${result.reason}).`;
+                } else {
+                    this.challengeMessage = `New draw: ${result.challenge.players.map((p) => p.name).join(' vs ')}.`;
+                }
+            } catch (err) {
+                this.challengeError = true;
+                this.challengeMessage = err.message || 'Could not re-roll.';
+            } finally {
+                this.challengeBusy = false;
+                await this.loadChallenges();
+            }
         },
 
         subscribeLive() {
@@ -1269,6 +1464,8 @@ function pingPong() {
             await this.loadLeaderboard();
             await this.loadLiveMatches();
             this.subscribeLive();
+            await this.loadChallenges();
+            this.subscribeChallenges();
             this.screen = 'home';
             await this.createLobby();
         },
