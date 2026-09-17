@@ -1302,6 +1302,25 @@ function pingPong() {
             return String(n);
         },
 
+        currentRatingFor(playerId) {
+            if (!this.eloPreview || !playerId) return null;
+            return this.eloPreview.current_ratings?.[playerId] ?? null;
+        },
+
+        projectedEloFor(playerId, won) {
+            const current = this.currentRatingFor(playerId);
+            const delta = this.eloPreviewFor(playerId, won)?.total;
+            if (current === null || delta === null || delta === undefined) return null;
+            return current + delta;
+        },
+
+        eloSwingFor(playerId) {
+            const ifWins = this.projectedEloFor(playerId, true);
+            const ifLoses = this.projectedEloFor(playerId, false);
+            if (ifWins === null || ifLoses === null) return null;
+            return ifWins - ifLoses;
+        },
+
         previewPlayerIdsForSide(side) {
             if (side === 'left') {
                 return this.mode === '2v2'
