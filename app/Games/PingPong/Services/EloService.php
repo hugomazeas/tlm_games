@@ -9,9 +9,13 @@ use App\Games\PingPong\Models\PingPongRatingChange;
 class EloService
 {
     private const K = 32;
+
     private const DEFAULT_RATING = 1200;
+
     private const STREAK_BONUS_THRESHOLD = 3;
+
     private const STREAK_BONUS_CAP = 5;
+
     private const STREAK_BREAKER_CAP = 25;
 
     public function getOrCreateRating(int $playerId, string $mode = '1v1'): PingPongRating
@@ -48,9 +52,9 @@ class EloService
             ->where('mode', $mode)
             ->where(function ($q) use ($playerId) {
                 $q->where('player_left_id', $playerId)
-                  ->orWhere('player_right_id', $playerId)
-                  ->orWhere('team_left_player2_id', $playerId)
-                  ->orWhere('team_right_player2_id', $playerId);
+                    ->orWhere('player_right_id', $playerId)
+                    ->orWhere('team_left_player2_id', $playerId)
+                    ->orWhere('team_right_player2_id', $playerId);
             })
             ->orderBy('ended_at', 'desc');
 
@@ -161,6 +165,7 @@ class EloService
      * Return shape:
      * [
      *   'mode' => '1v1'|'2v2',
+     *   'current_ratings' => [<player_id> => int, ...],
      *   'if_left_wins'  => [<player_id> => ['base'=>int,'streak'=>int,'breaker'=>int,'total'=>int], ...],
      *   'if_right_wins' => [<player_id> => [...], ...],
      * ]
@@ -198,6 +203,10 @@ class EloService
 
         return [
             'mode' => $mode,
+            'current_ratings' => [
+                $leftId => $leftRating,
+                $rightId => $rightRating,
+            ],
             'if_left_wins' => [
                 $leftId => [
                     'base' => $leftWinBase,
@@ -267,6 +276,12 @@ class EloService
 
         return [
             'mode' => $mode,
+            'current_ratings' => [
+                $leftP1Id => $leftP1Rating,
+                $leftP2Id => $leftP2Rating,
+                $rightP1Id => $rightP1Rating,
+                $rightP2Id => $rightP2Rating,
+            ],
             'if_left_wins' => [
                 $leftP1Id => [
                     'base' => $leftWinBase,

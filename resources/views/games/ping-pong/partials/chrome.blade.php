@@ -103,6 +103,7 @@
     .pph-glow-amber { text-shadow: 0 0 18px rgba(255, 209, 102, 0.55); }
     .pph-glow-red   { text-shadow: 0 0 30px rgba(255, 90, 74, 0.38); }
     .pph-glow-blue  { text-shadow: 0 0 30px rgba(62, 200, 255, 0.38); }
+    .pph-glow-green { text-shadow: 0 0 26px rgba(155, 231, 196, 0.45); }
 
     .pph-shadow-left  { box-shadow: -10px 0 26px -12px rgba(255, 90, 74, 0.38); }
     .pph-shadow-right { box-shadow:  10px 0 26px -12px rgba(62, 200, 255, 0.38); }
