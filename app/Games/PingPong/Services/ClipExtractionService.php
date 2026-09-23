@@ -142,7 +142,7 @@ class ClipExtractionService
         ]);
 
         $cmd = sprintf(
-            'ffmpeg -y -ss %s -i %s -t %s -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -an -movflags +faststart %s 2>&1',
+            'ffmpeg -y -ss %s -i %s -t %s -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -c:a aac -b:a 96k -movflags +faststart %s 2>&1',
             escapeshellarg((string) $start),
             escapeshellarg($sourcePath),
             escapeshellarg((string) $duration),

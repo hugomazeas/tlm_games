@@ -68,7 +68,7 @@ class FinalizeRecordingJob implements ShouldQueue
 
             // Step 2: Re-encode with compression (CRF 28, medium preset, 720p)
             $cmd = sprintf(
-                'ffmpeg -y -i %s -c:v libx264 -preset medium -crf 28 -vf scale=-2:720 -an %s 2>&1',
+                'ffmpeg -y -i %s -c:v libx264 -preset medium -crf 28 -vf scale=-2:720 -c:a aac -b:a 96k %s 2>&1',
                 escapeshellarg($rawPath),
                 escapeshellarg($mp4Path)
             );
