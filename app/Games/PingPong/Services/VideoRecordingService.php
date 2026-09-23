@@ -12,12 +12,14 @@ class VideoRecordingService
     private string $hlsBasePath;
     private string $videoBasePath;
     private string $videoDevice;
+    private string $audioDevice;
 
     public function __construct()
     {
         $this->hlsBasePath = storage_path('app/recordings/live');
         $this->videoBasePath = storage_path('app/public/recordings/matches');
         $this->videoDevice = '/dev/video0';
+        $this->audioDevice = (string) config('pingpong.recording_audio_device');
     }
 
     public function startRecording(PingPongMatch $match): PingPongRecording
@@ -44,26 +46,18 @@ class VideoRecordingService
         $segmentPattern = $hlsDir . '/segment%03d.ts';
         $m3u8Path = $hlsDir . '/stream.m3u8';
 
-        $cmd = sprintf(
-            'nohup ffmpeg -f v4l2 -video_size 1280x720 -framerate 30 -input_format mjpeg '
-            . '-i %s -vf "hflip,vflip" -c:v libx264 -pix_fmt yuv420p -preset ultrafast -tune zerolatency -g 60 '
-            . '-f hls -hls_time 2 -hls_list_size 0 -hls_flags append_list '
-            . '-hls_segment_filename %s %s '
-            . '> /dev/null 2>&1 & echo $!',
-            escapeshellarg($this->videoDevice),
-            escapeshellarg($segmentPattern),
-            escapeshellarg($m3u8Path)
-        );
+        $pid = $this->spawnFfmpeg($segmentPattern, $m3u8Path, withAudio: $this->audioDevice !== '');
 
-        $pid = (int) trim(shell_exec($cmd));
+        // ponytail: a missing/busy mic shouldn't cost the whole recording, so retry video-only
+        if ($pid > 0 && !$this->isProcessRunning($pid) && $this->audioDevice !== '') {
+            Log::warning('FFmpeg failed with audio, retrying video-only', ['match_id' => $match->id, 'audio_device' => $this->audioDevice]);
+            $pid = $this->spawnFfmpeg($segmentPattern, $m3u8Path, withAudio: false);
+        }
 
         if ($pid <= 0) {
             $recording->update(['status' => 'failed', 'error_message' => 'Failed to start FFmpeg process']);
             throw new \RuntimeException('Failed to start FFmpeg process');
         }
-
-        // Brief pause to verify process started
-        usleep(500000);
 
         if (!$this->isProcessRunning($pid)) {
             $recording->update(['status' => 'failed', 'error_message' => 'FFmpeg process exited immediately']);
@@ -112,6 +106,42 @@ class VideoRecordingService
         FinalizeRecordingJob::dispatch($recording->id, $match->id);
 
         return $recording->fresh();
+    }
+
+    /**
+     * Launch FFmpeg in the background and return its PID, after a short pause
+     * so a process that dies on startup (bad device) is already gone.
+     */
+    private function spawnFfmpeg(string $segmentPattern, string $m3u8Path, bool $withAudio): int
+    {
+        $pid = (int) trim((string) shell_exec($this->buildFfmpegCommand($segmentPattern, $m3u8Path, $withAudio)));
+
+        if ($pid > 0) {
+            usleep(500000);
+        }
+
+        return $pid;
+    }
+
+    public function buildFfmpegCommand(string $segmentPattern, string $m3u8Path, bool $withAudio): string
+    {
+        $audioInput = $withAudio
+            ? '-f alsa -thread_queue_size 1024 -i ' . escapeshellarg($this->audioDevice) . ' '
+            : '';
+        $audioCodec = $withAudio ? '-c:a aac -b:a 96k ' : '';
+
+        return sprintf(
+            'nohup ffmpeg -f v4l2 -thread_queue_size 512 -video_size 1280x720 -framerate 30 -input_format mjpeg '
+            . '-i %s %s-vf "hflip,vflip" -c:v libx264 -pix_fmt yuv420p -preset ultrafast -tune zerolatency -g 60 '
+            . '%s-f hls -hls_time 2 -hls_list_size 0 -hls_flags append_list '
+            . '-hls_segment_filename %s %s '
+            . '> /dev/null 2>&1 & echo $!',
+            escapeshellarg($this->videoDevice),
+            $audioInput,
+            $audioCodec,
+            escapeshellarg($segmentPattern),
+            escapeshellarg($m3u8Path)
+        );
     }
 
     public function getActiveRecording(): ?PingPongRecording

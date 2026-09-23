@@ -91,4 +91,18 @@ return [
         'urgency' => env('VAPID_URGENCY', 'high'),
     ],
 
+
+    /*
+    |--------------------------------------------------------------------------
+    | Match Recording Audio
+    |--------------------------------------------------------------------------
+    |
+    | ALSA capture device for the webcam microphone (see `arecord -L`). Use a
+    | plughw: device so ALSA resamples to whatever the mic supports. Empty
+    | records video only. If the device fails, recording falls back to video.
+    |
+    */
+
+    'recording_audio_device' => env('RECORDING_AUDIO_DEVICE', 'plughw:CARD=C920,DEV=0'),
+
 ];

@@ -2,6 +2,8 @@ services:
   app:
     devices:
       - "/dev/video0:/dev/video0"
+      - "/dev/snd:/dev/snd"
     group_add:
       - "video"
+      - "audio"
       - "44"
