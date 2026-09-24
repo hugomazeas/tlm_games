@@ -40,4 +40,16 @@ class EmbedLivePageTest extends TestCase
         $response->assertSee('og:title', false);
         $response->assertSee('og:image', false);
     }
+
+    public function test_embed_live_labels_match_the_mirrored_video(): void
+    {
+        $html = $this->get('/games/ping-pong/embed-live')->assertOk()->getContent();
+
+        $leftCorner = strpos($html, 'bottom:24px;left:24px');
+        $rightCorner = strpos($html, 'bottom:24px;right:24px');
+        $this->assertNotFalse($leftCorner);
+
+        $this->assertLessThan($rightCorner, strpos($html, 'match?.player_left?.name', $leftCorner));
+        $this->assertGreaterThan($rightCorner, strpos($html, 'match?.player_right?.name', $leftCorner));
+    }
 }
