@@ -2,21 +2,57 @@
 //
 // Beyond satisfying the install criteria it handles Web Push: the hourly ping
 // pong matchmaker sends a payload, this shows it, and tapping an action either
-// opens the lobby or declines the challenge. No caching and no offline
-// handling — fetch stays a pass-through so the SW never interferes with
-// ordinary requests.
+// opens the lobby or declines the challenge. No offline handling: the only
+// thing cached is the QR scanner's decoder (see below); every other request
+// falls straight through to the network.
+
+// The QR scanner's decoder: the barcode-detector module plus the ~1MB zxing
+// .wasm it downloads. Both are pinned-version CDN files, so they never change
+// under a given URL. Without this, iOS home-screen apps re-fetched them on
+// almost every page load and the scanner sat on a black frame for seconds.
+// Keep the versions in step with resources/views/components/camera-fab.blade.php.
+const DECODER_CACHE = 'qr-decoder-v1';
+const DECODER_URL_PATTERN = /\/(barcode-detector@3\.2\.2|zxing-wasm@3\.1\.3)\//;
 
 self.addEventListener('install', (event) => {
     self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-    event.waitUntil(self.clients.claim());
+    event.waitUntil(
+        caches.keys()
+            .then((keys) => Promise.all(
+                keys.filter((key) => key.startsWith('qr-decoder-') && key !== DECODER_CACHE)
+                    .map((key) => caches.delete(key))
+            ))
+            .then(() => self.clients.claim())
+    );
 });
 
 self.addEventListener('fetch', (event) => {
-    // Pass-through. Letting fetch fall through to network without responding
-    // keeps the SW from interfering with normal request handling.
+    const request = event.request;
+    if (request.method !== 'GET' || !DECODER_URL_PATTERN.test(request.url)) {
+        // Pass-through. Not responding lets the browser handle it as usual.
+        return;
+    }
+
+    event.respondWith(
+        caches.open(DECODER_CACHE).then((cache) =>
+            cache.match(request).then((cached) => {
+                if (cached) {
+                    return cached;
+                }
+
+                return fetch(request).then((response) => {
+                    if (response.ok) {
+                        cache.put(request, response.clone());
+                    }
+
+                    return response;
+                });
+            })
+        )
+    );
 });
 
 self.addEventListener('push', (event) => {
