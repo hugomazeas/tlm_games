@@ -5,16 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', 'Games Hub')</title>
-    <link rel="manifest" href="{{ url('/manifest.webmanifest') }}">
-    <meta name="theme-color" content="#070b27">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Games">
-    <link rel="icon" type="image/x-icon" href="{{ url('/favicon.ico') }}">
-    <link rel="icon" type="image/svg+xml" href="{{ url('/favicon.svg') }}">
-    <link rel="icon" type="image/png" sizes="96x96" href="{{ url('/favicon-96x96.png') }}">
-    <link rel="apple-touch-icon" sizes="180x180" href="{{ url('/apple-touch-icon.png') }}">
-    <link rel="apple-touch-icon-precomposed" sizes="180x180" href="{{ url('/apple-touch-icon.png') }}">
+    <x-pwa-head />
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">

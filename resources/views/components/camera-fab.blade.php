@@ -166,6 +166,8 @@
         // So we keep instance references in a closure rather than on `this`.
         const internals = {
             detector: null,
+            detectorPromise: null,
+            detectorClassPromise: null,
             stream: null,
             scanCanvas: null,
             scanCtx: null,
@@ -209,6 +211,15 @@
                 try {
                     this.debug = localStorage.getItem('qr_debug') === '1';
                 } catch (_) { /* localStorage may be unavailable in some private modes */ }
+                // Fetch the decoder module while the page is idle so tapping the
+                // button only has to start the camera. The service worker keeps
+                // the pinned files in Cache Storage, so after the first visit this
+                // is a local read rather than a network round trip.
+                if (this.isMobile) {
+                    const prefetch = () => this.loadDetectorClass().catch(() => {});
+                    if ('requestIdleCallback' in window) requestIdleCallback(prefetch, { timeout: 3000 });
+                    else setTimeout(prefetch, 1500);
+                }
             },
 
             bumpDebugTaps() {
@@ -226,39 +237,52 @@
                 }
             },
 
-            async ensureDetector() {
-                if (internals.detector) return;
+            loadDetectorClass() {
                 // Always import the polyfill — never use window.BarcodeDetector
                 // even if it exists. Native implementations are inconsistent:
                 // some Chromium builds throw "Private element is not present on
                 // this object" on detect(); iOS Safari is flaky with canvas/video
-                // input. The polyfill (ZXing-WASM, ~30KB) behaves the same on
-                // every device.
-                let DetectorClass = null;
-                // Use the package's `/pure` entry on every CDN. The default
-                // entry of `barcode-detector` is a *ponyfill* that delegates to
-                // window.BarcodeDetector when available — which is exactly the
-                // broken native we are trying to avoid.
+                // input. The polyfill (ZXing-WASM) behaves the same on every
+                // device. The `/pure` entry never delegates to the native one.
+                //
+                // Versions are pinned so every URL — and the ~1MB zxing .wasm the
+                // module pulls in — is immutable, letting the browser and the
+                // service worker cache them for good instead of revalidating a
+                // semver range on every page load. Bump together with
+                // DECODER_URL_PATTERN in public/sw.js.
+                if (internals.detectorClassPromise) return internals.detectorClassPromise;
                 const sources = [
-                    'https://esm.sh/barcode-detector@3/pure?bundle',
-                    'https://cdn.jsdelivr.net/npm/barcode-detector@3/pure/+esm',
-                    'https://unpkg.com/barcode-detector@3/dist/es/pure.min.js',
+                    'https://cdn.jsdelivr.net/npm/barcode-detector@3.2.2/pure/+esm',
+                    'https://esm.sh/barcode-detector@3.2.2/pure?bundle',
+                    'https://unpkg.com/barcode-detector@3.2.2/dist/es/pure.min.js',
                 ];
-                let lastErr = null;
-                for (const url of sources) {
-                    try {
-                        const mod = await import(url);
-                        const cls = mod.BarcodeDetector || mod.default?.BarcodeDetector || mod.default;
-                        if (typeof cls === 'function') {
-                            DetectorClass = cls;
-                            break;
-                        }
-                    } catch (e) { lastErr = e; }
-                }
-                if (!DetectorClass) {
+                internals.detectorClassPromise = (async () => {
+                    let lastErr = null;
+                    for (const url of sources) {
+                        try {
+                            const mod = await import(url);
+                            const cls = mod.BarcodeDetector || mod.default?.BarcodeDetector || mod.default;
+                            if (typeof cls === 'function') return cls;
+                        } catch (e) { lastErr = e; }
+                    }
                     throw new Error('QR decoder failed to load (' + (lastErr?.message || 'no source worked') + ')');
+                })();
+                // A failed load must not poison a later "Try again".
+                internals.detectorClassPromise.catch(() => { internals.detectorClassPromise = null; });
+                return internals.detectorClassPromise;
+            },
+
+            ensureDetector() {
+                if (!internals.detectorPromise) {
+                    internals.detectorPromise = this.createDetector();
+                    internals.detectorPromise.catch(() => { internals.detectorPromise = null; });
                 }
-                internals.detector = new DetectorClass({ formats: ['qr_code'] });
+                return internals.detectorPromise;
+            },
+
+            async createDetector() {
+                const DetectorClass = await this.loadDetectorClass();
+                const detector = new DetectorClass({ formats: ['qr_code'] });
                 // Soft pre-warm: a small filled canvas triggers WASM initialization.
                 // If it throws, surface the message in the HUD but do NOT abort —
                 // some polyfill builds fail on tiny canvases yet work fine on real
@@ -269,13 +293,14 @@
                 wctx.fillStyle = '#ffffff';
                 wctx.fillRect(0, 0, 64, 64);
                 try {
-                    await internals.detector.detect(warm);
+                    await detector.detect(warm);
                 } catch (e) {
                     const name = e?.name || 'Error';
                     const msg = (e?.message || String(e) || '').toString();
                     this.lastResultPreview = 'warmup: ' + msg.slice(0, 60);
                     this.lastErrorFull = 'warmup ' + name + ': ' + msg;
                 }
+                internals.detector = detector;
             },
 
             async open() {
@@ -283,19 +308,19 @@
                 this.isOpen = true;
                 document.body.style.overflow = 'hidden';
                 await this.$nextTick();
+                // Ask for the camera straight away and load the decoder in
+                // parallel. Running them one after the other left people staring
+                // at a black frame for seconds before the permission prompt.
+                const detectorReady = this.ensureDetector();
+                detectorReady.catch(() => {});
                 try {
-                    await this.ensureDetector();
-                    if (this.cameras.length === 0) {
-                        await this.enumerateCameras();
-                        this.currentCameraIndex = 0;
-                    }
-                    if (this.cameras.length === 0) {
-                        this.error = 'No camera available on this device.';
-                        return;
-                    }
-                    await this.startStream();
+                    await this.startInitialStream();
+                    await detectorReady;
+                    // Closed while we were waiting: don't leave the camera on.
+                    if (!this.isOpen) { this.stopStream(); return; }
                     this.startDetectionLoop();
                 } catch (e) {
+                    if (!this.isOpen) { this.stopStream(); return; }
                     const name = e?.name || 'Error';
                     const msg = (e?.message || String(e) || '').slice(0, 140);
                     if (name === 'NotAllowedError' || name === 'SecurityError') {
@@ -309,22 +334,44 @@
                 }
             },
 
-            async enumerateCameras() {
-                // Force a permission grant so device labels become populated.
-                // Also capture which deviceId the browser picked for an
-                // 'environment' request — that's a high-confidence "this is
-                // a back camera" signal we can use as a tiebreaker when
-                // labels are missing or ambiguous.
-                let probeBackId = null;
-                let probe;
-                try {
-                    probe = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
-                    const track = probe.getVideoTracks()[0];
-                    const s = track?.getSettings?.() || {};
-                    probeBackId = s.deviceId || null;
-                } finally {
-                    if (probe) probe.getTracks().forEach((t) => t.stop());
+            rememberedCameraId() {
+                try { return localStorage.getItem('qr_camera_id') || null; } catch (_) { return null; }
+            },
+
+            rememberCamera(id) {
+                if (!id) return;
+                try { localStorage.setItem('qr_camera_id', id); } catch (_) {}
+            },
+
+            async startInitialStream() {
+                // One getUserMedia call per open: the lens used last time is
+                // requested directly, otherwise the browser's own back-camera
+                // pick. Devices are enumerated only once a stream is live (labels
+                // are populated by then), which replaces the old throwaway probe
+                // stream that booted the camera twice on every open.
+                const rememberedId = this.rememberedCameraId();
+                let activeId = await this.startStream(rememberedId);
+                if (this.cameras.length === 0) {
+                    await this.enumerateCameras(activeId);
                 }
+                let index = this.cameras.findIndex((c) => c.id === activeId);
+                // First run on this device: if the browser handed us a lens we
+                // rank lower (composite, ultra-wide), move to the best one once;
+                // it is remembered, so later opens go straight there.
+                if (!rememberedId && this.cameras.length > 1 && index !== 0) {
+                    activeId = await this.startStream(this.cameras[0].id);
+                    index = this.cameras.findIndex((c) => c.id === activeId);
+                }
+                this.currentCameraIndex = Math.max(0, index);
+                this.rememberCamera(activeId);
+            },
+
+            async enumerateCameras(activeId) {
+                // activeId is the camera currently streaming — the browser picked
+                // it for facingMode 'environment' (or it was remembered), which is
+                // a high-confidence "this is a back camera" signal we can use as a
+                // tiebreaker when labels are missing or ambiguous.
+                const probeBackId = activeId;
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 const all = devices
                     .filter((d) => d.kind === 'videoinput')
@@ -384,17 +431,17 @@
                     .trim() || 'Camera';
             },
 
-            async startStream() {
+            /** Starts the given camera, or the default back camera, and returns the live deviceId. */
+            async startStream(deviceId = null) {
                 this.stopStream();
-                const cam = this.cameras[this.currentCameraIndex];
                 // Progressive fallback: some devices reject the exact-device +
                 // high-resolution combo (OverconstrainedError) or hold a brief
                 // lock after the enumerate probe. Walk down to broader
                 // constraints until something works.
                 const attempts = [];
-                if (cam?.id) {
-                    attempts.push({ deviceId: { exact: cam.id }, width: { ideal: 1920 }, height: { ideal: 1080 } });
-                    attempts.push({ deviceId: { exact: cam.id } });
+                if (deviceId) {
+                    attempts.push({ deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } });
+                    attempts.push({ deviceId: { exact: deviceId } });
                 }
                 attempts.push({ facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } });
                 attempts.push({ facingMode: { ideal: 'environment' } });
@@ -417,6 +464,7 @@
                 const track = stream.getVideoTracks()[0];
                 const s = track?.getSettings?.() || {};
                 this.streamResolution = (s.width && s.height) ? `${s.width}×${s.height}` : '';
+                return s.deviceId || deviceId;
             },
 
             stopStream() {
@@ -536,7 +584,9 @@
                 if (this.cameras.length < 2) return;
                 this.currentCameraIndex = (this.currentCameraIndex + 1) % this.cameras.length;
                 try {
-                    await this.startStream();
+                    const cam = this.cameras[this.currentCameraIndex];
+                    await this.startStream(cam.id);
+                    this.rememberCamera(cam.id);
                     if (!this.detectLoopActive) this.startDetectionLoop();
                 } catch (_) {
                     this.error = 'Could not switch to that camera.';
