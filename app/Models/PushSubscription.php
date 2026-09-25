@@ -6,7 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * One browser's Web Push registration, owned by a Player.
+ * One browser's Web Push registration.
+ *
+ * A row owned by a Player receives challenge pushes. A row with
+ * `notify_match_starts` receives "a match just started" alerts, and may have
+ * no player at all — livestream viewers opt in without picking a name.
  *
  * A person can hold several of these at once — phone, laptop, installed PWA —
  * and each is independently revocable by the push service, so
@@ -21,12 +25,14 @@ class PushSubscription extends Model
         'public_key',
         'auth_token',
         'content_encoding',
+        'notify_match_starts',
         'last_notified_at',
     ];
 
     protected function casts(): array
     {
         return [
+            'notify_match_starts' => 'boolean',
             'last_notified_at' => 'datetime',
         ];
     }

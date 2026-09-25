@@ -53,6 +53,8 @@ GET  /push/config                   VAPID public key + whether push is set up
 POST /push/subscribe                Register a browser against a player
 POST /push/unsubscribe              Drop a browser registration
 POST /push/test                     Send yourself a test notification
+POST /push/match-starts/subscribe   Opt a browser (no player needed) into "match started" alerts
+POST /push/match-starts/unsubscribe Opt a browser out of "match started" alerts
 ```
 
 ## Hourly Ping Pong Matchmaking

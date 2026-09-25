@@ -28,6 +28,8 @@ Route::get('/push/config', [PushSubscriptionController::class, 'index']);
 Route::post('/push/subscribe', [PushSubscriptionController::class, 'store']);
 Route::post('/push/unsubscribe', [PushSubscriptionController::class, 'destroy']);
 Route::post('/push/test', [PushSubscriptionController::class, 'test']);
+Route::post('/push/match-starts/subscribe', [PushSubscriptionController::class, 'subscribeToMatchStarts']);
+Route::post('/push/match-starts/unsubscribe', [PushSubscriptionController::class, 'unsubscribeFromMatchStarts']);
 
 Route::get('/leaderboards', [LeaderboardController::class, 'index']);
 Route::get('/leaderboards/{gameType:slug}', [LeaderboardController::class, 'show']);
