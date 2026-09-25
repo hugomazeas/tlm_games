@@ -9,6 +9,24 @@
 <div class="pph-stage w-full h-screen max-h-[calc(100dvh-60px)] flex flex-col md:flex-row !rounded-none !p-0" x-data="watchLive()" x-init="init()">
 <div class="relative flex-1 min-w-0 min-h-0 flex items-center justify-center">
 
+    {{-- ===== Match start alerts ===== --}}
+    <div x-show="showMatchAlertsBanner" x-cloak x-transition.opacity data-match-alerts-banner
+         class="absolute z-30 top-14 inset-x-4 md:top-4 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-[min(560px,calc(100%-2rem))] flex flex-col gap-1.5 px-4 py-3 rounded-xl bg-[#06081b]/90 border border-[#ffd166]/40 backdrop-blur-sm shadow-lg">
+        <div class="flex items-center gap-3">
+            <span class="text-xl leading-none">🔔</span>
+            <p class="flex-1 min-w-0 text-[13px] leading-snug text-[#f5ecd6]">
+                Get a notification when a match starts — no need to keep this page open.
+            </p>
+            <button type="button" @click="enableMatchAlerts()" :disabled="matchAlertsBusy"
+                    class="flex-shrink-0 px-4 py-1.5 rounded-full bg-[#ffd166] text-[#06081b] pph-display text-sm tracking-[0.04em] uppercase hover:bg-white transition disabled:opacity-50">
+                <span x-text="matchAlertsBusy ? '…' : 'Notify me'"></span>
+            </button>
+            <button type="button" @click="dismissMatchAlerts()" aria-label="Dismiss"
+                    class="flex-shrink-0 w-7 h-7 rounded-full text-[#f5ecd6]/50 hover:text-[#f5ecd6] hover:bg-white/10 transition">✕</button>
+        </div>
+        <p x-show="matchAlertsMessage" class="pph-mono text-[11px] text-[#ff5a4a]" x-text="matchAlertsMessage"></p>
+    </div>
+
     {{-- No live match --}}
     <template x-if="!matchActive">
         <div class="text-center text-[#f5ecd6]/70">
@@ -16,6 +34,12 @@
             <h2 class="pph-display text-[clamp(28px,3vw,40px)] tracking-[0.04em] uppercase text-[#f5ecd6] mb-2">No live match</h2>
             <p class="pph-mono text-[12px] tracking-[0.14em] uppercase text-[#f5ecd6]/45 mb-5">No match is being played right now.</p>
             <p class="pph-mono text-[10px] tracking-[0.2em] uppercase text-[#f5ecd6]/30" x-text="'Re-checking in ' + countdown + 's…'"></p>
+            <p x-show="matchAlertsOn" x-cloak class="mt-4 pph-mono text-[11px] tracking-[0.14em] uppercase text-[#ffd166]/80" data-match-alerts-on>
+                🔔 You'll get a notification when a match starts ·
+                <button type="button" @click="disableMatchAlerts()" :disabled="matchAlertsBusy"
+                        class="underline uppercase hover:text-[#ffd166]">Turn off</button>
+            </p>
+            <p x-show="!showMatchAlertsBanner && matchAlertsMessage" class="mt-2 pph-mono text-[11px] text-[#ff5a4a]" x-text="matchAlertsMessage"></p>
             <a href="/games/ping-pong"
                class="inline-block mt-5 px-5 py-2 rounded-full bg-[#f5ecd6] text-[#06081b] no-underline pph-display text-base tracking-[0.04em] uppercase hover:bg-white transition">
                 ← Back to Ping Pong
@@ -173,11 +197,13 @@
 <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
 @include('games.ping-pong.partials.elo-preview-script')
 @include('games.ping-pong.partials.chat-script')
+@include('games.ping-pong.partials.match-alerts-script')
 <script>
 function watchLive() {
     return {
         ...pingPongEloPreview(),
         ...pingPongChat(),
+        ...pingPongMatchAlerts(),
 
         API: '/games/ping-pong/api',
         csrf: document.querySelector('meta[name="csrf-token"]').content,
@@ -361,6 +387,7 @@ function watchLive() {
             this.loadChatHistory();
             this.subscribeChat();
             if (!this.chatPlayer) this.loadChatPlayerOptions();
+            this.initMatchAlerts();
 
             await this.checkForLiveMatch();
             if (!this.matchActive) {

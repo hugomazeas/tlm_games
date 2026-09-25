@@ -11,6 +11,7 @@ use App\Games\PingPong\Models\PingPongMatch;
 use App\Games\PingPong\Models\PingPongRating;
 use App\Games\PingPong\Services\VideoRecordingService;
 use App\Http\Controllers\Controller;
+use App\Jobs\SendMatchStartedNotificationJob;
 use App\Models\Player;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -255,6 +256,7 @@ class PingPongLobbyApiController extends Controller
 
         broadcast(new LobbyMatchStarted($lobby->fresh()));
         broadcast(new LiveMatchStarted($match));
+        SendMatchStartedNotificationJob::dispatch($match->id);
 
         return response()->json([
             'match' => $match,

@@ -9,6 +9,15 @@ class PingPongWatchPageTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_watch_page_offers_match_start_alerts(): void
+    {
+        $response = $this->get('/games/ping-pong/watch');
+
+        $response->assertOk();
+        $response->assertSee('data-match-alerts-banner', false);
+        $response->assertSee('/push/match-starts/subscribe', false);
+    }
+
     public function test_watch_page_renders_the_chat_sidebar(): void
     {
         $response = $this->get('/games/ping-pong/watch');
