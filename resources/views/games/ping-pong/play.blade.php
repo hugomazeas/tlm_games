@@ -407,7 +407,7 @@
             </div>
 
             {{-- ===== Two-side scoreboard ===== --}}
-            <div class="grid grid-cols-2 gap-4 md:gap-6 flex-1 min-h-0">
+            <div class="grid grid-cols-2 lg:grid-cols-[3fr_2fr_3fr] gap-4 md:gap-6 flex-1 min-h-0">
 
                 {{-- LEFT team --}}
                 <div class="relative rounded-2xl border-2 border-[#ff5a4a]/25 bg-gradient-to-b from-[#ff5a4a]/[0.08] to-[#ff5a4a]/[0.02] p-3 md:p-8 flex flex-col items-center justify-center transition-all duration-300"
@@ -456,6 +456,18 @@
                     @include('games.ping-pong.partials.elo-preview', ['side' => 'left'])
                 </div>
 
+                {{-- Viewer chat (read-only here; viewers post from /watch). Below lg it drops under both scoreboards. --}}
+                <section data-chat-column class="order-last lg:order-none col-span-2 lg:col-span-1 flex flex-col min-h-0 max-h-[30vh] lg:max-h-none rounded-2xl border-2 border-[#f5ecd6]/10 bg-[#06081b]/40 p-3 md:p-4">
+                    <header class="flex items-center justify-between pb-2 mb-2 border-b border-[#f5ecd6]/10 flex-shrink-0">
+                        <span class="pph-mono text-[11px] font-bold tracking-[0.2em] uppercase text-[#f5ecd6]/70">Viewer chat</span>
+                        <span class="pph-mono text-[10px] tracking-[0.14em] uppercase text-[#f5ecd6]/35" x-text="chatMessages.length + ' msgs'"></span>
+                    </header>
+                    @include('games.ping-pong.partials.chat-messages')
+                    <footer class="pt-2 mt-2 border-t border-[#f5ecd6]/10 text-center pph-mono text-[10px] tracking-[0.16em] uppercase text-[#f5ecd6]/35 flex-shrink-0">
+                        Chat at /games/ping-pong/watch
+                    </footer>
+                </section>
+
                 {{-- RIGHT team --}}
                 <div class="relative rounded-2xl border-2 border-[#3ec8ff]/25 bg-gradient-to-b from-[#3ec8ff]/[0.08] to-[#3ec8ff]/[0.02] p-3 md:p-8 flex flex-col items-center justify-center transition-all duration-300"
                      :class="isServing('right') ? '!border-[#3ec8ff]/75 !bg-[#3ec8ff]/[0.18] shadow-[inset_0_0_80px_rgba(62,200,255,0.16),0_0_40px_rgba(62,200,255,0.18)]' : ''">
@@ -500,6 +512,20 @@
                 </div>
             </div>
 
+            {{-- ===== Chat flash: each new viewer message takes the middle for 5s ===== --}}
+            <div x-show="chatFlash" x-cloak
+                 x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+                 x-transition:leave="transition ease-in duration-300" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+                 @click="dismissChatFlash()"
+                 data-chat-flash
+                 class="!absolute inset-0 !z-40 flex items-center justify-center bg-[#06081b]/75 backdrop-blur-sm p-6 cursor-pointer">
+                <div class="max-w-[min(90%,1100px)] rounded-3xl border-2 border-[#ffd166]/50 bg-[#06081b] px-8 py-7 md:px-14 md:py-10 shadow-[0_0_80px_rgba(255,209,102,0.25)] text-center">
+                    <div class="pph-mono text-[clamp(14px,1.6vw,22px)] font-bold tracking-[0.22em] uppercase text-[#ffd166] mb-3" x-text="chatFlash?.player?.name"></div>
+                    <p class="m-0 pph-display uppercase tracking-[0.02em] leading-tight text-[#f5ecd6] break-words"
+                       :class="chatFlashSizeClass()" x-text="chatFlash?.body"></p>
+                </div>
+            </div>
+
             {{-- ===== Bottom hint ===== --}}
             <div class="text-center pph-mono text-[10px] tracking-[0.16em] uppercase text-[#f5ecd6]/35 flex-shrink-0" x-show="!readOnly">
                 <span class="inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
@@ -539,9 +565,14 @@
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pusher-js@8.4.0/dist/web/pusher.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
+@include('games.ping-pong.partials.elo-preview-script')
+@include('games.ping-pong.partials.chat-script')
 <script>
 function pingPong() {
     return {
+        ...pingPongEloPreview(),
+        ...pingPongChat(),
+
         API: '/games/ping-pong/api',
         csrf: document.querySelector('meta[name="csrf-token"]').content,
 
@@ -584,7 +615,6 @@ function pingPong() {
 
         // Match state
         match: {},
-        eloPreview: null,
 
         // Timer
         timerDisplay: '00:00',
@@ -604,6 +634,7 @@ function pingPong() {
 
         async init() {
             this.startClock();
+            this.$watch('screen', (screen) => screen === 'playing' ? this.startChat() : this.stopChat());
 
             if (this.preloadedMatchId) {
                 await this.loadAndStartMatch(this.preloadedMatchId);
@@ -1273,71 +1304,49 @@ function pingPong() {
             }
         },
 
-        async loadEloPreview() {
-            if (!this.match?.id) return;
-            try {
-                const res = await fetch(`${this.API}/matches/${this.match.id}/elo-preview`);
-                if (!res.ok) {
-                    this.eloPreview = null;
-                    return;
-                }
-                this.eloPreview = await res.json();
-            } catch (err) {
-                console.warn('Failed to load ELO preview:', err);
-                this.eloPreview = null;
+        // --- CHAT ---
+
+        chatFlash: null,
+        chatFlashQueue: [],
+        chatFlashTimer: null,
+
+        async startChat() {
+            await this.loadChatHistory();
+            this.subscribeChat();
+        },
+
+        stopChat() {
+            this.leaveChat();
+            this.chatFlashQueue = [];
+            this.dismissChatFlash();
+        },
+
+        onChatMessage(message) {
+            this.chatFlashQueue.push(message);
+            if (!this.chatFlash) this.showNextChatFlash();
+        },
+
+        showNextChatFlash() {
+            clearTimeout(this.chatFlashTimer);
+            this.chatFlash = this.chatFlashQueue.shift() ?? null;
+            if (!this.chatFlash) return;
+            this.chatFlashTimer = setTimeout(() => this.dismissChatFlash(), 5000);
+        },
+
+        dismissChatFlash() {
+            clearTimeout(this.chatFlashTimer);
+            this.chatFlash = null;
+            // Let the fade-out finish before the next message comes in.
+            if (this.chatFlashQueue.length) {
+                this.chatFlashTimer = setTimeout(() => this.showNextChatFlash(), 350);
             }
         },
 
-        eloPreviewFor(playerId, won) {
-            if (!this.eloPreview || !playerId) return null;
-            const onLeft = this.match.player_left_id === playerId
-                || this.match.team_left_player2_id === playerId;
-            const key = (onLeft === won) ? 'if_left_wins' : 'if_right_wins';
-            return this.eloPreview[key]?.[playerId] ?? null;
-        },
-
-        formatDelta(n) {
-            if (n === null || n === undefined) return '';
-            if (n > 0) return '+' + n;
-            return String(n);
-        },
-
-        currentRatingFor(playerId) {
-            if (!this.eloPreview || !playerId) return null;
-            return this.eloPreview.current_ratings?.[playerId] ?? null;
-        },
-
-        projectedEloFor(playerId, won) {
-            const current = this.currentRatingFor(playerId);
-            const delta = this.eloPreviewFor(playerId, won)?.total;
-            if (current === null || delta === null || delta === undefined) return null;
-            return current + delta;
-        },
-
-        eloSwingFor(playerId) {
-            const ifWins = this.projectedEloFor(playerId, true);
-            const ifLoses = this.projectedEloFor(playerId, false);
-            if (ifWins === null || ifLoses === null) return null;
-            return ifWins - ifLoses;
-        },
-
-        previewPlayerIdsForSide(side) {
-            if (side === 'left') {
-                return this.mode === '2v2'
-                    ? [this.match.player_left_id, this.match.team_left_player2_id].filter(Boolean)
-                    : (this.match.player_left_id ? [this.match.player_left_id] : []);
-            }
-            return this.mode === '2v2'
-                ? [this.match.player_right_id, this.match.team_right_player2_id].filter(Boolean)
-                : (this.match.player_right_id ? [this.match.player_right_id] : []);
-        },
-
-        playerNameById(id) {
-            if (id === this.match.player_left_id) return this.match.player_left?.name;
-            if (id === this.match.player_right_id) return this.match.player_right?.name;
-            if (id === this.match.team_left_player2_id) return this.match.team_left_player2?.name;
-            if (id === this.match.team_right_player2_id) return this.match.team_right_player2?.name;
-            return '';
+        chatFlashSizeClass() {
+            const length = this.chatFlash?.body?.length ?? 0;
+            if (length <= 40) return 'text-[clamp(32px,5vw,4rem)]';
+            if (length <= 100) return 'text-[clamp(28px,4vw,3rem)]';
+            return 'text-[clamp(22px,3vw,2.5rem)]';
         },
 
         // --- PLAYING ---

@@ -2,6 +2,7 @@
 
 use App\Games\PingPong\Controllers\PingPongApiController;
 use App\Games\PingPong\Controllers\PingPongChallengeApiController;
+use App\Games\PingPong\Controllers\PingPongChatController;
 use App\Games\PingPong\Controllers\PingPongController;
 use App\Games\PingPong\Controllers\PingPongLobbyApiController;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -67,6 +68,11 @@ Route::patch('/games/ping-pong/api/lobbies/{code}/side', [PingPongLobbyApiContro
 Route::delete('/games/ping-pong/api/lobbies/{code}/leave', [PingPongLobbyApiController::class, 'leaveLobby']);
 Route::post('/games/ping-pong/api/lobbies/{code}/start', [PingPongLobbyApiController::class, 'startMatch']);
 Route::delete('/games/ping-pong/api/lobbies/{code}', [PingPongLobbyApiController::class, 'closeLobby']);
+
+// Chat API (livestream viewers)
+Route::get('/games/ping-pong/api/chat/messages', [PingPongChatController::class, 'messages']);
+Route::post('/games/ping-pong/api/chat/messages', [PingPongChatController::class, 'post']);
+Route::post('/games/ping-pong/api/chat/identify', [PingPongChatController::class, 'identify']);
 
 // Challenge API
 Route::get('/games/ping-pong/challenges', [PingPongController::class, 'challenges']);
