@@ -15,7 +15,10 @@
         object-fit: cover;
         display: block;
         background: #000;
+        opacity: 0;
+        transition: opacity 150ms ease-out;
     }
+    #qr-video.is-ready { opacity: 1; }
     .qr-reticle {
         position: absolute;
         inset: 10%;
@@ -99,6 +102,7 @@
                 <video
                     id="qr-video"
                     x-ref="video"
+                    :class="{ 'is-ready': videoReady }"
                     @click="focusAt($event)"
                     autoplay
                     muted
@@ -176,6 +180,8 @@
         return {
             isMobile: false,
             isOpen: false,
+            videoReady: false,
+            _revealToken: 0,
             error: null,
             cameras: [],
             currentCameraIndex: 0,
@@ -464,10 +470,31 @@
                 const track = stream.getVideoTracks()[0];
                 const s = track?.getSettings?.() || {};
                 this.streamResolution = (s.width && s.height) ? `${s.width}×${s.height}` : '';
+                this.revealWhenPainted(video);
                 return s.deviceId || deviceId;
             },
 
+            revealWhenPainted(video) {
+                // iOS paints the first frames of a fresh camera stream before it
+                // settles on the final (rotated) size, so object-fit: cover is
+                // briefly computed against the wrong shape: the whole 9:16 frame
+                // shows in the square, then snaps to the crop. Keep the video
+                // invisible until a couple of real frames have been presented.
+                const token = ++this._revealToken;
+                const reveal = () => { if (token === this._revealToken) this.videoReady = true; };
+                setTimeout(reveal, 1500); // never leave the viewfinder hidden
+                if (typeof video.requestVideoFrameCallback === 'function') {
+                    video.requestVideoFrameCallback(() => video.requestVideoFrameCallback(reveal));
+                    return;
+                }
+                const afterFrames = () => requestAnimationFrame(() => requestAnimationFrame(reveal));
+                if (video.readyState >= 2 && video.videoWidth > 0) afterFrames();
+                else video.addEventListener('loadeddata', afterFrames, { once: true });
+            },
+
             stopStream() {
+                this.videoReady = false;
+                this._revealToken += 1;
                 this.detectLoopActive = false;
                 if (this._elapsedTimer) { clearInterval(this._elapsedTimer); this._elapsedTimer = null; }
                 if (internals.stream) {
