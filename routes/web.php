@@ -28,8 +28,14 @@ Route::get('/push/config', [PushSubscriptionController::class, 'index']);
 Route::post('/push/subscribe', [PushSubscriptionController::class, 'store']);
 Route::post('/push/unsubscribe', [PushSubscriptionController::class, 'destroy']);
 Route::post('/push/test', [PushSubscriptionController::class, 'test']);
-Route::post('/push/match-starts/subscribe', [PushSubscriptionController::class, 'subscribeToMatchStarts']);
-Route::post('/push/match-starts/unsubscribe', [PushSubscriptionController::class, 'unsubscribeFromMatchStarts']);
+
+// Match-start alerts are opted into from the watch page, a game route that
+// runs without the session middleware and so has no CSRF token to send. They
+// are anonymous and only ever touch the caller's own browser endpoint.
+Route::post('/push/match-starts/subscribe', [PushSubscriptionController::class, 'subscribeToMatchStarts'])
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class]);
+Route::post('/push/match-starts/unsubscribe', [PushSubscriptionController::class, 'unsubscribeFromMatchStarts'])
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class]);
 
 Route::get('/leaderboards', [LeaderboardController::class, 'index']);
 Route::get('/leaderboards/{gameType:slug}', [LeaderboardController::class, 'show']);

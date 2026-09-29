@@ -4,7 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\Player;
 use App\Models\PushSubscription;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 class PushSubscriptionTest extends TestCase
@@ -176,6 +179,19 @@ class PushSubscriptionTest extends TestCase
         $this->postJson('/push/match-starts/subscribe', ['endpoint' => self::ENDPOINT])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['keys.p256dh', 'keys.auth']);
+    }
+
+    /**
+     * The watch page is a game route with no session, so it has no CSRF
+     * token to send. Tests skip CSRF checks, hence asserting on the route.
+     */
+    public function test_match_alert_routes_are_exempt_from_csrf(): void
+    {
+        foreach (['/push/match-starts/subscribe', '/push/match-starts/unsubscribe'] as $uri) {
+            $route = Route::getRoutes()->match(Request::create($uri, 'POST'));
+
+            $this->assertContains(VerifyCsrfToken::class, $route->excludedMiddleware(), $uri);
+        }
     }
 
     public function test_an_anonymous_viewer_opting_out_drops_the_browser(): void
