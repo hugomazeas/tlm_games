@@ -8,7 +8,7 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 
 class ChatMessagePosted implements ShouldBroadcastNow
 {
-    /** @var array{id: int, body: string, created_at: string, player: array{id: int, name: string}} */
+    /** @var array{id: int, match_id: int, body: string, created_at: string, player: array{id: int, name: string}} */
     public array $message;
 
     public function __construct(PingPongChatMessage $message)
@@ -18,7 +18,7 @@ class ChatMessagePosted implements ShouldBroadcastNow
 
     public function broadcastOn(): array
     {
-        return [new Channel('ping-pong.chat')];
+        return [new Channel('ping-pong.match.'.$this->message['match_id'].'.chat')];
     }
 
     public function broadcastAs(): string

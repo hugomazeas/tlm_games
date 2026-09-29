@@ -512,17 +512,20 @@
                 </div>
             </div>
 
-            {{-- ===== Chat flash: each new viewer message takes the middle for 5s ===== --}}
+            {{-- ===== Chat flash: each new viewer message takes the whole screen for 5s ===== --}}
             <div x-show="chatFlash" x-cloak
-                 x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+                 x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
                  x-transition:leave="transition ease-in duration-300" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
                  @click="dismissChatFlash()"
+                 @resize.window.debounce.150ms="fitChatFlash()"
                  data-chat-flash
-                 class="!absolute inset-0 !z-40 flex items-center justify-center bg-[#06081b]/75 backdrop-blur-sm p-6 cursor-pointer">
-                <div class="max-w-[min(90%,1100px)] rounded-3xl border-2 border-[#ffd166]/50 bg-[#06081b] px-8 py-7 md:px-14 md:py-10 shadow-[0_0_80px_rgba(255,209,102,0.25)] text-center">
-                    <div class="pph-mono text-[clamp(14px,1.6vw,22px)] font-bold tracking-[0.22em] uppercase text-[#ffd166] mb-3" x-text="chatFlash?.player?.name"></div>
-                    <p class="m-0 pph-display uppercase tracking-[0.02em] leading-tight text-[#f5ecd6] break-words"
-                       :class="chatFlashSizeClass()" x-text="chatFlash?.body"></p>
+                 class="!fixed inset-0 !z-[100] flex flex-col bg-[#06081b] px-[4vw] py-[4vh] cursor-pointer">
+                <div class="flex-shrink-0 text-center font-bold tracking-[0.04em] text-[#ffd166] text-[clamp(32px,7vh,96px)] truncate" x-text="chatFlash?.player?.name"></div>
+                {{-- Font size is set by fitChatFlash() so the message fills this box. --}}
+                <div data-chat-flash-box class="flex-1 min-h-0 flex items-center justify-center overflow-hidden">
+                    <p data-chat-flash-body
+                       class="m-0 max-w-full text-center font-bold leading-[1.12] tracking-[-0.01em] text-[#f5ecd6] [text-wrap:balance]"
+                       x-text="chatFlash?.body"></p>
                 </div>
             </div>
 
@@ -634,7 +637,8 @@ function pingPong() {
 
         async init() {
             this.startClock();
-            this.$watch('screen', (screen) => screen === 'playing' ? this.startChat() : this.stopChat());
+            // Chat is per match: follow whichever match is on the playing screen.
+            this.$watch("screen === 'playing' ? match.id : null", (matchId) => matchId ? this.startChat(matchId) : this.stopChat());
 
             if (this.preloadedMatchId) {
                 await this.loadAndStartMatch(this.preloadedMatchId);
@@ -1310,9 +1314,10 @@ function pingPong() {
         chatFlashQueue: [],
         chatFlashTimer: null,
 
-        async startChat() {
-            await this.loadChatHistory();
-            this.subscribeChat();
+        startChat(matchId) {
+            this.chatFlashQueue = [];
+            this.dismissChatFlash();
+            this.joinChat(matchId);
         },
 
         stopChat() {
@@ -1330,6 +1335,7 @@ function pingPong() {
             clearTimeout(this.chatFlashTimer);
             this.chatFlash = this.chatFlashQueue.shift() ?? null;
             if (!this.chatFlash) return;
+            this.fitChatFlash();
             this.chatFlashTimer = setTimeout(() => this.dismissChatFlash(), 5000);
         },
 
@@ -1342,11 +1348,37 @@ function pingPong() {
             }
         },
 
-        chatFlashSizeClass() {
-            const length = this.chatFlash?.body?.length ?? 0;
-            if (length <= 40) return 'text-[clamp(32px,5vw,4rem)]';
-            if (length <= 100) return 'text-[clamp(28px,4vw,3rem)]';
-            return 'text-[clamp(22px,3vw,2.5rem)]';
+        /**
+         * Sizes the flash message to the largest font that still fits the
+         * screen. Words stay whole unless one is too long to fit at a
+         * readable size, then it may break mid-word.
+         */
+        fitChatFlash() {
+            if (!this.chatFlash) return;
+            this.$nextTick(() => {
+                const box = this.$root.querySelector('[data-chat-flash-box]');
+                const body = this.$root.querySelector('[data-chat-flash-body]');
+                if (!box || !body || !box.clientHeight) return;
+
+                const fits = () => body.scrollWidth <= box.clientWidth && body.offsetHeight <= box.clientHeight;
+                const largestFit = () => {
+                    let low = 12;
+                    let high = Math.max(box.clientHeight, 12);
+                    while (high - low > 1) {
+                        const mid = Math.floor((low + high) / 2);
+                        body.style.fontSize = mid + 'px';
+                        if (fits()) low = mid; else high = mid;
+                    }
+                    body.style.fontSize = low + 'px';
+                    return low;
+                };
+
+                body.style.overflowWrap = 'normal';
+                if (largestFit() < 48) {
+                    body.style.overflowWrap = 'anywhere';
+                    largestFit();
+                }
+            });
         },
 
         // --- PLAYING ---

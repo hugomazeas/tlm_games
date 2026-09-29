@@ -154,9 +154,9 @@
         <form @submit.prevent="sendChatMessage()" class="flex-shrink-0 flex flex-col gap-1.5" data-chat-composer>
             <div class="flex gap-2">
                 <input type="text" x-model="chatDraft" maxlength="200" autocomplete="off"
-                       :disabled="!chatPlayer" :placeholder="chatPlayer ? 'Say something…' : 'Pick a name first'"
+                       :disabled="!chatPlayer || !chatMatchId" :placeholder="!chatMatchId ? 'Chat opens when a match starts' : (chatPlayer ? 'Say something…' : 'Pick a name first')"
                        class="flex-1 min-w-0 rounded-md bg-[#f5ecd6]/[0.06] border border-[#f5ecd6]/15 px-3 py-2 text-[#f5ecd6] text-sm placeholder:text-[#f5ecd6]/30 focus:outline-none focus:border-[#ffd166]/60 disabled:opacity-50">
-                <button type="submit" :disabled="!chatPlayer || !chatDraft.trim() || chatBusy"
+                <button type="submit" :disabled="!chatPlayer || !chatMatchId || !chatDraft.trim() || chatBusy"
                         class="px-3 py-2 rounded-md bg-[#ffd166] text-[#06081b] border-0 cursor-pointer pph-mono text-[11px] font-bold uppercase tracking-[0.12em] disabled:opacity-40 disabled:cursor-default">Send</button>
             </div>
             <div class="flex justify-between pph-mono text-[10px] tracking-[0.08em]">
@@ -282,18 +282,22 @@ function watchLive() {
 
         async sendChatMessage() {
             const body = this.chatDraft.trim();
-            if (!body || !this.chatPlayer || this.chatBusy) return;
+            if (!body || !this.chatPlayer || !this.chatMatchId || this.chatBusy) return;
             this.chatBusy = true;
             this.chatError = '';
             try {
                 const res = await fetch(`${this.API}/chat/messages`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': this.csrf },
-                    body: JSON.stringify({ player_id: this.chatPlayer.id, body }),
+                    body: JSON.stringify({ match_id: this.chatMatchId, player_id: this.chatPlayer.id, body }),
                 });
                 const data = await res.json().catch(() => ({}));
                 if (res.status === 429) {
                     this.chatError = 'Slow down — wait a few seconds.';
+                    return;
+                }
+                if (res.status === 422 && data.errors?.match_id) {
+                    this.chatError = 'This match has ended.';
                     return;
                 }
                 if (res.status === 422 && data.errors?.player_id) {
@@ -358,8 +362,6 @@ function watchLive() {
         },
 
         async init() {
-            this.loadChatHistory();
-            this.subscribeChat();
             if (!this.chatPlayer) this.loadChatPlayerOptions();
 
             await this.checkForLiveMatch();
@@ -383,6 +385,7 @@ function watchLive() {
                         this.stopPolling();
                         this.$nextTick(() => this.initPlayer(recData.hls_url));
                         this.subscribeToScores();
+                        this.joinChat(this.matchId);
                         this.loadEloPreview();
                         this.startHealthCheck();
                         return;
@@ -400,6 +403,7 @@ function watchLive() {
                         this.hasVideo = false;
                         this.stopPolling();
                         this.subscribeToScores();
+                        this.joinChat(this.matchId);
                         this.loadEloPreview();
                         this.startHealthCheck();
                         return;
@@ -463,6 +467,8 @@ function watchLive() {
             this.eloPreview = null;
             this.destroyPlayer();
             this.leaveMatchChannel();
+            this.leaveChat();
+            this.chatUnread = 0;
             this.startPolling();
         },
 
