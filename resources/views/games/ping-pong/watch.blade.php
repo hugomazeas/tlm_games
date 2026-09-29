@@ -10,7 +10,7 @@
 <div class="relative flex-1 min-w-0 min-h-0 flex items-center justify-center">
 
     {{-- ===== Match start alerts ===== --}}
-    <div x-show="showMatchAlertsBanner" x-cloak x-transition.opacity data-match-alerts-banner
+    <div x-show="showMatchAlertsBanner()" x-cloak x-transition.opacity data-match-alerts-banner
          class="absolute z-30 top-14 inset-x-4 md:top-4 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-[min(560px,calc(100%-2rem))] flex flex-col gap-1.5 px-4 py-3 rounded-xl bg-[#06081b]/90 border border-[#ffd166]/40 backdrop-blur-sm shadow-lg">
         <div class="flex items-center gap-3">
             <span class="text-xl leading-none">🔔</span>
@@ -39,7 +39,7 @@
                 <button type="button" @click="disableMatchAlerts()" :disabled="matchAlertsBusy"
                         class="underline uppercase hover:text-[#ffd166]">Turn off</button>
             </p>
-            <p x-show="!showMatchAlertsBanner && matchAlertsMessage" class="mt-2 pph-mono text-[11px] text-[#ff5a4a]" x-text="matchAlertsMessage"></p>
+            <p x-show="!showMatchAlertsBanner() && matchAlertsMessage" class="mt-2 pph-mono text-[11px] text-[#ff5a4a]" x-text="matchAlertsMessage"></p>
             <a href="/games/ping-pong"
                class="inline-block mt-5 px-5 py-2 rounded-full bg-[#f5ecd6] text-[#06081b] no-underline pph-display text-base tracking-[0.04em] uppercase hover:bg-white transition">
                 ← Back to Ping Pong

@@ -17,7 +17,7 @@ window.pingPongMatchAlerts = () => ({
     matchAlertsMessage: '',
     matchAlertsVapidKey: null,
 
-    get showMatchAlertsBanner() {
+    showMatchAlertsBanner() {
         return this.matchAlertsAvailable && !this.matchAlertsOn && !this.matchAlertsDismissed;
     },
 

@@ -18,6 +18,20 @@ class PingPongWatchPageTest extends TestCase
         $response->assertSee('/push/match-starts/subscribe', false);
     }
 
+    /**
+     * The alerts mixin is spread into watchLive(), and a spread copies a
+     * getter's value once instead of the getter, which froze the banner
+     * hidden. Its visibility has to be a method so it stays reactive.
+     */
+    public function test_match_alerts_banner_visibility_survives_the_mixin_spread(): void
+    {
+        $response = $this->get('/games/ping-pong/watch');
+
+        $response->assertOk();
+        $response->assertSee('x-show="showMatchAlertsBanner()"', false);
+        $response->assertDontSee('get showMatchAlertsBanner()', false);
+    }
+
     public function test_watch_page_renders_the_chat_sidebar(): void
     {
         $response = $this->get('/games/ping-pong/watch');
