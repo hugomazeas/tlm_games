@@ -67,7 +67,6 @@ class PlayerController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255|unique:players,name,'.$player->id,
-            'email' => 'nullable|email|max:255|unique:players,email,'.$player->id,
             'office_id' => 'nullable|exists:offices,id',
         ]);
 

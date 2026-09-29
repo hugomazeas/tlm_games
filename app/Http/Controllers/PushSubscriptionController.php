@@ -76,7 +76,7 @@ class PushSubscriptionController extends Controller
      * Opts a browser into "a match just started" alerts from the watch page.
      *
      * No player is needed. A browser already registered to a player keeps
-     * that player, so its challenge pushes carry on untouched.
+     * that player, so its player notifications carry on untouched.
      */
     public function subscribeToMatchStarts(Request $request): JsonResponse
     {
@@ -110,7 +110,7 @@ class PushSubscriptionController extends Controller
      * Opts a browser out of match-start alerts.
      *
      * An anonymous row exists only for these alerts, so it goes. A player's
-     * row stays, because it still carries their challenge pushes. `deleted`
+     * row stays, because it still carries their player notifications. `deleted`
      * tells the browser whether it may drop its own push subscription too.
      */
     public function unsubscribeFromMatchStarts(Request $request): JsonResponse

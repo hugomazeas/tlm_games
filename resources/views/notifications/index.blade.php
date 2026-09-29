@@ -6,8 +6,7 @@
     <div class="max-w-lg" x-data="pushSetup()" x-init="init()">
         <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight mb-1">Match notifications</h1>
         <p class="text-white/50 text-sm mb-8">
-            Every weekday at half past the hour, two people who are in the office get drawn for a game.
-            Turn this on to be one of them.
+            Link this browser to your player so Games Hub can send you push notifications.
         </p>
 
         @if(! $pushConfigured)
@@ -72,17 +71,6 @@
 
             <p x-show="message" x-cloak x-text="message"
                class="text-sm" :class="error ? 'text-red-300' : 'text-emerald-300'"></p>
-        </div>
-
-        <div class="mt-8 text-sm text-white/50 space-y-2">
-            <p class="font-semibold text-white/70">You'll only be drawn when all of these are true:</p>
-            <ul class="list-disc list-inside space-y-1">
-                <li>Your office has matchmaking switched on.</li>
-                <li>You booked a desk in Buro for today.</li>
-                <li>Your Buro profile carries the <span class="font-mono text-xs bg-white/10 px-1.5 py-0.5 rounded">{{ config('pingpong.matchmaking.opt_in_flag') }}</span> flag.</li>
-                <li>You turned notifications on right here.</li>
-            </ul>
-            <p class="pt-2">At most {{ config('pingpong.matchmaking.max_challenges_per_day') }} challenge per day, and never twice within {{ config('pingpong.matchmaking.player_cooldown_hours') }} hours.</p>
         </div>
     </div>
 

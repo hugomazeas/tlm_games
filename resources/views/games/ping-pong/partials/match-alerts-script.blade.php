@@ -33,7 +33,7 @@ window.pingPongMatchAlerts = () => ({
             this.matchAlertsVapidKey = config.public_key;
 
             // A browser subscription alone doesn't mean match alerts are on —
-            // it may only be registered for challenges at /notifications — so
+            // it may only be registered to a player at /notifications — so
             // the local flag says which of the two this browser opted into.
             const registration = await navigator.serviceWorker.ready;
             const existing = await registration.pushManager.getSubscription();
@@ -95,7 +95,7 @@ window.pingPongMatchAlerts = () => ({
                 });
 
                 // Only drop the browser's subscription when nothing else rides
-                // on it; a player's challenge pushes share the same endpoint.
+                // on it; a player's notifications share the same endpoint.
                 if (result.deleted) await subscription.unsubscribe();
             }
 

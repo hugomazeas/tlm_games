@@ -4,71 +4,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Challenges
-    |--------------------------------------------------------------------------
-    |
-    | Master switch for the hourly draw. Off means no challenge is created and
-    | none is announced: the scheduler still runs, so challenges already in
-    | flight are reconciled and expired as usual, but nobody new is volunteered
-    | and nobody is pushed to.
-    |
-    | Switching it off destroys nothing. Players, push registrations and the
-    | challenge history are all left alone, so turning it back on is only ever
-    | an env change.
-    |
-    */
-
-    'challenges_enabled' => (bool) env('CHALLENGES_ENABLED', true),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Buro Integration
-    |--------------------------------------------------------------------------
-    |
-    | Buro is the seat-booking app that knows who is in which office today.
-    | Both apps sit on the shared `proxy` Docker network in production, so the
-    | default base URL is the container name rather than a public hostname.
-    |
-    */
-
-    'buro' => [
-        'base_url' => env('BURO_BASE_URL', 'http://buro:3000'),
-        'token' => env('BURO_INTEGRATION_TOKEN'),
-        'timeout' => (int) env('BURO_TIMEOUT', 5),
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Matchmaking
-    |--------------------------------------------------------------------------
-    |
-    | The hourly draw is opt-in twice over: a Buro user must carry the opt-in
-    | flag, and their office must have matchmaking enabled. The per-day cap
-    | keeps an eight-slot day from turning into eight notifications for the
-    | same unlucky pair. Hours live on each office row, not here.
-    |
-    */
-
-    'matchmaking' => [
-        'opt_in_flag' => env('PINGPONG_OPT_IN_FLAG', 'Ping Pong'),
-
-        // A challenge is dead before the next hourly draw fires.
-        'challenge_ttl_minutes' => (int) env('PINGPONG_CHALLENGE_TTL', 50),
-
-        // Don't pick the same player again for this many hours.
-        'player_cooldown_hours' => (int) env('PINGPONG_PLAYER_COOLDOWN_HOURS', 24),
-
-        // Hard ceiling per player per office-local day.
-        'max_challenges_per_day' => (int) env('PINGPONG_MAX_CHALLENGES_PER_DAY', 1),
-
-        // How long "not here" keeps someone out of the draw. Long enough to
-        // cover the rest of a working day, since the usual reason is that
-        // they went home.
-        'away_hours' => (int) env('PINGPONG_AWAY_HOURS', 8),
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
     | Web Push (VAPID)
     |--------------------------------------------------------------------------
     |
@@ -90,7 +25,6 @@ return [
         // notification in practice.
         'urgency' => env('VAPID_URGENCY', 'high'),
     ],
-
 
     /*
     |--------------------------------------------------------------------------

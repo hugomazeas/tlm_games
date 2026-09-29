@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * One browser's Web Push registration.
  *
- * A row owned by a Player receives challenge pushes. A row with
+ * A row owned by a Player receives notifications meant for that player. A row with
  * `notify_match_starts` receives "a match just started" alerts, and may have
  * no player at all — livestream viewers opt in without picking a name.
  *

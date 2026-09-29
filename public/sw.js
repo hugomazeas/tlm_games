@@ -1,10 +1,9 @@
 // Service worker for the Games Hub PWA.
 //
-// Beyond satisfying the install criteria it handles Web Push: the hourly ping
-// pong matchmaker sends a payload, this shows it, and tapping an action either
-// opens the lobby or declines the challenge. No offline handling: the only
-// thing cached is the QR scanner's decoder (see below); every other request
-// falls straight through to the network.
+// Beyond satisfying the install criteria it handles Web Push: this shows the
+// payload (e.g. a "match started" alert) and tapping it opens its url. No
+// offline handling: the only thing cached is the QR scanner's decoder (see
+// below); every other request falls straight through to the network.
 
 // The QR scanner's decoder: the barcode-detector module plus the ~1MB zxing
 // .wasm it downloads. Both are pinned-version CDN files, so they never change
@@ -68,7 +67,7 @@ self.addEventListener('push', (event) => {
     const options = {
         body: payload.body || '',
         // A repeat push with the same tag replaces the previous banner instead
-        // of stacking a second one for the same challenge.
+        // of stacking a second one for the same event.
         tag: payload.tag || 'games-hub',
         renotify: Boolean(payload.tag),
         icon: '/icons/icon-192.png',
@@ -86,43 +85,11 @@ self.addEventListener('notificationclick', (event) => {
     const data = event.notification.data || {};
     event.notification.close();
 
-    if (event.action === 'decline') {
-        event.waitUntil(respond(data, 'declined'));
-        return;
-    }
-
-    // Any other tap — the body, or the explicit accept action — counts as
-    // accepting, then lands the person in the lobby.
-    event.waitUntil(
-        respond(data, 'accepted').then(() => openLobby(data.url || '/games/ping-pong'))
-    );
+    event.waitUntil(openUrl(data.url || '/games/ping-pong'));
 });
 
-/**
- * Answers the challenge from the background.
- *
- * There is no CSRF token available here, so the request is authorised by the
- * per-player HMAC that travelled inside the push payload. Failures are
- * swallowed: a lost decline is not worth breaking the tap-to-open flow over.
- */
-function respond(data, response) {
-    if (!data.respondUrl || !data.playerId || !data.responseToken) {
-        return Promise.resolve();
-    }
-
-    return fetch(data.respondUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({
-            player_id: data.playerId,
-            response: response,
-            token: data.responseToken,
-        }),
-    }).catch(() => undefined);
-}
-
 /** Focuses an already-open Games Hub tab when there is one, else opens it. */
-function openLobby(url) {
+function openUrl(url) {
     return self.clients
         .matchAll({ type: 'window', includeUncontrolled: true })
         .then((clientList) => {

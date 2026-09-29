@@ -57,59 +57,14 @@ POST /push/match-starts/subscribe   Opt a browser (no player needed) into "match
 POST /push/match-starts/unsubscribe Opt a browser out of "match started" alerts
 ```
 
-## Hourly Ping Pong Matchmaking
+## Web Push
 
-Every weekday at :30 past the hour, two people who are actually in the office
-get drawn for a match and pushed a notification; everyone else in the office
-gets told who's playing.
-
-**Master switch — currently OFF in production.** `CHALLENGES_ENABLED` (config
-`pingpong.challenges_enabled`). With it `false` the scheduler still runs, so
-challenges already in flight are still reconciled and expired, but no new
-challenge is drawn, re-rolls are refused, and no push goes out to anybody. It
-is off while a different strategy for alerting players is worked out. Nothing
-is destroyed by switching it off: players, push registrations and challenge
-history are untouched, so turning it back on is only an env change.
-
-**Who knows who's in:** Buro (`../tlmgo-buro`), the seat-booking app. It exposes
-`GET /api/integrations/presence?officeId=…` behind a shared bearer token
-(`INTEGRATION_TOKEN` there, `BURO_INTEGRATION_TOKEN` here). Both containers sit
-on the shared `proxy` Docker network, so `http://buro:3000` resolves directly.
-Buro bookings are **date-only** — presence means "booked a desk today", and the
-payload carries the office-local clock and weekday so this app never guesses a
-timezone.
-
-**Three independent opt-ins** must all be true before someone is drawn:
-1. their office has `matchmaking_enabled` and a `buro_office_id` (Offices → Edit);
-2. they have an `active` Buro booking for today;
-3. their Buro profile carries the opt-in flag (`PINGPONG_OPT_IN_FLAG`, default "Ping Pong").
-
-Enabling push at `/notifications` is **not** required to be drawn — it only
-decides whether the draw reaches your phone. Gating the draw on it used to
-shrink the pool to whoever had installed the PWA, which cost whole hours in a
-small office.
-
-Plus a cooldown (`PINGPONG_PLAYER_COOLDOWN_HOURS`) and a daily cap
-(`PINGPONG_MAX_CHALLENGES_PER_DAY`). Anyone mid-match is skipped.
-
-The **announcement audience** is wider on purpose: everyone present with a push
-registration, flag or no flag. Enabling notifications without wanting to be
-volunteered is a valid position.
-
-**Scheduling:** `routes/console.php` registers `pingpong:matchmake` at
-`hourlyAt(30)` with no time window — each office's hours live on its own row and
-are checked against its own local clock, so a second timezone needs no code
-change. This requires the `[program:scheduler]` entry in
-`docker/supervisor/supervisord.conf` (`php artisan schedule:work`); without it
-nothing scheduled ever runs.
+Livestream viewers can opt in from the watch page to a "match just started"
+push (`SendMatchStartedNotificationJob`, queued from match creation and lobby
+start). No player is needed for that.
 
 **Setup:** `php artisan pingpong:vapid-keys` once per environment, put the pair
 in `.env`. Rotating them invalidates every stored browser subscription.
-Link players to Buro by setting their work email on the player edit page; the
-matchmaker caches `buro_user_id` on first match.
-
-Useful: `php artisan pingpong:matchmake --dry-run` reports who would be drawn
-without creating or sending anything; `--office=<id>` restricts it to one office.
 
 ## Architecture
 

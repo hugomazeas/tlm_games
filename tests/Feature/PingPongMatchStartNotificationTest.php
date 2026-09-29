@@ -17,7 +17,7 @@ use Tests\TestCase;
 
 /**
  * Covers the "a match just started" push that livestream viewers opt into
- * from the watch page, independently of the challenge matchmaker.
+ * from the watch page.
  */
 class PingPongMatchStartNotificationTest extends TestCase
 {
