@@ -72,6 +72,69 @@ class PushSubscriptionController extends Controller
         return response()->json(['deleted' => $deleted]);
     }
 
+    /**
+     * Opts a browser into "a match just started" alerts from the watch page.
+     *
+     * No player is needed. A browser already registered to a player keeps
+     * that player, so its challenge pushes carry on untouched.
+     */
+    public function subscribeToMatchStarts(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'endpoint' => 'required|string|max:2048',
+            'keys.p256dh' => 'required|string|max:255',
+            'keys.auth' => 'required|string|max:255',
+            'content_encoding' => 'nullable|string|in:aesgcm,aes128gcm',
+        ]);
+
+        $endpoint = $validated['endpoint'];
+
+        $subscription = PushSubscription::updateOrCreate(
+            ['endpoint_hash' => PushSubscription::hashEndpoint($endpoint)],
+            [
+                'endpoint' => $endpoint,
+                'public_key' => $validated['keys']['p256dh'],
+                'auth_token' => $validated['keys']['auth'],
+                'content_encoding' => $validated['content_encoding'] ?? 'aesgcm',
+                'notify_match_starts' => true,
+            ]
+        );
+
+        return response()->json([
+            'id' => $subscription->id,
+            'notify_match_starts' => true,
+        ], 201);
+    }
+
+    /**
+     * Opts a browser out of match-start alerts.
+     *
+     * An anonymous row exists only for these alerts, so it goes. A player's
+     * row stays, because it still carries their challenge pushes. `deleted`
+     * tells the browser whether it may drop its own push subscription too.
+     */
+    public function unsubscribeFromMatchStarts(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'endpoint' => 'required|string|max:2048',
+        ]);
+
+        $subscription = PushSubscription::where(
+            'endpoint_hash',
+            PushSubscription::hashEndpoint($validated['endpoint'])
+        )->first();
+
+        if ($subscription?->player_id) {
+            $subscription->update(['notify_match_starts' => false]);
+
+            return response()->json(['notify_match_starts' => false, 'deleted' => false]);
+        }
+
+        $subscription?->delete();
+
+        return response()->json(['notify_match_starts' => false, 'deleted' => true]);
+    }
+
     /** Sends a one-off notification so someone can prove the setup works. */
     public function test(Request $request, WebPushSender $sender): JsonResponse
     {

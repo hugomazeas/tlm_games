@@ -23,6 +23,7 @@ use App\Games\PingPong\Services\PracticeInsightsService;
 use App\Games\PingPong\Services\VideoRecordingService;
 use App\Games\PingPong\Services\WinProbabilityService;
 use App\Http\Controllers\Controller;
+use App\Jobs\SendMatchStartedNotificationJob;
 use App\Models\Office;
 use App\Models\Player;
 use Carbon\CarbonPeriod;
@@ -736,6 +737,7 @@ class PingPongApiController extends Controller
         }
 
         broadcast(new LiveMatchStarted($match));
+        SendMatchStartedNotificationJob::dispatch($match->id);
 
         return response()->json($match, 201);
     }

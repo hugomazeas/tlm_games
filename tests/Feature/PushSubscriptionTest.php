@@ -123,6 +123,88 @@ class PushSubscriptionTest extends TestCase
             ->assertJsonPath('public_key', 'pub');
     }
 
+    private function matchStartPayload(string $endpoint = self::ENDPOINT): array
+    {
+        return [
+            'endpoint' => $endpoint,
+            'keys' => ['p256dh' => 'p256dh-key', 'auth' => 'auth-token'],
+        ];
+    }
+
+    public function test_an_anonymous_viewer_can_opt_into_match_start_alerts(): void
+    {
+        $this->postJson('/push/match-starts/subscribe', $this->matchStartPayload())
+            ->assertCreated()
+            ->assertJsonPath('notify_match_starts', true);
+
+        $this->assertDatabaseHas('push_subscriptions', [
+            'player_id' => null,
+            'endpoint_hash' => PushSubscription::hashEndpoint(self::ENDPOINT),
+            'notify_match_starts' => true,
+        ]);
+    }
+
+    public function test_opting_a_player_browser_into_match_alerts_keeps_its_player(): void
+    {
+        $player = Player::create(['name' => 'Ada']);
+        $this->postJson('/push/subscribe', $this->subscribePayload($player->id))->assertCreated();
+
+        $this->postJson('/push/match-starts/subscribe', $this->matchStartPayload())->assertCreated();
+
+        $this->assertDatabaseCount('push_subscriptions', 1);
+        $this->assertDatabaseHas('push_subscriptions', [
+            'player_id' => $player->id,
+            'notify_match_starts' => true,
+        ]);
+    }
+
+    public function test_registering_for_challenges_does_not_clear_match_alerts(): void
+    {
+        $player = Player::create(['name' => 'Ada']);
+        $this->postJson('/push/match-starts/subscribe', $this->matchStartPayload())->assertCreated();
+
+        $this->postJson('/push/subscribe', $this->subscribePayload($player->id))->assertCreated();
+
+        $this->assertDatabaseHas('push_subscriptions', [
+            'player_id' => $player->id,
+            'notify_match_starts' => true,
+        ]);
+    }
+
+    public function test_match_alert_opt_in_rejects_a_payload_missing_its_keys(): void
+    {
+        $this->postJson('/push/match-starts/subscribe', ['endpoint' => self::ENDPOINT])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['keys.p256dh', 'keys.auth']);
+    }
+
+    public function test_an_anonymous_viewer_opting_out_drops_the_browser(): void
+    {
+        $this->postJson('/push/match-starts/subscribe', $this->matchStartPayload())->assertCreated();
+
+        $this->postJson('/push/match-starts/unsubscribe', ['endpoint' => self::ENDPOINT])
+            ->assertOk()
+            ->assertJsonPath('deleted', true);
+
+        $this->assertDatabaseCount('push_subscriptions', 0);
+    }
+
+    public function test_a_player_opting_out_of_match_alerts_keeps_their_challenge_pushes(): void
+    {
+        $player = Player::create(['name' => 'Ada']);
+        $this->postJson('/push/subscribe', $this->subscribePayload($player->id))->assertCreated();
+        $this->postJson('/push/match-starts/subscribe', $this->matchStartPayload())->assertCreated();
+
+        $this->postJson('/push/match-starts/unsubscribe', ['endpoint' => self::ENDPOINT])
+            ->assertOk()
+            ->assertJsonPath('deleted', false);
+
+        $this->assertDatabaseHas('push_subscriptions', [
+            'player_id' => $player->id,
+            'notify_match_starts' => false,
+        ]);
+    }
+
     public function test_the_notifications_page_renders(): void
     {
         Player::create(['name' => 'Ada']);
