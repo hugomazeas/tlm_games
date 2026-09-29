@@ -19,6 +19,16 @@ class PingPongWatchPageTest extends TestCase
         $response->assertSee('...pingPongChat()', false);
     }
 
+    public function test_watch_page_chat_follows_the_live_match(): void
+    {
+        $response = $this->get('/games/ping-pong/watch');
+
+        $response->assertOk();
+        $response->assertSee('this.joinChat(this.matchId)', false);
+        $response->assertSee('this.leaveChat()', false);
+        $response->assertSee('Chat opens when a match starts');
+    }
+
     public function test_watch_page_has_the_elo_toggle_and_cards(): void
     {
         $response = $this->get('/games/ping-pong/watch');
@@ -51,5 +61,15 @@ class PingPongWatchPageTest extends TestCase
         $response->assertSee('data-chat-column', false);
         $response->assertSee('data-chat-flash', false);
         $response->assertSee('lg:grid-cols-[3fr_2fr_3fr]', false);
+    }
+
+    public function test_chat_flash_covers_the_whole_screen_and_fits_its_text(): void
+    {
+        $html = $this->get('/games/ping-pong')->assertOk()->getContent();
+
+        $this->assertMatchesRegularExpression('/data-chat-flash\s[^>]*class="!fixed inset-0/s', $html);
+        $this->assertStringContainsString('data-chat-flash-body', $html);
+        $this->assertStringContainsString('fitChatFlash()', $html);
+        $this->assertStringNotContainsString('pph-display uppercase tracking-[0.02em] leading-tight', $html);
     }
 }

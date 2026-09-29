@@ -4,15 +4,18 @@ namespace App\Games\PingPong\Controllers;
 
 use App\Games\PingPong\Events\ChatMessagePosted;
 use App\Games\PingPong\Models\PingPongChatMessage;
+use App\Games\PingPong\Models\PingPongMatch;
 use App\Http\Controllers\Controller;
 use App\Models\Player;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Validation\ValidationException;
 
 /**
- * The livestream chat: one ongoing room viewers post into from /watch, shown
- * as history and flash overlays on the playing screen.
+ * The livestream chat: each match is its own room. Viewers post into it from
+ * /watch while the match is on; the playing screen shows its history and
+ * flashes each new message. A new match starts with an empty room.
  */
 class PingPongChatController extends Controller
 {
@@ -20,9 +23,14 @@ class PingPongChatController extends Controller
 
     private const COOLDOWN_SECONDS = 5;
 
-    public function messages(): JsonResponse
+    public function messages(Request $request): JsonResponse
     {
+        $validated = $request->validate([
+            'match_id' => 'required|integer|exists:ping_pong_matches,id',
+        ]);
+
         $messages = PingPongChatMessage::with('player')
+            ->where('match_id', $validated['match_id'])
             ->latest('created_at')
             ->latest('id')
             ->limit(self::HISTORY_LIMIT)
@@ -37,9 +45,14 @@ class PingPongChatController extends Controller
     public function post(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'match_id' => 'required|integer|exists:ping_pong_matches,id',
             'player_id' => 'required|integer|exists:players,id',
             'body' => 'required|string|max:200',
         ]);
+
+        if (PingPongMatch::whereKey($validated['match_id'])->whereNotNull('ended_at')->exists()) {
+            throw ValidationException::withMessages(['match_id' => 'This match has ended.']);
+        }
 
         $allowed = RateLimiter::attempt(
             'ping-pong-chat:'.$validated['player_id'],

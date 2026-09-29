@@ -1,46 +1,67 @@
 {{--
     Livestream chat state shared by /watch (viewers post) and the playing
     screen (read-only history + flash overlay). Spread into a component:
-    `...pingPongChat()`. The host component must provide `API` and
-    `ensureEcho()`; it can pass `onChatMessage(message)` for live arrivals.
+    `...pingPongChat()`. Each match is its own room: call `joinChat(matchId)`
+    when a match is on screen and `leaveChat()` when it goes. The host
+    component must provide `API` and `ensureEcho()`; it can pass
+    `onChatMessage(message)` for live arrivals.
 --}}
 <script>
 window.pingPongChat = () => ({
     chatMessages: [],
+    chatMatchId: null,
     chatChannel: null,
     chatHistoryLimit: 50,
 
+    /** Switches to a match's room: clears the old one, loads history, listens live. */
+    async joinChat(matchId) {
+        matchId = Number(matchId);
+        if (!matchId || matchId === this.chatMatchId) return;
+        this.leaveChat();
+        this.chatMatchId = matchId;
+
+        this.ensureEcho();
+        this.chatChannel = 'ping-pong.match.' + matchId + '.chat';
+        this.echo.channel(this.chatChannel)
+            .listen('.chat.message-posted', (e) => {
+                if (e.message && this.addChatMessage(e.message) && typeof this.onChatMessage === 'function') {
+                    this.onChatMessage(e.message);
+                }
+            });
+
+        await this.loadChatHistory();
+    },
+
+    leaveChat() {
+        if (this.echo && this.chatChannel) {
+            this.echo.leave(this.chatChannel);
+        }
+        this.chatChannel = null;
+        this.chatMatchId = null;
+        this.chatMessages = [];
+    },
+
     async loadChatHistory() {
+        const matchId = this.chatMatchId;
+        if (!matchId) return;
         try {
-            const res = await fetch(`${this.API}/chat/messages`);
-            if (!res.ok) return;
-            this.chatMessages = await res.json();
+            const res = await fetch(`${this.API}/chat/messages?match_id=${matchId}`);
+            // Ignore a late response for a room we've already left.
+            if (!res.ok || matchId !== this.chatMatchId) return;
+            const history = await res.json();
+            // Keep anything that arrived live while history was loading.
+            const known = new Set(history.map(m => m.id));
+            this.chatMessages = [...history, ...this.chatMessages.filter(m => !known.has(m.id))]
+                .slice(-this.chatHistoryLimit);
             this.scrollChatToBottom();
         } catch (err) {
             console.warn('Failed to load chat history:', err);
         }
     },
 
-    subscribeChat() {
-        if (this.chatChannel) return;
-        this.ensureEcho();
-        this.chatChannel = this.echo.channel('ping-pong.chat')
-            .listen('.chat.message-posted', (e) => {
-                if (e.message && this.addChatMessage(e.message) && typeof this.onChatMessage === 'function') {
-                    this.onChatMessage(e.message);
-                }
-            });
-    },
-
-    leaveChat() {
-        if (this.echo && this.chatChannel) {
-            this.echo.leave('ping-pong.chat');
-        }
-        this.chatChannel = null;
-    },
-
-    /** Returns false when the message is already listed (e.g. our own post echoing back). */
+    /** Returns false when the message is already listed or belongs to another room. */
     addChatMessage(message) {
+        if (message.match_id !== this.chatMatchId) return false;
         if (this.chatMessages.some(m => m.id === message.id)) return false;
         this.chatMessages = [...this.chatMessages, message].slice(-this.chatHistoryLimit);
         this.scrollChatToBottom();

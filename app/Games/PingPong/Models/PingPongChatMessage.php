@@ -10,7 +10,12 @@ class PingPongChatMessage extends Model
 {
     protected $table = 'ping_pong_chat_messages';
 
-    protected $fillable = ['player_id', 'body', 'created_at'];
+    protected $fillable = ['match_id', 'player_id', 'body', 'created_at'];
+
+    public function match(): BelongsTo
+    {
+        return $this->belongsTo(PingPongMatch::class, 'match_id');
+    }
 
     public function player(): BelongsTo
     {
@@ -20,7 +25,7 @@ class PingPongChatMessage extends Model
     /**
      * Shape shared by the history endpoint and the broadcast event.
      *
-     * @return array{id: int, body: string, created_at: string, player: array{id: int, name: string}}
+     * @return array{id: int, match_id: int, body: string, created_at: string, player: array{id: int, name: string}}
      */
     public function toChatPayload(): array
     {
@@ -28,6 +33,7 @@ class PingPongChatMessage extends Model
 
         return [
             'id' => $this->id,
+            'match_id' => $this->match_id,
             'body' => $this->body,
             'created_at' => $this->created_at->toIso8601String(),
             'player' => [
