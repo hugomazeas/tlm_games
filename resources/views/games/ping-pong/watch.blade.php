@@ -211,10 +211,32 @@
 
         @include('games.ping-pong.partials.chat-messages')
 
+        {{-- /giphy preview: Slack style, one GIF at a time from the search results. --}}
+        <template x-if="gifPicker">
+            <div data-gif-picker class="flex-shrink-0 rounded-lg border border-[#ffd166]/30 bg-[#f5ecd6]/[0.04] p-2.5 flex flex-col gap-2">
+                <div class="flex items-baseline justify-between gap-2 pph-mono text-[10px] tracking-[0.1em] uppercase">
+                    <span class="text-[#f5ecd6]/60 truncate">/giphy <span class="text-[#ffd166] normal-case" x-text="gifPicker.query"></span></span>
+                    <span class="text-[#f5ecd6]/35 flex-shrink-0" x-text="(gifPicker.index + 1) + ' / ' + gifPicker.results.length"></span>
+                </div>
+                <img :src="currentGif().preview_url" :alt="currentGif().title"
+                     :style="`aspect-ratio: ${currentGif().width || 4} / ${currentGif().height || 3}`"
+                     class="block w-full max-h-[180px] object-contain rounded-md bg-[#06081b]/60">
+                <div class="flex items-center gap-2">
+                    <span class="mr-auto pph-mono text-[9px] tracking-[0.14em] uppercase text-[#f5ecd6]/35">Powered by GIPHY</span>
+                    <button type="button" @click="shuffleGif()" :disabled="gifPicker.results.length < 2"
+                            class="px-2.5 py-1.5 rounded-md bg-[#f5ecd6]/[0.08] text-[#f5ecd6] border border-[#f5ecd6]/15 cursor-pointer pph-mono text-[10px] font-bold uppercase tracking-[0.12em] disabled:opacity-40 disabled:cursor-default">Shuffle</button>
+                    <button type="button" @click="cancelGif()"
+                            class="px-2.5 py-1.5 rounded-md bg-transparent text-[#f5ecd6]/70 border border-[#f5ecd6]/15 cursor-pointer pph-mono text-[10px] font-bold uppercase tracking-[0.12em]">Cancel</button>
+                    <button type="button" @click="sendGif()" :disabled="chatBusy"
+                            class="px-2.5 py-1.5 rounded-md bg-[#ffd166] text-[#06081b] border-0 cursor-pointer pph-mono text-[10px] font-bold uppercase tracking-[0.12em] disabled:opacity-40 disabled:cursor-default">Send</button>
+                </div>
+            </div>
+        </template>
+
         <form @submit.prevent="sendChatMessage()" class="flex-shrink-0 flex flex-col gap-1.5" data-chat-composer>
             <div class="flex gap-2">
                 <input type="text" x-model="chatDraft" maxlength="200" autocomplete="off"
-                       :disabled="!chatPlayer || !chatMatchId" :placeholder="!chatMatchId ? 'Chat opens when a match starts' : (chatPlayer ? 'Say something…' : 'Pick a name first')"
+                       :disabled="!chatPlayer || !chatMatchId" :placeholder="!chatMatchId ? 'Chat opens when a match starts' : (chatPlayer ? 'Say something… or /giphy cats' : 'Pick a name first')"
                        class="flex-1 min-w-0 rounded-md bg-[#f5ecd6]/[0.06] border border-[#f5ecd6]/15 px-3 py-2 text-[#f5ecd6] text-sm placeholder:text-[#f5ecd6]/30 focus:outline-none focus:border-[#ffd166]/60 disabled:opacity-50">
                 <button type="submit" :disabled="!chatPlayer || !chatMatchId || !chatDraft.trim() || chatBusy"
                         class="px-3 py-2 rounded-md bg-[#ffd166] text-[#06081b] border-0 cursor-pointer pph-mono text-[11px] font-bold uppercase tracking-[0.12em] disabled:opacity-40 disabled:cursor-default">Send</button>
@@ -269,6 +291,7 @@ function watchLive() {
         chatDraft: '',
         chatError: '',
         chatBusy: false,
+        gifPicker: null,
 
         // The ELO partial reads `mode`; on this page it follows the live match.
         get mode() {
@@ -350,38 +373,110 @@ function watchLive() {
         async sendChatMessage() {
             const body = this.chatDraft.trim();
             if (!body || !this.chatPlayer || !this.chatMatchId || this.chatBusy) return;
+            const giphy = body.match(/^\/giphy(?:\s+(.*))?$/i);
+            if (giphy) {
+                await this.searchGif((giphy[1] || '').trim());
+                return;
+            }
+            await this.postChatMessage({ body });
+        },
+
+        /** Runs a /giphy search and opens the preview on its first result. */
+        async searchGif(query) {
+            if (!query) {
+                this.chatError = 'Type something after /giphy.';
+                return;
+            }
             this.chatBusy = true;
             this.chatError = '';
             try {
-                const res = await fetch(`${this.API}/chat/messages`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': this.csrf },
-                    body: JSON.stringify({ match_id: this.chatMatchId, player_id: this.chatPlayer.id, body }),
-                });
+                const params = new URLSearchParams({ q: query, player_id: this.chatPlayer.id });
+                const res = await fetch(`${this.API}/chat/giphy?${params}`, { headers: { 'Accept': 'application/json' } });
                 const data = await res.json().catch(() => ({}));
-                if (res.status === 429) {
-                    this.chatError = 'Slow down — wait a few seconds.';
-                    return;
-                }
-                if (res.status === 422 && data.errors?.match_id) {
-                    this.chatError = 'This match has ended.';
-                    return;
-                }
                 if (res.status === 422 && data.errors?.player_id) {
-                    // The saved player was deleted; ask for a name again.
                     this.setChatPlayer(null);
                     this.chatError = 'Pick your name again.';
                     this.loadChatPlayerOptions();
                     return;
                 }
                 if (!res.ok) {
-                    this.chatError = data.errors?.body?.[0] || 'Message not sent.';
+                    this.chatError = data.errors?.q?.[0] || data.message || 'GIF search failed.';
                     return;
+                }
+                if (!data.length) {
+                    this.chatError = `No GIFs for “${query}”.`;
+                    return;
+                }
+                this.gifPicker = { query, results: data, index: 0 };
+            } catch (e) {
+                this.chatError = 'Network error — try again.';
+            } finally {
+                this.chatBusy = false;
+            }
+        },
+
+        currentGif() {
+            return this.gifPicker?.results[this.gifPicker.index] ?? null;
+        },
+
+        shuffleGif() {
+            if (!this.gifPicker || this.gifPicker.results.length < 2) return;
+            this.gifPicker = { ...this.gifPicker, index: (this.gifPicker.index + 1) % this.gifPicker.results.length };
+        },
+
+        cancelGif() {
+            this.gifPicker = null;
+        },
+
+        async sendGif() {
+            const gif = this.currentGif();
+            if (!gif || this.chatBusy) return;
+            const sent = await this.postChatMessage({ body: this.gifPicker.query, gif_id: gif.id });
+            if (sent) this.gifPicker = null;
+        },
+
+        /** Posts a text or /giphy message; returns true once it's in the chat. */
+        async postChatMessage(fields) {
+            if (!this.chatPlayer || !this.chatMatchId || this.chatBusy) return false;
+            this.chatBusy = true;
+            this.chatError = '';
+            try {
+                const res = await fetch(`${this.API}/chat/messages`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': this.csrf },
+                    body: JSON.stringify({ match_id: this.chatMatchId, player_id: this.chatPlayer.id, ...fields }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.status === 429) {
+                    this.chatError = 'Slow down — wait a few seconds.';
+                    return false;
+                }
+                if (res.status === 422 && data.errors?.match_id) {
+                    this.chatError = 'This match has ended.';
+                    return false;
+                }
+                if (res.status === 422 && data.errors?.gif_id) {
+                    this.gifPicker = null;
+                    this.chatError = data.errors.gif_id[0];
+                    return false;
+                }
+                if (res.status === 422 && data.errors?.player_id) {
+                    // The saved player was deleted; ask for a name again.
+                    this.setChatPlayer(null);
+                    this.chatError = 'Pick your name again.';
+                    this.loadChatPlayerOptions();
+                    return false;
+                }
+                if (!res.ok) {
+                    this.chatError = data.errors?.body?.[0] || 'Message not sent.';
+                    return false;
                 }
                 this.addChatMessage(data);
                 this.chatDraft = '';
+                return true;
             } catch (e) {
                 this.chatError = 'Network error — try again.';
+                return false;
             } finally {
                 this.chatBusy = false;
             }

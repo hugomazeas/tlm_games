@@ -8,7 +8,7 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 
 class ChatMessagePosted implements ShouldBroadcastNow
 {
-    /** @var array{id: int, match_id: int, body: string, created_at: string, player: array{id: int, name: string}} */
+    /** @var array{id: int, match_id: int, body: string, gif: array{title: string, preview_url: string, url: string, width: int, height: int}|null, created_at: string, player: array{id: int, name: string}} */
     public array $message;
 
     public function __construct(PingPongChatMessage $message)
