@@ -141,4 +141,14 @@ class PingPongWatchPageTest extends TestCase
         $this->assertStringContainsString("chatMessageCount() + ' msgs'", $html);
         $this->assertStringNotContainsString("chatMessages.length + ' msgs'", $html);
     }
+
+    public function test_watch_page_has_a_sound_button_that_hides_once_sound_is_on(): void
+    {
+        $html = $this->get('/games/ping-pong/watch')->assertOk()->getContent();
+
+        $this->assertMatchesRegularExpression('/x-show="hasVideo && !audioOn"[^>]*@click="enableAudio\(\)"[^>]*data-audio-enable/s', $html);
+        $this->assertStringContainsString('Click to turn on sound', $html);
+        $this->assertStringContainsString('video.muted = !this.audioOn', $html);
+        $this->assertMatchesRegularExpression('/<video[^>]*id="watchPlayer"[^>]*muted/s', $html);
+    }
 }

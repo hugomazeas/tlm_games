@@ -54,6 +54,18 @@
             <video x-show="hasVideo" id="watchPlayer" muted autoplay playsinline
                    class="w-full h-full object-contain bg-black absolute inset-0 -scale-x-100"></video>
 
+            {{-- Browsers only autoplay muted: one click turns the sound on for the rest of the visit. --}}
+            <button type="button" x-show="hasVideo && !audioOn" @click="enableAudio()" data-audio-enable
+                    class="absolute z-20 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 inline-flex items-center gap-3 px-7 py-4 rounded-full bg-[#ffd166] text-[#06081b] border-0 cursor-pointer shadow-[0_8px_32px_rgba(0,0,0,0.6)] hover:bg-white hover:scale-105 transition">
+                <span class="absolute inset-0 rounded-full bg-[#ffd166] animate-ping opacity-40 pointer-events-none"></span>
+                <svg class="relative" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                    <line x1="23" y1="9" x2="17" y2="15"></line>
+                    <line x1="17" y1="9" x2="23" y2="15"></line>
+                </svg>
+                <span class="relative pph-display text-[clamp(18px,2.2vw,26px)] tracking-[0.04em] uppercase">Click to turn on sound</span>
+            </button>
+
             {{-- Score-only mode --}}
             <template x-if="!hasVideo">
                 <div class="flex flex-col items-center gap-6">
@@ -236,6 +248,7 @@ function watchLive() {
         matchActive: false,
         hasVideo: false,
         hlsInstance: null,
+        audioOn: false,
         match: null,
         matchId: null,
         countdown: 10,
@@ -550,7 +563,7 @@ function watchLive() {
                 this.hlsInstance = hls;
                 hls.loadSource(hlsUrl);
                 hls.attachMedia(video);
-                hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+                hls.on(Hls.Events.MANIFEST_PARSED, () => this.startVideo(video));
                 hls.on(Hls.Events.ERROR, (event, data) => {
                     if (!data.fatal) return;
                     if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
@@ -569,8 +582,31 @@ function watchLive() {
                 });
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                 video.src = hlsUrl;
-                video.play().catch(() => {});
+                this.startVideo(video);
             }
+        },
+
+        /** Plays with sound if the viewer turned it on; falls back to muted if the browser refuses. */
+        startVideo(video) {
+            video.muted = !this.audioOn;
+            video.play().catch(() => {
+                if (video.muted) return;
+                this.audioOn = false;
+                video.muted = true;
+                video.play().catch(() => {});
+            });
+        },
+
+        enableAudio() {
+            const video = document.getElementById('watchPlayer');
+            if (!video) return;
+            this.audioOn = true;
+            video.muted = false;
+            video.volume = 1;
+            video.play().catch(() => {
+                this.audioOn = false;
+                video.muted = true;
+            });
         },
 
         destroyPlayer() {
