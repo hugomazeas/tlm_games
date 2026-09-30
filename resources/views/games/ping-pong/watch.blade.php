@@ -84,10 +84,30 @@
                 </div>
             </template>
 
-            {{-- LIVE badge --}}
-            <div class="absolute top-4 left-4 flex items-center gap-1.5 bg-black/70 px-3 py-1 rounded-md backdrop-blur-sm">
-                <span class="pph-flicker w-2 h-2 rounded-full bg-[#ff5a4a]"></span>
-                <span class="pph-mono text-white text-[11px] font-bold tracking-[0.18em]">LIVE</span>
+            {{-- LIVE badge, viewer count, and who just joined --}}
+            <div class="absolute top-4 left-4 flex flex-col items-start gap-2">
+                <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-1.5 bg-black/70 px-3 py-1 rounded-md backdrop-blur-sm">
+                        <span class="pph-flicker w-2 h-2 rounded-full bg-[#ff5a4a]"></span>
+                        <span class="pph-mono text-white text-[11px] font-bold tracking-[0.18em]">LIVE</span>
+                    </div>
+                    <div x-show="viewerCount() > 0" data-viewer-count
+                         class="flex items-center gap-1.5 bg-black/70 px-3 py-1 rounded-md backdrop-blur-sm pph-mono text-white text-[11px] font-bold tracking-[0.14em] uppercase"
+                         :title="namedViewers().map(v => v.name).join(', ')">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                        <span x-text="viewerCount() + ' watching'"></span>
+                    </div>
+                </div>
+                <template x-for="join in viewerJoins" :key="join.key">
+                    <div data-viewer-join
+                         x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 -translate-x-2" x-transition:enter-end="opacity-100 translate-x-0"
+                         class="bg-black/70 px-3 py-1 rounded-md backdrop-blur-sm pph-mono text-[11px] tracking-[0.12em] uppercase text-[#f5ecd6]/80">
+                        <span class="text-[#ffd166] font-bold" x-text="join.name"></span> joined
+                    </div>
+                </template>
             </div>
 
             {{-- Corner scores over video --}}
@@ -148,6 +168,10 @@
             <button type="button" @click="closeChat()" class="bg-transparent border-0 text-[#f5ecd6]/50 hover:text-[#f5ecd6] cursor-pointer pph-mono text-[11px] uppercase tracking-[0.14em]">Hide →</button>
         </header>
 
+        <template x-if="chatMatchId">
+            @include('games.ping-pong.partials.viewers-list')
+        </template>
+
         {{-- Who am I --}}
         <template x-if="chatPlayer">
             <p class="m-0 flex-shrink-0 pph-mono text-[11px] tracking-[0.1em] uppercase text-[#f5ecd6]/50">
@@ -198,12 +222,14 @@
 @include('games.ping-pong.partials.elo-preview-script')
 @include('games.ping-pong.partials.chat-script')
 @include('games.ping-pong.partials.match-alerts-script')
+@include('games.ping-pong.partials.viewers-script')
 <script>
 function watchLive() {
     return {
         ...pingPongEloPreview(),
         ...pingPongChat(),
         ...pingPongMatchAlerts(),
+        ...pingPongViewers(),
 
         API: '/games/ping-pong/api',
         csrf: document.querySelector('meta[name="csrf-token"]').content,
@@ -273,6 +299,8 @@ function watchLive() {
             } else {
                 localStorage.removeItem('ping_pong_chat_player');
             }
+            // Clearing the name to pick another keeps the old one on the viewer list until then.
+            if (player && player.id !== this.viewersPlayerId) this.rejoinViewers();
         },
 
         changeChatPlayer() {
@@ -357,7 +385,12 @@ function watchLive() {
                 disableStats: true,
                 enabledTransports: ['ws', 'wss'],
                 cluster: 'mt1',
+                channelAuthorization: { customHandler: (params, callback) => this.authorizeViewers(params, callback) },
             });
+        },
+
+        viewerIdentity() {
+            return { role: 'viewer', player_id: this.chatPlayer?.id ?? null };
         },
         shareResetTimer: null,
 
@@ -413,6 +446,7 @@ function watchLive() {
                         this.$nextTick(() => this.initPlayer(recData.hls_url));
                         this.subscribeToScores();
                         this.joinChat(this.matchId);
+                        this.joinViewers(this.matchId);
                         this.loadEloPreview();
                         this.startHealthCheck();
                         return;
@@ -431,6 +465,7 @@ function watchLive() {
                         this.stopPolling();
                         this.subscribeToScores();
                         this.joinChat(this.matchId);
+                        this.joinViewers(this.matchId);
                         this.loadEloPreview();
                         this.startHealthCheck();
                         return;
@@ -495,6 +530,7 @@ function watchLive() {
             this.destroyPlayer();
             this.leaveMatchChannel();
             this.leaveChat();
+            this.leaveViewers();
             this.chatUnread = 0;
             this.startPolling();
         },

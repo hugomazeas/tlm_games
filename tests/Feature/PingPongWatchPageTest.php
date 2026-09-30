@@ -95,4 +95,31 @@ class PingPongWatchPageTest extends TestCase
         $this->assertStringContainsString('fitChatFlash()', $html);
         $this->assertStringNotContainsString('pph-display uppercase tracking-[0.02em] leading-tight', $html);
     }
+
+    public function test_watch_page_shows_the_viewer_count_and_who_joins(): void
+    {
+        $response = $this->get('/games/ping-pong/watch');
+
+        $response->assertOk();
+        $response->assertSee('...pingPongViewers()', false);
+        $response->assertSee('data-viewer-count', false);
+        $response->assertSee('data-viewer-join', false);
+        $response->assertSee('data-viewers-list', false);
+        $response->assertSee('this.joinViewers(this.matchId)', false);
+        $response->assertSee('this.leaveViewers()', false);
+        $response->assertSee("role: 'viewer'", false);
+        $response->assertSee('/viewers/auth', false);
+    }
+
+    public function test_playing_screen_lists_viewers_without_counting_itself(): void
+    {
+        $response = $this->get('/games/ping-pong');
+
+        $response->assertOk();
+        $response->assertSee('...pingPongViewers()', false);
+        $response->assertSee('data-viewers-list', false);
+        $response->assertSee('data-viewer-join', false);
+        $response->assertSee('this.joinViewers(matchId)', false);
+        $response->assertSee("role: 'screen'", false);
+    }
 }
