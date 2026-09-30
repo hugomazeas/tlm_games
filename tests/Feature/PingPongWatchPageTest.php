@@ -95,4 +95,50 @@ class PingPongWatchPageTest extends TestCase
         $this->assertStringContainsString('fitChatFlash()', $html);
         $this->assertStringNotContainsString('pph-display uppercase tracking-[0.02em] leading-tight', $html);
     }
+
+    public function test_watch_page_shows_the_viewer_count_and_who_joins(): void
+    {
+        $response = $this->get('/games/ping-pong/watch');
+
+        $response->assertOk();
+        $response->assertSee('...pingPongViewers()', false);
+        $response->assertSee('data-viewer-count', false);
+        $response->assertSee('data-viewer-join', false);
+        $response->assertSee('data-viewers-list', false);
+        $response->assertSee('this.joinViewers(this.matchId)', false);
+        $response->assertSee('this.leaveViewers()', false);
+        $response->assertSee("role: 'viewer'", false);
+        $response->assertSee('/viewers/auth', false);
+    }
+
+    public function test_playing_screen_lists_viewers_without_counting_itself(): void
+    {
+        $response = $this->get('/games/ping-pong');
+
+        $response->assertOk();
+        $response->assertSee('...pingPongViewers()', false);
+        $response->assertSee('data-viewers-list', false);
+        $response->assertSee('data-viewer-join', false);
+        $response->assertSee('this.joinViewers(matchId)', false);
+        $response->assertSee("role: 'screen'", false);
+    }
+
+    public function test_both_screens_print_a_line_when_someone_joins_the_chat(): void
+    {
+        foreach (['/games/ping-pong/watch', '/games/ping-pong'] as $url) {
+            $html = $this->get($url)->assertOk()->getContent();
+
+            $this->assertStringContainsString('data-chat-join', $html, $url);
+            $this->assertStringContainsString('joined the chat', $html, $url);
+            $this->assertStringContainsString('this.addChatJoin(member.name)', $html, $url);
+        }
+    }
+
+    public function test_the_playing_screen_counts_only_real_messages(): void
+    {
+        $html = $this->get('/games/ping-pong')->assertOk()->getContent();
+
+        $this->assertStringContainsString("chatMessageCount() + ' msgs'", $html);
+        $this->assertStringNotContainsString("chatMessages.length + ' msgs'", $html);
+    }
 }

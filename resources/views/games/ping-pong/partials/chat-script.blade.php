@@ -68,6 +68,28 @@ window.pingPongChat = () => ({
         return true;
     },
 
+    /**
+     * Adds a "<name> joined the chat" line, Minecraft style. It lives only in
+     * this browser: it isn't stored, so later arrivals don't see past joins.
+     */
+    addChatJoin(name) {
+        if (!this.chatMatchId || !name) return;
+        const line = {
+            id: 'join-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+            type: 'join',
+            match_id: this.chatMatchId,
+            player: { name },
+            created_at: new Date().toISOString(),
+        };
+        this.chatMessages = [...this.chatMessages, line].slice(-this.chatHistoryLimit);
+        this.scrollChatToBottom();
+    },
+
+    /** Real messages only, leaving out join lines. */
+    chatMessageCount() {
+        return this.chatMessages.filter(m => m.type !== 'join').length;
+    },
+
     scrollChatToBottom() {
         this.$nextTick(() => {
             this.$root.querySelectorAll('[data-chat-scroll]').forEach(el => {

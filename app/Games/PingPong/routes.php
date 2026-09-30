@@ -4,6 +4,7 @@ use App\Games\PingPong\Controllers\PingPongApiController;
 use App\Games\PingPong\Controllers\PingPongChatController;
 use App\Games\PingPong\Controllers\PingPongController;
 use App\Games\PingPong\Controllers\PingPongLobbyApiController;
+use App\Games\PingPong\Controllers\PingPongViewerController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/games/ping-pong', [PingPongController::class, 'play']);
@@ -71,3 +72,6 @@ Route::delete('/games/ping-pong/api/lobbies/{code}', [PingPongLobbyApiController
 Route::get('/games/ping-pong/api/chat/messages', [PingPongChatController::class, 'messages']);
 Route::post('/games/ping-pong/api/chat/messages', [PingPongChatController::class, 'post']);
 Route::post('/games/ping-pong/api/chat/identify', [PingPongChatController::class, 'identify']);
+
+// Viewer presence (signs /watch viewers and the playing screen into a match's presence channel)
+Route::post('/games/ping-pong/api/viewers/auth', [PingPongViewerController::class, 'auth']);

@@ -384,8 +384,11 @@
                 <section data-chat-column class="order-last lg:order-none col-span-2 lg:col-span-1 flex flex-col min-h-0 max-h-[30vh] lg:max-h-none rounded-2xl border-2 border-[#f5ecd6]/10 bg-[#06081b]/40 p-3 md:p-4">
                     <header class="flex items-center justify-between pb-2 mb-2 border-b border-[#f5ecd6]/10 flex-shrink-0">
                         <span class="pph-mono text-[11px] font-bold tracking-[0.2em] uppercase text-[#f5ecd6]/70">Viewer chat</span>
-                        <span class="pph-mono text-[10px] tracking-[0.14em] uppercase text-[#f5ecd6]/35" x-text="chatMessages.length + ' msgs'"></span>
+                        <span class="pph-mono text-[10px] tracking-[0.14em] uppercase text-[#f5ecd6]/35" x-text="chatMessageCount() + ' msgs'"></span>
                     </header>
+                    <div class="pb-2 mb-2 border-b border-[#f5ecd6]/10 flex-shrink-0">
+                        @include('games.ping-pong.partials.viewers-list')
+                    </div>
                     @include('games.ping-pong.partials.chat-messages')
                     <footer class="pt-2 mt-2 border-t border-[#f5ecd6]/10 text-center pph-mono text-[10px] tracking-[0.16em] uppercase text-[#f5ecd6]/35 flex-shrink-0">
                         Chat at /games/ping-pong/watch
@@ -434,6 +437,17 @@
 
                     @include('games.ping-pong.partials.elo-preview', ['side' => 'right'])
                 </div>
+            </div>
+
+            {{-- ===== Viewer joins: a named viewer arriving on /watch gets a toast ===== --}}
+            <div class="!fixed top-4 left-1/2 -translate-x-1/2 !z-[90] flex flex-col items-center gap-2 pointer-events-none">
+                <template x-for="join in viewerJoins" :key="join.key">
+                    <div data-viewer-join
+                         x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 -translate-y-2" x-transition:enter-end="opacity-100 translate-y-0"
+                         class="px-5 py-2 rounded-full bg-[#06081b]/90 border border-[#ffd166]/40 backdrop-blur-sm pph-mono text-[clamp(13px,1.6vh,18px)] tracking-[0.12em] uppercase text-[#f5ecd6]/85 shadow-lg">
+                        <span class="text-[#ffd166] font-bold" x-text="join.name"></span> is watching
+                    </div>
+                </template>
             </div>
 
             {{-- ===== Chat flash: each new viewer message takes the whole screen for 5s ===== --}}
@@ -494,11 +508,13 @@
 <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
 @include('games.ping-pong.partials.elo-preview-script')
 @include('games.ping-pong.partials.chat-script')
+@include('games.ping-pong.partials.viewers-script')
 <script>
 function pingPong() {
     return {
         ...pingPongEloPreview(),
         ...pingPongChat(),
+        ...pingPongViewers(),
 
         API: '/games/ping-pong/api',
         csrf: document.querySelector('meta[name="csrf-token"]').content,
@@ -834,6 +850,7 @@ function pingPong() {
                     disableStats: true,
                     enabledTransports: ['ws', 'wss'],
                     cluster: 'mt1',
+                    channelAuthorization: { customHandler: (params, callback) => this.authorizeViewers(params, callback) },
                 });
                 this.echo.connector.pusher.connection.bind('connected', () => {
                     console.log('[WS] Connected to Reverb');
@@ -1122,12 +1139,19 @@ function pingPong() {
             this.chatFlashQueue = [];
             this.dismissChatFlash();
             this.joinChat(matchId);
+            this.joinViewers(matchId);
         },
 
         stopChat() {
             this.leaveChat();
+            this.leaveViewers();
             this.chatFlashQueue = [];
             this.dismissChatFlash();
+        },
+
+        /** The playing screen reads the viewer list without being counted in it. */
+        viewerIdentity() {
+            return { role: 'screen', player_id: null };
         },
 
         onChatMessage(message) {
