@@ -72,6 +72,7 @@ Route::delete('/games/ping-pong/api/lobbies/{code}', [PingPongLobbyApiController
 Route::get('/games/ping-pong/api/chat/messages', [PingPongChatController::class, 'messages']);
 Route::post('/games/ping-pong/api/chat/messages', [PingPongChatController::class, 'post']);
 Route::post('/games/ping-pong/api/chat/identify', [PingPongChatController::class, 'identify']);
+Route::get('/games/ping-pong/api/chat/giphy', [PingPongChatController::class, 'giphy']);
 
 // Viewer presence (signs /watch viewers and the playing screen into a match's presence channel)
 Route::post('/games/ping-pong/api/viewers/auth', [PingPongViewerController::class, 'auth']);

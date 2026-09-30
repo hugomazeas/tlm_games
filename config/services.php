@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    'giphy' => [
+        'key' => env('GIPHY_API_KEY'),
+        'rating' => 'pg',
+        // Beta keys allow ~100 calls/hour; stay under it.
+        'hourly_limit' => (int) env('GIPHY_HOURLY_LIMIT', 90),
+    ],
+
 ];

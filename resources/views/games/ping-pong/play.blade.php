@@ -461,9 +461,17 @@
                 <div class="flex-shrink-0 text-center font-bold tracking-[0.04em] text-[#ffd166] text-[clamp(32px,7vh,96px)] truncate" x-text="chatFlash?.player?.name"></div>
                 {{-- Font size is set by fitChatFlash() so the message fills this box. --}}
                 <div data-chat-flash-box class="flex-1 min-h-0 flex items-center justify-center overflow-hidden">
-                    <p data-chat-flash-body
+                    <p data-chat-flash-body x-show="!chatFlash?.gif"
                        class="m-0 max-w-full text-center font-bold leading-[1.12] tracking-[-0.01em] text-[#f5ecd6] [text-wrap:balance]"
                        x-text="chatFlash?.body"></p>
+                    {{-- A /giphy message fills the box with its GIF instead. --}}
+                    <template x-if="chatFlash?.gif">
+                        <img data-chat-flash-gif :src="chatFlash.gif.url" :alt="chatFlash.gif.title"
+                             class="block w-full h-full object-contain rounded-2xl">
+                    </template>
+                </div>
+                <div x-show="chatFlash?.gif" class="flex-shrink-0 mt-[2vh] text-center pph-mono text-[clamp(14px,2.4vh,28px)] tracking-[0.1em] text-[#f5ecd6]/55 truncate">
+                    /giphy <span x-text="chatFlash?.body"></span>
                 </div>
             </div>
 
@@ -1182,7 +1190,7 @@ function pingPong() {
          * readable size, then it may break mid-word.
          */
         fitChatFlash() {
-            if (!this.chatFlash) return;
+            if (!this.chatFlash || this.chatFlash.gif) return;
             this.$nextTick(() => {
                 const box = this.$root.querySelector('[data-chat-flash-box]');
                 const body = this.$root.querySelector('[data-chat-flash-body]');
