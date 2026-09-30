@@ -122,4 +122,23 @@ class PingPongWatchPageTest extends TestCase
         $response->assertSee('this.joinViewers(matchId)', false);
         $response->assertSee("role: 'screen'", false);
     }
+
+    public function test_both_screens_print_a_line_when_someone_joins_the_chat(): void
+    {
+        foreach (['/games/ping-pong/watch', '/games/ping-pong'] as $url) {
+            $html = $this->get($url)->assertOk()->getContent();
+
+            $this->assertStringContainsString('data-chat-join', $html, $url);
+            $this->assertStringContainsString('joined the chat', $html, $url);
+            $this->assertStringContainsString('this.addChatJoin(member.name)', $html, $url);
+        }
+    }
+
+    public function test_the_playing_screen_counts_only_real_messages(): void
+    {
+        $html = $this->get('/games/ping-pong')->assertOk()->getContent();
+
+        $this->assertStringContainsString("chatMessageCount() + ' msgs'", $html);
+        $this->assertStringNotContainsString("chatMessages.length + ' msgs'", $html);
+    }
 }

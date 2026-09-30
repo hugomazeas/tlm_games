@@ -384,7 +384,7 @@
                 <section data-chat-column class="order-last lg:order-none col-span-2 lg:col-span-1 flex flex-col min-h-0 max-h-[30vh] lg:max-h-none rounded-2xl border-2 border-[#f5ecd6]/10 bg-[#06081b]/40 p-3 md:p-4">
                     <header class="flex items-center justify-between pb-2 mb-2 border-b border-[#f5ecd6]/10 flex-shrink-0">
                         <span class="pph-mono text-[11px] font-bold tracking-[0.2em] uppercase text-[#f5ecd6]/70">Viewer chat</span>
-                        <span class="pph-mono text-[10px] tracking-[0.14em] uppercase text-[#f5ecd6]/35" x-text="chatMessages.length + ' msgs'"></span>
+                        <span class="pph-mono text-[10px] tracking-[0.14em] uppercase text-[#f5ecd6]/35" x-text="chatMessageCount() + ' msgs'"></span>
                     </header>
                     <div class="pb-2 mb-2 border-b border-[#f5ecd6]/10 flex-shrink-0">
                         @include('games.ping-pong.partials.viewers-list')
