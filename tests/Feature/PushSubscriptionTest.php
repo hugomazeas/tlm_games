@@ -161,7 +161,7 @@ class PushSubscriptionTest extends TestCase
         ]);
     }
 
-    public function test_registering_for_challenges_does_not_clear_match_alerts(): void
+    public function test_registering_to_a_player_does_not_clear_match_alerts(): void
     {
         $player = Player::create(['name' => 'Ada']);
         $this->postJson('/push/match-starts/subscribe', $this->matchStartPayload())->assertCreated();
@@ -205,7 +205,7 @@ class PushSubscriptionTest extends TestCase
         $this->assertDatabaseCount('push_subscriptions', 0);
     }
 
-    public function test_a_player_opting_out_of_match_alerts_keeps_their_challenge_pushes(): void
+    public function test_a_player_opting_out_of_match_alerts_keeps_their_player_registration(): void
     {
         $player = Player::create(['name' => 'Ada']);
         $this->postJson('/push/subscribe', $this->subscribePayload($player->id))->assertCreated();

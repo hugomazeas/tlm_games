@@ -14,9 +14,7 @@ use Illuminate\Support\Facades\Log;
  * Tells livestream viewers a match just started, so they don't have to keep
  * the watch page open to catch it.
  *
- * Goes to every browser that opted in from the watch page, player or not. It
- * is independent of `pingpong.challenges_enabled`: this is about watching,
- * not about being drawn to play.
+ * Goes to every browser that opted in from the watch page, player or not.
  */
 class SendMatchStartedNotificationJob implements ShouldQueue
 {

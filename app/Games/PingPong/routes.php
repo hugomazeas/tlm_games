@@ -1,11 +1,9 @@
 <?php
 
 use App\Games\PingPong\Controllers\PingPongApiController;
-use App\Games\PingPong\Controllers\PingPongChallengeApiController;
 use App\Games\PingPong\Controllers\PingPongChatController;
 use App\Games\PingPong\Controllers\PingPongController;
 use App\Games\PingPong\Controllers\PingPongLobbyApiController;
-use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/games/ping-pong', [PingPongController::class, 'play']);
@@ -73,21 +71,3 @@ Route::delete('/games/ping-pong/api/lobbies/{code}', [PingPongLobbyApiController
 Route::get('/games/ping-pong/api/chat/messages', [PingPongChatController::class, 'messages']);
 Route::post('/games/ping-pong/api/chat/messages', [PingPongChatController::class, 'post']);
 Route::post('/games/ping-pong/api/chat/identify', [PingPongChatController::class, 'identify']);
-
-// Challenge API
-Route::get('/games/ping-pong/challenges', [PingPongController::class, 'challenges']);
-
-// Before the {id} route, which would otherwise swallow "current".
-Route::get('/games/ping-pong/api/challenges/current', [PingPongChallengeApiController::class, 'current']);
-Route::get('/games/ping-pong/api/challenges/{id}', [PingPongChallengeApiController::class, 'show'])
-    ->whereNumber('id');
-Route::post('/games/ping-pong/api/challenges/{id}/redraw', [PingPongChallengeApiController::class, 'redraw'])
-    ->whereNumber('id');
-
-// Respond is exempt from CSRF because the service worker answers notification
-// action buttons from a background context with no access to the CSRF meta
-// tag. It is gated instead on the per-player HMAC carried in the push payload
-// -- see PingPongChallenge::responseTokenFor().
-Route::post('/games/ping-pong/api/challenges/{id}/respond', [PingPongChallengeApiController::class, 'respond'])
-    ->whereNumber('id')
-    ->withoutMiddleware([VerifyCsrfToken::class]);
