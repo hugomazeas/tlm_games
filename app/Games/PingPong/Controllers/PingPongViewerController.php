@@ -30,7 +30,8 @@ class PingPongViewerController extends Controller
             'channel_name' => ['required', 'string', 'regex:'.self::CHANNEL_PATTERN],
             'role' => 'required|in:viewer,screen',
             'viewer_id' => ['required', 'string', 'max:64', 'regex:/^[A-Za-z0-9_-]+$/'],
-            'player_id' => 'nullable|integer|exists:players,id',
+            // Not `exists`: a browser can remember a player that was since deleted; it watches as a guest.
+            'player_id' => 'nullable|integer',
         ]);
 
         preg_match(self::CHANNEL_PATTERN, $validated['channel_name'], $channel);

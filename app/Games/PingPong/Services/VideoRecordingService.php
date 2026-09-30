@@ -10,8 +10,11 @@ use Illuminate\Support\Facades\Log;
 class VideoRecordingService
 {
     private string $hlsBasePath;
+
     private string $videoBasePath;
+
     private string $videoDevice;
+
     private string $audioDevice;
 
     public function __construct()
@@ -26,11 +29,11 @@ class VideoRecordingService
     {
         $active = $this->getActiveRecording();
         if ($active) {
-            throw new \RuntimeException('Another recording is already active (match #' . $active->match_id . ')');
+            throw new \RuntimeException('Another recording is already active (match #'.$active->match_id.')');
         }
 
-        $hlsDir = $this->hlsBasePath . '/' . $match->id;
-        if (!is_dir($hlsDir)) {
+        $hlsDir = $this->hlsBasePath.'/'.$match->id;
+        if (! is_dir($hlsDir)) {
             mkdir($hlsDir, 0775, true);
         }
 
@@ -40,16 +43,16 @@ class VideoRecordingService
         $recording = PingPongRecording::create([
             'match_id' => $match->id,
             'status' => 'pending',
-            'hls_path' => 'recordings/live/' . $match->id,
+            'hls_path' => 'recordings/live/'.$match->id,
         ]);
 
-        $segmentPattern = $hlsDir . '/segment%03d.ts';
-        $m3u8Path = $hlsDir . '/stream.m3u8';
+        $segmentPattern = $hlsDir.'/segment%03d.ts';
+        $m3u8Path = $hlsDir.'/stream.m3u8';
 
         $pid = $this->spawnFfmpeg($segmentPattern, $m3u8Path, withAudio: $this->audioDevice !== '');
 
         // ponytail: a missing/busy mic shouldn't cost the whole recording, so retry video-only
-        if ($pid > 0 && !$this->isProcessRunning($pid) && $this->audioDevice !== '') {
+        if ($pid > 0 && ! $this->isProcessRunning($pid) && $this->audioDevice !== '') {
             Log::warning('FFmpeg failed with audio, retrying video-only', ['match_id' => $match->id, 'audio_device' => $this->audioDevice]);
             $pid = $this->spawnFfmpeg($segmentPattern, $m3u8Path, withAudio: false);
         }
@@ -59,9 +62,9 @@ class VideoRecordingService
             throw new \RuntimeException('Failed to start FFmpeg process');
         }
 
-        if (!$this->isProcessRunning($pid)) {
+        if (! $this->isProcessRunning($pid)) {
             $recording->update(['status' => 'failed', 'error_message' => 'FFmpeg process exited immediately']);
-            throw new \RuntimeException('FFmpeg process exited immediately (PID: ' . $pid . ')');
+            throw new \RuntimeException('FFmpeg process exited immediately (PID: '.$pid.')');
         }
 
         $recording->update([
@@ -78,7 +81,7 @@ class VideoRecordingService
     {
         $recording = $match->recording;
 
-        if (!$recording || $recording->status !== 'recording') {
+        if (! $recording || $recording->status !== 'recording') {
             return $recording;
         }
 
@@ -126,16 +129,17 @@ class VideoRecordingService
     public function buildFfmpegCommand(string $segmentPattern, string $m3u8Path, bool $withAudio): string
     {
         $audioInput = $withAudio
-            ? '-f alsa -thread_queue_size 1024 -i ' . escapeshellarg($this->audioDevice) . ' '
+            ? '-f alsa -thread_queue_size 1024 -i '.escapeshellarg($this->audioDevice).' '
             : '';
-        $audioCodec = $withAudio ? '-c:a aac -b:a 96k ' : '';
+        // Downmixed to mono (-ac 1); clips and the final file inherit it.
+        $audioCodec = $withAudio ? '-c:a aac -ac 1 -b:a 96k ' : '';
 
         return sprintf(
             'nohup ffmpeg -f v4l2 -thread_queue_size 512 -video_size 1280x720 -framerate 30 -input_format mjpeg '
-            . '-i %s %s-vf "hflip,vflip" -c:v libx264 -pix_fmt yuv420p -preset ultrafast -tune zerolatency -g 60 '
-            . '%s-f hls -hls_time 2 -hls_list_size 0 -hls_flags append_list '
-            . '-hls_segment_filename %s %s '
-            . '> /dev/null 2>&1 & echo $!',
+            .'-i %s %s-vf "hflip,vflip" -c:v libx264 -pix_fmt yuv420p -preset ultrafast -tune zerolatency -g 60 '
+            .'%s-f hls -hls_time 2 -hls_list_size 0 -hls_flags append_list '
+            .'-hls_segment_filename %s %s '
+            .'> /dev/null 2>&1 & echo $!',
             escapeshellarg($this->videoDevice),
             $audioInput,
             $audioCodec,
@@ -148,7 +152,7 @@ class VideoRecordingService
     {
         $recording = PingPongRecording::where('status', 'recording')->first();
 
-        if (!$recording) {
+        if (! $recording) {
             return null;
         }
 
@@ -160,10 +164,11 @@ class VideoRecordingService
                 'match_id' => $recording->match_id,
             ]);
             $this->stopRecording($match);
+
             return null;
         }
 
-        if ($recording->ffmpeg_pid && !$this->isProcessRunning($recording->ffmpeg_pid)) {
+        if ($recording->ffmpeg_pid && ! $this->isProcessRunning($recording->ffmpeg_pid)) {
             Log::warning('Clearing stale recording with dead FFmpeg process', [
                 'recording_id' => $recording->id,
                 'match_id' => $recording->match_id,
@@ -175,6 +180,7 @@ class VideoRecordingService
                 'error_message' => 'FFmpeg process died (likely container restart)',
             ]);
             $this->cleanupHlsDir($recording->match_id);
+
             return null;
         }
 
@@ -201,14 +207,14 @@ class VideoRecordingService
 
         // Clean up stale HLS directories with no matching active or finalizing recording
         if (is_dir($this->hlsBasePath)) {
-            $dirs = glob($this->hlsBasePath . '/*', GLOB_ONLYDIR);
+            $dirs = glob($this->hlsBasePath.'/*', GLOB_ONLYDIR);
             foreach ($dirs as $dir) {
                 $matchId = basename($dir);
                 $hasActive = PingPongRecording::where('match_id', $matchId)
                     ->whereIn('status', ['recording', 'finalizing'])
                     ->exists();
 
-                if (!$hasActive) {
+                if (! $hasActive) {
                     $this->removeDirectory($dir);
                     $cleaned['dirs_removed']++;
                 }
@@ -220,7 +226,7 @@ class VideoRecordingService
 
     private function cleanupHlsDir(int $matchId): void
     {
-        $hlsDir = $this->hlsBasePath . '/' . $matchId;
+        $hlsDir = $this->hlsBasePath.'/'.$matchId;
         if (is_dir($hlsDir)) {
             $this->removeDirectory($hlsDir);
         }
@@ -228,7 +234,7 @@ class VideoRecordingService
 
     private function removeDirectory(string $dir): void
     {
-        $files = glob($dir . '/*');
+        $files = glob($dir.'/*');
         foreach ($files as $file) {
             is_dir($file) ? $this->removeDirectory($file) : unlink($file);
         }
@@ -237,6 +243,6 @@ class VideoRecordingService
 
     private function isProcessRunning(int $pid): bool
     {
-        return file_exists('/proc/' . $pid);
+        return file_exists('/proc/'.$pid);
     }
 }

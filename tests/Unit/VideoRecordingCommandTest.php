@@ -17,12 +17,22 @@ class VideoRecordingCommandTest extends TestCase
         $this->assertStringContainsString('-c:a aac', $cmd);
     }
 
+    public function test_command_downmixes_the_audio_to_mono(): void
+    {
+        config(['pingpong.recording_audio_device' => 'plughw:CARD=C920,DEV=0']);
+
+        $cmd = (new VideoRecordingService)->buildFfmpegCommand('/tmp/seg%03d.ts', '/tmp/s.m3u8', withAudio: true);
+
+        $this->assertStringContainsString('-c:a aac -ac 1 ', $cmd);
+    }
+
     public function test_command_without_audio_has_no_audio_input(): void
     {
         $cmd = (new VideoRecordingService)->buildFfmpegCommand('/tmp/seg%03d.ts', '/tmp/s.m3u8', withAudio: false);
 
         $this->assertStringNotContainsString('alsa', $cmd);
         $this->assertStringNotContainsString('-c:a', $cmd);
+        $this->assertStringNotContainsString('-ac 1', $cmd);
         $this->assertStringContainsString("-i '/dev/video0'", $cmd);
     }
 }

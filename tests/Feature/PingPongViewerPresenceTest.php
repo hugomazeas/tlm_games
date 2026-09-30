@@ -164,9 +164,20 @@ class PingPongViewerPresenceTest extends TestCase
             'socket_id' => 'not-a-socket',
             'role' => 'admin',
             'viewer_id' => 'has spaces',
-            'player_id' => 999999,
         ]))
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(['socket_id', 'role', 'viewer_id', 'player_id']);
+            ->assertJsonValidationErrors(['socket_id', 'role', 'viewer_id']);
+    }
+
+    public function test_a_remembered_player_that_no_longer_exists_watches_as_a_guest(): void
+    {
+        $match = $this->liveMatch();
+
+        $response = $this->postJson(self::URL, $this->payload($match, ['player_id' => 999999]));
+
+        $response->assertOk();
+        $member = $this->assertSignedFor($match, $response->json());
+        $this->assertSame('guest-abc123', $member['user_id']);
+        $this->assertNull($member['user_info']['player_id']);
     }
 }
