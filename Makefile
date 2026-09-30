@@ -19,6 +19,7 @@ build:
 	docker compose $(COMPOSE_FILES) build
 
 up:
+	docker network inspect proxy >/dev/null 2>&1 || docker network create proxy
 	docker compose $(COMPOSE_FILES) up -d
 
 down:
