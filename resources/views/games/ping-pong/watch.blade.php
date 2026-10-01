@@ -258,6 +258,9 @@
 @include('games.ping-pong.partials.match-alerts-script')
 @include('games.ping-pong.partials.viewers-script')
 <script>
+// Give up waiting for the stream to play out after the tail plus ~10s of stream latency and some slack.
+const MATCH_END_FALLBACK_MS = ({{ (int) config('pingpong.recording_tail_seconds') }} + 25) * 1000;
+
 function watchLive() {
     return {
         ...pingPongEloPreview(),
@@ -276,6 +279,7 @@ function watchLive() {
         countdown: 10,
         countdownTimer: null,
         healthCheckTimer: null,
+        endingTimer: null,
         hlsNetworkErrorCount: 0,
         echo: null,
         matchChannel: null,
@@ -621,7 +625,7 @@ function watchLive() {
                 if (res.ok) {
                     const data = await res.json();
                     if (data.is_complete) {
-                        this.handleMatchEnd();
+                        this.beginMatchEnd();
                         return;
                     }
                 }
@@ -630,7 +634,30 @@ function watchLive() {
             }
         },
 
-        handleMatchEnd() {
+        /**
+         * The stream runs ~10s behind the table and the camera films a tail after
+         * the winning point, so let the video play out (it ends once the recording
+         * stops) rather than cutting on the final score.
+         */
+        beginMatchEnd() {
+            if (this.endingTimer) return;
+            this.stopHealthCheck();
+
+            const video = this.hasVideo ? document.getElementById('watchPlayer') : null;
+            if (!video) {
+                this.endingTimer = setTimeout(() => this.handleMatchEnd(), 3000);
+                return;
+            }
+
+            video.addEventListener('ended', () => this.handleMatchEnd(), { once: true });
+            this.endingTimer = setTimeout(() => this.handleMatchEnd(), MATCH_END_FALLBACK_MS);
+        },
+
+        async handleMatchEnd() {
+            clearTimeout(this.endingTimer);
+            this.endingTimer = null;
+            if (!this.matchActive) return;
+
             this.stopHealthCheck();
             this.matchActive = false;
             this.hasVideo = false;
@@ -640,7 +667,10 @@ function watchLive() {
             this.leaveChat();
             this.leaveViewers();
             this.chatUnread = 0;
-            this.startPolling();
+
+            // A match may have started during the tail: jump straight to it.
+            await this.checkForLiveMatch();
+            if (!this.matchActive) this.startPolling();
         },
 
         initPlayer(hlsUrl) {
@@ -742,7 +772,7 @@ function watchLive() {
                     if (e.match) {
                         this.match = { ...this.match, ...e.match };
                         if (e.match.is_complete) {
-                            setTimeout(() => this.handleMatchEnd(), 3000);
+                            this.beginMatchEnd();
                         }
                     }
                 })

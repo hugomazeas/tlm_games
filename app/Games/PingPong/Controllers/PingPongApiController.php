@@ -793,11 +793,11 @@ class PingPongApiController extends Controller
             $match->save();
             $eloChanges = $this->eloService->applyMatchResult($match);
 
-            // Stop recording if active
+            // Keep filming a little longer so the stream (and video) show the final rally
             $recording = $match->recording;
             if ($recording && $recording->status === 'recording') {
                 try {
-                    $this->videoRecordingService->stopRecording($match);
+                    $this->videoRecordingService->stopRecordingAfterTail($match);
                 } catch (\Throwable $e) {
                     \Illuminate\Support\Facades\Log::warning('Failed to stop recording', [
                         'match_id' => $match->id,
@@ -909,7 +909,8 @@ class PingPongApiController extends Controller
     {
         $recording = $this->videoRecordingService->getActiveRecording();
 
-        if (!$recording) {
+        // A tailing recording is still on air for viewers already watching, but it's not a live match to join
+        if (!$recording || $this->videoRecordingService->isTailing($recording)) {
             return response()->json(['active' => false]);
         }
 

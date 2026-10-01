@@ -39,4 +39,18 @@ return [
 
     'recording_audio_device' => env('RECORDING_AUDIO_DEVICE', 'plughw:CARD=C920,DEV=0'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Match Recording Tail
+    |--------------------------------------------------------------------------
+    |
+    | Seconds the camera keeps rolling after the winning point, so the stream
+    | (which runs ~10s behind the table) and the saved video still show the
+    | end of the rally. A match starting inside this window cuts the tail
+    | short and takes the camera over.
+    |
+    */
+
+    'recording_tail_seconds' => (int) env('RECORDING_TAIL_SECONDS', 20),
+
 ];
