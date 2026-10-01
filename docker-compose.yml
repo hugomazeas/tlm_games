@@ -57,7 +57,9 @@ services:
     user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
 
 networks:
+  # Shared with the other apps behind Caddy; owned by the `proxy` compose
+  # project on the server. `make up` creates it locally when missing.
   proxy:
     name: proxy
-    driver: bridge
+    external: true
 
