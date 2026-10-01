@@ -5,6 +5,7 @@ namespace App\Games\PingPong\Services;
 use App\Games\PingPong\Models\PingPongMatch;
 use App\Games\PingPong\Models\PingPongRecording;
 use App\Jobs\FinalizeRecordingJob;
+use App\Jobs\StopRecordingJob;
 use Illuminate\Support\Facades\Log;
 
 class VideoRecordingService
@@ -28,7 +29,10 @@ class VideoRecordingService
     public function startRecording(PingPongMatch $match): PingPongRecording
     {
         $active = $this->getActiveRecording();
-        if ($active) {
+        if ($active && $this->isTailing($active)) {
+            // The previous match is only rolling its tail; the new match needs the camera now.
+            $this->stopRecording($active->match);
+        } elseif ($active) {
             throw new \RuntimeException('Another recording is already active (match #'.$active->match_id.')');
         }
 
@@ -77,6 +81,38 @@ class VideoRecordingService
         return $recording;
     }
 
+    /**
+     * Keep the camera rolling for a few seconds after the match ends, then stop.
+     * The stream runs behind the table, so stopping on the winning point would
+     * cut the final rally off for viewers and from the saved video.
+     */
+    public function stopRecordingAfterTail(PingPongMatch $match): void
+    {
+        $recording = $match->recording;
+
+        if (! $recording || $recording->status !== 'recording') {
+            return;
+        }
+
+        $tailSeconds = $this->tailSeconds();
+
+        if ($tailSeconds === 0) {
+            $this->stopRecording($match);
+
+            return;
+        }
+
+        StopRecordingJob::dispatch($recording->id)->delay(now()->addSeconds($tailSeconds));
+    }
+
+    /**
+     * Whether the camera is only filming the tail of a match that already ended.
+     */
+    public function isTailing(PingPongRecording $recording): bool
+    {
+        return $recording->status === 'recording' && $recording->match?->ended_at !== null;
+    }
+
     public function stopRecording(PingPongMatch $match): ?PingPongRecording
     {
         $recording = $match->recording;
@@ -115,7 +151,7 @@ class VideoRecordingService
      * Launch FFmpeg in the background and return its PID, after a short pause
      * so a process that dies on startup (bad device) is already gone.
      */
-    private function spawnFfmpeg(string $segmentPattern, string $m3u8Path, bool $withAudio): int
+    protected function spawnFfmpeg(string $segmentPattern, string $m3u8Path, bool $withAudio): int
     {
         $pid = (int) trim((string) shell_exec($this->buildFfmpegCommand($segmentPattern, $m3u8Path, $withAudio)));
 
@@ -128,14 +164,20 @@ class VideoRecordingService
 
     public function buildFfmpegCommand(string $segmentPattern, string $m3u8Path, bool $withAudio): string
     {
+        // ffmpeg rebases each input to start at zero on its own, so the camera and
+        // mic would be offset by however long each took to deliver its first
+        // packet. Both are stamped on the wall clock (-ts mono2abs on the camera,
+        // ALSA already is) and -isync 0 keeps the mic's start relative to the camera's.
         $audioInput = $withAudio
-            ? '-f alsa -thread_queue_size 1024 -i '.escapeshellarg($this->audioDevice).' '
+            ? '-f alsa -thread_queue_size 1024 -isync 0 -i '.escapeshellarg($this->audioDevice).' '
             : '';
-        // Downmixed to mono (-ac 1); clips and the final file inherit it.
-        $audioCodec = $withAudio ? '-c:a aac -ac 1 -b:a 96k ' : '';
+        // Downmixed to mono (-ac 1); clips and the final file inherit it. aresample
+        // keeps the mic's sample clock locked to its timestamps so it can't drift
+        // away from the picture over a long match.
+        $audioCodec = $withAudio ? '-af aresample=async=1000 -c:a aac -ac 1 -b:a 96k ' : '';
 
         return sprintf(
-            'nohup ffmpeg -f v4l2 -thread_queue_size 512 -video_size 1280x720 -framerate 30 -input_format mjpeg '
+            'nohup ffmpeg -f v4l2 -thread_queue_size 512 -ts mono2abs -video_size 1280x720 -framerate 30 -input_format mjpeg '
             .'-i %s %s-vf "hflip,vflip" -c:v libx264 -pix_fmt yuv420p -preset ultrafast -tune zerolatency -g 60 '
             .'%s-f hls -hls_time 2 -hls_list_size 0 -hls_flags append_list '
             .'-hls_segment_filename %s %s '
@@ -156,9 +198,10 @@ class VideoRecordingService
             return null;
         }
 
-        // Check if the associated match has already ended
+        // An ended match still recording long past its tail was never stopped (e.g. the camera worker was down)
         $match = $recording->match;
-        if ($match && $match->ended_at !== null) {
+        $staleAfterSeconds = $this->tailSeconds() + 60;
+        if ($match && $match->ended_at !== null && $match->ended_at->lt(now()->subSeconds($staleAfterSeconds))) {
             Log::warning('Clearing stale recording for completed match', [
                 'recording_id' => $recording->id,
                 'match_id' => $recording->match_id,
@@ -222,6 +265,11 @@ class VideoRecordingService
         }
 
         return $cleaned;
+    }
+
+    private function tailSeconds(): int
+    {
+        return max(0, (int) config('pingpong.recording_tail_seconds'));
     }
 
     private function cleanupHlsDir(int $matchId): void
