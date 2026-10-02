@@ -171,6 +171,6 @@ class PingPongTournamentTest extends TestCase
         $tournament = $this->createTournament($this->players(3));
 
         $this->get('/games/ping-pong/tournaments')->assertOk()->assertSee('Cup');
-        $this->get("/games/ping-pong/tournaments/{$tournament->id}")->assertOk()->assertSee('Semi-finals')->assertSee('bye');
+        $this->get("/games/ping-pong/tournaments/{$tournament->id}")->assertOk()->assertSee('Semi-finals')->assertSee('Bye');
     }
 }
