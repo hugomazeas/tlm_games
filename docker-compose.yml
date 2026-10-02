@@ -19,6 +19,9 @@ services:
       - APP_DEBUG=true
       - DB_CONNECTION=sqlite
       - DB_DATABASE=/var/www/database/database.sqlite
+    # supervisord reads its config from the mounted repo, not the copy baked into
+    # the image: deploy.sh never rebuilds, so a baked-in program (camera-queue)
+    # would never reach prod.
     command: >
       sh -c "chmod 666 /dev/video0 /dev/snd/* 2>/dev/null || true &&
              composer install --no-interaction &&
@@ -31,7 +34,7 @@ services:
              php artisan storage:link --force 2>/dev/null || true &&
              php artisan migrate --force &&
              php artisan db:seed --force &&
-             /usr/bin/supervisord -c /etc/supervisord.conf"
+             /usr/bin/supervisord -c /var/www/docker/supervisor/supervisord.conf"
 
   worker:
     build:
