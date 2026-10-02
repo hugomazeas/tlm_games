@@ -249,6 +249,8 @@
                                    class="px-3 py-1.5 rounded-full bg-[#ff5a4a] text-[#06081b] border border-[#ff5a4a] no-underline text-xs font-semibold transition hover:bg-[#ff7a6a] hover:border-[#ff7a6a]">Full stats →</a>
                                 <a href="/games/ping-pong/recordings"
                                    class="px-3 py-1.5 rounded-full border border-[#f5ecd6]/15 text-[#f5ecd6]/80 no-underline text-xs font-semibold transition hover:text-[#f5ecd6] hover:border-[#f5ecd6]/30 hover:bg-[#f5ecd6]/[0.04]">Recordings</a>
+                                <a href="/games/ping-pong/tournaments"
+                                   class="px-3 py-1.5 rounded-full border border-[#f5ecd6]/15 text-[#f5ecd6]/80 no-underline text-xs font-semibold transition hover:text-[#f5ecd6] hover:border-[#f5ecd6]/30 hover:bg-[#f5ecd6]/[0.04]">Tournaments</a>
                             </div>
                         </div>
 
@@ -528,7 +530,7 @@ function pingPong() {
         csrf: document.querySelector('meta[name="csrf-token"]').content,
 
         preloadedMatchId: @json($preloadedMatchId ?? null),
-        readOnly: @json(!empty($preloadedMatchId)),
+        readOnly: @json($readOnly ?? !empty($preloadedMatchId)),
 
         screen: 'home',
         mode: '1v1',
@@ -1028,7 +1030,9 @@ function pingPong() {
 
                     if (data.is_complete && this.screen === 'playing') {
                         this.stopTimer();
-                        window.location.href = '/games/ping-pong/matches/' + data.id + '?from=game';
+                        window.location.href = data.tournament_id
+                            ? '/games/ping-pong/tournaments/' + data.tournament_id
+                            : '/games/ping-pong/matches/' + data.id + '?from=game';
                     }
                 }
             }).listen('.match.abandoned', () => {
@@ -1248,7 +1252,9 @@ function pingPong() {
 
                 if (data.is_complete) {
                     this.stopTimer();
-                    window.location.href = '/games/ping-pong/matches/' + data.id + '?from=game';
+                    window.location.href = data.tournament_id
+                            ? '/games/ping-pong/tournaments/' + data.tournament_id
+                            : '/games/ping-pong/matches/' + data.id + '?from=game';
                 }
             } catch (err) {
                 console.error('Error updating score:', err);
@@ -1347,6 +1353,10 @@ function pingPong() {
         },
 
         async goToHome() {
+            if (this.match?.tournament_id) {
+                window.location.href = '/games/ping-pong/tournaments/' + this.match.tournament_id;
+                return;
+            }
             this.destroyLivePlayer();
             this.unsubscribeAll();
             this.match = {};

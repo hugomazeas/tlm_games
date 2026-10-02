@@ -36,7 +36,7 @@ class PingPongViewerController extends Controller
 
         preg_match(self::CHANNEL_PATTERN, $validated['channel_name'], $channel);
 
-        $match = PingPongMatch::find($channel[1]);
+        $match = PingPongMatch::includingTournaments()->find($channel[1]);
 
         if (! $match || $match->ended_at) {
             return response()->json(['message' => 'This match is not live.'], 403);

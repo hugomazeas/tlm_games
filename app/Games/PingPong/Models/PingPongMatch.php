@@ -3,6 +3,7 @@
 namespace App\Games\PingPong\Models;
 
 use App\Models\Player;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -14,6 +15,7 @@ class PingPongMatch extends Model
 
     protected $fillable = [
         'mode',
+        'tournament_id',
         'player_left_id',
         'team_left_player2_id',
         'player_right_id',
@@ -59,6 +61,33 @@ class PingPongMatch extends Model
             'team_right_player2_elo_before' => 'integer',
             'team_right_player2_elo_after' => 'integer',
         ];
+    }
+
+    /**
+     * Tournament matches are hidden from every query by default, so no ELO,
+     * leaderboard or stat can count them by accident. Reach them with
+     * includingTournaments() (lookups by id, live matches, relations).
+     */
+    protected static function booted(): void
+    {
+        static::addGlobalScope('official', function (Builder $query): void {
+            $query->whereNull($query->qualifyColumn('tournament_id'));
+        });
+    }
+
+    public function scopeIncludingTournaments(Builder $query): void
+    {
+        $query->withoutGlobalScope('official');
+    }
+
+    public function tournament(): BelongsTo
+    {
+        return $this->belongsTo(PingPongTournament::class, 'tournament_id');
+    }
+
+    public function isTournament(): bool
+    {
+        return $this->tournament_id !== null;
     }
 
     public function playerLeft(): BelongsTo

@@ -9,7 +9,8 @@ return new class extends Migration
 {
     public function up(): void
     {
-        $matches = PingPongMatch::whereNotNull('ended_at')->orderBy('ended_at')->orderBy('id')->get();
+        // Predates tournament_id, so the model's "official" scope can't apply yet.
+        $matches = PingPongMatch::withoutGlobalScope('official')->whereNotNull('ended_at')->orderBy('ended_at')->orderBy('id')->get();
 
         foreach ($matches as $match) {
             if ($match->mode === '1v1') {

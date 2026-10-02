@@ -71,7 +71,7 @@ class PingPongController extends Controller
 
     public function matchDetail(int $id)
     {
-        $match = PingPongMatch::findOrFail($id);
+        $match = PingPongMatch::includingTournaments()->findOrFail($id);
 
         return view('games.ping-pong.match-detail', [
             'matchId' => $match->id,
@@ -80,14 +80,16 @@ class PingPongController extends Controller
 
     public function scoreboard(int $id)
     {
-        $match = PingPongMatch::findOrFail($id);
+        $match = PingPongMatch::includingTournaments()->findOrFail($id);
 
         if ($match->is_complete) {
             return redirect('/games/ping-pong/matches/'.$match->id);
         }
 
+        // Tournament matches have no lobby, so this screen is where they get scored.
         return view('games.ping-pong.play', [
             'preloadedMatchId' => $match->id,
+            'readOnly' => ! $match->isTournament(),
         ]);
     }
 
@@ -112,7 +114,7 @@ class PingPongController extends Controller
     {
         abort_unless(in_array($side, ['left', 'right']), 404);
 
-        $match = PingPongMatch::findOrFail($id);
+        $match = PingPongMatch::includingTournaments()->findOrFail($id);
 
         return view('games.ping-pong.remote', [
             'matchId' => $match->id,

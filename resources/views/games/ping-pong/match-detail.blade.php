@@ -543,6 +543,10 @@
 
     <template x-if="match">
         <div>
+            <a x-show="match.tournament_id" :href="'/games/ping-pong/tournaments/' + match.tournament_id"
+               class="inline-flex items-center gap-2 mb-4 px-3 py-1.5 rounded-full border border-[#ffd166]/35 bg-[#ffd166]/10 text-[#ffd166] no-underline pph-mono text-[10px] tracking-[0.18em] uppercase">
+                🏆 Tournament match · no ELO · not in official stats ›
+            </a>
             {{-- ====== After-game Hero ====== --}}
             <section class="relative overflow-hidden rounded-2xl border border-[#f5ecd6]/15 bg-gradient-to-b from-[#f5ecd6]/[0.04] to-[#f5ecd6]/[0.01] px-3 md:px-10 py-6 md:py-10 mb-6">
 

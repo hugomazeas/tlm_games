@@ -44,7 +44,7 @@ class PingPongPoint extends Model
 
     public function match(): BelongsTo
     {
-        return $this->belongsTo(PingPongMatch::class, 'match_id');
+        return $this->belongsTo(PingPongMatch::class, 'match_id')->includingTournaments();
     }
 
     /** Side that hit the point-ending shot. */

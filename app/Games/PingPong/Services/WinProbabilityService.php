@@ -270,6 +270,7 @@ class WinProbabilityService
         return Cache::remember('pp.winprob.states', self::SHAPE_CACHE_TTL, function (): array {
             $rows = DB::table('ping_pong_points as p')
                 ->join('ping_pong_matches as m', 'm.id', '=', 'p.match_id')
+                ->whereNull('m.tournament_id')
                 ->whereNotNull('m.ended_at')
                 ->where('m.mode', '1v1')
                 ->whereColumn('p.left_score_after', '<', DB::raw('11'))
@@ -301,6 +302,7 @@ class WinProbabilityService
     {
         return Cache::remember('pp.winprob.clutch', self::SHAPE_CACHE_TTL, function (): array {
             $deuce = DB::table('ping_pong_matches')
+                ->whereNull('tournament_id')
                 ->whereNotNull('ended_at')
                 ->where('mode', '1v1')
                 ->where('player_left_score', '>=', 10)
@@ -308,6 +310,7 @@ class WinProbabilityService
                 ->get(['player_left_id', 'player_right_id', 'winner_id']);
 
             $overall = DB::table('ping_pong_matches')
+                ->whereNull('tournament_id')
                 ->whereNotNull('ended_at')
                 ->where('mode', '1v1')
                 ->get(['player_left_id', 'player_right_id', 'winner_id']);
