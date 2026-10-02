@@ -20,6 +20,7 @@ use App\Games\PingPong\Services\MatchupAnalysisService;
 use App\Games\PingPong\Services\PlayerPointTagStatsService;
 use App\Games\PingPong\Services\PointAwardsService;
 use App\Games\PingPong\Services\PracticeInsightsService;
+use App\Games\PingPong\Services\TournamentService;
 use App\Games\PingPong\Services\VideoRecordingService;
 use App\Games\PingPong\Services\WinProbabilityService;
 use App\Http\Controllers\Controller;
@@ -41,6 +42,7 @@ class PingPongApiController extends Controller
         private VideoRecordingService $videoRecordingService,
         private PlayerPointTagStatsService $pointTagStatsService,
         private WinProbabilityService $winProbabilityService,
+        private TournamentService $tournamentService,
     ) {}
 
     public function offices(): JsonResponse
@@ -506,7 +508,7 @@ class PingPongApiController extends Controller
 
     public function liveMatches(): JsonResponse
     {
-        $matches = PingPongMatch::whereNotNull('started_at')
+        $matches = PingPongMatch::includingTournaments()->whereNotNull('started_at')
             ->whereNull('ended_at')
             ->where('started_at', '>=', now()->subHour())
             ->where('last_score_activity_at', '>=', now()->subSeconds(self::LIVE_MATCH_MAX_IDLE_SECONDS))
@@ -562,7 +564,7 @@ class PingPongApiController extends Controller
 
     public function getMatch(int $id): JsonResponse
     {
-        $match = PingPongMatch::with(['playerLeft', 'playerRight', 'currentServer', 'winner', 'teamLeftPlayer2', 'teamRightPlayer2', 'points', 'recording'])
+        $match = PingPongMatch::includingTournaments()->with(['playerLeft', 'playerRight', 'currentServer', 'winner', 'teamLeftPlayer2', 'teamRightPlayer2', 'points', 'recording'])
             ->findOrFail($id);
 
         $response = $match->toArray();
@@ -677,10 +679,14 @@ class PingPongApiController extends Controller
 
     public function eloPreview(int $id): JsonResponse
     {
-        $match = PingPongMatch::findOrFail($id);
+        $match = PingPongMatch::includingTournaments()->findOrFail($id);
 
         if ($match->is_complete) {
             return response()->json(['error' => 'Match is already complete'], 422);
+        }
+
+        if ($match->isTournament()) {
+            return response()->json(['error' => 'Tournament matches do not affect ELO'], 422);
         }
 
         return response()->json($this->eloService->previewMatchResult($match));
@@ -744,7 +750,7 @@ class PingPongApiController extends Controller
 
     public function updateScore(Request $request, int $id): JsonResponse
     {
-        $match = PingPongMatch::findOrFail($id);
+        $match = PingPongMatch::includingTournaments()->findOrFail($id);
 
         if ($match->is_complete) {
             return response()->json(['error' => 'Match is already complete'], 422);
@@ -791,7 +797,12 @@ class PingPongApiController extends Controller
             $match->winner_id = $winnerId;
             $match->ended_at = now();
             $match->save();
-            $eloChanges = $this->eloService->applyMatchResult($match);
+
+            if ($match->isTournament()) {
+                $this->tournamentService->recordResult($match);
+            } else {
+                $eloChanges = $this->eloService->applyMatchResult($match);
+            }
 
             // Keep filming a little longer so the stream (and video) show the final rally
             $recording = $match->recording;
@@ -930,7 +941,7 @@ class PingPongApiController extends Controller
             'match_id' => 'required|integer|exists:ping_pong_matches,id',
         ]);
 
-        $match = PingPongMatch::findOrFail($validated['match_id']);
+        $match = PingPongMatch::includingTournaments()->findOrFail($validated['match_id']);
 
         if ($match->is_complete) {
             return response()->json(['error' => 'Match is already complete'], 422);
@@ -1171,7 +1182,7 @@ class PingPongApiController extends Controller
             'side' => 'required|in:left,right',
         ]);
 
-        $match = PingPongMatch::findOrFail($id);
+        $match = PingPongMatch::includingTournaments()->findOrFail($id);
 
         $field = $validated['side'] === 'left' ? 'left_remote_connected_at' : 'right_remote_connected_at';
 
@@ -1189,7 +1200,7 @@ class PingPongApiController extends Controller
 
     public function rematch(int $id): JsonResponse
     {
-        $previousMatch = PingPongMatch::findOrFail($id);
+        $previousMatch = PingPongMatch::includingTournaments()->findOrFail($id);
 
         if (!$previousMatch->is_complete) {
             return response()->json(['error' => 'Previous match is not complete'], 422);
@@ -1250,7 +1261,7 @@ class PingPongApiController extends Controller
 
     public function abandonMatch(int $id): JsonResponse
     {
-        $match = PingPongMatch::findOrFail($id);
+        $match = PingPongMatch::includingTournaments()->findOrFail($id);
 
         if ($match->is_complete) {
             return response()->json(['error' => 'Match is already complete'], 422);

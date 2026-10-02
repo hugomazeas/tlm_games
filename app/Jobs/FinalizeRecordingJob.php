@@ -24,7 +24,7 @@ class FinalizeRecordingJob implements ShouldQueue
     public function handle(): void
     {
         $recording = PingPongRecording::find($this->recordingId);
-        $match = PingPongMatch::find($this->matchId);
+        $match = PingPongMatch::includingTournaments()->find($this->matchId);
 
         if (!$recording || !$match) {
             Log::error('FinalizeRecordingJob: recording or match not found', [

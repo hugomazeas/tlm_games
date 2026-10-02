@@ -41,7 +41,7 @@ class PingPongClip extends Model
 
     public function match(): BelongsTo
     {
-        return $this->belongsTo(PingPongMatch::class, 'match_id');
+        return $this->belongsTo(PingPongMatch::class, 'match_id')->includingTournaments();
     }
 
     public function player(): BelongsTo

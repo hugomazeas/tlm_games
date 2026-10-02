@@ -4,6 +4,7 @@ use App\Games\PingPong\Controllers\PingPongApiController;
 use App\Games\PingPong\Controllers\PingPongChatController;
 use App\Games\PingPong\Controllers\PingPongController;
 use App\Games\PingPong\Controllers\PingPongLobbyApiController;
+use App\Games\PingPong\Controllers\PingPongTournamentController;
 use App\Games\PingPong\Controllers\PingPongViewerController;
 use Illuminate\Support\Facades\Route;
 
@@ -13,6 +14,15 @@ Route::get('/games/ping-pong/awards/{key}', [PingPongController::class, 'awardDe
 Route::get('/games/ping-pong/players/{id}', [PingPongController::class, 'playerStats']);
 Route::get('/games/ping-pong/matchup/{playerA}/{playerB}', [PingPongController::class, 'matchup']);
 Route::get('/games/ping-pong/lobby/{code}', [PingPongController::class, 'lobbyJoin']);
+
+// Tournaments (single elimination, off the books: no ELO, no official stats).
+// Plain HTML forms, so they need the session + CSRF from the web group.
+Route::middleware('web')->group(function () {
+    Route::get('/games/ping-pong/tournaments', [PingPongTournamentController::class, 'index']);
+    Route::post('/games/ping-pong/tournaments', [PingPongTournamentController::class, 'store']);
+    Route::get('/games/ping-pong/tournaments/{id}', [PingPongTournamentController::class, 'show']);
+    Route::post('/games/ping-pong/tournaments/{id}/next', [PingPongTournamentController::class, 'playNext']);
+});
 
 Route::get('/games/ping-pong/api/players', [PingPongApiController::class, 'players']);
 Route::get('/games/ping-pong/api/offices', [PingPongApiController::class, 'offices']);

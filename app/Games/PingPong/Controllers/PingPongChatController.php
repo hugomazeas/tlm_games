@@ -56,7 +56,7 @@ class PingPongChatController extends Controller
             'gif_id' => 'nullable|string|max:64',
         ]);
 
-        if (PingPongMatch::whereKey($validated['match_id'])->whereNotNull('ended_at')->exists()) {
+        if (PingPongMatch::includingTournaments()->whereKey($validated['match_id'])->whereNotNull('ended_at')->exists()) {
             throw ValidationException::withMessages(['match_id' => 'This match has ended.']);
         }
 

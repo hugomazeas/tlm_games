@@ -187,6 +187,7 @@ class PlayerPointTagStatsService
         return PingPongPoint::query()
             ->select('ping_pong_points.*')
             ->join('ping_pong_matches', 'ping_pong_matches.id', '=', 'ping_pong_points.match_id')
+            ->whereNull('ping_pong_matches.tournament_id')
             ->whereNotNull('ping_pong_matches.ended_at')
             ->where('ping_pong_matches.ended_at', '>=', Carbon::parse(self::TAGGING_STATS_SINCE)->startOfDay())
             ->where('ping_pong_matches.mode', $mode)

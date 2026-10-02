@@ -34,7 +34,7 @@ class SendMatchStartedNotificationJob implements ShouldQueue
 
     public function handle(WebPushSender $sender): void
     {
-        $match = PingPongMatch::with(['playerLeft', 'playerRight', 'teamLeftPlayer2', 'teamRightPlayer2'])
+        $match = PingPongMatch::includingTournaments()->with(['playerLeft', 'playerRight', 'teamLeftPlayer2', 'teamRightPlayer2'])
             ->find($this->matchId);
 
         if (! $match) {
