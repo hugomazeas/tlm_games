@@ -9,6 +9,7 @@ use App\Jobs\FinalizeRecordingJob;
 use App\Jobs\StopRecordingJob;
 use App\Models\Player;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -177,12 +178,22 @@ class PingPongRecordingTailTest extends TestCase
 
     public function test_live_endpoint_offers_the_recording_of_a_match_in_play(): void
     {
+        // The stream is only on air once ffmpeg has written a playlist; keep that file out of real storage.
+        $storagePath = sys_get_temp_dir().'/games-hub-tail-test-'.uniqid();
+        $this->app->useStoragePath($storagePath);
+
         $match = $this->singlesMatch();
         $this->recordingFor($match);
+        File::ensureDirectoryExists(storage_path('app/recordings/live/'.$match->id));
+        File::put(storage_path('app/recordings/live/'.$match->id.'/stream.m3u8'), "#EXTM3U\n#EXTINF:2.000000,\nsegment000.ts\n");
 
-        $this->getJson('/games/ping-pong/api/recordings/live')
-            ->assertOk()
-            ->assertJson(['active' => true, 'match_id' => $match->id]);
+        try {
+            $this->getJson('/games/ping-pong/api/recordings/live')
+                ->assertOk()
+                ->assertJson(['active' => true, 'match_id' => $match->id]);
+        } finally {
+            File::deleteDirectory($storagePath);
+        }
     }
 
     public function test_starting_a_match_during_the_tail_cuts_it_and_takes_the_camera(): void

@@ -4,6 +4,7 @@ namespace App\Games\PingPong\Services;
 
 use App\Games\PingPong\Models\PingPongMatch;
 use App\Games\PingPong\Models\PingPongRecording;
+use App\Jobs\AnnounceLiveStreamJob;
 use App\Jobs\FinalizeRecordingJob;
 use App\Jobs\StopRecordingJob;
 use Illuminate\Support\Facades\Log;
@@ -77,6 +78,8 @@ class VideoRecordingService
         ]);
 
         Log::info('Recording started', ['match_id' => $match->id, 'pid' => $pid]);
+
+        AnnounceLiveStreamJob::dispatch($recording->id);
 
         return $recording;
     }
@@ -265,6 +268,16 @@ class VideoRecordingService
         }
 
         return $cleaned;
+    }
+
+    /**
+     * Whether ffmpeg has written a playlist with at least one segment, so a player can load it.
+     */
+    public function isStreamReady(PingPongRecording $recording): bool
+    {
+        $playlist = $this->hlsBasePath.'/'.$recording->match_id.'/stream.m3u8';
+
+        return is_file($playlist) && str_contains((string) file_get_contents($playlist), '.ts');
     }
 
     private function tailSeconds(): int
