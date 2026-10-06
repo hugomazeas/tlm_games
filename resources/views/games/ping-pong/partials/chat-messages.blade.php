@@ -22,9 +22,9 @@
                     </div>
                     <template x-if="message.gif">
                         <div data-chat-gif class="mt-1.5">
-                            <img :src="message.gif.preview_url" :alt="message.gif.title" loading="lazy"
+                            <img :src="message.gif.preview_url" :alt="message.gif.title" loading="lazy" @load="scrollChatToBottom()"
                                  :style="`aspect-ratio: ${message.gif.width || 4} / ${message.gif.height || 3}`"
-                                 class="block w-full max-w-[240px] max-h-[200px] object-contain object-left rounded-md bg-[#f5ecd6]/[0.04]">
+                                 class="block w-full max-w-[240px] max-h-[140px] md:max-h-[200px] object-contain object-left rounded-md bg-[#f5ecd6]/[0.04]">
                             <p class="m-0 mt-1 pph-mono text-[10px] tracking-[0.08em] text-[#f5ecd6]/40 break-words">/giphy <span x-text="message.body"></span></p>
                         </div>
                     </template>

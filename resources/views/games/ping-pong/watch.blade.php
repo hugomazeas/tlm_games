@@ -6,19 +6,24 @@
 @section('content')
 @include('games.ping-pong.partials.chrome')
 
-<div class="pph-stage w-full h-screen max-h-[calc(100dvh-60px)] flex flex-col md:flex-row !rounded-none !p-0" x-data="watchLive()" x-init="init()">
-<div class="relative flex-1 min-w-0 min-h-0 flex items-center justify-center">
+{{-- The layout's ping pong theme pads every stage; the player runs edge to edge. --}}
+<style>body.pp-theme .pph-stage.pph-watch { padding: 0 !important; }</style>
+
+{{-- Fills the screen under the nav (taller on phones), so the page itself never scrolls. --}}
+<div class="pph-stage pph-watch w-full h-[calc(100dvh-65px)] sm:h-[calc(100dvh-61px)] flex flex-col md:flex-row !rounded-none" x-data="watchLive()" x-init="init()">
+<div class="relative flex-1 min-w-0 min-h-0 flex flex-col items-center">
 
     {{-- ===== Match start alerts ===== --}}
+    {{-- In the flow on phones so it never covers the page; floats over the stage on wider screens. --}}
     <div x-show="showMatchAlertsBanner()" x-cloak x-transition.opacity data-match-alerts-banner
-         class="absolute z-30 top-14 inset-x-4 md:top-4 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-[min(560px,calc(100%-2rem))] flex flex-col gap-1.5 px-4 py-3 rounded-xl bg-[#06081b]/90 border border-[#ffd166]/40 backdrop-blur-sm shadow-lg">
+         class="flex-shrink-0 self-stretch mx-3 mt-3 md:absolute z-30 md:top-4 md:mx-0 md:mt-0 md:self-auto md:left-1/2 md:-translate-x-1/2 md:w-[min(560px,calc(100%-2rem))] flex flex-col gap-1.5 px-4 py-3 rounded-xl bg-[#06081b]/90 border border-[#ffd166]/40 backdrop-blur-sm shadow-lg">
         <div class="flex items-center gap-3">
             <span class="text-xl leading-none">🔔</span>
             <p class="flex-1 min-w-0 text-[13px] leading-snug text-[#f5ecd6]">
-                Get a notification when a match starts — no need to keep this page open.
+                Get a notification when a match starts<span class="hidden sm:inline"> — no need to keep this page open</span>.
             </p>
             <button type="button" @click="enableMatchAlerts()" :disabled="matchAlertsBusy"
-                    class="flex-shrink-0 px-4 py-1.5 rounded-full bg-[#ffd166] text-[#06081b] pph-display text-sm tracking-[0.04em] uppercase hover:bg-white transition disabled:opacity-50">
+                    class="flex-shrink-0 px-4 py-1.5 rounded-full bg-[#ffd166] text-[#06081b] pph-display text-sm tracking-[0.04em] uppercase whitespace-nowrap hover:bg-white transition disabled:opacity-50">
                 <span x-text="matchAlertsBusy ? '…' : 'Notify me'"></span>
             </button>
             <button type="button" @click="dismissMatchAlerts()" aria-label="Dismiss"
@@ -29,7 +34,7 @@
 
     {{-- No live match --}}
     <template x-if="!matchActive">
-        <div class="text-center text-[#f5ecd6]/70">
+        <div class="m-auto px-6 py-6 text-center text-[#f5ecd6]/70">
             <div class="text-5xl mb-4">🏓</div>
             <h2 class="pph-display text-[clamp(28px,3vw,40px)] tracking-[0.04em] uppercase text-[#f5ecd6] mb-2">No live match</h2>
             <p class="pph-mono text-[12px] tracking-[0.14em] uppercase text-[#f5ecd6]/45 mb-5">No match is being played right now.</p>
@@ -48,69 +53,79 @@
     </template>
 
     {{-- Match active --}}
+    {{--
+        Phones keep it simple: no ELO stats or scoreboard link. In portrait they
+        stack the stream: buttons, video, score (max-md:portrait). Short landscape screens keep the overlay but
+        shrink it ([@media(max-height:500px)]). Everything else overlays the video.
+    --}}
     <template x-if="matchActive">
-        <div class="relative w-full h-full flex items-center justify-center">
+        <div class="relative w-full flex-1 min-h-0 flex items-center justify-center max-md:portrait:flex-col max-md:portrait:justify-start max-md:portrait:items-stretch max-md:portrait:pt-12 max-md:portrait:overflow-y-auto">
             {{-- Video --}}
             <video x-show="hasVideo" id="watchPlayer" muted autoplay playsinline
-                   class="w-full h-full object-contain bg-black absolute inset-0 -scale-x-100"></video>
+                   class="w-full h-full object-contain bg-black absolute inset-0 -scale-x-100 max-md:portrait:relative max-md:portrait:inset-auto max-md:portrait:h-auto max-md:portrait:aspect-video max-md:portrait:flex-shrink-0"></video>
 
             {{-- Browsers only autoplay muted: one click turns the sound on for the rest of the visit. --}}
+            {{-- In portrait it centers on the video: 3rem of buttons above, then half of a 16:9 frame (9/32 of the width). --}}
             <button type="button" x-show="hasVideo && !audioOn" @click="enableAudio()" data-audio-enable
-                    class="absolute z-20 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 inline-flex items-center gap-3 px-7 py-4 rounded-full bg-[#ffd166] text-[#06081b] border-0 cursor-pointer shadow-[0_8px_32px_rgba(0,0,0,0.6)] hover:bg-white hover:scale-105 transition">
+                    class="absolute z-20 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 max-md:portrait:top-[calc(3rem+28.125vw)] inline-flex items-center gap-2 md:gap-3 px-5 py-3 md:px-7 md:py-4 whitespace-nowrap rounded-full bg-[#ffd166] text-[#06081b] border-0 cursor-pointer shadow-[0_8px_32px_rgba(0,0,0,0.6)] hover:bg-white hover:scale-105 transition">
                 <span class="absolute inset-0 rounded-full bg-[#ffd166] animate-ping opacity-40 pointer-events-none"></span>
-                <svg class="relative" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <svg class="relative w-6 h-6 md:w-7 md:h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
                     <line x1="23" y1="9" x2="17" y2="15"></line>
                     <line x1="17" y1="9" x2="23" y2="15"></line>
                 </svg>
-                <span class="relative pph-display text-[clamp(18px,2.2vw,26px)] tracking-[0.04em] uppercase">Click to turn on sound</span>
+                <span class="relative pph-display text-[clamp(16px,2.2vw,26px)] tracking-[0.04em] uppercase"><span class="md:hidden">Tap for sound</span><span class="hidden md:inline">Click to turn on sound</span></span>
             </button>
 
             {{-- Score-only mode --}}
             <template x-if="!hasVideo">
-                <div class="flex flex-col items-center gap-6">
-                    <div class="flex items-center gap-8">
-                        <div class="text-center">
-                            <div class="text-[#ff5a4a] text-[1.6rem] font-bold pph-glow-red" x-text="match?.player_left?.name || 'Left'"></div>
+                <div class="m-auto w-full max-w-3xl flex flex-col items-center gap-6 px-4 py-6">
+                    <div class="w-full grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-8">
+                        <div class="min-w-0 text-center">
+                            <div class="text-[#ff5a4a] text-xl sm:text-[1.6rem] font-bold pph-glow-red break-words" x-text="match?.player_left?.name || 'Left'"></div>
                             <template x-if="match?.mode === '2v2' && match?.team_left_player2">
-                                <div class="text-[#ff5a4a]/70 text-base font-medium" x-text="match.team_left_player2.name"></div>
+                                <div class="text-[#ff5a4a]/70 text-sm sm:text-base font-medium break-words" x-text="match.team_left_player2.name"></div>
                             </template>
                         </div>
-                        <div class="flex items-center gap-3 pph-mono tabular-nums">
-                            <span class="text-white text-[5rem] font-extrabold" x-text="match?.player_left_score ?? 0"></span>
-                            <span class="text-white/20 text-5xl">·</span>
-                            <span class="text-white text-[5rem] font-extrabold" x-text="match?.player_right_score ?? 0"></span>
+                        <div class="flex items-center gap-2 sm:gap-3 pph-mono tabular-nums">
+                            <span class="text-white text-[3.5rem] sm:text-[5rem] font-extrabold leading-none" x-text="match?.player_left_score ?? 0"></span>
+                            <span class="text-white/20 text-3xl sm:text-5xl">·</span>
+                            <span class="text-white text-[3.5rem] sm:text-[5rem] font-extrabold leading-none" x-text="match?.player_right_score ?? 0"></span>
                         </div>
-                        <div class="text-center">
-                            <div class="text-[#3ec8ff] text-[1.6rem] font-bold pph-glow-blue" x-text="match?.player_right?.name || 'Right'"></div>
+                        <div class="min-w-0 text-center">
+                            <div class="text-[#3ec8ff] text-xl sm:text-[1.6rem] font-bold pph-glow-blue break-words" x-text="match?.player_right?.name || 'Right'"></div>
                             <template x-if="match?.mode === '2v2' && match?.team_right_player2">
-                                <div class="text-[#3ec8ff]/70 text-base font-medium" x-text="match.team_right_player2.name"></div>
+                                <div class="text-[#3ec8ff]/70 text-sm sm:text-base font-medium break-words" x-text="match.team_right_player2.name"></div>
                             </template>
                         </div>
                     </div>
                     <div class="pph-mono text-[11px] tracking-[0.3em] uppercase text-[#f5ecd6]/30" x-text="match?.mode?.toUpperCase()"></div>
-                    <div x-show="eloOpen" class="flex gap-6 items-start">
-                        <div class="w-[320px]">@include('games.ping-pong.partials.elo-preview', ['side' => 'left'])</div>
-                        <div class="w-[320px]">@include('games.ping-pong.partials.elo-preview', ['side' => 'right'])</div>
+                    <div x-show="eloOpen" class="max-md:!hidden w-full sm:w-auto flex flex-col sm:flex-row gap-4 sm:gap-6 items-stretch sm:items-start">
+                        <div class="w-full sm:w-[320px]">
+                            @include('games.ping-pong.partials.elo-preview', ['side' => 'left'])
+                        </div>
+                        <div class="w-full sm:w-[320px]">
+                            @include('games.ping-pong.partials.elo-preview', ['side' => 'right'])
+                        </div>
                     </div>
                 </div>
             </template>
 
             {{-- LIVE badge, viewer count, and who just joined --}}
-            <div class="absolute top-4 left-4 flex flex-col items-start gap-2">
+            <div class="absolute z-10 top-3 left-3 md:top-4 md:left-4 flex flex-col items-start gap-2">
                 <div class="flex items-center gap-2">
-                    <div class="flex items-center gap-1.5 bg-black/70 px-3 py-1 rounded-md backdrop-blur-sm">
+                    <div class="flex items-center gap-1.5 bg-black/70 px-3 py-1.5 md:py-1 rounded-md backdrop-blur-sm">
                         <span class="pph-flicker w-2 h-2 rounded-full bg-[#ff5a4a]"></span>
                         <span class="pph-mono text-white text-[11px] font-bold tracking-[0.18em]">LIVE</span>
                     </div>
                     <div x-show="viewerCount() > 0" data-viewer-count
-                         class="flex items-center gap-1.5 bg-black/70 px-3 py-1 rounded-md backdrop-blur-sm pph-mono text-white text-[11px] font-bold tracking-[0.14em] uppercase"
+                         class="flex items-center gap-1.5 bg-black/70 px-3 py-1.5 md:py-1 rounded-md backdrop-blur-sm pph-mono text-white text-[11px] font-bold tracking-[0.14em] uppercase"
                          :title="namedViewers().map(v => v.name).join(', ')">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path>
                             <circle cx="12" cy="12" r="3"></circle>
                         </svg>
-                        <span x-text="viewerCount() + ' watching'"></span>
+                        <span x-text="viewerCount()"></span><span class="hidden lg:inline">watching</span>
                     </div>
                 </div>
                 <template x-for="join in viewerJoins" :key="join.key">
@@ -122,46 +137,55 @@
                 </template>
             </div>
 
-            {{-- Corner scores over video --}}
+            {{-- Corner scores over video (a score row under it on portrait phones) --}}
             <template x-if="hasVideo && match">
-                <div>
-                    <div class="absolute bottom-6 left-6 flex flex-col items-center">
-                        <div x-show="eloOpen" data-elo-card="left" class="w-[320px] mb-3">
-                            @include('games.ping-pong.partials.elo-preview', ['side' => 'left'])
+                <div class="max-md:portrait:flex max-md:portrait:flex-col max-md:portrait:flex-shrink-0">
+                    <div class="max-md:portrait:flex max-md:portrait:justify-between max-md:portrait:items-start max-md:portrait:gap-4 max-md:portrait:px-5 max-md:portrait:pt-3 max-md:portrait:pb-3">
+                        <div class="absolute bottom-6 left-6 [@media(max-height:500px)]:bottom-3 [@media(max-height:500px)]:left-4 max-md:portrait:static flex flex-col items-center min-w-0">
+                            <div x-show="eloOpen" data-elo-card="left" class="w-[320px] mb-3 max-md:hidden [@media(max-height:500px)]:hidden">
+                                @include('games.ping-pong.partials.elo-preview', ['side' => 'left'])
+                            </div>
+                            <span class="text-[#ff5a4a] text-[2.5rem] max-md:portrait:text-[1.6rem] [@media(max-height:500px)]:text-[1.6rem] leading-tight font-bold text-center break-words pph-glow-red [text-shadow:0_2px_8px_rgba(0,0,0,0.8)]" x-text="match?.player_left?.name || 'Left'"></span>
+                            <span :class="isServingLeft() ? '' : 'invisible'" class="pph-mono text-[#ffd166] text-[10px] tracking-[0.22em] font-bold [text-shadow:0_1px_4px_rgba(0,0,0,0.8)]">SERVING</span>
+                            <span class="text-white text-[10rem] max-md:portrait:text-[4.5rem] [@media(max-height:500px)]:text-[5.5rem] font-black leading-none pph-mono [text-shadow:0_4px_16px_rgba(0,0,0,0.8)]" x-text="match?.player_left_score ?? 0"></span>
                         </div>
-                        <span class="text-[#ff5a4a] text-[2.5rem] font-bold pph-glow-red [text-shadow:0_2px_8px_rgba(0,0,0,0.8)]" x-text="match?.player_left?.name || 'Left'"></span>
-                        <span x-show="isServingLeft()" class="pph-mono text-[#ffd166] text-[10px] tracking-[0.22em] font-bold [text-shadow:0_1px_4px_rgba(0,0,0,0.8)]">SERVING</span>
-                        <span class="text-white text-[10rem] font-black leading-none pph-mono [text-shadow:0_4px_16px_rgba(0,0,0,0.8)]" x-text="match?.player_left_score ?? 0"></span>
-                    </div>
-                    <div class="absolute bottom-6 right-6 flex flex-col items-center">
-                        <div x-show="eloOpen" data-elo-card="right" class="w-[320px] mb-3">
-                            @include('games.ping-pong.partials.elo-preview', ['side' => 'right'])
+                        <div class="absolute bottom-6 right-6 [@media(max-height:500px)]:bottom-3 [@media(max-height:500px)]:right-20 max-md:portrait:static flex flex-col items-center min-w-0">
+                            <div x-show="eloOpen" data-elo-card="right" class="w-[320px] mb-3 max-md:hidden [@media(max-height:500px)]:hidden">
+                                @include('games.ping-pong.partials.elo-preview', ['side' => 'right'])
+                            </div>
+                            <span class="text-[#3ec8ff] text-[2.5rem] max-md:portrait:text-[1.6rem] [@media(max-height:500px)]:text-[1.6rem] leading-tight font-bold text-center break-words pph-glow-blue [text-shadow:0_2px_8px_rgba(0,0,0,0.8)]" x-text="match?.player_right?.name || 'Right'"></span>
+                            <span :class="isServingRight() ? '' : 'invisible'" class="pph-mono text-[#ffd166] text-[10px] tracking-[0.22em] font-bold [text-shadow:0_1px_4px_rgba(0,0,0,0.8)]">SERVING</span>
+                            <span class="text-white text-[10rem] max-md:portrait:text-[4.5rem] [@media(max-height:500px)]:text-[5.5rem] font-black leading-none pph-mono [text-shadow:0_4px_16px_rgba(0,0,0,0.8)]" x-text="match?.player_right_score ?? 0"></span>
                         </div>
-                        <span class="text-[#3ec8ff] text-[2.5rem] font-bold pph-glow-blue [text-shadow:0_2px_8px_rgba(0,0,0,0.8)]" x-text="match?.player_right?.name || 'Right'"></span>
-                        <span x-show="isServingRight()" class="pph-mono text-[#ffd166] text-[10px] tracking-[0.22em] font-bold [text-shadow:0_1px_4px_rgba(0,0,0,0.8)]">SERVING</span>
-                        <span class="text-white text-[10rem] font-black leading-none pph-mono [text-shadow:0_4px_16px_rgba(0,0,0,0.8)]" x-text="match?.player_right_score ?? 0"></span>
                     </div>
+
                 </div>
             </template>
 
-            {{-- Top-right chip cluster --}}
-            <div class="absolute top-4 right-4 flex items-center gap-2">
+            {{-- Top-right chip cluster (icons only below desktop width) --}}
+            <div class="absolute z-10 top-3 right-3 md:top-4 md:right-4 flex items-center gap-1.5 md:gap-2">
                 <button type="button" x-show="eloPreview" @click="toggleElo()" data-elo-toggle
-                        class="inline-flex items-center gap-1 px-3 py-1 rounded-md bg-black/70 text-white text-xs border-0 cursor-pointer backdrop-blur-sm pph-mono uppercase tracking-[0.12em]">
+                        class="max-md:!hidden [@media(max-height:500px)]:!hidden inline-flex items-center gap-1 h-8 md:h-auto px-3 py-1 rounded-md bg-black/70 text-white text-xs border-0 cursor-pointer backdrop-blur-sm pph-mono uppercase tracking-[0.12em]">
                     ELO <span x-text="eloOpen ? '▾' : '▸'"></span>
                 </button>
-                <button type="button" @click="shareEmbed()"
-                        class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-black/70 text-white text-xs border-0 cursor-pointer backdrop-blur-sm pph-mono uppercase tracking-[0.12em]">
+                <button type="button" @click="shareEmbed()" aria-label="Share embed"
+                        class="inline-flex items-center gap-1.5 h-8 md:h-auto px-2.5 lg:px-3 py-1 rounded-md bg-black/70 text-white text-xs border-0 cursor-pointer backdrop-blur-sm pph-mono uppercase tracking-[0.12em]">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
                         <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
                     </svg>
-                    <span x-text="shareLabel"></span>
+                    <span class="hidden lg:inline" x-text="shareLabel"></span>
                 </button>
-                <a x-show="matchId" :href="'/games/ping-pong/matches/' + matchId + '/scoreboard'"
-                   class="px-3 py-1 rounded-md bg-black/70 text-white no-underline text-xs backdrop-blur-sm pph-mono uppercase tracking-[0.12em]">Scoreboard →</a>
-                <a href="/games/ping-pong"
-                   class="px-3 py-1 rounded-md bg-black/70 text-white no-underline text-xs backdrop-blur-sm pph-mono uppercase tracking-[0.12em]">← Back</a>
+                <a x-show="matchId" :href="'/games/ping-pong/matches/' + matchId + '/scoreboard'" aria-label="Scoreboard"
+                   class="max-md:!hidden inline-flex items-center gap-1.5 h-8 md:h-auto px-2.5 lg:px-3 py-1 rounded-md bg-black/70 text-white no-underline text-xs backdrop-blur-sm pph-mono uppercase tracking-[0.12em]">
+                    <svg class="lg:hidden" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+                        <line x1="12" y1="4" x2="12" y2="20"></line>
+                    </svg>
+                    <span class="hidden lg:inline">Scoreboard →</span>
+                </a>
+                <a href="/games/ping-pong" aria-label="Back to Ping Pong"
+                   class="inline-flex items-center h-8 md:h-auto px-2.5 lg:px-3 py-1 rounded-md bg-black/70 text-white no-underline text-xs backdrop-blur-sm pph-mono uppercase tracking-[0.12em]">← <span class="hidden lg:inline ml-1">Back</span></a>
             </div>
         </div>
     </template>
@@ -180,8 +204,9 @@
             <button type="button" @click="closeChat()" class="bg-transparent border-0 text-[#f5ecd6]/50 hover:text-[#f5ecd6] cursor-pointer pph-mono text-[11px] uppercase tracking-[0.14em]">Hide →</button>
         </header>
 
+        {{-- Phones already show the count over the video and have little room for chat. --}}
         <template x-if="chatMatchId">
-            @include('games.ping-pong.partials.viewers-list')
+            <div class="max-md:hidden">@include('games.ping-pong.partials.viewers-list')</div>
         </template>
 
         {{-- Who am I --}}
@@ -220,7 +245,7 @@
                 </div>
                 <img :src="currentGif().preview_url" :alt="currentGif().title"
                      :style="`aspect-ratio: ${currentGif().width || 4} / ${currentGif().height || 3}`"
-                     class="block w-full max-h-[180px] object-contain rounded-md bg-[#06081b]/60">
+                     class="block w-full max-h-[110px] md:max-h-[180px] object-contain rounded-md bg-[#06081b]/60">
                 <div class="flex items-center gap-2">
                     <span class="mr-auto pph-mono text-[9px] tracking-[0.14em] uppercase text-[#f5ecd6]/35">Powered by GIPHY</span>
                     <button type="button" @click="shuffleGif()" :disabled="gifPicker.results.length < 2"
@@ -233,7 +258,8 @@
             </div>
         </template>
 
-        <form @submit.prevent="sendChatMessage()" class="flex-shrink-0 flex flex-col gap-1.5" data-chat-composer>
+        {{-- Right padding keeps Send clear of the floating camera button in the corner. --}}
+        <form @submit.prevent="sendChatMessage()" class="flex-shrink-0 flex flex-col gap-1.5 pr-16" data-chat-composer>
             <div class="flex gap-2">
                 <input type="text" x-model="chatDraft" maxlength="200" autocomplete="off"
                        :disabled="!chatPlayer || !chatMatchId" :placeholder="!chatMatchId ? 'Chat opens when a match starts' : (chatPlayer ? 'Say something… or /giphy cats' : 'Pick a name first')"
