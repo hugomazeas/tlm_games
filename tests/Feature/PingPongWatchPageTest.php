@@ -181,6 +181,50 @@ class PingPongWatchPageTest extends TestCase
         $this->assertStringNotContainsString('hls.startLoad();', $this->watchLiveScript($html));
     }
 
+    /**
+     * On a portrait phone the overlay collided with itself: the button row covered
+     * the LIVE badge and the two 320px ELO cards and names overlapped. The stream
+     * stacks instead, and phones get only the video, the score and the chat.
+     */
+    public function test_watch_page_stacks_the_stream_on_portrait_phones(): void
+    {
+        $html = $this->get('/games/ping-pong/watch')->assertOk()->getContent();
+
+        $this->assertStringContainsString('max-md:portrait:flex-col', $html);
+        $this->assertMatchesRegularExpression('/id="watchPlayer"[^>]*max-md:portrait:relative[^>]*max-md:portrait:aspect-video/s', $html);
+        $this->assertMatchesRegularExpression('/data-elo-card="left"[^>]*max-md:hidden/s', $html);
+        $this->assertMatchesRegularExpression('/data-elo-toggle\s+class="max-md:!hidden/', $html);
+        $this->assertMatchesRegularExpression('/aria-label="Scoreboard"\s+class="max-md:!hidden/', $html);
+        // The two corner cards and the two score-only cards; the stacked phone copies are gone.
+        $this->assertSame(4, substr_count($html, "previewPlayerIdsForSide('"));
+        $this->assertMatchesRegularExpression('/data-audio-enable[^>]*whitespace-nowrap/s', $html);
+    }
+
+    /**
+     * The floating camera button sits in the bottom-right corner, right where Send is.
+     */
+    public function test_chat_send_button_stays_clear_of_the_camera_button(): void
+    {
+        $html = $this->get('/games/ping-pong/watch')->assertOk()->getContent();
+
+        $this->assertMatchesRegularExpression('/class="[^"]*pr-16[^"]*" data-chat-composer/', $html);
+    }
+
+    /**
+     * scrollChatToBottom() threw on `this.$root` after an await, so the chat never
+     * followed new messages, and a GIF that loaded late pushed its own caption out
+     * of view. Phones also have a short chat, so the /giphy preview has to fit it.
+     */
+    public function test_chat_follows_new_messages_and_gifs_fit_a_phone(): void
+    {
+        $html = $this->get('/games/ping-pong/watch')->assertOk()->getContent();
+
+        $this->assertStringContainsString("(this.\$root ?? document).querySelectorAll('[data-chat-scroll]')", $html);
+        $this->assertStringContainsString('loading="lazy" @load="scrollChatToBottom()"', $html);
+        $this->assertMatchesRegularExpression('/currentGif\(\)\.title"[^>]*max-h-\[110px\] md:max-h-\[180px\]/s', $html);
+        $this->assertStringContainsString('<div class="max-md:hidden"><div data-viewers-list', $html);
+    }
+
     private function watchLiveScript(string $html): string
     {
         $start = strpos($html, 'function watchLive()');

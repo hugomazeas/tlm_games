@@ -92,7 +92,8 @@ window.pingPongChat = () => ({
 
     scrollChatToBottom() {
         this.$nextTick(() => {
-            this.$root.querySelectorAll('[data-chat-scroll]').forEach(el => {
+            // $root is undefined when this runs after an await (history, a post); a page has one chat.
+            (this.$root ?? document).querySelectorAll('[data-chat-scroll]').forEach(el => {
                 el.scrollTop = el.scrollHeight;
             });
         });
