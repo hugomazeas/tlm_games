@@ -49,6 +49,9 @@ DELETE /players/{player}            Delete player
 GET  /leaderboards                  All game types
 GET  /leaderboards/{gameType:slug}  Per-game leaderboard (dynamic columns)
 GET  /notifications                 Web push opt-in (pick your player, enable)
+GET  /games/hot-potato              Hot potato: pick office + player, lobby, live game
+POST /push/hot-potato/subscribe     Opt a player's browser into "a hot potato opened" pushes
+POST /push/hot-potato/unsubscribe   Opt out of those pushes
 GET  /push/config                   VAPID public key + whether push is set up
 POST /push/subscribe                Register a browser against a player
 POST /push/unsubscribe              Drop a browser registration
@@ -115,6 +118,36 @@ public function boot(): void
 - `config/games.php` — lists game module ServiceProvider classes to auto-register
 - `game_types` DB table — metadata for each game (icon, color, leaderboard column definitions)
 - Leaderboard columns are defined as JSON on the `game_types` table and rendered dynamically
+
+### Hot Potato (live game sidecar)
+
+Spec: `docs/superpowers/specs/2026-10-07-hot-potato-design.md`. The one game
+that is played live, in real time, rather than scored afterwards.
+
+- **Two halves.** `app/Games/HotPotato/` is a normal module: the page
+  (`/games/hot-potato`), results tables, `SurvivalsProvider`, the push opt-in,
+  and `/internal/hot-potato/*` endpoints. `game-server/` is a Bun + TypeScript
+  WebSocket server that runs the game itself, one in-memory session per office,
+  20 ticks a second, server-authoritative.
+- **It runs as the `hot-potato` compose service** (`oven/bun` image, mounted
+  repo, `bun game-server/src/server.ts`), not inside the app image, so
+  `deploy.sh` (pull + restart, never rebuild) ships it. nginx sends
+  `/games/hot-potato/live/` to `games-hub-hot-potato:8090`; supervisord copies
+  `docker/nginx/default.conf` from the repo at start for the same reason.
+- **The sidecar never opens SQLite.** It looks players up and posts results
+  through `/internal/hot-potato/*`, guarded by `HOT_POTATO_INTERNAL_SECRET`
+  (`RequireInternalSecret`: 403 on a wrong secret, 503 when unset). Bun reads
+  the same `.env` from its working directory, so the secret lives in one place.
+- **No frontend build.** The sidecar bundles `game-server/src/client` with
+  `Bun.build` at startup and serves `/games/hot-potato/live/client.js`; the
+  Blade page loads it as a blocking classic script so `hotPotatoApp` exists
+  before Alpine starts. Restarting the container ships client changes.
+- **The fuse is secret.** It never leaves the server; clients only get a
+  0–1 `shake` level. Keep it that way: `sessions.test.ts` checks it.
+- `game-server/src/sim/` is pure (seeded RNG, no clock, no I/O) and shared by
+  server and browser. Arena themes are data in `sim/themes.ts`.
+- Tests: `cd game-server && bun test` (sim, arenas, sessions);
+  `bun run typecheck`; `bun run format`. Laravel side: `tests/Feature/HotPotatoTest.php`.
 
 ## Related Apps
 

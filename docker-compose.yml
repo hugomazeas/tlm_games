@@ -59,6 +59,26 @@ services:
     command: php artisan queue:work --sleep=3 --tries=1 --timeout=600
     user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
 
+  # The hot potato game server (game-server/). A stock Bun image running the
+  # mounted repo, so `make up` ships changes with no rebuild; Bun loads the
+  # repo's .env from its working directory, so HOT_POTATO_INTERNAL_SECRET is
+  # shared with Laravel. The app's nginx proxies /games/hot-potato/live/ here.
+  hot-potato:
+    image: oven/bun:1.4.0-alpine
+    container_name: games-hub-hot-potato
+    restart: unless-stopped
+    networks:
+      - proxy
+    volumes:
+      - .:/var/www
+    working_dir: /var/www
+    environment:
+      - HOT_POTATO_HOST=0.0.0.0
+      - HOT_POTATO_PORT=8090
+      - HOT_POTATO_LARAVEL_URL=http://games-hub
+    command: bun game-server/src/server.ts
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+
 networks:
   # Shared with the other apps behind Caddy; owned by the `proxy` compose
   # project on the server. `make up` creates it locally when missing.

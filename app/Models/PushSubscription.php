@@ -26,6 +26,7 @@ class PushSubscription extends Model
         'auth_token',
         'content_encoding',
         'notify_match_starts',
+        'notify_hot_potato',
         'last_notified_at',
     ];
 
@@ -33,6 +34,7 @@ class PushSubscription extends Model
     {
         return [
             'notify_match_starts' => 'boolean',
+            'notify_hot_potato' => 'boolean',
             'last_notified_at' => 'datetime',
         ];
     }

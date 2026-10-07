@@ -17,6 +17,22 @@ return [
         App\Games\Archery\Providers\ArcheryServiceProvider::class,
         App\Games\PingPong\Providers\PingPongServiceProvider::class,
         App\Games\Putter\Providers\PutterServiceProvider::class,
+        App\Games\HotPotato\Providers\HotPotatoServiceProvider::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Hot Potato
+    |--------------------------------------------------------------------------
+    |
+    | The live game runs in the `hot-potato` sidecar (game-server/), which
+    | calls Laravel's /internal/hot-potato endpoints with this shared secret.
+    | Both read it from the same .env. Unset closes those endpoints.
+    |
+    */
+
+    'hot_potato' => [
+        'internal_secret' => env('HOT_POTATO_INTERNAL_SECRET'),
     ],
 
     /*

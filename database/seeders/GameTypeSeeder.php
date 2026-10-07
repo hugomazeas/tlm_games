@@ -100,6 +100,36 @@ class GameTypeSeeder extends Seeder
             ]
         );
 
+        $hotPotato = GameType::updateOrCreate(
+            ['slug' => 'hot-potato'],
+            [
+                'name' => 'Hot Potato',
+                'description' => 'Bump someone to pass the potato. Whoever holds it when it blows is out.',
+                'icon' => "\xF0\x9F\xA5\x94",
+                'color' => '#f97316',
+                'is_active' => true,
+                'min_players' => 3,
+                'max_players' => 12,
+                'leaderboard_columns' => null,
+            ]
+        );
+
+        GameMode::updateOrCreate(
+            ['game_type_id' => $hotPotato->id, 'slug' => 'survivals'],
+            [
+                'name' => 'Survivals',
+                'description' => 'Games survived, then survival rate.',
+                'is_active' => true,
+                'sort_order' => 0,
+                'leaderboard_columns' => [
+                    ['key' => 'survivals', 'label' => 'Survived', 'sortable' => true],
+                    ['key' => 'survival_pct', 'label' => 'Survival %', 'sortable' => true],
+                    ['key' => 'games_played', 'label' => 'Games', 'sortable' => true],
+                    ['key' => 'passes', 'label' => 'Passes', 'sortable' => true],
+                ],
+            ]
+        );
+
         GameMode::updateOrCreate(
             ['game_type_id' => $pingPong->id, 'slug' => 'doubles-elo-ranking'],
             [

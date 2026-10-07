@@ -1,7 +1,7 @@
 # Hot potato — design
 
 Date: 2026-10-07
-Status: approved design, pending implementation plan
+Status: implemented (deviations from the approved design are noted inline as **Built:**)
 
 ## Goal
 
@@ -75,7 +75,7 @@ Eliminated players keep watching.
 ## Architecture
 
 ```
-browser (Blade + Alpine shell, canvas)  ──ws /hot-potato/ws──▶ nginx ──▶ Bun sidecar :8090
+browser (Blade + Alpine shell, canvas)  ──ws /games/hot-potato/live/ws──▶ nginx ──▶ hot-potato container :8090
         │                                                           │
         └── HTTP pages, push opt-in ──▶ nginx ──▶ php-fpm (Laravel) ◀──┘ internal HTTP
                                                      │                  (players, results)
@@ -88,14 +88,14 @@ Follows the existing game-module pattern (Controllers, Models, Services,
 Providers, `routes.php`, views in `resources/views/games/hot-potato/`,
 provider listed in `config/games.php`, a `game_types` row).
 
-- `GET /hot-potato` — the page: office + player picker, lobby, game, results.
+- `GET /games/hot-potato` — the page: office + player picker, lobby, game, results.
 - Migrations:
   - `hot_potato_games`: `id`, `office_id`, `seed`, `theme`, `duration_seconds`,
     `started_at`, `ended_at`.
   - `hot_potato_game_players`: `game_id`, `player_id`, `position` (1 = last
     standing; survivors share 1), `survived` (bool), `eliminated_at_ms`
     (null for survivors), `hold_ms`, `passes`.
-- `HotPotatoLeaderboardProvider` implements `LeaderboardProviderInterface`:
+- `SurvivalsProvider` (mode `survivals`) implements `LeaderboardProviderInterface`:
   wins (games survived), games played, survival rate, passes. Columns
   declared on the `game_types` row like the other games.
 - Internal endpoints for the sidecar, guarded by the `X-Internal-Secret`
@@ -106,20 +106,31 @@ provider listed in `config/games.php`, a `game_types` row).
   - `POST /internal/hot-potato/results` → stores one game and its players.
 - Push: an opt-in toggle "Notify me when a game opens" on the page, reusing
   the Hub's `push_subscriptions` per player. Invites go only to subscribers
-  whose player belongs to that office, excluding the host.
+  whose player belongs to that office, excluding the host. **Built:** a
+  `notify_hot_potato` flag on `push_subscriptions` (migration `000038`), set
+  by `POST /push/hot-potato/subscribe` and cleared by `/unsubscribe`.
 
 ### Bun sidecar `game-server/`
 
-TypeScript, run as a new supervisord program `hot-potato` on
-`127.0.0.1:8090`. nginx proxies `location /hot-potato/ws` to it with the
-WebSocket upgrade headers, as it already does for Reverb on `/app/`. It never
-touches the database.
+TypeScript, listening on port 8090. nginx proxies
+`location /games/hot-potato/live/` to it with the WebSocket upgrade headers,
+as it already does for Reverb on `/app/`. It never touches the database.
+
+**Built:** it runs as its own compose service, `hot-potato`
+(`oven/bun:1.4.0-alpine`, the repo mounted, `bun game-server/src/server.ts`),
+not as a supervisord program in the app image. `deploy.sh` pulls and restarts
+but never rebuilds, so anything baked into the image would never reach
+production; a stock image plus the mounted repo ships through the normal
+deploy. For the same reason supervisord now copies
+`docker/nginx/default.conf` from the repo before starting nginx. nginx
+resolves `games-hub-hot-potato` per request through Docker's DNS, so it still
+starts when the game container is down (the game route 502s).
 
 - `src/sim/` — pure, no I/O, no clock, injected RNG:
   - `generateArena(seed, theme, playerCount)`
   - `createGame(arena, players, durationMs, rng)`
-  - `step(state, inputs, dtMs) → { state, events }` with events `pass`,
-    `boom`, `eliminated`, `newPotato`, `ended`.
+  - `step(state, inputs, dtMs, rng) → events`, mutating `state`, with events `pass`,
+    `boom`, `newPotato`, `ended`; `removePlayer` for leaving.
 - `src/sessions.ts` — in-memory session per office; state machine
   `lobby → countdown → playing → results → lobby`, `closed`. Runs a 20 Hz
   loop (50 ms) only while `playing`. Clock and RNG injectable.
@@ -153,9 +164,9 @@ Server → client:
 | Type | Payload |
 |---|---|
 | `office` | `{session: null \| {hostId, phase, players}}` — state on hello and on change |
-| `lobby` | `{hostId, players: [{id, name}], settings}` |
-| `countdown` | `{arena, spawns, startsInMs}` — the arena is sent once here |
-| `snapshot` | `{t, players: [{id, x, y, vx, vy, frozenMs, out}], holderId, shake}` |
+| `welcome` | `{player \| null}` — answer to `hello` (**Built:** the lobby rides on `office`; there is no separate `lobby` message) |
+| `countdown` | `{arena, playerIds, durationMs, startsInMs}` — the arena is sent once here, and again to anyone arriving mid-game |
+| `snapshot` | `{elapsedMs, players: [{id, x, y, frozenMs, out}], holderId, shake}` |
 | `event` | `{kind: 'pass' \| 'boom' \| 'newPotato', ...}` |
 | `results` | `{survivors, eliminated: [{id, atMs}], stats}` |
 | `closed` | `{}` |
@@ -165,15 +176,22 @@ The fuse time never appears in any server message.
 
 ### Browser
 
-A Vite entry `resources/js/hot-potato/` (added to `vite.config.js` inputs)
-renders on a `<canvas>`; the page shell is Blade + Alpine.
+Renders on a `<canvas>`; the page shell is Blade + Alpine. **Built:** not a Vite
+entry — the Hub has no frontend build step (Tailwind and Alpine come from CDNs).
+The sidecar bundles `game-server/src/client` with `Bun.build` at startup and
+serves `/games/hot-potato/live/client.js`; the page loads it as a blocking
+classic script so `hotPotatoApp` exists before Alpine starts, with a stub that
+says "server unavailable" if it fails to load.
 
 - Page states: pick (office + player) → office idle ("Open a hot potato" /
   "Samuel is hosting — 4 players": Join, Watch) → lobby (player chips;
   host: duration, theme, Start) → countdown → game → results → lobby.
-- HUD: elapsed timer, players left, an edge arrow pointing at the potato.
+- HUD: time left, players left. **Built:** no edge arrow — the whole arena
+  is always on screen, so a bobbing 🥔 above the holder does that job.
 - Interpolation: draw remote players ~100 ms behind the latest snapshots.
-  The local avatar is predicted with `sim/step` and eased toward server state.
+  **Built:** the local avatar skips the 100 ms delay and eases toward the
+  newest snapshot rather than running `sim/step` locally; simpler, and the
+  lag left is one round trip.
 - Visuals: initials + colour per player with a name label; holder shows 🥔
   and a glow that shakes with `shake`; frozen = blue tint, ❄️, 2 s ring;
   eliminated = 🥧 splat, then a faded ghost. "🥔 YOU HAVE IT" flash on receipt.
@@ -238,10 +256,10 @@ results, back to lobby, second game.
 
 ## Rollout
 
-- Same single container; `docker-compose.yml` unchanged.
-- Dockerfile: copy the Bun binary from a pinned `oven/bun:<version>-alpine`
-  stage; build `game-server/` in the image; add the `hot-potato` supervisord
-  program and the nginx `location`.
+- **Built:** a new `hot-potato` compose service (stock `oven/bun:1.4.0-alpine`,
+  mounted repo); the Dockerfile is unchanged. supervisord copies the nginx
+  site config from the repo at start. Both reach production through the
+  normal `deploy.sh`, with no image rebuild.
 - Env: `HOT_POTATO_INTERNAL_SECRET` (both Laravel and the sidecar).
 - Ships behind `game_types.is_active`, so it can be switched off without a
   deploy.

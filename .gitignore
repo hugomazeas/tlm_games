@@ -24,3 +24,4 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 .playwright-mcp/
+/game-server/node_modules
