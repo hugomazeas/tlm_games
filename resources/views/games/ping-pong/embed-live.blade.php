@@ -29,7 +29,7 @@
             <div style="font-size:3rem;margin-bottom:16px;">&#127955;</div>
             <h2 style="color:#fff;font-size:1.4rem;margin-bottom:8px;">No Live Match</h2>
             <p style="font-size:0.9rem;">No match is being played right now.</p>
-            <p style="font-size:0.8rem;color:rgba(255,255,255,0.3);margin-top:12px;" x-text="'Checking again in ' + countdown + 's...'"></p>
+            <p style="font-size:0.8rem;color:rgba(255,255,255,0.3);margin-top:12px;" x-text="liveConnected ? 'Live — the stream will appear here as soon as a match starts' : 'Reconnecting…'" data-live-status></p>
         </div>
     </template>
 
@@ -94,12 +94,14 @@ function embedLive() {
         hlsInstance: null,
         match: null,
         matchId: null,
-        countdown: 10,
-        countdownTimer: null,
-        healthCheckTimer: null,
+        liveConnected: false,
         endingTimer: null,
         hlsNetworkErrorCount: 0,
+        streamUrl: null,
+        streamRetryTimer: null,
+        checkingLiveMatch: false,
         echo: null,
+        matchChannel: null,
         shareLabel: 'Share',
         shareResetTimer: null,
 
@@ -130,13 +132,84 @@ function embedLive() {
         },
 
         async init() {
+            this.subscribeToLiveMatches();
             await this.checkForLiveMatch();
-            if (!this.matchActive) {
-                this.startPolling();
+        },
+
+        ensureEcho() {
+            if (this.echo) return;
+            this.echo = new Echo({
+                broadcaster: 'pusher',
+                key: 'games-hub-key',
+                wsHost: window.location.hostname,
+                wsPort: window.location.port || 80,
+                forceTLS: false,
+                disableStats: true,
+                enabledTransports: ['ws', 'wss'],
+                cluster: 'mt1',
+            });
+        },
+
+        /**
+         * Everything that changes what's on air arrives over the websocket: a match
+         * starting, its stream coming up, scores and the end. Nothing is polled.
+         */
+        subscribeToLiveMatches() {
+            this.ensureEcho();
+
+            const connection = this.echo.connector.pusher.connection;
+            let wasConnected = false;
+            connection.bind('state_change', ({ current }) => {
+                this.liveConnected = current === 'connected';
+                if (current !== 'connected') return;
+                // Events sent while we were offline are gone, so catch up once on reconnect.
+                if (wasConnected) this.resyncLiveState();
+                wasConnected = true;
+            });
+
+            this.echo.channel('ping-pong.live')
+                .listen('.match.started', (e) => this.onLiveMatchStarted(e.match))
+                .listen('.stream.ready', (e) => this.onStreamReady(e));
+        },
+
+        async onLiveMatchStarted(match) {
+            if (!match || match.id === this.matchId) return;
+
+            // The new match took the camera, so whatever we were showing is over.
+            if (this.matchActive) {
+                await this.handleMatchEnd();
+                return;
             }
+
+            await this.checkForLiveMatch();
+        },
+
+        /** ffmpeg has written the playlist: attach the player without a reload. */
+        async onStreamReady(e) {
+            if (!e?.hls_url) return;
+
+            if (e.match_id === this.matchId) {
+                if (!this.hasVideo) this.attachStream(e.hls_url);
+                return;
+            }
+
+            if (this.matchActive) {
+                await this.handleMatchEnd();
+                return;
+            }
+
+            await this.checkForLiveMatch();
+        },
+
+        attachStream(hlsUrl) {
+            this.hasVideo = true;
+            this.hlsNetworkErrorCount = 0;
+            this.$nextTick(() => this.initPlayer(hlsUrl));
         },
 
         async checkForLiveMatch() {
+            if (this.checkingLiveMatch) return;
+            this.checkingLiveMatch = true;
             try {
                 const recRes = await fetch('/games/ping-pong/api/recordings/live');
                 if (recRes.ok) {
@@ -145,16 +218,13 @@ function embedLive() {
                         this.match = recData.match;
                         this.matchId = recData.match_id;
                         this.matchActive = true;
-                        this.hasVideo = true;
-                        this.hlsNetworkErrorCount = 0;
-                        this.stopPolling();
-                        this.$nextTick(() => this.initPlayer(recData.hls_url));
+                        this.attachStream(recData.hls_url);
                         this.subscribeToScores();
-                        this.startHealthCheck();
                         return;
                     }
                 }
 
+                // Fall back to any live match (score-only until `stream.ready` arrives)
                 const liveRes = await fetch('/games/ping-pong/api/matches/live');
                 if (liveRes.ok) {
                     const matches = await liveRes.json();
@@ -163,49 +233,26 @@ function embedLive() {
                         this.matchId = matches[0].id;
                         this.matchActive = true;
                         this.hasVideo = false;
-                        this.stopPolling();
                         this.subscribeToScores();
-                        this.startHealthCheck();
                         return;
                     }
                 }
             } catch (e) {
                 console.error('Error checking for live match:', e);
+            } finally {
+                this.checkingLiveMatch = false;
             }
         },
 
-        startPolling() {
-            this.countdown = 10;
-            this.countdownTimer = setInterval(() => {
-                this.countdown--;
-                if (this.countdown <= 0) {
-                    this.countdown = 10;
-                    this.checkForLiveMatch();
-                }
-            }, 1000);
-        },
-
-        stopPolling() {
-            if (this.countdownTimer) {
-                clearInterval(this.countdownTimer);
-                this.countdownTimer = null;
+        /**
+         * One-off catch-up after the websocket reconnects, or when the stream keeps
+         * failing: did the match end, did its video come up or go away?
+         */
+        async resyncLiveState() {
+            if (!this.matchActive) {
+                await this.checkForLiveMatch();
+                return;
             }
-        },
-
-        startHealthCheck() {
-            this.stopHealthCheck();
-            this.healthCheckTimer = setInterval(() => this.runHealthCheck(), 15000);
-        },
-
-        stopHealthCheck() {
-            if (this.healthCheckTimer) {
-                clearInterval(this.healthCheckTimer);
-                this.healthCheckTimer = null;
-            }
-        },
-
-        async runHealthCheck() {
-            if (!this.matchId) return;
             try {
                 const res = await fetch('/games/ping-pong/api/matches/' + this.matchId);
                 if (res.ok) {
@@ -215,8 +262,24 @@ function embedLive() {
                         return;
                     }
                 }
+                await this.syncVideo();
             } catch (e) {
                 // Ignore transient fetch errors
+            }
+        },
+
+        /** Brings the video up if it went on air unseen, or drops to score-only if a failing stream is gone. */
+        async syncVideo() {
+            const res = await fetch('/games/ping-pong/api/recordings/live');
+            if (!res.ok) return;
+            const recData = await res.json();
+            const onAir = recData.active && recData.hls_url && recData.match_id === this.matchId;
+
+            if (onAir && !this.hasVideo) {
+                this.attachStream(recData.hls_url);
+            } else if (!onAir && this.hasVideo && this.hlsNetworkErrorCount > 0) {
+                this.hasVideo = false;
+                this.destroyPlayer();
             }
         },
 
@@ -227,7 +290,6 @@ function embedLive() {
          */
         beginMatchEnd() {
             if (this.endingTimer) return;
-            this.stopHealthCheck();
 
             const video = this.hasVideo ? document.getElementById('embedPlayer') : null;
             if (!video) {
@@ -244,14 +306,13 @@ function embedLive() {
             this.endingTimer = null;
             if (!this.matchActive) return;
 
-            this.stopHealthCheck();
             this.matchActive = false;
             this.hasVideo = false;
             this.destroyPlayer();
+            this.leaveMatchChannel();
 
             // A match may have started during the tail: jump straight to it.
             await this.checkForLiveMatch();
-            if (!this.matchActive) this.startPolling();
         },
 
         initPlayer(hlsUrl) {
@@ -259,6 +320,7 @@ function embedLive() {
             if (!video) return;
 
             this.destroyPlayer();
+            this.streamUrl = hlsUrl;
 
             if (typeof Hls !== 'undefined' && Hls.isSupported()) {
                 const hls = new Hls({
@@ -269,16 +331,14 @@ function embedLive() {
                 this.hlsInstance = hls;
                 hls.loadSource(hlsUrl);
                 hls.attachMedia(video);
-                hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    this.hlsNetworkErrorCount = 0;
+                    video.play().catch(() => {});
+                });
                 hls.on(Hls.Events.ERROR, (event, data) => {
                     if (!data.fatal) return;
                     if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-                        this.hlsNetworkErrorCount++;
-                        if (this.hlsNetworkErrorCount >= 3) {
-                            this.runHealthCheck();
-                            this.hlsNetworkErrorCount = 0;
-                        }
-                        hls.startLoad();
+                        this.retryStream();
                     } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
                         hls.recoverMediaError();
                     } else {
@@ -287,12 +347,33 @@ function embedLive() {
                     }
                 });
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.onerror = () => this.retryStream();
                 video.src = hlsUrl;
                 video.play().catch(() => {});
             }
         },
 
+        /**
+         * Reconnects the player after a fatal network error. hls.startLoad() never
+         * re-requests a manifest that failed, so rebuild the player from scratch.
+         */
+        retryStream() {
+            if (this.streamRetryTimer || !this.hasVideo || !this.streamUrl) return;
+            this.hlsNetworkErrorCount++;
+            if (this.hlsNetworkErrorCount % 3 === 0) this.resyncLiveState();
+
+            const delay = Math.min(1000 * this.hlsNetworkErrorCount, 5000);
+            this.streamRetryTimer = setTimeout(() => {
+                this.streamRetryTimer = null;
+                if (this.hasVideo && this.streamUrl) this.initPlayer(this.streamUrl);
+            }, delay);
+        },
+
         destroyPlayer() {
+            clearTimeout(this.streamRetryTimer);
+            this.streamRetryTimer = null;
+            const video = document.getElementById('embedPlayer');
+            if (video) video.onerror = null;
             if (this.hlsInstance) {
                 this.hlsInstance.destroy();
                 this.hlsInstance = null;
@@ -311,21 +392,21 @@ function embedLive() {
                 || this.match.current_server.id === this.match.team_right_player2_id;
         },
 
+        leaveMatchChannel() {
+            if (this.echo && this.matchChannel) {
+                this.echo.leave(this.matchChannel);
+            }
+            this.matchChannel = null;
+        },
+
         subscribeToScores() {
             if (!this.matchId) return;
 
-            this.echo = new Echo({
-                broadcaster: 'pusher',
-                key: 'games-hub-key',
-                wsHost: window.location.hostname,
-                wsPort: window.location.port || 80,
-                forceTLS: false,
-                disableStats: true,
-                enabledTransports: ['ws', 'wss'],
-                cluster: 'mt1',
-            });
+            this.ensureEcho();
+            this.leaveMatchChannel();
 
-            this.echo.channel('ping-pong.match.' + this.matchId)
+            this.matchChannel = 'ping-pong.match.' + this.matchId;
+            this.echo.channel(this.matchChannel)
                 .listen('.match.score-updated', (e) => {
                     if (e.match) {
                         this.match = { ...this.match, ...e.match };

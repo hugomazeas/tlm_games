@@ -151,4 +151,41 @@ class PingPongWatchPageTest extends TestCase
         $this->assertStringContainsString('video.muted = !this.audioOn', $html);
         $this->assertMatchesRegularExpression('/<video[^>]*id="watchPlayer"[^>]*muted/s', $html);
     }
+
+    /**
+     * A watcher with the page open picks up a new match and its stream from the
+     * websocket alone: no reload, and no timer polling the API.
+     */
+    public function test_watch_page_follows_new_streams_over_the_websocket_without_polling(): void
+    {
+        $html = $this->get('/games/ping-pong/watch')->assertOk()->getContent();
+
+        $this->assertStringContainsString("channel('ping-pong.live')", $html);
+        $this->assertStringContainsString("listen('.match.started'", $html);
+        $this->assertStringContainsString("listen('.stream.ready'", $html);
+        $this->assertStringContainsString('data-live-status', $html);
+        $this->assertStringNotContainsString('setInterval', $this->watchLiveScript($html));
+        $this->assertStringNotContainsString('Re-checking in', $html);
+    }
+
+    /**
+     * hls.startLoad() never re-requests a manifest that failed, so a dropped
+     * stream must rebuild the player to reconnect.
+     */
+    public function test_watch_page_rebuilds_the_player_after_a_fatal_network_error(): void
+    {
+        $html = $this->get('/games/ping-pong/watch')->assertOk()->getContent();
+
+        $this->assertStringContainsString('this.retryStream()', $html);
+        $this->assertStringContainsString('this.initPlayer(this.streamUrl)', $html);
+        $this->assertStringNotContainsString('hls.startLoad();', $this->watchLiveScript($html));
+    }
+
+    private function watchLiveScript(string $html): string
+    {
+        $start = strpos($html, 'function watchLive()');
+        $this->assertNotFalse($start);
+
+        return substr($html, $start, strpos($html, '</script>', $start) - $start);
+    }
 }

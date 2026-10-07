@@ -6,14 +6,14 @@ use App\Games\PingPong\Events\LiveMatchStarted;
 use App\Games\PingPong\Events\MatchAbandoned;
 use App\Games\PingPong\Events\MatchRematched;
 use App\Games\PingPong\Events\MatchScoreUpdated;
+use App\Games\PingPong\Models\PingPongClip;
 use App\Games\PingPong\Models\PingPongLobby;
 use App\Games\PingPong\Models\PingPongLobbyParticipant;
 use App\Games\PingPong\Models\PingPongMatch;
 use App\Games\PingPong\Models\PingPongPoint;
 use App\Games\PingPong\Models\PingPongRating;
-use App\Games\PingPong\Models\PingPongClip;
-use App\Games\PingPong\Models\PingPongRecording;
 use App\Games\PingPong\Models\PingPongRatingChange;
+use App\Games\PingPong\Models\PingPongRecording;
 use App\Games\PingPong\Services\ClipExtractionService;
 use App\Games\PingPong\Services\EloService;
 use App\Games\PingPong\Services\MatchupAnalysisService;
@@ -31,7 +31,6 @@ use Carbon\CarbonPeriod;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 
 class PingPongApiController extends Controller
 {
@@ -71,7 +70,7 @@ class PingPongApiController extends Controller
 
         $activityMap = [];
         foreach ($playerIds as $id => $activity) {
-            if (!isset($activityMap[$id]) || $activity > $activityMap[$id]) {
+            if (! isset($activityMap[$id]) || $activity > $activityMap[$id]) {
                 $activityMap[$id] = $activity;
             }
         }
@@ -116,9 +115,9 @@ class PingPongApiController extends Controller
                 ->where('ended_at', '>=', $activityCutoff)
                 ->where(function ($q) use ($playerId) {
                     $q->where('player_left_id', $playerId)
-                      ->orWhere('player_right_id', $playerId)
-                      ->orWhere('team_left_player2_id', $playerId)
-                      ->orWhere('team_right_player2_id', $playerId);
+                        ->orWhere('player_right_id', $playerId)
+                        ->orWhere('team_left_player2_id', $playerId)
+                        ->orWhere('team_right_player2_id', $playerId);
                 })
                 ->exists();
         });
@@ -133,7 +132,7 @@ class PingPongApiController extends Controller
         }
 
         $today = Carbon::today();
-        $cutoff7  = $today->copy()->subDays(6);
+        $cutoff7 = $today->copy()->subDays(6);
         $cutoff30 = $today->copy()->subDays(29);
         $cutoff7Str = $cutoff7->toDateString();
 
@@ -173,7 +172,7 @@ class PingPongApiController extends Controller
 
         $entries = $playerIds->map(function ($playerId) use ($mode, $playerDates, $cutoff7Str, $workdays7, $workdays30, $monthCutoff, $championStats) {
             $player = Player::find($playerId);
-            if (!$player) {
+            if (! $player) {
                 return null;
             }
 
@@ -195,10 +194,10 @@ class PingPongApiController extends Controller
             $last10 = $this->getLast10Results($playerId, $mode);
 
             $dates = $playerDates[$playerId] ?? [];
-            $weekdayDates = array_filter(array_keys($dates), fn($d) => Carbon::parse($d)->isWeekday());
-            $count7  = count(array_filter($weekdayDates, fn($d) => $d >= $cutoff7Str));
+            $weekdayDates = array_filter(array_keys($dates), fn ($d) => Carbon::parse($d)->isWeekday());
+            $count7 = count(array_filter($weekdayDates, fn ($d) => $d >= $cutoff7Str));
             $count30 = count($weekdayDates);
-            $office7  = $workdays7  > 0 ? (int) round($count7  / $workdays7  * 100) : 0;
+            $office7 = $workdays7 > 0 ? (int) round($count7 / $workdays7 * 100) : 0;
             $office30 = $workdays30 > 0 ? (int) round($count30 / $workdays30 * 100) : 0;
 
             return [
@@ -219,9 +218,9 @@ class PingPongApiController extends Controller
                 'office_30d' => $office30,
             ];
         })
-        ->filter()
-        ->sortByDesc('elo_rating')
-        ->values();
+            ->filter()
+            ->sortByDesc('elo_rating')
+            ->values();
 
         $entries = $this->attachRankDeltas($entries, $mode);
 
@@ -270,9 +269,9 @@ class PingPongApiController extends Controller
             ->where('mode', $mode)
             ->where(function ($q) use ($playerId) {
                 $q->where('player_left_id', $playerId)
-                  ->orWhere('player_right_id', $playerId)
-                  ->orWhere('team_left_player2_id', $playerId)
-                  ->orWhere('team_right_player2_id', $playerId);
+                    ->orWhere('player_right_id', $playerId)
+                    ->orWhere('team_left_player2_id', $playerId)
+                    ->orWhere('team_right_player2_id', $playerId);
             })
             ->orderBy('ended_at', 'desc')
             ->get();
@@ -302,9 +301,9 @@ class PingPongApiController extends Controller
             ->where('mode', $mode)
             ->where(function ($q) use ($playerId) {
                 $q->where('player_left_id', $playerId)
-                  ->orWhere('player_right_id', $playerId)
-                  ->orWhere('team_left_player2_id', $playerId)
-                  ->orWhere('team_right_player2_id', $playerId);
+                    ->orWhere('player_right_id', $playerId)
+                    ->orWhere('team_left_player2_id', $playerId)
+                    ->orWhere('team_right_player2_id', $playerId);
             })
             ->orderBy('ended_at', 'desc')
             ->get();
@@ -315,7 +314,7 @@ class PingPongApiController extends Controller
                 ? $match->winner_id === $playerId
                 : (($match->winner_id === $match->player_left_id && in_array($playerId, [$match->player_left_id, $match->team_left_player2_id], true))
                     || ($match->winner_id === $match->player_right_id && in_array($playerId, [$match->player_right_id, $match->team_right_player2_id], true)));
-            if (!$won) {
+            if (! $won) {
                 $streak++;
             } else {
                 break;
@@ -331,9 +330,9 @@ class PingPongApiController extends Controller
             ->where('mode', $mode)
             ->where(function ($q) use ($playerId) {
                 $q->where('player_left_id', $playerId)
-                  ->orWhere('player_right_id', $playerId)
-                  ->orWhere('team_left_player2_id', $playerId)
-                  ->orWhere('team_right_player2_id', $playerId);
+                    ->orWhere('player_right_id', $playerId)
+                    ->orWhere('team_left_player2_id', $playerId)
+                    ->orWhere('team_right_player2_id', $playerId);
             })
             ->orderBy('ended_at', 'desc')
             ->limit(10)
@@ -522,6 +521,7 @@ class PingPongApiController extends Controller
                     'status' => $match->recording->status,
                     'hls_url' => $match->recording->hls_url,
                 ] : null;
+
                 return $data;
             });
 
@@ -857,7 +857,7 @@ class PingPongApiController extends Controller
         $point = PingPongPoint::findOrFail($pointId);
         $match = $point->match;
 
-        if (!$match) {
+        if (! $match) {
             return response()->json(['error' => 'Match not found'], 422);
         }
 
@@ -921,7 +921,12 @@ class PingPongApiController extends Controller
         $recording = $this->videoRecordingService->getActiveRecording();
 
         // A tailing recording is still on air for viewers already watching, but it's not a live match to join
-        if (!$recording || $this->videoRecordingService->isTailing($recording)) {
+        if (! $recording || $this->videoRecordingService->isTailing($recording)) {
+            return response()->json(['active' => false]);
+        }
+
+        // Not on air until ffmpeg writes its playlist; watchers hear `stream.ready` when it does
+        if (! $this->videoRecordingService->isStreamReady($recording)) {
             return response()->json(['active' => false]);
         }
 
@@ -953,6 +958,7 @@ class PingPongApiController extends Controller
 
         try {
             $recording = $this->videoRecordingService->startRecording($match);
+
             return response()->json(['status' => $recording->status, 'match_id' => $match->id]);
         } catch (\Throwable $e) {
             return response()->json(['error' => $e->getMessage()], 500);
@@ -963,12 +969,13 @@ class PingPongApiController extends Controller
     {
         $active = $this->videoRecordingService->getActiveRecording();
 
-        if (!$active) {
+        if (! $active) {
             return response()->json(['error' => 'No active recording'], 404);
         }
 
         try {
             $recording = $this->videoRecordingService->stopRecording($active->match);
+
             return response()->json(['status' => $recording->status, 'video_url' => $recording->video_url]);
         } catch (\Throwable $e) {
             return response()->json(['error' => $e->getMessage()], 500);
@@ -1008,7 +1015,7 @@ class PingPongApiController extends Controller
 
         // Delete the MP4 file if it exists
         if ($recording->video_path) {
-            $fullPath = storage_path('app/public/' . $recording->video_path);
+            $fullPath = storage_path('app/public/'.$recording->video_path);
             if (file_exists($fullPath)) {
                 unlink($fullPath);
             }
@@ -1032,7 +1039,7 @@ class PingPongApiController extends Controller
 
         if ($recording->status !== 'completed') {
             return response()->json([
-                'error' => 'Recording is not ready (status: ' . $recording->status . ')',
+                'error' => 'Recording is not ready (status: '.$recording->status.')',
             ], 422);
         }
 
@@ -1044,7 +1051,7 @@ class PingPongApiController extends Controller
             $match?->team_right_player2_id,
         ]);
 
-        if (!in_array((int) $validated['player_id'], $participantIds, true)) {
+        if (! in_array((int) $validated['player_id'], $participantIds, true)) {
             return response()->json([
                 'error' => 'Selected player did not participate in this match',
             ], 422);
@@ -1099,7 +1106,7 @@ class PingPongApiController extends Controller
         $clip = PingPongClip::findOrFail($id);
 
         if ($clip->clip_path) {
-            $fullPath = storage_path('app/public/' . $clip->clip_path);
+            $fullPath = storage_path('app/public/'.$clip->clip_path);
             if (file_exists($fullPath)) {
                 unlink($fullPath);
             }
@@ -1123,12 +1130,12 @@ class PingPongApiController extends Controller
                 $match = $clip->match;
                 $leftLabel = $match
                     ? ($match->isDoubles()
-                        ? ($match->playerLeft->name ?? '?') . ' & ' . ($match->teamLeftPlayer2->name ?? '?')
+                        ? ($match->playerLeft->name ?? '?').' & '.($match->teamLeftPlayer2->name ?? '?')
                         : ($match->playerLeft->name ?? '?'))
                     : '?';
                 $rightLabel = $match
                     ? ($match->isDoubles()
-                        ? ($match->playerRight->name ?? '?') . ' & ' . ($match->teamRightPlayer2->name ?? '?')
+                        ? ($match->playerRight->name ?? '?').' & '.($match->teamRightPlayer2->name ?? '?')
                         : ($match->playerRight->name ?? '?'))
                     : '?';
 
@@ -1202,7 +1209,7 @@ class PingPongApiController extends Controller
     {
         $previousMatch = PingPongMatch::includingTournaments()->findOrFail($id);
 
-        if (!$previousMatch->is_complete) {
+        if (! $previousMatch->is_complete) {
             return response()->json(['error' => 'Previous match is not complete'], 422);
         }
 
@@ -1239,7 +1246,7 @@ class PingPongApiController extends Controller
         }
 
         foreach ($players as $p) {
-            if (!$p['player_id']) {
+            if (! $p['player_id']) {
                 continue;
             }
             PingPongLobbyParticipant::create([
@@ -1282,7 +1289,7 @@ class PingPongApiController extends Controller
             }
 
             if ($recording->video_path) {
-                $fullPath = storage_path('app/public/' . $recording->video_path);
+                $fullPath = storage_path('app/public/'.$recording->video_path);
                 if (file_exists($fullPath)) {
                     unlink($fullPath);
                 }
@@ -1312,9 +1319,9 @@ class PingPongApiController extends Controller
             ->where('mode', $mode)
             ->where(function ($q) use ($id) {
                 $q->where('player_left_id', $id)
-                  ->orWhere('player_right_id', $id)
-                  ->orWhere('team_left_player2_id', $id)
-                  ->orWhere('team_right_player2_id', $id);
+                    ->orWhere('player_right_id', $id)
+                    ->orWhere('team_left_player2_id', $id)
+                    ->orWhere('team_right_player2_id', $id);
             })
             ->count();
 
@@ -1326,16 +1333,16 @@ class PingPongApiController extends Controller
                     $q2->whereColumn('winner_id', 'player_left_id')
                         ->where(function ($q3) use ($id) {
                             $q3->where('player_left_id', $id)
-                               ->orWhere('team_left_player2_id', $id);
+                                ->orWhere('team_left_player2_id', $id);
                         });
                 })
-                ->orWhere(function ($q2) use ($id) {
-                    $q2->whereColumn('winner_id', 'player_right_id')
-                        ->where(function ($q3) use ($id) {
-                            $q3->where('player_right_id', $id)
-                               ->orWhere('team_right_player2_id', $id);
-                        });
-                });
+                    ->orWhere(function ($q2) use ($id) {
+                        $q2->whereColumn('winner_id', 'player_right_id')
+                            ->where(function ($q3) use ($id) {
+                                $q3->where('player_right_id', $id)
+                                    ->orWhere('team_right_player2_id', $id);
+                            });
+                    });
             })
             ->count();
 
@@ -1346,9 +1353,9 @@ class PingPongApiController extends Controller
             ->where('mode', $mode)
             ->where(function ($q) use ($id) {
                 $q->where('player_left_id', $id)
-                  ->orWhere('player_right_id', $id)
-                  ->orWhere('team_left_player2_id', $id)
-                  ->orWhere('team_right_player2_id', $id);
+                    ->orWhere('player_right_id', $id)
+                    ->orWhere('team_left_player2_id', $id)
+                    ->orWhere('team_right_player2_id', $id);
             })
             ->selectRaw('AVG(CAST((julianday(ended_at) - julianday(started_at)) * 86400 AS INTEGER)) as avg_duration')
             ->value('avg_duration');
@@ -1370,9 +1377,9 @@ class PingPongApiController extends Controller
             ->where('mode', $mode)
             ->where(function ($q) use ($id) {
                 $q->where('player_left_id', $id)
-                  ->orWhere('player_right_id', $id)
-                  ->orWhere('team_left_player2_id', $id)
-                  ->orWhere('team_right_player2_id', $id);
+                    ->orWhere('player_right_id', $id)
+                    ->orWhere('team_left_player2_id', $id)
+                    ->orWhere('team_right_player2_id', $id);
             })
             ->orderBy('ended_at', 'desc')
             ->get();
@@ -1382,9 +1389,9 @@ class PingPongApiController extends Controller
             ->where('mode', $mode)
             ->where(function ($q) use ($id) {
                 $q->where('player_left_id', $id)
-                  ->orWhere('player_right_id', $id)
-                  ->orWhere('team_left_player2_id', $id)
-                  ->orWhere('team_right_player2_id', $id);
+                    ->orWhere('player_right_id', $id)
+                    ->orWhere('team_left_player2_id', $id)
+                    ->orWhere('team_right_player2_id', $id);
             });
 
         $winMatchIds = $playerMatchesQuery()
@@ -1393,7 +1400,8 @@ class PingPongApiController extends Controller
             ->filter(function ($m) use ($id) {
                 $onLeft = $m->player_left_id === $id || $m->team_left_player2_id === $id;
                 $leftWon = $m->winner_id === $m->player_left_id;
-                return ($onLeft && $leftWon) || (!$onLeft && !$leftWon);
+
+                return ($onLeft && $leftWon) || (! $onLeft && ! $leftWon);
             })
             ->pluck('id');
 
@@ -1403,13 +1411,17 @@ class PingPongApiController extends Controller
             ->filter(function ($m) use ($id) {
                 $onLeft = $m->player_left_id === $id || $m->team_left_player2_id === $id;
                 $leftWon = $m->winner_id === $m->player_left_id;
-                return !(($onLeft && $leftWon) || (!$onLeft && !$leftWon));
+
+                return ! (($onLeft && $leftWon) || (! $onLeft && ! $leftWon));
             })
             ->pluck('id');
 
         $formatDuration = function ($avg) {
-            if (!$avg) return null;
+            if (! $avg) {
+                return null;
+            }
             $s = (int) round($avg);
+
             return sprintf('%d:%02d', floor($s / 60), $s % 60);
         };
 
@@ -1427,13 +1439,16 @@ class PingPongApiController extends Controller
 
         // Avg points scored when winning vs losing
         $avgPlayerScore = function ($matchIds) use ($id) {
-            if ($matchIds->isEmpty()) return null;
+            if ($matchIds->isEmpty()) {
+                return null;
+            }
             $matches = PingPongMatch::whereIn('id', $matchIds)->get();
             $total = 0;
             foreach ($matches as $m) {
                 $onLeft = $m->player_left_id === $id || $m->team_left_player2_id === $id;
                 $total += $onLeft ? $m->player_left_score : $m->player_right_score;
             }
+
             return round($total / $matches->count(), 1);
         };
 
@@ -1442,7 +1457,9 @@ class PingPongApiController extends Controller
 
         // Biggest score difference when winning and losing
         $scoreDiff = function ($matchIds) use ($id) {
-            if ($matchIds->isEmpty()) return null;
+            if ($matchIds->isEmpty()) {
+                return null;
+            }
             $matches = PingPongMatch::whereIn('id', $matchIds)->get();
             $maxDiff = 0;
             foreach ($matches as $m) {
@@ -1451,6 +1468,7 @@ class PingPongApiController extends Controller
                 $oppScore = $onLeft ? $m->player_right_score : $m->player_left_score;
                 $maxDiff = max($maxDiff, abs($playerScore - $oppScore));
             }
+
             return $maxDiff;
         };
 
@@ -1465,7 +1483,7 @@ class PingPongApiController extends Controller
         foreach ($recentMatches->reverse() as $match) {
             $onLeftTeam = $match->player_left_id === $id || $match->team_left_player2_id === $id;
             $leftWon = $match->winner_id === $match->player_left_id;
-            $won = ($onLeftTeam && $leftWon) || (!$onLeftTeam && !$leftWon);
+            $won = ($onLeftTeam && $leftWon) || (! $onLeftTeam && ! $leftWon);
 
             if ($won) {
                 $currentWinRun++;
@@ -1483,18 +1501,27 @@ class PingPongApiController extends Controller
             ->where('mode', $mode)
             ->where(function ($q) use ($id) {
                 $q->where('player_left_id', $id)
-                  ->orWhere('player_right_id', $id)
-                  ->orWhere('team_left_player2_id', $id)
-                  ->orWhere('team_right_player2_id', $id);
+                    ->orWhere('player_right_id', $id)
+                    ->orWhere('team_left_player2_id', $id)
+                    ->orWhere('team_right_player2_id', $id);
             })
             ->get(['player_left_id', 'player_right_id', 'team_left_player2_id', 'team_right_player2_id',
-                   'player_left_elo_after', 'player_right_elo_after', 'team_left_player2_elo_after', 'team_right_player2_elo_after']);
+                'player_left_elo_after', 'player_right_elo_after', 'team_left_player2_elo_after', 'team_right_player2_elo_after']);
 
         $highestElo = $eloMatches->map(function ($m) use ($id) {
-            if ($m->player_left_id === $id) return $m->player_left_elo_after;
-            if ($m->player_right_id === $id) return $m->player_right_elo_after;
-            if ($m->team_left_player2_id === $id) return $m->team_left_player2_elo_after;
-            if ($m->team_right_player2_id === $id) return $m->team_right_player2_elo_after;
+            if ($m->player_left_id === $id) {
+                return $m->player_left_elo_after;
+            }
+            if ($m->player_right_id === $id) {
+                return $m->player_right_elo_after;
+            }
+            if ($m->team_left_player2_id === $id) {
+                return $m->team_left_player2_elo_after;
+            }
+            if ($m->team_right_player2_id === $id) {
+                return $m->team_right_player2_elo_after;
+            }
+
             return null;
         })->filter()->max();
 
@@ -1554,7 +1581,7 @@ class PingPongApiController extends Controller
 
         $stats = $this->pointTagStatsService->getStats($id, '1v1');
 
-        if (!$stats) {
+        if (! $stats) {
             return response()->json(['has_tags' => false]);
         }
 
@@ -1580,7 +1607,7 @@ class PingPongApiController extends Controller
 
         $history = $this->pointTagStatsService->getComparativeHistory($id);
 
-        if (!$history) {
+        if (! $history) {
             return response()->json(['weeks' => [], 'series' => []]);
         }
 
@@ -1591,13 +1618,13 @@ class PingPongApiController extends Controller
     {
         Player::findOrFail($id);
 
-        if (!$this->pointTagStatsService->isValidTag($tag)) {
+        if (! $this->pointTagStatsService->isValidTag($tag)) {
             return response()->json(['error' => 'Invalid tag'], 422);
         }
 
         $history = $this->pointTagStatsService->getTagHistory($id, $tag);
 
-        if (!$history) {
+        if (! $history) {
             return response()->json(['tag' => $tag, 'label' => null, 'points' => []]);
         }
 
@@ -1607,6 +1634,7 @@ class PingPongApiController extends Controller
     public function practiceInsights(int $id, PracticeInsightsService $service): JsonResponse
     {
         Player::findOrFail($id);
+
         return response()->json($service->forPlayer($id));
     }
 
@@ -1637,7 +1665,7 @@ class PingPongApiController extends Controller
         }
 
         $firstChange = $changes->first();
-        if (!$firstChange) {
+        if (! $firstChange) {
             return response()->json([
                 'player' => ['id' => $player->id, 'name' => $player->name],
                 'mode' => $mode,
@@ -1722,9 +1750,9 @@ class PingPongApiController extends Controller
                 ->where('ended_at', '>=', $activityCutoff)
                 ->where(function ($q) use ($playerId) {
                     $q->where('player_left_id', $playerId)
-                      ->orWhere('player_right_id', $playerId)
-                      ->orWhere('team_left_player2_id', $playerId)
-                      ->orWhere('team_right_player2_id', $playerId);
+                        ->orWhere('player_right_id', $playerId)
+                        ->orWhere('team_left_player2_id', $playerId)
+                        ->orWhere('team_right_player2_id', $playerId);
                 })
                 ->exists();
         });
@@ -1790,6 +1818,7 @@ class PingPongApiController extends Controller
             foreach ($dates as $dayStr) {
                 if ($firstDay === null || $dayStr < $firstDay) {
                     $values[] = null;
+
                     continue;
                 }
                 foreach ($deltasByPlayerDay[$pid][$dayStr] ?? [] as $delta) {
@@ -1822,9 +1851,9 @@ class PingPongApiController extends Controller
             ->where('mode', $mode)
             ->where(function ($q) use ($id) {
                 $q->where('player_left_id', $id)
-                  ->orWhere('player_right_id', $id)
-                  ->orWhere('team_left_player2_id', $id)
-                  ->orWhere('team_right_player2_id', $id);
+                    ->orWhere('player_right_id', $id)
+                    ->orWhere('team_left_player2_id', $id)
+                    ->orWhere('team_right_player2_id', $id);
             })
             ->with(['playerLeft', 'playerRight', 'winner', 'teamLeftPlayer2', 'teamRightPlayer2'])
             ->orderBy('ended_at', 'desc')
@@ -1832,15 +1861,15 @@ class PingPongApiController extends Controller
             ->map(function ($match) use ($id) {
                 $onLeftTeam = $match->player_left_id === $id || $match->team_left_player2_id === $id;
                 $leftWon = $match->winner_id === $match->player_left_id;
-                $won = ($onLeftTeam && $leftWon) || (!$onLeftTeam && !$leftWon);
+                $won = ($onLeftTeam && $leftWon) || (! $onLeftTeam && ! $leftWon);
 
                 $playerScore = $onLeftTeam ? $match->player_left_score : $match->player_right_score;
                 $opponentScore = $onLeftTeam ? $match->player_right_score : $match->player_left_score;
 
                 if ($match->isDoubles()) {
                     $opponent = $onLeftTeam
-                        ? $match->playerRight->name . ' & ' . ($match->teamRightPlayer2->name ?? '')
-                        : $match->playerLeft->name . ' & ' . ($match->teamLeftPlayer2->name ?? '');
+                        ? $match->playerRight->name.' & '.($match->teamRightPlayer2->name ?? '')
+                        : $match->playerLeft->name.' & '.($match->teamLeftPlayer2->name ?? '');
                 } else {
                     $opponent = $onLeftTeam ? $match->playerRight : $match->playerLeft;
                     $opponent = ['id' => $opponent->id, 'name' => $opponent->name];
@@ -1874,9 +1903,9 @@ class PingPongApiController extends Controller
             ->where('mode', $mode)
             ->where(function ($q) use ($id) {
                 $q->where('player_left_id', $id)
-                  ->orWhere('player_right_id', $id)
-                  ->orWhere('team_left_player2_id', $id)
-                  ->orWhere('team_right_player2_id', $id);
+                    ->orWhere('player_right_id', $id)
+                    ->orWhere('team_left_player2_id', $id)
+                    ->orWhere('team_right_player2_id', $id);
             })
             ->with(['playerLeft', 'playerRight', 'teamLeftPlayer2', 'teamRightPlayer2'])
             ->get();
@@ -1885,7 +1914,7 @@ class PingPongApiController extends Controller
         foreach ($completedMatches as $match) {
             $onLeftTeam = $match->player_left_id === $id || $match->team_left_player2_id === $id;
             $leftWon = $match->winner_id === $match->player_left_id;
-            $won = ($onLeftTeam && $leftWon) || (!$onLeftTeam && !$leftWon);
+            $won = ($onLeftTeam && $leftWon) || (! $onLeftTeam && ! $leftWon);
 
             if ($match->isDoubles()) {
                 // Key by opposing team (sorted IDs for consistency)
@@ -1896,10 +1925,10 @@ class PingPongApiController extends Controller
                 $key = implode('-', $oppIds);
 
                 $oppNames = $onLeftTeam
-                    ? $match->playerRight->name . ' & ' . ($match->teamRightPlayer2->name ?? '')
-                    : $match->playerLeft->name . ' & ' . ($match->teamLeftPlayer2->name ?? '');
+                    ? $match->playerRight->name.' & '.($match->teamRightPlayer2->name ?? '')
+                    : $match->playerLeft->name.' & '.($match->teamLeftPlayer2->name ?? '');
 
-                if (!isset($h2h[$key])) {
+                if (! isset($h2h[$key])) {
                     $h2h[$key] = ['opponent' => $oppNames, 'wins' => 0, 'losses' => 0];
                 }
             } else {
@@ -1907,7 +1936,7 @@ class PingPongApiController extends Controller
                 $opponent = $onLeftTeam ? $match->playerRight : $match->playerLeft;
                 $key = (string) $opponentId;
 
-                if (!isset($h2h[$key])) {
+                if (! isset($h2h[$key])) {
                     $h2h[$key] = [
                         'opponent' => ['id' => $opponent->id, 'name' => $opponent->name],
                         'wins' => 0,
@@ -1980,28 +2009,30 @@ class PingPongApiController extends Controller
         foreach ($matches as $match) {
             $onLeft = $match->player_left_id === $id;
             $opp = $onLeft ? $match->playerRight : $match->playerLeft;
-            if (!$opp) continue;
+            if (! $opp) {
+                continue;
+            }
 
             $won = ($onLeft && $match->winner_id === $match->player_left_id)
-                || (!$onLeft && $match->winner_id === $match->player_right_id);
+                || (! $onLeft && $match->winner_id === $match->player_right_id);
 
             $weekStart = Carbon::parse($match->ended_at)->startOfWeek();
             $weekKey = $weekStart->toDateString();
 
-            if (!isset($weekMap[$weekKey])) {
+            if (! isset($weekMap[$weekKey])) {
                 $weekMap[$weekKey] = [
                     'week_start' => $weekKey,
                     'week_label' => $weekStart->format('M j'),
                 ];
             }
 
-            if (!isset($oppMap[$opp->id])) {
+            if (! isset($oppMap[$opp->id])) {
                 $oppMap[$opp->id] = ['id' => $opp->id, 'name' => $opp->name, 'games' => 0];
             }
             $oppMap[$opp->id]['games']++;
 
-            $cellKey = $weekKey . '|' . $opp->id;
-            if (!isset($cellMap[$cellKey])) {
+            $cellKey = $weekKey.'|'.$opp->id;
+            if (! isset($cellMap[$cellKey])) {
                 $cellMap[$cellKey] = [
                     'week' => $weekKey,
                     'opponent_id' => $opp->id,
@@ -2009,24 +2040,29 @@ class PingPongApiController extends Controller
                     'losses' => 0,
                 ];
             }
-            if ($won) $cellMap[$cellKey]['wins']++;
-            else $cellMap[$cellKey]['losses']++;
+            if ($won) {
+                $cellMap[$cellKey]['wins']++;
+            } else {
+                $cellMap[$cellKey]['losses']++;
+            }
         }
 
         ksort($weekMap);
         $weeks = array_values($weekMap);
 
         // Sort opponents by total games desc, cap top 12 to keep chart readable
-        uasort($oppMap, fn($a, $b) => $b['games'] <=> $a['games']);
+        uasort($oppMap, fn ($a, $b) => $b['games'] <=> $a['games']);
         $opponents = array_values(array_map(
-            fn($o) => ['id' => $o['id'], 'name' => $o['name'], 'games' => $o['games']],
+            fn ($o) => ['id' => $o['id'], 'name' => $o['name'], 'games' => $o['games']],
             array_slice($oppMap, 0, 12, true)
         ));
         $keepIds = array_flip(array_column($opponents, 'id'));
 
         $cells = [];
         foreach ($cellMap as $c) {
-            if (!isset($keepIds[$c['opponent_id']])) continue;
+            if (! isset($keepIds[$c['opponent_id']])) {
+                continue;
+            }
             $games = $c['wins'] + $c['losses'];
             $cells[] = [
                 'week' => $c['week'],

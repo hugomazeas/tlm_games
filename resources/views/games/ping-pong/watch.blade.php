@@ -33,7 +33,7 @@
             <div class="text-5xl mb-4">🏓</div>
             <h2 class="pph-display text-[clamp(28px,3vw,40px)] tracking-[0.04em] uppercase text-[#f5ecd6] mb-2">No live match</h2>
             <p class="pph-mono text-[12px] tracking-[0.14em] uppercase text-[#f5ecd6]/45 mb-5">No match is being played right now.</p>
-            <p class="pph-mono text-[10px] tracking-[0.2em] uppercase text-[#f5ecd6]/30" x-text="'Re-checking in ' + countdown + 's…'"></p>
+            <p class="pph-mono text-[10px] tracking-[0.2em] uppercase text-[#f5ecd6]/30" x-text="liveConnected ? 'Live — the stream will appear here as soon as a match starts' : 'Reconnecting…'" data-live-status></p>
             <p x-show="matchAlertsOn" x-cloak class="mt-4 pph-mono text-[11px] tracking-[0.14em] uppercase text-[#ffd166]/80" data-match-alerts-on>
                 🔔 You'll get a notification when a match starts ·
                 <button type="button" @click="disableMatchAlerts()" :disabled="matchAlertsBusy"
@@ -276,11 +276,12 @@ function watchLive() {
         audioOn: false,
         match: null,
         matchId: null,
-        countdown: 10,
-        countdownTimer: null,
-        healthCheckTimer: null,
+        liveConnected: false,
         endingTimer: null,
         hlsNetworkErrorCount: 0,
+        streamUrl: null,
+        streamRetryTimer: null,
+        checkingLiveMatch: false,
         echo: null,
         matchChannel: null,
         shareLabel: 'Share embed',
@@ -535,14 +536,70 @@ function watchLive() {
         async init() {
             if (!this.chatPlayer) this.loadChatPlayerOptions();
             this.initMatchAlerts();
+            this.subscribeToLiveMatches();
+            await this.checkForLiveMatch();
+        },
+
+        /**
+         * Everything that changes what's on air arrives over the websocket: a match
+         * starting, its stream coming up, scores and the end. Nothing is polled.
+         */
+        subscribeToLiveMatches() {
+            this.ensureEcho();
+
+            const connection = this.echo.connector.pusher.connection;
+            let wasConnected = false;
+            connection.bind('state_change', ({ current }) => {
+                this.liveConnected = current === 'connected';
+                if (current !== 'connected') return;
+                // Events sent while we were offline are gone, so catch up once on reconnect.
+                if (wasConnected) this.resyncLiveState();
+                wasConnected = true;
+            });
+
+            this.echo.channel('ping-pong.live')
+                .listen('.match.started', (e) => this.onLiveMatchStarted(e.match))
+                .listen('.stream.ready', (e) => this.onStreamReady(e));
+        },
+
+        async onLiveMatchStarted(match) {
+            if (!match || match.id === this.matchId) return;
+
+            // The new match took the camera, so whatever we were showing is over.
+            if (this.matchActive) {
+                await this.handleMatchEnd();
+                return;
+            }
 
             await this.checkForLiveMatch();
-            if (!this.matchActive) {
-                this.startPolling();
+        },
+
+        /** ffmpeg has written the playlist: attach the player without a reload. */
+        async onStreamReady(e) {
+            if (!e?.hls_url) return;
+
+            if (e.match_id === this.matchId) {
+                if (!this.hasVideo) this.attachStream(e.hls_url);
+                return;
             }
+
+            if (this.matchActive) {
+                await this.handleMatchEnd();
+                return;
+            }
+
+            await this.checkForLiveMatch();
+        },
+
+        attachStream(hlsUrl) {
+            this.hasVideo = true;
+            this.hlsNetworkErrorCount = 0;
+            this.$nextTick(() => this.initPlayer(hlsUrl));
         },
 
         async checkForLiveMatch() {
+            if (this.checkingLiveMatch) return;
+            this.checkingLiveMatch = true;
             try {
                 // First check for a recording with video stream
                 const recRes = await fetch('/games/ping-pong/api/recordings/live');
@@ -552,20 +609,16 @@ function watchLive() {
                         this.match = recData.match;
                         this.matchId = recData.match_id;
                         this.matchActive = true;
-                        this.hasVideo = true;
-                        this.hlsNetworkErrorCount = 0;
-                        this.stopPolling();
-                        this.$nextTick(() => this.initPlayer(recData.hls_url));
+                        this.attachStream(recData.hls_url);
                         this.subscribeToScores();
                         this.joinChat(this.matchId);
                         this.joinViewers(this.matchId);
                         this.loadEloPreview();
-                        this.startHealthCheck();
                         return;
                     }
                 }
 
-                // Fall back to any live match (score-only mode)
+                // Fall back to any live match (score-only until `stream.ready` arrives)
                 const liveRes = await fetch('/games/ping-pong/api/matches/live');
                 if (liveRes.ok) {
                     const matches = await liveRes.json();
@@ -574,52 +627,29 @@ function watchLive() {
                         this.matchId = matches[0].id;
                         this.matchActive = true;
                         this.hasVideo = false;
-                        this.stopPolling();
                         this.subscribeToScores();
                         this.joinChat(this.matchId);
                         this.joinViewers(this.matchId);
                         this.loadEloPreview();
-                        this.startHealthCheck();
                         return;
                     }
                 }
             } catch (e) {
                 console.error('Error checking for live match:', e);
+            } finally {
+                this.checkingLiveMatch = false;
             }
         },
 
-        startPolling() {
-            this.countdown = 10;
-            this.countdownTimer = setInterval(() => {
-                this.countdown--;
-                if (this.countdown <= 0) {
-                    this.countdown = 10;
-                    this.checkForLiveMatch();
-                }
-            }, 1000);
-        },
-
-        stopPolling() {
-            if (this.countdownTimer) {
-                clearInterval(this.countdownTimer);
-                this.countdownTimer = null;
+        /**
+         * One-off catch-up after the websocket reconnects, or when the stream keeps
+         * failing: did the match end, did its video come up or go away?
+         */
+        async resyncLiveState() {
+            if (!this.matchActive) {
+                await this.checkForLiveMatch();
+                return;
             }
-        },
-
-        startHealthCheck() {
-            this.stopHealthCheck();
-            this.healthCheckTimer = setInterval(() => this.runHealthCheck(), 15000);
-        },
-
-        stopHealthCheck() {
-            if (this.healthCheckTimer) {
-                clearInterval(this.healthCheckTimer);
-                this.healthCheckTimer = null;
-            }
-        },
-
-        async runHealthCheck() {
-            if (!this.matchId) return;
             try {
                 const res = await fetch('/games/ping-pong/api/matches/' + this.matchId);
                 if (res.ok) {
@@ -629,8 +659,24 @@ function watchLive() {
                         return;
                     }
                 }
+                await this.syncVideo();
             } catch (e) {
                 // Ignore transient fetch errors
+            }
+        },
+
+        /** Brings the video up if it went on air unseen, or drops to score-only if a failing stream is gone. */
+        async syncVideo() {
+            const res = await fetch('/games/ping-pong/api/recordings/live');
+            if (!res.ok) return;
+            const recData = await res.json();
+            const onAir = recData.active && recData.hls_url && recData.match_id === this.matchId;
+
+            if (onAir && !this.hasVideo) {
+                this.attachStream(recData.hls_url);
+            } else if (!onAir && this.hasVideo && this.hlsNetworkErrorCount > 0) {
+                this.hasVideo = false;
+                this.destroyPlayer();
             }
         },
 
@@ -641,7 +687,6 @@ function watchLive() {
          */
         beginMatchEnd() {
             if (this.endingTimer) return;
-            this.stopHealthCheck();
 
             const video = this.hasVideo ? document.getElementById('watchPlayer') : null;
             if (!video) {
@@ -658,7 +703,6 @@ function watchLive() {
             this.endingTimer = null;
             if (!this.matchActive) return;
 
-            this.stopHealthCheck();
             this.matchActive = false;
             this.hasVideo = false;
             this.eloPreview = null;
@@ -670,7 +714,6 @@ function watchLive() {
 
             // A match may have started during the tail: jump straight to it.
             await this.checkForLiveMatch();
-            if (!this.matchActive) this.startPolling();
         },
 
         initPlayer(hlsUrl) {
@@ -678,6 +721,7 @@ function watchLive() {
             if (!video) return;
 
             this.destroyPlayer();
+            this.streamUrl = hlsUrl;
 
             if (typeof Hls !== 'undefined' && Hls.isSupported()) {
                 const hls = new Hls({
@@ -688,16 +732,14 @@ function watchLive() {
                 this.hlsInstance = hls;
                 hls.loadSource(hlsUrl);
                 hls.attachMedia(video);
-                hls.on(Hls.Events.MANIFEST_PARSED, () => this.startVideo(video));
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    this.hlsNetworkErrorCount = 0;
+                    this.startVideo(video);
+                });
                 hls.on(Hls.Events.ERROR, (event, data) => {
                     if (!data.fatal) return;
                     if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-                        this.hlsNetworkErrorCount++;
-                        if (this.hlsNetworkErrorCount >= 3) {
-                            this.runHealthCheck();
-                            this.hlsNetworkErrorCount = 0;
-                        }
-                        hls.startLoad();
+                        this.retryStream();
                     } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
                         hls.recoverMediaError();
                     } else {
@@ -706,9 +748,26 @@ function watchLive() {
                     }
                 });
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.onerror = () => this.retryStream();
                 video.src = hlsUrl;
                 this.startVideo(video);
             }
+        },
+
+        /**
+         * Reconnects the player after a fatal network error. hls.startLoad() never
+         * re-requests a manifest that failed, so rebuild the player from scratch.
+         */
+        retryStream() {
+            if (this.streamRetryTimer || !this.hasVideo || !this.streamUrl) return;
+            this.hlsNetworkErrorCount++;
+            if (this.hlsNetworkErrorCount % 3 === 0) this.resyncLiveState();
+
+            const delay = Math.min(1000 * this.hlsNetworkErrorCount, 5000);
+            this.streamRetryTimer = setTimeout(() => {
+                this.streamRetryTimer = null;
+                if (this.hasVideo && this.streamUrl) this.initPlayer(this.streamUrl);
+            }, delay);
         },
 
         /** Plays with sound if the viewer turned it on; falls back to muted if the browser refuses. */
@@ -735,6 +794,10 @@ function watchLive() {
         },
 
         destroyPlayer() {
+            clearTimeout(this.streamRetryTimer);
+            this.streamRetryTimer = null;
+            const video = document.getElementById('watchPlayer');
+            if (video) video.onerror = null;
             if (this.hlsInstance) {
                 this.hlsInstance.destroy();
                 this.hlsInstance = null;
