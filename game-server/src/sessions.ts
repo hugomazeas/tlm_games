@@ -11,7 +11,17 @@ import {
     type Settings,
 } from './protocol.ts'
 import { type Arena, generateArena } from './sim/arena.ts'
-import { createGame, type GameEvent, type GameState, type Input, removePlayer, shakeLevel, step } from './sim/game.ts'
+import {
+    createGame,
+    type GameEvent,
+    type GameMode,
+    type GameState,
+    type Input,
+    removePlayer,
+    shakeLevel,
+    step,
+    winnerIds,
+} from './sim/game.ts'
 import { createRng, pickOne, type Rng } from './sim/rng.ts'
 import { THEME_IDS, type ThemeId } from './sim/themes.ts'
 
@@ -28,6 +38,7 @@ export interface Connection {
 }
 
 export interface GameResult {
+    mode: GameMode
     officeId: number
     seed: number
     theme: ThemeId
@@ -36,7 +47,7 @@ export interface GameResult {
     endedAt: string
     players: Array<{
         playerId: number
-        /** 1 for every survivor; then by how late you went out. */
+        /** 1 for every survivor (King: the longest holders); then by how late you went out (King: time held). */
         position: number
         survived: boolean
         eliminatedAtMs: number | null
@@ -153,7 +164,7 @@ export class SessionManager {
                     officeId: client.officeId,
                     hostId: player.id,
                     members: [{ player, connId, awayUntil: null }],
-                    settings: { durationMin: 2, theme: 'random' },
+                    settings: { durationMin: 2, theme: 'random', mode: 'survival' },
                     phase: 'lobby',
                     phaseEndsAt: 0,
                     game: null,
@@ -194,7 +205,7 @@ export class SessionManager {
                 const present = session.members.filter(m => m.awayUntil === null)
                 if (present.length < MIN_PLAYERS) return fail('NOT_ENOUGH_PLAYERS')
 
-                session.settings = { durationMin: message.durationMin, theme: message.theme }
+                session.settings = { durationMin: message.durationMin, theme: message.theme, mode: message.mode }
                 this.startCountdown(
                     session,
                     present.map(m => m.player.id)
@@ -253,7 +264,13 @@ export class SessionManager {
         const theme = session.settings.theme === 'random' ? pickOne(themeRng, THEME_IDS) : session.settings.theme
         const arena = generateArena(seed, theme, playerIds.length)
 
-        session.game = createGame(arena, playerIds, session.settings.durationMin * 60_000, this.hooks.rng)
+        session.game = createGame(
+            arena,
+            playerIds,
+            session.settings.durationMin * 60_000,
+            this.hooks.rng,
+            session.settings.mode
+        )
         session.gameMeta = { seed, theme, startedAt: this.hooks.now() }
         session.inputs.clear()
         session.phase = 'countdown'
@@ -281,6 +298,13 @@ export class SessionManager {
                 this.broadcast(session.officeId, { type: 'pass', from: event.from, to: event.to })
             } else if (event.kind === 'boom') {
                 this.broadcast(session.officeId, { type: 'boom', playerId: event.playerId })
+            } else if (event.kind === 'pickup') {
+                this.broadcast(session.officeId, {
+                    type: 'pickup',
+                    playerId: event.playerId,
+                    item: event.item,
+                    effect: event.effect,
+                })
             } else {
                 this.broadcast(session.officeId, { type: 'newPotato', playerId: event.playerId })
             }
@@ -295,7 +319,8 @@ export class SessionManager {
         this.broadcastSnapshot(session)
         const players = rankPlayers(game)
         const results: Results = {
-            survivorIds: game.players.filter(p => !p.out).map(p => p.id),
+            mode: game.mode,
+            survivorIds: winnerIds(game),
             eliminated: game.players
                 .filter(p => p.out && p.eliminatedAtMs !== null)
                 .sort((a, b) => (b.eliminatedAtMs ?? 0) - (a.eliminatedAtMs ?? 0))
@@ -309,6 +334,7 @@ export class SessionManager {
         this.broadcastOffice(session)
 
         this.hooks.onResults({
+            mode: game.mode,
             officeId: session.officeId,
             seed: meta.seed,
             theme: meta.theme,
@@ -354,6 +380,18 @@ export class SessionManager {
                 y: round(p.y),
                 frozenMs: p.frozenMs,
                 out: p.out,
+                shieldMs: p.shieldMs,
+                speedMs: p.speedMs,
+                slipMs: p.slipMs,
+                holdMs: p.holdMs,
+                safeMs: p.safeMs,
+            })),
+            items: game.items.map(item => ({
+                id: item.id,
+                kind: item.kind,
+                x: round(item.x),
+                y: round(item.y),
+                expiresInMs: Math.max(0, item.expiresAtMs - game.elapsedMs),
             })),
             holderId: game.holderId,
             shake: round(shakeLevel(game)),
@@ -382,6 +420,8 @@ function view(session: Session): SessionView {
 
 /** Survivors share first place; the rest rank by how late they went out, ties shared. */
 function rankPlayers(game: GameState): GameResult['players'] {
+    if (game.mode === 'king') return rankByReign(game)
+
     const outlasting = (atMs: number | null) =>
         game.players.filter(other => !other.out || (atMs !== null && (other.eliminatedAtMs ?? 0) > atMs)).length
 
@@ -389,6 +429,25 @@ function rankPlayers(game: GameState): GameResult['players'] {
         playerId: p.id,
         position: p.out ? outlasting(p.eliminatedAtMs) + 1 : 1,
         survived: !p.out,
+        eliminatedAtMs: p.eliminatedAtMs,
+        holdMs: p.holdMs,
+        passes: p.passes,
+    }))
+}
+
+/**
+ * King of the Potato: ranked by time held, ties shared; whoever left mid-game
+ * ranks after everyone who stayed. The winners count as "survived".
+ */
+function rankByReign(game: GameState): GameResult['players'] {
+    const winners = new Set(winnerIds(game))
+    const ahead = (p: GameState['players'][number]) =>
+        game.players.filter(other => (other.out === p.out ? other.holdMs > p.holdMs : !other.out && p.out)).length
+
+    return game.players.map(p => ({
+        playerId: p.id,
+        position: ahead(p) + 1,
+        survived: winners.has(p.id),
         eliminatedAtMs: p.eliminatedAtMs,
         holdMs: p.holdMs,
         passes: p.passes,

@@ -32,6 +32,7 @@ export class LaravelClient {
 
     async postResults(result: GameResult): Promise<void> {
         const response = await this.request('POST', '/internal/hot-potato/results', {
+            mode: result.mode,
             office_id: result.officeId,
             seed: result.seed,
             theme: result.theme,

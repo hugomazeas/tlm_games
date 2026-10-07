@@ -1,5 +1,6 @@
 import type { PlayerInfo, Results, ServerMessage, SessionView } from '../protocol.ts'
-import { MIN_PLAYERS } from '../protocol.ts'
+import { GAME_MODES, MIN_PLAYERS } from '../protocol.ts'
+import type { GameMode } from '../sim/game.ts'
 import { THEMES, THEME_IDS, type ThemeId } from '../sim/themes.ts'
 import { colourFor, Renderer } from './renderer.ts'
 import { STRINGS } from './strings.ts'
@@ -22,6 +23,7 @@ interface Config {
 }
 
 interface ResultsView {
+    mode: GameMode
     headline: string
     rows: Array<{ id: number; name: string; place: string; survived: boolean; holdSeconds: number; passes: number }>
 }
@@ -73,6 +75,10 @@ function hotPotatoApp(config: Config) {
         error: '',
         duration: 2,
         theme: 'random' as ThemeId | 'random',
+        mode: 'survival' as GameMode,
+        modes: GAME_MODES.map(id => ({ id, ...STRINGS.modes[id] })),
+        /** King of the Potato's live top three. */
+        kingBoard: [] as Array<{ id: number; name: string; seconds: number }>,
         themes: THEME_IDS.map(id => ({ id, label: `${THEMES[id].emoji} ${THEMES[id].name}` })),
         canPlay: !matchMedia('(pointer: coarse)').matches,
         reducedMotion: REDUCED_MOTION,
@@ -123,6 +129,13 @@ function hotPotatoApp(config: Config) {
         },
         get canStart() {
             return this.isHost && this.phase === 'lobby' && this.presentCount >= MIN_PLAYERS
+        },
+        /** The mode of the game on screen, or the one the host has picked. */
+        get gameMode(): GameMode {
+            return this.session?.settings.mode ?? this.mode
+        },
+        get modeHint() {
+            return STRINGS.modes[this.gameMode].hint
         },
         get timerText() {
             const seconds = Math.ceil(this.remainingMs / 1000)
@@ -185,7 +198,7 @@ function hotPotatoApp(config: Config) {
             this.send({ type: 'leave' })
         },
         start() {
-            this.send({ type: 'start', durationMin: Number(this.duration), theme: this.theme })
+            this.send({ type: 'start', durationMin: Number(this.duration), theme: this.theme, mode: this.mode })
         },
         close() {
             this.send({ type: 'close' })
@@ -205,13 +218,17 @@ function hotPotatoApp(config: Config) {
                         this.results = null
                         renderer?.clear()
                     }
-                    if (message.session) this.duration = message.session.settings.durationMin
+                    if (message.session) {
+                        this.duration = message.session.settings.durationMin
+                        this.mode = message.session.settings.mode
+                    }
                     return
                 case 'countdown':
                     this.results = null
                     this.gamePlayerIds = message.playerIds
                     this.remainingMs = message.durationMs
                     this.aliveCount = message.playerIds.length
+                    this.kingBoard = []
                     ;(this as unknown as Alpine).$nextTick(() =>
                         this.ensureRenderer()?.setArena(message.arena, message.playerIds)
                     )
@@ -224,14 +241,24 @@ function hotPotatoApp(config: Config) {
                         lastHudAt = now
                         this.remainingMs = Math.max(0, this.durationOf() - message.elapsedMs)
                         this.aliveCount = message.players.filter(p => !p.out).length
+                        if (this.gameMode === 'king') {
+                            this.kingBoard = [...message.players]
+                                .filter(p => p.holdMs > 0)
+                                .sort((a, b) => b.holdMs - a.holdMs)
+                                .slice(0, 3)
+                                .map(p => ({ id: p.id, name: this.nameOf(p.id), seconds: Math.floor(p.holdMs / 1000) }))
+                        }
                     }
                     return
                 }
                 case 'pass':
-                    if (message.to === this.me?.id) this.showBanner(STRINGS.youHaveIt, true)
+                    if (message.to === this.me?.id) this.showBanner(this.gotItText(), true)
+                    else if (this.gameMode === 'king' && message.from === this.me?.id) {
+                        this.showBanner(STRINGS.crownStolen(this.nameOf(message.to)), false)
+                    }
                     return
                 case 'newPotato':
-                    if (message.playerId === this.me?.id) this.showBanner(STRINGS.youHaveIt, true)
+                    if (message.playerId === this.me?.id) this.showBanner(this.gotItText(), true)
                     return
                 case 'boom':
                     renderer?.boom(message.playerId)
@@ -242,6 +269,17 @@ function hotPotatoApp(config: Config) {
                         false
                     )
                     return
+                case 'pickup': {
+                    const mine = message.playerId === this.me?.id
+                    const text = STRINGS.pickup(
+                        mine ? null : this.nameOf(message.playerId),
+                        message.item,
+                        message.effect
+                    )
+                    // Someone else's pickup never hides a banner that matters more, like "you have it".
+                    if (mine || !this.banner) this.showBanner(text, false)
+                    return
+                }
                 case 'results':
                     this.remainingMs = 0
                     this.results = this.describeResults(message.results)
@@ -261,6 +299,7 @@ function hotPotatoApp(config: Config) {
             if (!renderer && canvas instanceof HTMLCanvasElement) {
                 renderer = new Renderer(canvas, {
                     reducedMotion: REDUCED_MOTION,
+                    mode: () => this.gameMode,
                     myId: () => this.me?.id ?? null,
                     nameOf: id => this.nameOf(id),
                 })
@@ -293,7 +332,13 @@ function hotPotatoApp(config: Config) {
             }, 1800)
         },
 
+        gotItText(): string {
+            return this.gameMode === 'king' ? STRINGS.youAreKing : STRINGS.youHaveIt
+        },
+
         describeResults(results: Results): ResultsView {
+            if (results.mode === 'king') return this.describeReign(results)
+
             const survivors = results.survivorIds.map(id => this.nameOf(id))
             const stats = new Map(results.stats.map(s => [s.id, s]))
             const ordered = [
@@ -302,6 +347,7 @@ function hotPotatoApp(config: Config) {
             ]
 
             return {
+                mode: results.mode,
                 headline: survivors.length > 0 ? STRINGS.survivors(survivors) : STRINGS.nobody,
                 rows: ordered.map((row, index) => ({
                     id: row.id,
@@ -310,6 +356,35 @@ function hotPotatoApp(config: Config) {
                     survived: row.survived,
                     holdSeconds: Math.round((stats.get(row.id)?.holdMs ?? 0) / 1000),
                     passes: stats.get(row.id)?.passes ?? 0,
+                })),
+            }
+        },
+
+        /** King of the Potato: longest reign first, ties sharing a place. */
+        describeReign(results: Results): ResultsView {
+            const kings = new Set(results.survivorIds)
+            const ranked = [...results.stats].sort((a, b) => b.holdMs - a.holdMs)
+            const seconds = (ms: number) => Math.round(ms / 1000)
+            const best = seconds(ranked[0]?.holdMs ?? 0)
+
+            return {
+                mode: results.mode,
+                headline:
+                    kings.size > 0
+                        ? STRINGS.kings(
+                              [...kings].map(id => this.nameOf(id)),
+                              best
+                          )
+                        : STRINGS.noKing,
+                rows: ranked.map(row => ({
+                    id: row.id,
+                    name: this.nameOf(row.id),
+                    place: kings.has(row.id)
+                        ? '👑'
+                        : `#${ranked.filter(other => other.holdMs > row.holdMs).length + 1}`,
+                    survived: kings.has(row.id),
+                    holdSeconds: seconds(row.holdMs),
+                    passes: row.passes,
                 })),
             }
         },

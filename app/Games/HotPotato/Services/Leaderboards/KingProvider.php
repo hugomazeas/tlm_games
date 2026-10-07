@@ -9,8 +9,8 @@ use App\Models\Player;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
-/** Ranks players by games survived, then by survival rate. Classic games only. */
-class SurvivalsProvider implements LeaderboardProviderInterface
+/** King of the Potato: ranks players by crowns won, then by total time holding the potato. */
+class KingProvider implements LeaderboardProviderInterface
 {
     public function getGameTypeSlug(): string
     {
@@ -19,7 +19,7 @@ class SurvivalsProvider implements LeaderboardProviderInterface
 
     public function getGameModeSlug(): string
     {
-        return 'survivals';
+        return 'king';
     }
 
     public function getLeaderboard(): Collection
@@ -31,12 +31,12 @@ class SurvivalsProvider implements LeaderboardProviderInterface
             ->map(fn ($row) => [
                 'player_id' => (int) $row->player_id,
                 'player_name' => $names[$row->player_id] ?? '?',
-                'survivals' => (int) $row->survivals,
-                'survival_pct' => round($row->survivals / $row->games_played * 100, 1),
+                'crowns' => (int) $row->crowns,
+                'held_seconds' => (int) round($row->held_ms / 1000),
                 'games_played' => (int) $row->games_played,
-                'passes' => (int) $row->passes,
+                'steals' => (int) $row->steals,
             ])
-            ->sort(fn ($a, $b) => [$b['survivals'], $b['survival_pct']] <=> [$a['survivals'], $a['survival_pct']])
+            ->sort(fn ($a, $b) => [$b['crowns'], $b['held_seconds']] <=> [$a['crowns'], $a['held_seconds']])
             ->values();
     }
 
@@ -49,20 +49,22 @@ class SurvivalsProvider implements LeaderboardProviderInterface
         }
 
         return [
-            'Survivals' => (int) $stats->survivals,
-            'Survival %' => round($stats->survivals / $stats->games_played * 100, 1),
+            'Crowns' => (int) $stats->crowns,
+            'Time held' => (int) round($stats->held_ms / 1000).' s',
             'Games' => (int) $stats->games_played,
-            'Passes' => (int) $stats->passes,
+            'Steals' => (int) $stats->steals,
         ];
     }
 
+    /** A crown is a first place: the sidecar ranks King games by time held, ties sharing first. */
     private function totals()
     {
-        return HotPotatoGamePlayer::query()->inMode(HotPotatoGame::MODE_SURVIVAL)->select(
+        return HotPotatoGamePlayer::query()->inMode(HotPotatoGame::MODE_KING)->select(
             'player_id',
             DB::raw('COUNT(*) as games_played'),
-            DB::raw('SUM(CASE WHEN survived THEN 1 ELSE 0 END) as survivals'),
-            DB::raw('SUM(passes) as passes'),
+            DB::raw('SUM(CASE WHEN position = 1 THEN 1 ELSE 0 END) as crowns'),
+            DB::raw('SUM(hold_ms) as held_ms'),
+            DB::raw('SUM(passes) as steals'),
         );
     }
 }

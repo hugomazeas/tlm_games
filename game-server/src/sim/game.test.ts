@@ -31,6 +31,8 @@ function setup(count: number, holder = 1, durationMs = 120_000): GameState {
     )
     game.holderId = holder
     game.fuseMs = 60_000
+    // These rules are tested without items; items.test.ts covers them.
+    game.nextItemAtMs = Number.POSITIVE_INFINITY
 
     return game
 }

@@ -134,6 +134,24 @@
                         </div>
 
                         <template x-if="isHost">
+                            <div class="mb-4" data-mode-picker>
+                                <span class="block text-xs font-medium text-white/60 mb-1">Mode</span>
+                                <div class="flex flex-wrap gap-2">
+                                    <template x-for="option in modes" :key="option.id">
+                                        <button @click="mode = option.id"
+                                                :class="mode === option.id ? 'bg-orange-500 border-orange-400' : 'bg-white/5 border-white/15 text-white/60'"
+                                                class="border rounded-lg px-4 py-2 text-sm font-semibold transition"
+                                                x-text="option.label"></button>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                        <p class="text-sm text-white/60 mb-4" data-mode-hint>
+                            <span x-show="!isHost" class="font-semibold text-white/80" x-text="modes.find(m => m.id === gameMode)?.label + ' · '"></span>
+                            <span x-text="modeHint"></span>
+                        </p>
+
+                        <template x-if="isHost">
                             <div class="flex flex-wrap items-end gap-4">
                                 <div>
                                     <span class="block text-xs font-medium text-white/60 mb-1">Duration</span>
@@ -173,7 +191,17 @@
                 <div x-show="session && phase !== 'lobby'">
                     <div class="flex items-center justify-between mb-2 text-sm">
                         <span class="font-mono text-lg font-bold" x-text="timerText"></span>
-                        <span class="text-white/60"><span x-text="aliveCount"></span> left</span>
+                        <span x-show="gameMode !== 'king'" class="text-white/60"><span x-text="aliveCount"></span> left</span>
+                        {{-- King of the Potato: the live top three by time held --}}
+                        <ol x-show="gameMode === 'king'" class="flex gap-3 text-white/70" data-king-board>
+                            <template x-for="(entry, index) in kingBoard" :key="entry.id">
+                                <li>
+                                    <span x-text="index === 0 ? '👑' : '#' + (index + 1)"></span>
+                                    <span class="font-semibold" :class="index === 0 && 'text-yellow-300'" x-text="entry.name"></span>
+                                    <span class="font-mono" x-text="entry.seconds + 's'"></span>
+                                </li>
+                            </template>
+                        </ol>
                     </div>
                     <div class="relative rounded-xl overflow-hidden border border-white/10 bg-black/30">
                         <canvas x-ref="canvas" class="block w-full"></canvas>
@@ -196,7 +224,7 @@
                                     <h2 class="text-xl font-extrabold mb-3 text-center" x-text="results.headline"></h2>
                                     <table class="w-full text-sm">
                                         <thead class="text-white/40 text-xs">
-                                            <tr><th class="text-left py-1"></th><th class="text-left">Player</th><th class="text-right">Held</th><th class="text-right">Passes</th></tr>
+                                            <tr><th class="text-left py-1"></th><th class="text-left">Player</th><th class="text-right">Held</th><th class="text-right" x-text="results.mode === 'king' ? 'Steals' : 'Passes'"></th></tr>
                                         </thead>
                                         <tbody>
                                             <template x-for="row in results.rows" :key="row.id">

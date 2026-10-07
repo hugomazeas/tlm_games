@@ -5,11 +5,13 @@ namespace Tests\Feature;
 use App\Games\HotPotato\Jobs\SendHotPotatoInviteJob;
 use App\Games\HotPotato\Models\HotPotatoGame;
 use App\Games\HotPotato\Models\HotPotatoGamePlayer;
+use App\Games\HotPotato\Services\Leaderboards\KingProvider;
 use App\Games\HotPotato\Services\Leaderboards\SurvivalsProvider;
 use App\Models\Office;
 use App\Models\Player;
 use App\Models\PushSubscription;
 use App\Services\Push\WebPushSender;
+use Database\Seeders\GameTypeSeeder;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
@@ -208,6 +210,72 @@ class HotPotatoTest extends TestCase
         $this->assertNull((new SurvivalsProvider)->getPlayerStats(Player::create(['name' => 'New'])->id));
     }
 
+    public function test_results_remember_the_game_mode(): void
+    {
+        $alice = Player::create(['name' => 'Alice']);
+        $results = fn (array $extra) => array_merge([
+            'seed' => 1, 'theme' => 'open_space', 'duration_seconds' => 60,
+            'started_at' => now()->toIso8601String(), 'ended_at' => now()->toIso8601String(),
+            'players' => [['player_id' => $alice->id, 'position' => 1, 'survived' => true, 'hold_ms' => 48000, 'passes' => 4]],
+        ], $extra);
+
+        $this->postJson('/internal/hot-potato/results', $results(['mode' => 'king']), $this->internal())->assertCreated();
+        // A sidecar from before modes existed sends none: that was always the classic game.
+        $this->postJson('/internal/hot-potato/results', $results([]), $this->internal())->assertCreated();
+        $this->postJson('/internal/hot-potato/results', $results(['mode' => 'tag']), $this->internal())->assertUnprocessable();
+
+        $this->assertSame([HotPotatoGame::MODE_KING, HotPotatoGame::MODE_SURVIVAL], HotPotatoGame::orderBy('id')->pluck('mode')->all());
+    }
+
+    public function test_the_king_leaderboard_ranks_by_crowns_then_time_held(): void
+    {
+        [$alice, $bob, $carol] = collect(['Alice', 'Bob', 'Carol'])->map(fn ($name) => Player::create(['name' => $name]));
+
+        // Bob and Carol both have one crown; Bob held it longer overall.
+        $this->kingGame([[$bob, 1, 40000, 3], [$alice, 2, 15000, 1], [$carol, 3, 5000, 2]]);
+        $this->kingGame([[$carol, 1, 30000, 5], [$alice, 2, 20000, 0], [$bob, 3, 10000, 1]]);
+
+        $board = (new KingProvider)->getLeaderboard();
+
+        $this->assertSame(['Bob', 'Carol', 'Alice'], $board->pluck('player_name')->all());
+        $this->assertSame(1, $board[0]['crowns']);
+        $this->assertSame(50, $board[0]['held_seconds']);
+        $this->assertSame(0, $board[2]['crowns']);
+        $this->assertSame(
+            ['Crowns' => 1, 'Time held' => '35 s', 'Games' => 2, 'Steals' => 7],
+            (new KingProvider)->getPlayerStats($carol->id)
+        );
+        $this->assertNull((new KingProvider)->getPlayerStats(Player::create(['name' => 'New'])->id));
+    }
+
+    public function test_the_leaderboard_page_shows_the_king_of_the_potato_board(): void
+    {
+        $this->seed(GameTypeSeeder::class);
+        $alice = Player::create(['name' => 'Alice']);
+        $this->kingGame([[$alice, 1, 30000, 2]]);
+
+        $this->get('/leaderboards/hot-potato')
+            ->assertOk()
+            ->assertSee('King of the Potato')
+            ->assertSee('Crowns');
+        $this->get('/players/'.$alice->id)
+            ->assertOk()
+            ->assertSee('King of the Potato')
+            ->assertSee('30 s');
+    }
+
+    public function test_each_leaderboard_counts_only_its_own_mode(): void
+    {
+        $alice = Player::create(['name' => 'Alice']);
+        $this->game([[$alice, true]]);
+        $this->kingGame([[$alice, 1, 30000, 2]]);
+
+        $this->assertSame(1, (new SurvivalsProvider)->getPlayerStats($alice->id)['Games']);
+        $this->assertSame(1, (new KingProvider)->getPlayerStats($alice->id)['Games']);
+        $this->assertSame(1, (new SurvivalsProvider)->getLeaderboard()->sole()['survivals']);
+        $this->assertSame(1, (new KingProvider)->getLeaderboard()->sole()['crowns']);
+    }
+
     private function subscription(Player $player, bool $hotPotato): PushSubscription
     {
         $endpoint = 'https://push.example.test/'.$player->id;
@@ -239,6 +307,31 @@ class HotPotatoTest extends TestCase
                 'survived' => $survived,
                 'hold_ms' => 0,
                 'passes' => 0,
+            ]);
+        }
+    }
+
+    /**
+     * A King of the Potato game, as the sidecar stores it: position 1 is a crown.
+     *
+     * @param  array<int, array{0: Player, 1: int, 2: int, 3: int}>  $rows  player, position, hold ms, steals
+     */
+    private function kingGame(array $rows): void
+    {
+        $game = HotPotatoGame::create([
+            'mode' => HotPotatoGame::MODE_KING,
+            'seed' => 1, 'theme' => 'open_space', 'duration_seconds' => 60,
+            'started_at' => now(), 'ended_at' => now(),
+        ]);
+
+        foreach ($rows as [$player, $position, $holdMs, $steals]) {
+            HotPotatoGamePlayer::create([
+                'hot_potato_game_id' => $game->id,
+                'player_id' => $player->id,
+                'position' => $position,
+                'survived' => $position === 1,
+                'hold_ms' => $holdMs,
+                'passes' => $steals,
             ]);
         }
     }

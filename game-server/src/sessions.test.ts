@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { parseClientMessage, type PlayerInfo, type ServerMessage } from './protocol.ts'
 import { COUNTDOWN_MS, type GameResult, RECONNECT_GRACE_MS, RESULTS_MS, SessionManager, TICK_MS } from './sessions.ts'
+import { FIRST_ITEM_MS } from './sim/items.ts'
 import { createRng } from './sim/rng.ts'
 
 const OFFICE = 1
@@ -218,6 +219,74 @@ describe('a whole game', () => {
         expect(alicePos?.position).toBeGreaterThan(1)
     })
 
+    test('items show up in snapshots, and taking one is announced to the office', () => {
+        const { a, b } = lobbyOfThree()
+        send(a, { type: 'start', durationMin: 5, theme: 'open_space' })
+        advance(COUNTDOWN_MS + FIRST_ITEM_MS + TICK_MS)
+
+        const item = last(b, 'snapshot')?.items[0]
+        if (!item) throw new Error('no item after the first drop')
+        expect(['shield', 'speed', 'banana', 'mystery']).toContain(item.kind)
+        expect(item.expiresInMs).toBeGreaterThan(0)
+
+        // Alice homes in on it.
+        for (let t = 0; t < 12_000 && !last(b, 'pickup'); t += TICK_MS) {
+            const me = last(a, 'snapshot')?.players.find(p => p.id === 1)
+            const target = last(a, 'snapshot')?.items.find(i => i.id === item.id)
+            if (!me || !target) break
+            const dx = target.x - me.x
+            const dy = target.y - me.y
+            const length = Math.hypot(dx, dy) || 1
+            send(a, { type: 'input', dx: dx / length, dy: dy / length })
+            advance(TICK_MS)
+        }
+
+        const pickup = last(b, 'pickup')
+        if (!pickup) throw new Error('nobody took the item')
+        expect(pickup.item).toBe(item.kind)
+        expect(['shield', 'speed', 'banana']).toContain(pickup.effect)
+        expect(last(b, 'snapshot')?.items.some(i => i.id === item.id)).toBe(false)
+    })
+
+    test('King of the Potato: scores stream live, and the longest reign wins', () => {
+        const { a, b } = lobbyOfThree()
+        send(a, { type: 'start', durationMin: 1, theme: 'open_space', mode: 'king' })
+        expect(last(b, 'office')?.session?.settings.mode).toBe('king')
+
+        advance(COUNTDOWN_MS + 30_000)
+        const snapshot = last(b, 'snapshot')
+        if (!snapshot) throw new Error('no snapshot')
+        expect(snapshot.shake).toBe(0)
+        expect(snapshot.players.reduce((sum, p) => sum + p.holdMs, 0)).toBeGreaterThan(29_000)
+
+        advance(30_000 + TICK_MS)
+        const final = last(b, 'results')?.results
+        if (!final) throw new Error('no results')
+        expect(final.mode).toBe('king')
+        expect(final.eliminated).toEqual([])
+        const best = Math.max(...final.stats.map(s => s.holdMs))
+        expect(final.survivorIds.length).toBeGreaterThan(0)
+        for (const id of final.survivorIds) expect(final.stats.find(s => s.id === id)?.holdMs).toBe(best)
+
+        const stored = results[0]
+        expect(stored?.mode).toBe('king')
+        const kings = stored?.players.filter(p => p.position === 1) ?? []
+        expect(kings.map(p => p.playerId).sort()).toEqual([...final.survivorIds].sort())
+        expect(kings.every(p => p.survived)).toBe(true)
+        // Everyone else ranks by time held.
+        const byPosition = [...(stored?.players ?? [])].sort((x, y) => x.position - y.position)
+        for (const [i, p] of byPosition.slice(1).entries()) {
+            expect(p.holdMs).toBeLessThanOrEqual(byPosition[i]?.holdMs ?? 0)
+        }
+    })
+
+    test('a start without a mode plays the classic game', () => {
+        const { a, b } = lobbyOfThree()
+        send(a, { type: 'start', durationMin: 1, theme: 'random' })
+
+        expect(last(b, 'office')?.session?.settings.mode).toBe('survival')
+    })
+
     test('inputs steer your own avatar', () => {
         const { a } = lobbyOfThree()
         send(a, { type: 'start', durationMin: 5, theme: 'open_space' })
@@ -305,6 +374,9 @@ describe('parseClientMessage', () => {
         expect(parseClientMessage('not json')).toBeNull()
         expect(parseClientMessage(JSON.stringify({ type: 'start', durationMin: 9, theme: 'random' }))).toBeNull()
         expect(parseClientMessage(JSON.stringify({ type: 'start', durationMin: 2, theme: 'moon' }))).toBeNull()
+        expect(
+            parseClientMessage(JSON.stringify({ type: 'start', durationMin: 2, theme: 'random', mode: 'tag' }))
+        ).toBeNull()
         expect(parseClientMessage(JSON.stringify({ type: 'input', dx: 5, dy: 0 }))).toBeNull()
         expect(parseClientMessage(JSON.stringify({ type: 'hello', officeId: 'x', playerId: null }))).toBeNull()
         expect(parseClientMessage(JSON.stringify({ type: 'nope' }))).toBeNull()

@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\GameMode;
 use App\Models\GameType;
+use Illuminate\Database\Seeder;
 
 class GameTypeSeeder extends Seeder
 {
@@ -126,6 +126,22 @@ class GameTypeSeeder extends Seeder
                     ['key' => 'survival_pct', 'label' => 'Survival %', 'sortable' => true],
                     ['key' => 'games_played', 'label' => 'Games', 'sortable' => true],
                     ['key' => 'passes', 'label' => 'Passes', 'sortable' => true],
+                ],
+            ]
+        );
+
+        GameMode::updateOrCreate(
+            ['game_type_id' => $hotPotato->id, 'slug' => 'king'],
+            [
+                'name' => 'King of the Potato',
+                'description' => 'Crowns won, then total time holding the potato.',
+                'is_active' => true,
+                'sort_order' => 1,
+                'leaderboard_columns' => [
+                    ['key' => 'crowns', 'label' => 'Crowns', 'sortable' => true],
+                    ['key' => 'held_seconds', 'label' => 'Time held (s)', 'sortable' => true],
+                    ['key' => 'games_played', 'label' => 'Games', 'sortable' => true],
+                    ['key' => 'steals', 'label' => 'Steals', 'sortable' => true],
                 ],
             ]
         );

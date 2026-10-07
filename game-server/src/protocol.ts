@@ -1,4 +1,6 @@
 import type { Arena } from './sim/arena.ts'
+import type { GameMode } from './sim/game.ts'
+import type { Effect, ItemKind } from './sim/items.ts'
 import { isThemeId, type ThemeId } from './sim/themes.ts'
 
 /** What a Hub player looks like to the game: fetched from Laravel, never trusted from a browser. */
@@ -12,6 +14,7 @@ export type Phase = 'lobby' | 'countdown' | 'playing' | 'results'
 export interface Settings {
     durationMin: number
     theme: ThemeId | 'random'
+    mode: GameMode
 }
 
 export interface SessionView {
@@ -28,9 +31,26 @@ export interface SnapshotPlayer {
     y: number
     frozenMs: number
     out: boolean
+    shieldMs: number
+    speedMs: number
+    slipMs: number
+    /** Time held so far: the score in King of the Potato. */
+    holdMs: number
+    /** A fresh king's head start; can't be robbed while it lasts. */
+    safeMs: number
+}
+
+export interface SnapshotItem {
+    id: number
+    kind: ItemKind
+    x: number
+    y: number
+    expiresInMs: number
 }
 
 export interface Results {
+    mode: GameMode
+    /** Survivors, or in King of the Potato the longest holders. */
     survivorIds: number[]
     /** Latest-out first. */
     eliminated: Array<{ id: number; atMs: number }>
@@ -42,7 +62,7 @@ export type ClientMessage =
     | { type: 'open' }
     | { type: 'join' }
     | { type: 'leave' }
-    | { type: 'start'; durationMin: number; theme: ThemeId | 'random' }
+    | { type: 'start'; durationMin: number; theme: ThemeId | 'random'; mode: GameMode }
     | { type: 'input'; dx: number; dy: number }
     | { type: 'close' }
 
@@ -67,18 +87,21 @@ export type ServerMessage =
           type: 'snapshot'
           elapsedMs: number
           players: SnapshotPlayer[]
+          items: SnapshotItem[]
           holderId: number | null
           shake: number
       }
     | { type: 'pass'; from: number; to: number }
     | { type: 'boom'; playerId: number }
     | { type: 'newPotato'; playerId: number }
+    | { type: 'pickup'; playerId: number; item: ItemKind; effect: Effect }
     | { type: 'results'; results: Results }
     | { type: 'error'; code: ErrorCode }
 
 export const MIN_PLAYERS = 3
 export const MAX_PLAYERS = 12
 export const DURATIONS_MIN = [1, 2, 3, 4, 5] as const
+export const GAME_MODES: readonly GameMode[] = ['survival', 'king']
 
 /** Validates one inbound frame. Anything unexpected is null, never a throw. */
 export function parseClientMessage(raw: unknown): ClientMessage | null {
@@ -107,7 +130,14 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
         case 'start':
             if (!(DURATIONS_MIN as readonly unknown[]).includes(message.durationMin)) return null
             if (message.theme !== 'random' && !isThemeId(message.theme)) return null
-            return { type: 'start', durationMin: message.durationMin as number, theme: message.theme }
+            // A page loaded before modes existed sends none: that's the classic game.
+            if (message.mode !== undefined && !GAME_MODES.includes(message.mode as GameMode)) return null
+            return {
+                type: 'start',
+                durationMin: message.durationMin as number,
+                theme: message.theme,
+                mode: (message.mode as GameMode | undefined) ?? 'survival',
+            }
         case 'input':
             if (!isUnitish(message.dx) || !isUnitish(message.dy)) return null
             return { type: 'input', dx: message.dx, dy: message.dy }

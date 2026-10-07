@@ -2,6 +2,7 @@
 
 namespace App\Games\HotPotato\Providers;
 
+use App\Games\HotPotato\Services\Leaderboards\KingProvider;
 use App\Games\HotPotato\Services\Leaderboards\SurvivalsProvider;
 use App\Services\LeaderboardService;
 use Illuminate\Support\Facades\Route;
@@ -20,6 +21,7 @@ class HotPotatoServiceProvider extends ServiceProvider
         Route::group([], __DIR__.'/../internal-routes.php');
 
         $leaderboard = $this->app->make(LeaderboardService::class);
-        $leaderboard->register(new SurvivalsProvider());
+        $leaderboard->register(new SurvivalsProvider);
+        $leaderboard->register(new KingProvider);
     }
 }

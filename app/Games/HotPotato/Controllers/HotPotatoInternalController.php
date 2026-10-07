@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 /**
  * Endpoints for the hot potato sidecar only, behind RequireInternalSecret.
@@ -43,6 +44,7 @@ class HotPotatoInternalController extends Controller
     public function results(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'mode' => ['sometimes', 'string', Rule::in(HotPotatoGame::MODES)],
             'office_id' => 'nullable|integer|exists:offices,id',
             'seed' => 'required|integer|min:0',
             'theme' => 'required|string|max:50',
@@ -60,6 +62,7 @@ class HotPotatoInternalController extends Controller
 
         $game = DB::transaction(function () use ($validated) {
             $game = HotPotatoGame::create([
+                'mode' => $validated['mode'] ?? HotPotatoGame::MODE_SURVIVAL,
                 'office_id' => $validated['office_id'] ?? null,
                 'seed' => $validated['seed'],
                 'theme' => $validated['theme'],

@@ -1,17 +1,32 @@
-import type { SnapshotPlayer } from '../protocol.ts'
+import type { SnapshotItem, SnapshotPlayer } from '../protocol.ts'
 import { type Arena, AVATAR_RADIUS } from '../sim/arena.ts'
-import { FREEZE_MS } from '../sim/game.ts'
+import { FREEZE_MS, type GameMode, STEAL_SAFETY_MS } from '../sim/game.ts'
 import { obstacleAt } from '../sim/geometry.ts'
+import { ITEM_RADIUS, type ItemKind, SHIELD_MS } from '../sim/items.ts'
 import { THEMES } from '../sim/themes.ts'
 
 /** Remote avatars are drawn this far in the past, so there are always two snapshots to blend. */
 const INTERPOLATION_DELAY_MS = 100
 const SPLAT_MS = 1200
+/** Items blink for their last few seconds before they vanish. */
+const ITEM_BLINK_MS = 3000
+const TRAIL_LENGTH = 5
+/** Distance between two trail ghosts, in arena units. */
+const TRAIL_SPACING = 0.6
+
+export const ITEM_ICONS: Record<ItemKind, string> = { shield: '🛡️', speed: '⚡', banana: '🍌', mystery: '❓' }
+const ITEM_GLOW: Record<ItemKind, string> = {
+    shield: '#38bdf8',
+    speed: '#facc15',
+    banana: '#fde047',
+    mystery: '#c084fc',
+}
 
 interface Snapshot {
     receivedAt: number
     elapsedMs: number
     players: SnapshotPlayer[]
+    items: SnapshotItem[]
     holderId: number | null
     shake: number
 }
@@ -24,6 +39,7 @@ interface Splat {
 
 export interface RendererOptions {
     reducedMotion: boolean
+    mode: () => GameMode
     myId: () => number | null
     nameOf: (id: number) => string
 }
@@ -37,6 +53,8 @@ export class Renderer {
     private spawnOrder: number[] = []
     private snapshots: Snapshot[] = []
     private splats: Splat[] = []
+    /** Recent positions of boosted players, for the speed trail. */
+    private trails = new Map<number, Array<{ x: number; y: number }>>()
     private own: { x: number; y: number } | null = null
     private frame = 0
     private lastFrameAt = 0
@@ -51,6 +69,7 @@ export class Renderer {
         this.spawnOrder = playerIds
         this.snapshots = []
         this.splats = []
+        this.trails.clear()
         this.own = null
         this.start()
     }
@@ -131,6 +150,7 @@ export class Renderer {
         }
 
         this.drawSplats(context, time)
+        this.drawItems(context, state.items, time)
 
         // Ghosts underneath, the living on top, the holder last.
         const ordered = [...players].sort((a, b) => rank(a, state.holderId) - rank(b, state.holderId))
@@ -142,13 +162,19 @@ export class Renderer {
         const isMe = p.id === this.options.myId()
         const isHolder = p.id === state.holderId
         const name = this.options.nameOf(p.id)
+        const active = !p.out
 
         context.save()
         if (p.out) context.globalAlpha = 0.25
 
+        if (active && p.speedMs > 0) this.drawTrail(context, p)
+        else this.trails.delete(p.id)
+
+        const king = this.options.mode() === 'king'
         if (isHolder) {
             const pulse = this.options.reducedMotion ? 0.6 : 0.5 + 0.5 * Math.sin(time / (120 - 80 * state.shake))
-            context.shadowColor = state.shake > 0.5 ? '#ef4444' : '#f97316'
+            // A king glows gold and steady; a survival potato burns hotter as the fuse runs down.
+            context.shadowColor = king ? '#facc15' : state.shake > 0.5 ? '#ef4444' : '#f97316'
             context.shadowBlur = (10 + 20 * pulse) * devicePixelRatio
         }
 
@@ -168,7 +194,16 @@ export class Renderer {
         context.font = `700 ${0.8}px Outfit, sans-serif`
         context.textAlign = 'center'
         context.textBaseline = 'middle'
-        context.fillText(initials(name), p.x, p.y + 0.05)
+        if (active && p.slipMs > 0 && !this.options.reducedMotion) {
+            // Spinning out on a banana: the initials go round.
+            context.save()
+            context.translate(p.x, p.y + 0.05)
+            context.rotate(time / 70)
+            context.fillText(initials(name), 0, 0)
+            context.restore()
+        } else {
+            context.fillText(initials(name), p.x, p.y + 0.05)
+        }
 
         context.font = `600 ${0.65}px Outfit, sans-serif`
         context.fillStyle = 'rgba(255,255,255,0.85)'
@@ -188,7 +223,49 @@ export class Renderer {
             context.fillText('❄️', p.x + r, p.y + r)
         }
 
-        if (isHolder) {
+        if (active && p.shieldMs > 0) {
+            context.fillStyle = 'rgba(56,189,248,0.18)'
+            context.beginPath()
+            context.arc(p.x, p.y, r + 0.45, 0, Math.PI * 2)
+            context.fill()
+            context.strokeStyle = '#7dd3fc'
+            context.lineWidth = 0.12
+            context.beginPath()
+            context.arc(p.x, p.y, r + 0.45, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * p.shieldMs) / SHIELD_MS)
+            context.stroke()
+        }
+
+        // Active effects in a row under the avatar, each on a dark disc so it reads on any floor.
+        const badges = [p.shieldMs > 0 && '🛡️', p.speedMs > 0 && '⚡', p.slipMs > 0 && '🍌'].filter(
+            (badge): badge is string => active && typeof badge === 'string'
+        )
+        context.font = `${0.6}px sans-serif`
+        badges.forEach((badge, i) => {
+            const bx = p.x + (i - (badges.length - 1) / 2) * 0.85
+            const by = p.y + r + 0.6
+            context.fillStyle = 'rgba(15,23,42,0.85)'
+            context.beginPath()
+            context.arc(bx, by, 0.4, 0, Math.PI * 2)
+            context.fill()
+            context.fillText(badge, bx, by + 0.03)
+        })
+
+        // A fresh king's head start: nobody can take the crown until the gold ring runs out.
+        if (active && p.safeMs > 0) {
+            context.strokeStyle = '#facc15'
+            context.lineWidth = 0.15
+            context.beginPath()
+            context.arc(p.x, p.y, r + 0.3, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * p.safeMs) / STEAL_SAFETY_MS)
+            context.stroke()
+        }
+
+        if (isHolder && king) {
+            const bob = this.options.reducedMotion ? 0 : Math.sin(time / 200) * 0.15
+            context.font = `${1.2}px sans-serif`
+            context.fillText('🥔', p.x, p.y - r - 1.4 + bob)
+            context.font = `${1}px sans-serif`
+            context.fillText('👑', p.x, p.y - r - 2.6 + bob)
+        } else if (isHolder) {
             const jitter = this.options.reducedMotion ? 0 : state.shake * 0.35
             const jx = (Math.random() - 0.5) * jitter
             const jy = (Math.random() - 0.5) * jitter
@@ -197,6 +274,54 @@ export class Renderer {
             context.fillText('🥔', p.x + jx, p.y - r - 1.6 + bob + jy)
         }
 
+        context.restore()
+    }
+
+    private drawItems(context: CanvasRenderingContext2D, items: SnapshotItem[], time: number) {
+        for (const item of items) {
+            const blinking = item.expiresInMs < ITEM_BLINK_MS
+            if (blinking && !this.options.reducedMotion && Math.floor(time / 150) % 2 === 0) continue
+
+            const bob = this.options.reducedMotion ? 0 : Math.sin(time / 300 + item.id) * 0.12
+            context.save()
+            context.globalAlpha = blinking && this.options.reducedMotion ? 0.5 : 1
+            context.shadowColor = ITEM_GLOW[item.kind]
+            context.shadowBlur = 12 * devicePixelRatio
+            context.fillStyle = 'rgba(15,23,42,0.75)'
+            context.strokeStyle = ITEM_GLOW[item.kind]
+            context.lineWidth = 0.12
+            context.beginPath()
+            context.arc(item.x, item.y + bob, ITEM_RADIUS + 0.15, 0, Math.PI * 2)
+            context.fill()
+            context.stroke()
+            context.shadowBlur = 0
+            context.font = `${0.85}px sans-serif`
+            context.textAlign = 'center'
+            context.textBaseline = 'middle'
+            context.fillText(ITEM_ICONS[item.kind], item.x, item.y + bob + 0.05)
+            context.restore()
+        }
+    }
+
+    /** Fading copies of a boosted avatar where it has just been, spaced out so they show behind it. */
+    private drawTrail(context: CanvasRenderingContext2D, p: SnapshotPlayer) {
+        const trail = this.trails.get(p.id) ?? []
+        const newest = trail.at(-1)
+        if (!newest || Math.hypot(p.x - newest.x, p.y - newest.y) >= TRAIL_SPACING) {
+            trail.push({ x: p.x, y: p.y })
+            if (trail.length > TRAIL_LENGTH) trail.shift()
+        }
+        this.trails.set(p.id, trail)
+        if (this.options.reducedMotion) return
+
+        context.save()
+        context.fillStyle = colourFor(p.id)
+        trail.forEach((point, i) => {
+            context.globalAlpha = ((i + 1) / (trail.length + 1)) * 0.35
+            context.beginPath()
+            context.arc(point.x, point.y, AVATAR_RADIUS * 0.9, 0, Math.PI * 2)
+            context.fill()
+        })
         context.restore()
     }
 
@@ -247,9 +372,21 @@ export class Renderer {
                 elapsedMs: 0,
                 holderId: null,
                 shake: 0,
+                items: [],
                 players: this.spawnOrder.map((id, i) => {
                     const spawn = this.arena?.spawns[i] ?? { x: 0, y: 0 }
-                    return { id, x: spawn.x, y: spawn.y, frozenMs: 0, out: false }
+                    return {
+                        id,
+                        x: spawn.x,
+                        y: spawn.y,
+                        frozenMs: 0,
+                        out: false,
+                        shieldMs: 0,
+                        speedMs: 0,
+                        slipMs: 0,
+                        holdMs: 0,
+                        safeMs: 0,
+                    }
                 }),
             }
         }
