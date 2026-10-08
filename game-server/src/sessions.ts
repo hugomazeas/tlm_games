@@ -26,8 +26,12 @@ import { createRng, pickOne, type Rng } from './sim/rng.ts'
 import { THEME_IDS, type ThemeId } from './sim/themes.ts'
 
 export const TICK_MS = 50
-export const COUNTDOWN_MS = 3000
-export const RESULTS_MS = 8000
+/** Three seconds to announce the mode and arena, then three to count down. */
+export const COUNTDOWN_MS = 6000
+/** Long enough to read the table and throw a few emotes. */
+export const RESULTS_MS = 12_000
+/** One emote per player this often, so a results screen doesn't turn into a wall of emoji. */
+export const EMOTE_COOLDOWN_MS = 700
 export const RECONNECT_GRACE_MS = 10_000
 /** A stalled event loop never makes the simulation jump further than this. */
 const MAX_STEP_MS = 100
@@ -57,6 +61,8 @@ export interface GameResult {
 }
 
 export interface SessionHooks {
+    /** Identifies the browser bundle being served; sent to every tab in `welcome`. */
+    build: string
     now(): number
     /** Randomness during play: potato hand-outs and fuses. */
     rng: Rng
@@ -85,6 +91,8 @@ interface Session {
     gameMeta: { seed: number; theme: ThemeId; startedAt: number } | null
     inputs: Map<number, Input>
     lastTickAt: number
+    /** When each player last sent an emote, for the cooldown. */
+    emotedAt: Map<number, number>
 }
 
 interface Client {
@@ -107,7 +115,7 @@ export class SessionManager {
 
     connect(conn: Connection, officeId: number, player: PlayerInfo | null) {
         this.clients.set(conn.id, { conn, officeId, player })
-        conn.send({ type: 'welcome', player })
+        conn.send({ type: 'welcome', player, build: this.hooks.build })
 
         const session = this.sessions.get(officeId)
         const member = player && session?.members.find(m => m.player.id === player.id)
@@ -171,6 +179,7 @@ export class SessionManager {
                     gameMeta: null,
                     inputs: new Map(),
                     lastTickAt: this.hooks.now(),
+                    emotedAt: new Map(),
                 }
                 this.sessions.set(client.officeId, created)
                 this.broadcastOffice(created)
@@ -220,6 +229,18 @@ export class SessionManager {
                 return
             }
 
+            // Only the game's own players react, only on the results screen, and not too often.
+            case 'emote': {
+                if (session?.phase !== 'results' || !session.game?.players.some(p => p.id === player.id)) return
+                const now = this.hooks.now()
+                const last = session.emotedAt.get(player.id)
+                if (last !== undefined && now - last < EMOTE_COOLDOWN_MS) return
+
+                session.emotedAt.set(player.id, now)
+                this.broadcast(session.officeId, { type: 'emote', playerId: player.id, emote: message.emote })
+                return
+            }
+
             case 'close': {
                 if (!session) return fail('NO_SESSION')
                 if (session.hostId !== player.id) return fail('NOT_HOST')
@@ -253,6 +274,7 @@ export class SessionManager {
                 session.phase = 'lobby'
                 session.game = null
                 session.gameMeta = null
+                session.emotedAt.clear()
                 this.broadcastOffice(session)
             }
         }
@@ -304,6 +326,7 @@ export class SessionManager {
                     playerId: event.playerId,
                     item: event.item,
                     effect: event.effect,
+                    ...(event.targetId === undefined ? {} : { targetId: event.targetId }),
                 })
             } else {
                 this.broadcast(session.officeId, { type: 'newPotato', playerId: event.playerId })
@@ -383,6 +406,11 @@ export class SessionManager {
                 shieldMs: p.shieldMs,
                 speedMs: p.speedMs,
                 slipMs: p.slipMs,
+                ghostMs: p.ghostMs,
+                reverseMs: p.reverseMs,
+                magnetMs: p.magnetMs,
+                tinyMs: p.tinyMs,
+                launchMs: p.launchMs,
                 holdMs: p.holdMs,
                 safeMs: p.safeMs,
             })),

@@ -20,7 +20,7 @@ const still: ReadonlyMap<number, Input> = new Map()
 /** A King of the Potato game, players in a row ten units apart, player 1 crowned with no head start left. */
 function setup(count = 3, durationMs = 60_000): GameState {
     const spawns = Array.from({ length: count }, (_, i) => ({ x: 6 + i * 10, y: 20 }))
-    const arena: Arena = { seed: 0, theme: 'open_space', width: 60, height: 40, obstacles: [], spawns }
+    const arena: Arena = { seed: 0, theme: 'open_space', width: 60, height: 40, obstacles: [], pads: [], spawns }
     const game = createGame(
         arena,
         Array.from({ length: count }, (_, i) => i + 1),
@@ -64,6 +64,7 @@ describe('King of the Potato', () => {
             width: 60,
             height: 40,
             obstacles: [],
+            pads: [],
             spawns: [
                 { x: 10, y: 20 },
                 { x: 30, y: 20 },
@@ -182,7 +183,15 @@ describe('King of the Potato', () => {
     })
 
     test('a survival game is unchanged by default', () => {
-        const arena: Arena = { seed: 0, theme: 'open_space', width: 60, height: 40, obstacles: [], spawns: [] }
+        const arena: Arena = {
+            seed: 0,
+            theme: 'open_space',
+            width: 60,
+            height: 40,
+            obstacles: [],
+            pads: [],
+            spawns: [],
+        }
         const game = createGame(arena, [1, 2, 3], 60_000, createRng(5))
 
         expect(game.mode).toBe('survival')

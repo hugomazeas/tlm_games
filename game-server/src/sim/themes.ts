@@ -11,6 +11,17 @@ export type ObstacleShape =
     | { kind: 'rect'; name: string; w: [number, number]; h: [number, number]; rotatable: boolean; weight: number }
     | { kind: 'circle'; name: string; r: [number, number]; weight: number }
 
+/** Composite walls: an L or T of two blocks, or a U of three with a mouth wide enough to walk into. */
+export type WallKind = 'L' | 'T' | 'U'
+
+export interface WallStyle {
+    name: string
+    kinds: WallKind[]
+    /** How many, from the smallest arena to the largest. */
+    count: [number, number]
+    thickness: number
+}
+
 export interface Theme {
     id: ThemeId
     name: string
@@ -27,8 +38,9 @@ export interface Theme {
         /** Bounce off obstacles; above 1 gives a kick. */
         restitution: number
     }
-    /** One obstacle drifts back and forth. */
-    mover: boolean
+    walls: WallStyle
+    /** Obstacles drifting back and forth, from the smallest arena to the largest. */
+    movers: { shape: ObstacleShape; count: [number, number] }
 }
 
 export const THEMES: Record<ThemeId, Theme> = {
@@ -49,7 +61,8 @@ export const THEMES: Record<ThemeId, Theme> = {
         ],
         density: 1,
         physics: { friction: 3.5, grip: 1, restitution: 0.5 },
-        mover: false,
+        walls: { name: 'desk row', kinds: ['L', 'T', 'U'], count: [1, 3], thickness: 1.2 },
+        movers: { shape: { kind: 'circle', name: 'office chair', r: [0.9, 1.1], weight: 1 }, count: [1, 2] },
     },
     ice_rink: {
         id: 'ice_rink',
@@ -68,7 +81,11 @@ export const THEMES: Record<ThemeId, Theme> = {
         ],
         density: 0.8,
         physics: { friction: 0.6, grip: 0.55, restitution: 0.8 },
-        mover: false,
+        walls: { name: 'rink boards', kinds: ['L', 'U'], count: [1, 2], thickness: 0.8 },
+        movers: {
+            shape: { kind: 'rect', name: 'zamboni', w: [3.5, 3.5], h: [2, 2], rotatable: true, weight: 1 },
+            count: [1, 2],
+        },
     },
     parking_lot: {
         id: 'parking_lot',
@@ -87,7 +104,11 @@ export const THEMES: Record<ThemeId, Theme> = {
         ],
         density: 1.6,
         physics: { friction: 3.5, grip: 1, restitution: 0.4 },
-        mover: false,
+        walls: { name: 'barrier', kinds: ['L', 'T'], count: [1, 3], thickness: 1 },
+        movers: {
+            shape: { kind: 'rect', name: 'car', w: [4.5, 4.5], h: [2.2, 2.2], rotatable: true, weight: 1 },
+            count: [1, 2],
+        },
     },
     cafeteria: {
         id: 'cafeteria',
@@ -103,7 +124,8 @@ export const THEMES: Record<ThemeId, Theme> = {
         shapes: [{ kind: 'circle', name: 'table', r: [1.8, 2.6], weight: 1 }],
         density: 1,
         physics: { friction: 3.5, grip: 1, restitution: 1.3 },
-        mover: false,
+        walls: { name: 'counter', kinds: ['L', 'U'], count: [1, 2], thickness: 1.4 },
+        movers: { shape: { kind: 'circle', name: 'food cart', r: [1.2, 1.2], weight: 1 }, count: [1, 1] },
     },
     ping_pong_hall: {
         id: 'ping_pong_hall',
@@ -119,7 +141,11 @@ export const THEMES: Record<ThemeId, Theme> = {
         shapes: [{ kind: 'rect', name: 'table', w: [5, 5], h: [2.8, 2.8], rotatable: true, weight: 1 }],
         density: 0.8,
         physics: { friction: 3.5, grip: 1, restitution: 0.6 },
-        mover: true,
+        walls: { name: 'barrier', kinds: ['T', 'L'], count: [1, 2], thickness: 1 },
+        movers: {
+            shape: { kind: 'rect', name: 'table', w: [5, 5], h: [2.8, 2.8], rotatable: false, weight: 1 },
+            count: [1, 3],
+        },
     },
 }
 

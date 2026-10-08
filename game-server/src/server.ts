@@ -1,6 +1,7 @@
 import type { ServerWebSocket } from 'bun'
 import { LaravelClient } from './laravel.ts'
 import { parseClientMessage, type ServerMessage } from './protocol.ts'
+import { BUILD_PLACEHOLDER } from './client/build.ts'
 import { SessionManager, TICK_MS } from './sessions.ts'
 
 /**
@@ -24,7 +25,10 @@ if (!secret) console.warn('HOT_POTATO_INTERNAL_SECRET is not set; the game stays
 
 const laravel = new LaravelClient(laravelUrl, secret)
 
+const clientBundle = await buildClient()
+
 const manager = new SessionManager({
+    build: clientBundle.build,
     now: () => Date.now(),
     rng: Math.random,
     nextSeed: () => Math.floor(Math.random() * 2 ** 31),
@@ -37,8 +41,6 @@ const manager = new SessionManager({
 })
 
 setInterval(() => manager.tick(), TICK_MS)
-
-const clientBundle = await buildClient()
 
 interface SocketData {
     id: string
@@ -64,13 +66,15 @@ const server = Bun.serve<SocketData>({
             return upgraded ? undefined : new Response('Expected a WebSocket', { status: 426 })
         }
 
+        // no-cache: browsers check back on every page load, and get a 304 while nothing changed.
         if (pathname === `${PREFIX}/client.js`) {
+            const headers = { 'Cache-Control': 'no-cache', ETag: clientBundle.etag }
+            if (request.headers.get('If-None-Match') === clientBundle.etag) {
+                return new Response(null, { status: 304, headers })
+            }
+
             return new Response(clientBundle.code, {
-                headers: {
-                    'Content-Type': 'text/javascript; charset=utf-8',
-                    'Cache-Control': 'no-cache',
-                    ETag: clientBundle.etag,
-                },
+                headers: { ...headers, 'Content-Type': 'text/javascript; charset=utf-8' },
             })
         }
 
@@ -132,7 +136,12 @@ function send(ws: ServerWebSocket<SocketData>, message: ServerMessage) {
     ws.send(JSON.stringify(message))
 }
 
-async function buildClient(): Promise<{ code: string; etag: string }> {
+/**
+ * Bundles src/client for the browser and stamps it with a build id: a hash of
+ * the code, swapped in for BUILD_PLACEHOLDER. The same id goes out in every
+ * welcome, so a tab still running an older bundle after a deploy reloads.
+ */
+async function buildClient(): Promise<{ code: string; etag: string; build: string }> {
     const result = await Bun.build({
         entrypoints: [`${import.meta.dir}/client/main.ts`],
         target: 'browser',
@@ -146,7 +155,11 @@ async function buildClient(): Promise<{ code: string; etag: string }> {
         throw new Error('Could not build the hot potato browser bundle')
     }
 
-    const code = await output.text()
+    const built = await output.text()
+    if (!built.includes(BUILD_PLACEHOLDER)) throw new Error('The browser bundle lost its build placeholder')
 
-    return { code, etag: `"${Bun.hash(code).toString(36)}"` }
+    const build = Bun.hash(built).toString(36)
+    const code = built.replaceAll(BUILD_PLACEHOLDER, build)
+
+    return { code, etag: `"${build}"`, build }
 }

@@ -17,7 +17,7 @@ const TICK = 50
 const still: ReadonlyMap<number, Input> = new Map()
 
 function emptyArena(spawns: Array<{ x: number; y: number }>): Arena {
-    return { seed: 0, theme: 'open_space', width: 60, height: 40, obstacles: [], spawns }
+    return { seed: 0, theme: 'open_space', width: 60, height: 40, obstacles: [], pads: [], spawns }
 }
 
 /** A game with players far apart and a chosen holder, fuse long enough not to matter. */

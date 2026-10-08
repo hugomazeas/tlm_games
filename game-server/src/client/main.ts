@@ -1,8 +1,10 @@
-import type { PlayerInfo, Results, ServerMessage, SessionView } from '../protocol.ts'
-import { GAME_MODES, MIN_PLAYERS } from '../protocol.ts'
+import type { Emote, PlayerInfo, Results, ServerMessage, SessionView } from '../protocol.ts'
+import { EMOTES, GAME_MODES, MIN_PLAYERS } from '../protocol.ts'
 import type { GameMode } from '../sim/game.ts'
+import type { ItemKind } from '../sim/items.ts'
 import { THEMES, THEME_IDS, type ThemeId } from '../sim/themes.ts'
-import { colourFor, Renderer } from './renderer.ts'
+import { BUILD } from './build.ts'
+import { colourFor, ITEM_ICONS, Renderer } from './renderer.ts'
 import { STRINGS } from './strings.ts'
 
 /**
@@ -67,6 +69,8 @@ function hotPotatoApp(config: Config) {
         session: null as SessionView | null,
         gamePlayerIds: [] as number[],
         countdownLeft: 0,
+        /** The countdown's first half announces what's coming: the mode, its rule and the arena. */
+        intro: null as { mode: string; hint: string; arena: string } | null,
         remainingMs: 0,
         aliveCount: 0,
         results: null as ResultsView | null,
@@ -85,6 +89,17 @@ function hotPotatoApp(config: Config) {
         alerts: { available: false, on: false, busy: false, message: '' },
         /** The page's fallback stub sets this when the sidecar's script didn't load. */
         unavailable: false,
+        /** The server runs a newer bundle than this tab: reload as soon as it won't interrupt a game. */
+        stale: false,
+        emotes: EMOTES,
+        /** Each player's latest emote on this results screen, shown beside their row. */
+        lastEmotes: {} as Record<number, Emote>,
+        itemLegend: (Object.keys(STRINGS.items) as ItemKind[]).map(kind => ({
+            kind,
+            icon: ITEM_ICONS[kind],
+            label: STRINGS.items[kind],
+        })),
+        padLegend: STRINGS.pads,
         colourFor,
 
         init() {
@@ -120,6 +135,22 @@ function hotPotatoApp(config: Config) {
         },
         get isPlaying() {
             return this.me !== null && this.gamePlayerIds.includes(this.me.id) && this.phase === 'playing'
+        },
+        /** In this game, from its countdown to the end of its results screen. */
+        get inGame() {
+            const phase = this.phase
+            return (
+                this.me !== null &&
+                this.gamePlayerIds.includes(this.me.id) &&
+                (phase === 'countdown' || phase === 'playing' || phase === 'results')
+            )
+        },
+        get canEmote() {
+            return this.me !== null && this.gamePlayerIds.includes(this.me.id) && this.phase === 'results'
+        },
+        /** The first half of the countdown is the reveal card; then the big 3, 2, 1. */
+        get showIntro() {
+            return this.phase === 'countdown' && this.intro !== null && this.countdownLeft > 3
         },
         get hostName() {
             return this.session ? this.nameOf(this.session.hostId) : ''
@@ -203,6 +234,14 @@ function hotPotatoApp(config: Config) {
         close() {
             this.send({ type: 'close' })
         },
+        emote(emote: Emote) {
+            if (this.canEmote) this.send({ type: 'emote', emote })
+        },
+
+        /** Picks up a newer bundle, but never in the middle of a game you're playing. */
+        reloadIfStale() {
+            if (this.stale && !this.inGame) location.reload()
+        },
 
         // ── Messages ─────────────────────────────────────────────────────
 
@@ -210,9 +249,16 @@ function hotPotatoApp(config: Config) {
             switch (message.type) {
                 case 'welcome':
                     this.me = message.player
+                    if (message.build !== BUILD) this.stale = true
+                    this.reloadIfStale()
                     return
-                case 'office':
+                case 'office': {
+                    const wasCountingDown = this.session?.phase === 'countdown'
                     this.session = message.session
+                    if (wasCountingDown && message.session?.phase === 'playing') {
+                        this.intro = null
+                        this.showBanner(STRINGS.intro.go, true)
+                    }
                     if (!message.session || message.session.phase === 'lobby') {
                         this.gamePlayerIds = []
                         this.results = null
@@ -222,8 +268,18 @@ function hotPotatoApp(config: Config) {
                         this.duration = message.session.settings.durationMin
                         this.mode = message.session.settings.mode
                     }
+                    this.reloadIfStale()
                     return
-                case 'countdown':
+                }
+                case 'countdown': {
+                    const theme = THEMES[message.arena.theme]
+                    const mode = this.session?.settings.mode ?? this.mode
+                    this.intro = {
+                        mode: STRINGS.modes[mode].label,
+                        hint: STRINGS.modes[mode].hint,
+                        arena: STRINGS.intro.arena(theme.emoji, theme.name),
+                    }
+                    this.lastEmotes = {}
                     this.results = null
                     this.gamePlayerIds = message.playerIds
                     this.remainingMs = message.durationMs
@@ -234,6 +290,7 @@ function hotPotatoApp(config: Config) {
                     )
                     this.startCountdown(message.startsInMs)
                     return
+                }
                 case 'snapshot': {
                     renderer?.pushSnapshot(message)
                     const now = performance.now()
@@ -271,15 +328,28 @@ function hotPotatoApp(config: Config) {
                     return
                 case 'pickup': {
                     const mine = message.playerId === this.me?.id
+                    const hitMe = message.targetId !== undefined && message.targetId === this.me?.id
+                    const target =
+                        message.targetId === undefined ? undefined : hitMe ? null : this.nameOf(message.targetId)
                     const text = STRINGS.pickup(
                         mine ? null : this.nameOf(message.playerId),
                         message.item,
-                        message.effect
+                        message.effect,
+                        target
                     )
+                    if (message.effect === 'freeze') renderer?.burst(message.playerId, 'freeze')
+                    if (message.effect === 'swap' && message.targetId !== undefined) {
+                        renderer?.burst(message.playerId, 'swap')
+                        renderer?.burst(message.targetId, 'swap')
+                    }
                     // Someone else's pickup never hides a banner that matters more, like "you have it".
-                    if (mine || !this.banner) this.showBanner(text, false)
+                    if (mine || hitMe || !this.banner) this.showBanner(text, hitMe)
                     return
                 }
+                case 'emote':
+                    renderer?.emote(message.playerId, message.emote)
+                    this.lastEmotes = { ...this.lastEmotes, [message.playerId]: message.emote }
+                    return
                 case 'results':
                     this.remainingMs = 0
                     this.results = this.describeResults(message.results)
