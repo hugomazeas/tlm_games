@@ -12,6 +12,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->trustProxies(at: '*');
+        // Typing tests: a trailing space is a typed character.
+        $middleware->trimStrings(except: ['typed']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

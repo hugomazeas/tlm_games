@@ -161,5 +161,36 @@ class GameTypeSeeder extends Seeder
                 ],
             ]
         );
+
+        $typing = GameType::updateOrCreate(
+            ['slug' => 'typing'],
+            [
+                'name' => 'Typing',
+                'description' => 'Type fast in French or English. Solo 30s tests or live races.',
+                'icon' => "\xE2\x8C\xA8\xEF\xB8\x8F",
+                'color' => '#eab308',
+                'is_active' => true,
+                'min_players' => 1,
+                'max_players' => 20,
+                'leaderboard_columns' => null,
+            ]
+        );
+
+        GameMode::updateOrCreate(
+            ['game_type_id' => $typing->id, 'slug' => 'average-wpm'],
+            [
+                'name' => 'Average WPM',
+                'description' => 'Average words per minute, then average accuracy.',
+                'is_active' => true,
+                'sort_order' => 0,
+                'leaderboard_columns' => [
+                    ['key' => 'avg_wpm', 'label' => 'Avg WPM', 'sortable' => true],
+                    ['key' => 'avg_accuracy', 'label' => 'Accuracy %', 'sortable' => true],
+                    ['key' => 'language', 'label' => 'Language'],
+                    ['key' => 'tests_count', 'label' => 'Tests', 'sortable' => true],
+                    ['key' => 'restarts', 'label' => 'Restarts', 'sortable' => true],
+                ],
+            ]
+        );
     }
 }
