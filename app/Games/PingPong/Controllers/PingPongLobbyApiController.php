@@ -55,6 +55,7 @@ class PingPongLobbyApiController extends Controller
                 'id' => $p->id,
                 'player_id' => $p->player_id,
                 'player_name' => $p->player->name,
+                'avatar_url' => $p->player->avatarUrl(),
                 'elo_rating' => PingPongRating::where('player_id', $p->player_id)->where('mode', $lobby->mode)->value('elo_rating') ?? 1200,
                 'side' => $p->side,
             ])->values(),

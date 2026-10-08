@@ -20,7 +20,8 @@ class HotPotatoController extends Controller
     {
         return view('games.hot-potato.play', [
             'offices' => Office::orderBy('name')->get(['id', 'name']),
-            'players' => Player::orderBy('name')->get(['id', 'name', 'office_id']),
+            // avatar_path is hidden; the serialized players carry avatar_url instead.
+            'players' => Player::orderBy('name')->get(['id', 'name', 'office_id', 'avatar_path']),
         ]);
     }
 

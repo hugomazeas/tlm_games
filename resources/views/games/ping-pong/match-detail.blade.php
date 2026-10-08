@@ -572,6 +572,10 @@
                             <template x-if="match.player_left_score > match.player_right_score">
                                 <span class="pph-mono text-[9px] font-bold tracking-[0.22em] uppercase px-2 py-0.5 rounded-full bg-[#ffd166]/15 text-[#ffd166] pph-glow-amber">★ Winner</span>
                             </template>
+                            <x-player-avatar-js name="match.player_left?.name" url="match.player_left?.avatar_url" size="md" />
+                            <template x-if="match.mode === '2v2' && match.team_left_player2">
+                                <x-player-avatar-js name="match.team_left_player2?.name" url="match.team_left_player2?.avatar_url" size="md" />
+                            </template>
                         </div>
                         <div class="pph-display uppercase tracking-[0.015em] text-[clamp(20px,3.4vw,52px)] text-[#ff5a4a] leading-[0.95] truncate"
                              :class="match.player_left_score > match.player_right_score ? 'pph-glow-red' : ''">
@@ -601,6 +605,10 @@
                     <div class="text-left space-y-1.5 min-w-0"
                          :class="{ 'opacity-100': match.player_right_score > match.player_left_score, 'opacity-60': match.player_right_score < match.player_left_score }">
                         <div class="flex items-center justify-start gap-2 mb-1.5">
+                            <x-player-avatar-js name="match.player_right?.name" url="match.player_right?.avatar_url" size="md" />
+                            <template x-if="match.mode === '2v2' && match.team_right_player2">
+                                <x-player-avatar-js name="match.team_right_player2?.name" url="match.team_right_player2?.avatar_url" size="md" />
+                            </template>
                             <template x-if="match.player_right_score > match.player_left_score">
                                 <span class="pph-mono text-[9px] font-bold tracking-[0.22em] uppercase px-2 py-0.5 rounded-full bg-[#ffd166]/15 text-[#ffd166] pph-glow-amber">★ Winner</span>
                             </template>

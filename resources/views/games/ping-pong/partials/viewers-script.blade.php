@@ -72,7 +72,7 @@ window.pingPongViewers = () => ({
     },
 
     announceViewerJoin(member) {
-        if (typeof this.addChatJoin === 'function') this.addChatJoin(member.name);
+        if (typeof this.addChatJoin === 'function') this.addChatJoin(member.name, member.avatar_url);
         const key = member.id + '-' + Date.now();
         this.viewerJoins = [...this.viewerJoins, { key, name: member.name }].slice(-3);
         setTimeout(() => {

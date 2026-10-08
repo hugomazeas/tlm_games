@@ -130,7 +130,7 @@ class PingPongWatchPageTest extends TestCase
 
             $this->assertStringContainsString('data-chat-join', $html, $url);
             $this->assertStringContainsString('joined the chat', $html, $url);
-            $this->assertStringContainsString('this.addChatJoin(member.name)', $html, $url);
+            $this->assertStringContainsString('this.addChatJoin(member.name, member.avatar_url)', $html, $url);
         }
     }
 

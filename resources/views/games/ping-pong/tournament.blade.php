@@ -46,6 +46,9 @@
                 @if ($tournament->isComplete())
                     <div class="flex flex-col items-center gap-3 py-8 text-center">
                         <span class="text-[64px] leading-none">🏆</span>
+                        @if ($tournament->winner)
+                            <x-player-avatar :player="$tournament->winner" size="lg" class="ring-2 !ring-[#ffd166]/70" />
+                        @endif
                         <span class="pph-display uppercase tracking-[0.04em] text-[40px] leading-none text-[#ffd166] pph-glow-amber">{{ $tournament->winner->name ?? '—' }}</span>
                         <span class="pph-mono text-[10px] tracking-[0.3em] uppercase text-[#f5ecd6]/45">{{ $tournament->name }}</span>
                     </div>
@@ -123,8 +126,13 @@
                                                         $scoreColor = $side === 'left' ? 'text-[#ff5a4a]' : 'text-[#3ec8ff]';
                                                     @endphp
                                                     <div class="flex items-center justify-between gap-2 px-3 py-1.5 border-l-[3px] {{ $player ? $accent : 'border-l-transparent' }} {{ $side === 'left' ? 'border-b border-b-[#f5ecd6]/10' : '' }}">
-                                                        <span class="truncate text-[13px] {{ $won ? 'font-bold text-[#f5ecd6]' : ($slot->winner_id || ! $player ? 'text-[#f5ecd6]/35' : 'font-semibold text-[#f5ecd6]/80') }} {{ $player ? '' : 'italic' }}">
-                                                            {{ $player->name ?? ($round === 1 ? 'Bye' : 'TBD') }}
+                                                        <span class="flex items-center gap-2 min-w-0">
+                                                            @if ($player)
+                                                                <x-player-avatar :player="$player" size="xs" class="{{ $slot->winner_id && ! $won ? 'opacity-40' : '' }}" />
+                                                            @endif
+                                                            <span class="truncate text-[13px] {{ $won ? 'font-bold text-[#f5ecd6]' : ($slot->winner_id || ! $player ? 'text-[#f5ecd6]/35' : 'font-semibold text-[#f5ecd6]/80') }} {{ $player ? '' : 'italic' }}">
+                                                                {{ $player->name ?? ($round === 1 ? 'Bye' : 'TBD') }}
+                                                            </span>
                                                         </span>
                                                         <span class="pph-mono text-[13px] font-bold tabular-nums {{ $won ? $scoreColor : 'text-[#f5ecd6]/35' }}">{{ $score }}</span>
                                                     </div>

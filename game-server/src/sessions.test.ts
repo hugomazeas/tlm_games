@@ -46,10 +46,10 @@ function connect(player: PlayerInfo | null, officeId = OFFICE): FakeConn {
     return conn
 }
 
-const alice = { id: 1, name: 'Alice' }
-const bob = { id: 2, name: 'Bob' }
-const carol = { id: 3, name: 'Carol' }
-const dave = { id: 4, name: 'Dave' }
+const alice = { id: 1, name: 'Alice', avatarUrl: null }
+const bob = { id: 2, name: 'Bob', avatarUrl: null }
+const carol = { id: 3, name: 'Carol', avatarUrl: null }
+const dave = { id: 4, name: 'Dave', avatarUrl: null }
 
 function send(conn: FakeConn, raw: object) {
     const message = parseClientMessage(JSON.stringify(raw))
@@ -97,6 +97,16 @@ describe('opening and joining', () => {
         expect(opened).toEqual([{ officeId: OFFICE, hostPlayerId: 1 }])
     })
 
+    test('the lobby carries each player photo, so browsers can draw it', () => {
+        const a = connect({ ...alice, avatarUrl: '/storage/avatars/1-abc.jpg' })
+        const watcher = connect(null)
+        send(a, { type: 'open' })
+
+        expect(last(watcher, 'office')?.session?.players).toEqual([
+            { id: 1, name: 'Alice', avatarUrl: '/storage/avatars/1-abc.jpg', away: false },
+        ])
+    })
+
     test('one session per office', () => {
         const a = connect(alice)
         const b = connect(bob)
@@ -124,10 +134,10 @@ describe('opening and joining', () => {
     })
 
     test('the lobby holds 12 players at most', () => {
-        const host = connect({ id: 100, name: 'Host' })
+        const host = connect({ id: 100, name: 'Host', avatarUrl: null })
         send(host, { type: 'open' })
-        for (let id = 101; id < 112; id++) send(connect({ id, name: `P${id}` }), { type: 'join' })
-        const thirteenth = connect({ id: 200, name: 'Late' })
+        for (let id = 101; id < 112; id++) send(connect({ id, name: `P${id}`, avatarUrl: null }), { type: 'join' })
+        const thirteenth = connect({ id: 200, name: 'Late', avatarUrl: null })
         send(thirteenth, { type: 'join' })
 
         expect(errors(thirteenth)).toEqual(['LOBBY_FULL'])

@@ -6,6 +6,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Ping Pong Remote</title>
     <x-pwa-head />
+    <x-player-avatar-script />
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/pusher-js@8.4.0/dist/web/pusher.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
@@ -936,11 +937,13 @@
         <div class="scoreboard" id="scoreboard">
             <div class="scoreboard-scores">
                 <div class="scoreboard-side left" id="leftSide">
+                    <div class="flex justify-center gap-1.5 mb-1.5 pt-1.5" id="leftAvatars"></div>
                     <div class="player-names" id="leftNames">...</div>
                     <div class="score-value" id="leftScore">0</div>
                 </div>
                 <div class="scoreboard-divider">-</div>
                 <div class="scoreboard-side right" id="rightSide">
+                    <div class="flex justify-center gap-1.5 mb-1.5 pt-1.5" id="rightAvatars"></div>
                     <div class="player-names" id="rightNames">...</div>
                     <div class="score-value" id="rightScore">0</div>
                 </div>
@@ -1116,6 +1119,8 @@
         const scoreboard = document.getElementById('scoreboard');
         const leftNames = document.getElementById('leftNames');
         const rightNames = document.getElementById('rightNames');
+        const leftAvatars = document.getElementById('leftAvatars');
+        const rightAvatars = document.getElementById('rightAvatars');
         const leftScore = document.getElementById('leftScore');
         const rightScore = document.getElementById('rightScore');
         const leftSide = document.getElementById('leftSide');
@@ -1466,6 +1471,8 @@
                 leftNames.textContent = data.player_left?.name || '?';
                 rightNames.textContent = data.player_right?.name || '?';
             }
+            renderAvatars(leftAvatars, [data.player_left, data.mode === '2v2' ? data.team_left_player2 : null]);
+            renderAvatars(rightAvatars, [data.player_right, data.mode === '2v2' ? data.team_right_player2 : null]);
 
             // Serving indicator
             renderServing(data);
@@ -1560,6 +1567,15 @@
                 endgameHint.textContent = 'Network error — try again';
                 btnRematch.disabled = false;
             }
+        }
+
+        // Rebuilt only when the players change, so score updates don't reload the photos.
+        function renderAvatars(container, players) {
+            const shown = players.filter(Boolean);
+            const signature = shown.map(p => p.id + ':' + (p.avatar_url || '')).join('|');
+            if (container.dataset.signature === signature) return;
+            container.dataset.signature = signature;
+            container.replaceChildren(...shown.map(p => playerAvatarElement(p.name, p.avatar_url, 'w-8 h-8 text-xs')));
         }
 
         function renderServing(data) {

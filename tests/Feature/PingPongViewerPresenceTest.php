@@ -81,6 +81,7 @@ class PingPongViewerPresenceTest extends TestCase
             'role' => 'viewer',
             'player_id' => $ann->id,
             'name' => 'Ann',
+            'avatar_url' => null,
         ], $member['user_info']);
     }
 

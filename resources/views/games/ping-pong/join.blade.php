@@ -6,6 +6,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Join Ping Pong Lobby</title>
     <x-pwa-head />
+    <x-player-avatar-script />
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pusher-js@8.4.0/dist/web/pusher.min.js"></script>
@@ -670,7 +671,10 @@
                 <div class="player-list">
                     <template x-for="player in filteredPlayers" :key="player.id">
                         <div class="player-item" @click="joinAsPlayer(player)">
-                            <span class="name" x-text="player.name"></span>
+                            <span class="flex items-center gap-2.5 min-w-0">
+                                <x-player-avatar-js name="player.name" url="player.avatar_url" size="sm" />
+                                <span class="name" x-text="player.name"></span>
+                            </span>
                             <span class="elo" x-text="'ELO ' + player.elo_rating"></span>
                         </div>
                     </template>
@@ -704,13 +708,19 @@
                     <div class="side-panel left" :class="{ 'selected': mySide === 'left' }" @click="switchSide('left')">
                         <div class="side-label">Left</div>
                         <template x-for="p in leftPlayers" :key="p.player_id">
-                            <div class="side-player" :class="{ 'is-me': p.player_id === myPlayerId }" x-text="p.player_name"></div>
+                            <div class="side-player flex items-center justify-center gap-2" :class="{ 'is-me': p.player_id === myPlayerId }">
+                                <x-player-avatar-js name="p.player_name" url="p.avatar_url" size="sm" />
+                                <span class="truncate" x-text="p.player_name"></span>
+                            </div>
                         </template>
                     </div>
                     <div class="side-panel right" :class="{ 'selected': mySide === 'right' }" @click="switchSide('right')">
                         <div class="side-label">Right</div>
                         <template x-for="p in rightPlayers" :key="p.player_id">
-                            <div class="side-player" :class="{ 'is-me': p.player_id === myPlayerId }" x-text="p.player_name"></div>
+                            <div class="side-player flex items-center justify-center gap-2" :class="{ 'is-me': p.player_id === myPlayerId }">
+                                <x-player-avatar-js name="p.player_name" url="p.avatar_url" size="sm" />
+                                <span class="truncate" x-text="p.player_name"></span>
+                            </div>
                         </template>
                     </div>
                 </div>

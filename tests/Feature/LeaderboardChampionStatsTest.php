@@ -178,4 +178,17 @@ class LeaderboardChampionStatsTest extends TestCase
         $this->assertSame(25, $entries[$eve->id]['win_rate']);
         $this->assertSame(50, $entries[$eve->id]['win_rate_30d']);
     }
+
+    public function test_standings_carry_each_player_photo(): void
+    {
+        $dave = Player::create(['name' => 'Dave']);
+        $eve = Player::create(['name' => 'Eve']);
+        $dave->forceFill(['avatar_path' => 'avatars/1-abc.jpg'])->save();
+        $this->match($dave->id, $eve->id, $dave->id, now()->subDay());
+
+        $entries = $this->leaderboardByPlayer();
+
+        $this->assertSame('/storage/avatars/1-abc.jpg', $entries[$dave->id]['avatar_url']);
+        $this->assertNull($entries[$eve->id]['avatar_url']);
+    }
 }

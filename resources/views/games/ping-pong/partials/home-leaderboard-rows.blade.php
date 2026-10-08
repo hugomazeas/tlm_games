@@ -51,6 +51,7 @@
 
             {{-- Name + position movement since start of day --}}
             <span class="flex items-center gap-2 min-w-0">
+                <x-player-avatar-js name="entry.player_name" url="entry.avatar_url" size="sm" />
                 <span class="font-bold text-[15px] md:text-base text-[#f5ecd6] truncate" x-text="entry.player_name"></span>
                 <template x-if="entry.rank_delta">
                     <span class="inline-flex items-center gap-0.5 pph-mono text-[13px] md:text-[14px] font-bold leading-none shrink-0"

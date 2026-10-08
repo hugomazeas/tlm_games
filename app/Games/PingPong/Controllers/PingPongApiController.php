@@ -81,6 +81,7 @@ class PingPongApiController extends Controller
             return [
                 'id' => $player->id,
                 'name' => $player->name,
+                'avatar_url' => $player->avatarUrl(),
                 'elo_rating' => $rating ? $rating->elo_rating : 1200,
                 'last_activity' => $activityMap[$player->id] ?? null,
             ];
@@ -203,6 +204,7 @@ class PingPongApiController extends Controller
             return [
                 'player_id' => $playerId,
                 'player_name' => $player->name,
+                'avatar_url' => $player->avatarUrl(),
                 'elo_rating' => $elo,
                 'wins' => $wins,
                 'losses' => $losses,
@@ -1938,7 +1940,7 @@ class PingPongApiController extends Controller
 
                 if (! isset($h2h[$key])) {
                     $h2h[$key] = [
-                        'opponent' => ['id' => $opponent->id, 'name' => $opponent->name],
+                        'opponent' => ['id' => $opponent->id, 'name' => $opponent->name, 'avatar_url' => $opponent->avatarUrl()],
                         'wins' => 0,
                         'losses' => 0,
                     ];

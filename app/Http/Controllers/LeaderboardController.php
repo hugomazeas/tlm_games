@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\GameMode;
 use App\Models\GameType;
+use App\Models\Player;
 use App\Services\LeaderboardService;
 
 class LeaderboardController extends Controller
@@ -34,11 +34,17 @@ class LeaderboardController extends Controller
         $entries = $leaderboard->getLeaderboard($gameType->slug, $modeSlug);
         $columns = $gameMode->leaderboard_columns ?? [];
 
+        // One lookup here rather than teaching every game's provider about photos.
+        $avatarUrls = Player::whereIn('id', $entries->pluck('player_id'))
+            ->get(['id', 'avatar_path'])
+            ->mapWithKeys(fn (Player $player) => [$player->id => $player->avatarUrl()]);
+
         return view('leaderboards.mode', [
             'gameType' => $gameType,
             'gameMode' => $gameMode,
             'entries' => $entries,
             'columns' => $columns,
+            'avatarUrls' => $avatarUrls,
         ]);
     }
 }

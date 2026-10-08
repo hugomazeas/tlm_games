@@ -125,7 +125,13 @@
                             <template x-for="player in session.players" :key="player.id">
                                 <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm border"
                                       :class="player.away ? 'border-white/10 text-white/30' : 'border-white/20 bg-white/10'">
-                                    <span class="w-2.5 h-2.5 rounded-full" :style="'background:' + colourFor(player.id)"></span>
+                                    <template x-if="player.avatarUrl">
+                                        <img :src="player.avatarUrl" alt="" class="w-5 h-5 -ml-1.5 rounded-full object-cover"
+                                             :style="'box-shadow: 0 0 0 2px ' + colourFor(player.id)">
+                                    </template>
+                                    <template x-if="!player.avatarUrl">
+                                        <span class="w-2.5 h-2.5 rounded-full" :style="'background:' + colourFor(player.id)"></span>
+                                    </template>
                                     <span x-text="player.name"></span>
                                     <span x-show="player.id === session.hostId" title="Host">👑</span>
                                     <span x-show="player.away" class="text-xs">(away)</span>
@@ -230,7 +236,12 @@
                                             <template x-for="row in results.rows" :key="row.id">
                                                 <tr :class="row.survived ? 'text-white' : 'text-white/60'">
                                                     <td class="py-1 w-10" x-text="row.place"></td>
-                                                    <td x-text="row.name"></td>
+                                                    <td>
+                                                        <span class="inline-flex items-center gap-2">
+                                                            <x-player-avatar-js name="row.name" url="avatarOf(row.id)" size="xs" class="!w-5 !h-5 !text-[9px]" />
+                                                            <span x-text="row.name"></span>
+                                                        </span>
+                                                    </td>
                                                     <td class="text-right" x-text="row.holdSeconds + 's'"></td>
                                                     <td class="text-right" x-text="row.passes"></td>
                                                 </tr>

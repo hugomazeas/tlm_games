@@ -42,6 +42,7 @@ export interface RendererOptions {
     mode: () => GameMode
     myId: () => number | null
     nameOf: (id: number) => string
+    avatarOf: (id: number) => string | null
 }
 
 /**
@@ -56,6 +57,8 @@ export class Renderer {
     /** Recent positions of boosted players, for the speed trail. */
     private trails = new Map<number, Array<{ x: number; y: number }>>()
     private own: { x: number; y: number } | null = null
+    /** Profile photos by URL, loaded once and reused every frame. */
+    private photos = new Map<string, HTMLImageElement>()
     private frame = 0
     private lastFrameAt = 0
 
@@ -157,6 +160,19 @@ export class Renderer {
         for (const p of ordered) this.drawPlayer(context, p, state, time)
     }
 
+    /** The photo once it has loaded; null while loading or if it failed, so initials show meanwhile. */
+    private photo(url: string): HTMLImageElement | null {
+        let image = this.photos.get(url)
+        if (!image) {
+            image = new Image()
+            image.decoding = 'async'
+            image.src = url
+            this.photos.set(url, image)
+        }
+
+        return image.complete && image.naturalWidth > 0 ? image : null
+    }
+
     private drawPlayer(context: CanvasRenderingContext2D, p: SnapshotPlayer, state: Snapshot, time: number) {
         const r = AVATAR_RADIUS
         const isMe = p.id === this.options.myId()
@@ -190,11 +206,26 @@ export class Renderer {
             context.stroke()
         }
 
+        const avatarUrl = this.options.avatarOf(p.id)
+        const photo = avatarUrl ? this.photo(avatarUrl) : null
+        const spinning = active && p.slipMs > 0 && !this.options.reducedMotion
+
         context.fillStyle = '#ffffff'
         context.font = `700 ${0.8}px Outfit, sans-serif`
         context.textAlign = 'center'
         context.textBaseline = 'middle'
-        if (active && p.slipMs > 0 && !this.options.reducedMotion) {
+        if (photo) {
+            // The photo sits inside the player's colour, which stays as a ring.
+            const inner = r * 0.84
+            context.save()
+            context.translate(p.x, p.y)
+            if (spinning) context.rotate(time / 70)
+            context.beginPath()
+            context.arc(0, 0, inner, 0, Math.PI * 2)
+            context.clip()
+            context.drawImage(photo, -inner, -inner, inner * 2, inner * 2)
+            context.restore()
+        } else if (spinning) {
             // Spinning out on a banana: the initials go round.
             context.save()
             context.translate(p.x, p.y + 0.05)

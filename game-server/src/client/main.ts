@@ -17,7 +17,7 @@ import { STRINGS } from './strings.ts'
 
 interface Config {
     offices: Array<{ id: number; name: string }>
-    players: Array<{ id: number; name: string; office_id: number | null }>
+    players: Array<{ id: number; name: string; office_id: number | null; avatar_url: string | null }>
     csrf: string
     urls: { pushConfig: string; pushSubscribe: string; pushUnsubscribe: string }
 }
@@ -302,6 +302,7 @@ function hotPotatoApp(config: Config) {
                     mode: () => this.gameMode,
                     myId: () => this.me?.id ?? null,
                     nameOf: id => this.nameOf(id),
+                    avatarOf: id => this.avatarOf(id),
                 })
             }
             return renderer
@@ -395,6 +396,13 @@ function hotPotatoApp(config: Config) {
                 this.allPlayers.find(p => p.id === id)?.name ??
                 STRINGS.someone
             )
+        },
+
+        avatarOf(id: number): string | null {
+            const seated = this.session?.players.find(p => p.id === id)
+            if (seated) return seated.avatarUrl
+
+            return this.allPlayers.find(p => p.id === id)?.avatar_url ?? null
         },
 
         // ── Keyboard ─────────────────────────────────────────────────────
