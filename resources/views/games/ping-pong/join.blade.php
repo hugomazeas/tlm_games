@@ -308,6 +308,38 @@
             text-shadow: 0 0 14px rgba(255, 209, 102, 0.35);
         }
 
+        .swap-row {
+            padding: 0 16px 4px;
+            flex-shrink: 0;
+        }
+        .swap-btn {
+            width: 100%;
+            padding: 11px;
+            border-radius: 12px;
+            border: 1.5px dashed var(--paper-fainter);
+            background: rgba(245, 236, 214, 0.03);
+            color: var(--paper-soft);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: transform 0.12s, border-color 0.2s, color 0.2s;
+        }
+        .swap-btn .arrows {
+            display: inline-block;
+            margin-right: 8px;
+            font-size: 15px;
+            letter-spacing: 0;
+            background: linear-gradient(90deg, var(--red), var(--blue));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .swap-btn:active { transform: scale(0.98); border-color: var(--paper-faint); color: var(--paper); }
+        .swap-btn:disabled { opacity: 0.5; cursor: default; }
+
         /* ===== Waiting screen header ===== */
         .reselect-player {
             cursor: pointer;
@@ -539,10 +571,11 @@
             .waiting-layout {
                 display: grid;
                 grid-template-columns: minmax(220px, 40%) 1fr;
-                grid-template-rows: auto 1fr auto;
+                grid-template-rows: auto 1fr auto auto;
                 grid-template-areas:
                     "header  side"
                     "qr      side"
+                    "qr      swap"
                     "qr      start";
                 gap: 10px 16px;
                 padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
@@ -590,6 +623,9 @@
             }
             .waiting-layout .side-panel .side-label { margin-bottom: 6px; font-size: 9px; }
             .waiting-layout .side-player { padding: 6px 8px; font-size: 0.85rem; margin-bottom: 4px; }
+
+            .waiting-layout .swap-row { grid-area: swap; padding: 0; }
+            .waiting-layout .swap-btn { padding: 8px; font-size: 10px; }
 
             .waiting-layout .start-row {
                 grid-area: start;
@@ -654,7 +690,7 @@
                          @click="reselectPlayer()">
                         <span x-text="'You · ' + myPlayerName"></span>
                     </div>
-                    <div class="reselect-hint">Tap name to change · Tap a side to switch</div>
+                    <div class="reselect-hint">Tap name to change · Tap a side or ⇄ to switch</div>
                 </div>
 
                 <div class="qr-section" x-init="$nextTick(() => generateQr())">
@@ -677,6 +713,12 @@
                             <div class="side-player" :class="{ 'is-me': p.player_id === myPlayerId }" x-text="p.player_name"></div>
                         </template>
                     </div>
+                </div>
+
+                <div class="swap-row" x-show="canSwap">
+                    <button class="swap-btn" :disabled="swapping" @click="swapSides()">
+                        <span class="arrows">⇄</span>Swap sides
+                    </button>
                 </div>
 
                 <div class="start-row">
@@ -734,6 +776,7 @@
             errorTitle: '',
             errorMessage: '',
             starting: false,
+            swapping: false,
 
             echo: null,
 
@@ -833,7 +876,10 @@
                         // Update my side if changed
                         if (this.myPlayerId) {
                             const me = this.participants.find(p => p.player_id === this.myPlayerId);
-                            if (me) this.mySide = me.side;
+                            if (me && me.side !== this.mySide) {
+                                this.mySide = me.side;
+                                this.saveSession();
+                            }
                         }
                     })
                     .listen('.lobby.match-started', (e) => {
@@ -859,6 +905,10 @@
 
             get rightPlayers() {
                 return this.participants.filter(p => p.side === 'right');
+            },
+
+            get canSwap() {
+                return this.leftPlayers.length > 0 && this.rightPlayers.length > 0;
             },
 
             get lobbyReady() {
@@ -965,6 +1015,31 @@
                 } catch (err) {
                     // Silently ignore
                 }
+            },
+
+            async swapSides() {
+                if (!this.sessionToken || this.swapping) return;
+                this.swapping = true;
+                try {
+                    const res = await fetch(`${this.API}/lobbies/${this.lobbyCode}/swap`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': this.csrf,
+                        },
+                        body: JSON.stringify({ session_token: this.sessionToken }),
+                    });
+
+                    if (res.ok) {
+                        const data = await res.json();
+                        this.mySide = data.side;
+                        this.saveSession();
+                    }
+                    // The LobbyUpdated WebSocket event refreshes both panels
+                } catch (err) {
+                    // Silently ignore
+                }
+                this.swapping = false;
             },
 
             async startGame() {

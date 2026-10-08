@@ -74,6 +74,7 @@ Route::post('/games/ping-pong/api/lobbies', [PingPongLobbyApiController::class, 
 Route::get('/games/ping-pong/api/lobbies/{code}', [PingPongLobbyApiController::class, 'getLobby']);
 Route::post('/games/ping-pong/api/lobbies/{code}/join', [PingPongLobbyApiController::class, 'joinLobby']);
 Route::patch('/games/ping-pong/api/lobbies/{code}/side', [PingPongLobbyApiController::class, 'switchSide']);
+Route::post('/games/ping-pong/api/lobbies/{code}/swap', [PingPongLobbyApiController::class, 'swapSides']);
 Route::delete('/games/ping-pong/api/lobbies/{code}/leave', [PingPongLobbyApiController::class, 'leaveLobby']);
 Route::post('/games/ping-pong/api/lobbies/{code}/start', [PingPongLobbyApiController::class, 'startMatch']);
 Route::delete('/games/ping-pong/api/lobbies/{code}', [PingPongLobbyApiController::class, 'closeLobby']);
