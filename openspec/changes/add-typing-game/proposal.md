@@ -9,7 +9,7 @@ The hub has physical games (archery, ping pong, putter) and one live arena game,
 - **Solo mode**: a 30-second test. The server issues the text and computes WPM itself from what was typed.
 - **Race mode**: one open race across the whole hub. Players join a lobby and the host starts a countdown. Everyone types the same text, and live progress is broadcast over Reverb. The race ends when everyone finishes or after 2 minutes. Racers who haven't finished are scored on their progress over the full 2 minutes.
 - Basic anti-cheat. The server issues every text and enforces solo's 30s minimum using its own clock. It computes WPM, times race finishes, caps WPM at 250, accepts one submission per test, and the page blocks pasting.
-- One global leaderboard: average WPM, then average accuracy as the tiebreaker. A player needs at least 5 tests to be ranked, and the board shows each player's favourite language.
+- One global leaderboard: average WPM, then average accuracy as the tiebreaker. Every player with a result is ranked, and the board shows each player's favourite language.
 - New `game_types` / `game_modes` seed rows and a registration in `config/games.php`.
 
 ## Capabilities
@@ -17,7 +17,7 @@ The hub has physical games (archery, ping pong, putter) and one live arena game,
 ### New Capabilities
 - `typing-test`: the solo 30s test, the typing UI (words/quote, FR/EN, accent-safe input, no paste), how the server issues and scores a test, and its anti-cheat rules.
 - `typing-race`: the single hub-wide race: lobby, countdown, live progress, finishing, the 2-minute cap, scoring for players who don't finish (DNF), and the result rows.
-- `typing-leaderboard`: global ranking by average WPM, then average accuracy; the 5-test minimum; favourite language; per-player stats.
+- `typing-leaderboard`: global ranking by average WPM, then average accuracy; favourite language; per-player stats.
 
 ### Modified Capabilities
 <!-- none: no existing specs -->

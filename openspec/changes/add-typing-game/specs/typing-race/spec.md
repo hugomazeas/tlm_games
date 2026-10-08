@@ -38,15 +38,23 @@ Players SHALL be able to join and leave a race while it is in `lobby`. A player 
 - **THEN** the race is removed
 
 ### Requirement: Countdown start
-Any participant SHALL be able to start the race once at least 2 players have joined. Starting sets the status to `running` and `starts_at` to 3 seconds in the future on the server clock, and broadcasts the start. Clients show a 3-2-1 countdown up to `starts_at` and keep input locked until then.
+Only the race's host SHALL be able to start it, once at least 2 players have joined. The host is the player who created the race; if they leave the lobby, the player who joined next becomes host. Starting sets the status to `running` and `starts_at` to 3 seconds in the future on the server clock, and broadcasts the start. Clients show a 3-2-1 countdown up to `starts_at` and keep input locked until then.
 
 #### Scenario: Start with two players
-- **WHEN** a participant starts a lobby that has 2 players
+- **WHEN** the host starts a lobby that has 2 players
 - **THEN** the race becomes `running` with `starts_at` = now + 3s and every subscriber receives `starts_at`
 
 #### Scenario: Start alone
-- **WHEN** a participant starts a lobby that has 1 player
+- **WHEN** the host starts a lobby that has 1 player
 - **THEN** the request is rejected
+
+#### Scenario: Non-host tries to start
+- **WHEN** a participant who is not the host starts the race
+- **THEN** the request is rejected and the race stays in the lobby
+
+#### Scenario: Host leaves
+- **WHEN** the host leaves a lobby with 2 other players
+- **THEN** the player who joined next becomes host and can start the race
 
 ### Requirement: Server-verified live progress
 Each time a racer completes a word, the client SHALL POST everything typed so far, with keystroke and error counts. The server computes `progress_chars`: the length of the longest prefix of the race text that the typed text matches. It stores this with the counts and broadcasts every racer's progress. Progress posted before `starts_at`, after the race is finished, or by a non-participant MUST be rejected.
@@ -100,6 +108,21 @@ The final standings are broadcast. Results are written exactly once per race.
 #### Scenario: End triggered twice
 - **WHEN** the last racer finishes at the same moment the 2-minute cap fires
 - **THEN** each racer has exactly one result for that race
+
+### Requirement: Invite link
+While a race is in `lobby`, the page SHALL show a link to it (`/games/typing?race=<id>`) with a copy button. Opening the link switches the page to Race. If a player is saved in the browser, they join that race automatically. Otherwise they join as soon as they pick a player. A link to a race that has already started or ended shows a message and joins nothing.
+
+#### Scenario: Invite with a saved player
+- **WHEN** someone with a saved player opens the invite link of a race in `lobby`
+- **THEN** the page shows the race and they are added to it
+
+#### Scenario: Invite without a saved player
+- **WHEN** someone with no saved player opens the invite link and then picks a player
+- **THEN** they are added to the race
+
+#### Scenario: Stale invite
+- **WHEN** someone opens the invite link of a race that has started without them or has ended
+- **THEN** a message says so and they are not added to any race
 
 ### Requirement: Race UI
 The typing page SHALL let a player switch between Solo and Race. In Race, it shows the open race (or a create form with language and source), the participant list, a start button, the countdown, and a progress bar per racer with live WPM. The typing area is the same as in solo. When the race ends, it shows the standings.

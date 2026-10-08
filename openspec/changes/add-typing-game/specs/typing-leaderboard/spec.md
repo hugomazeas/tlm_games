@@ -15,15 +15,11 @@ The system SHALL provide one typing leaderboard (game type `typing`, mode `avera
 - **WHEN** a player has 3 solo results and 2 race results
 - **THEN** all 5 are included in their averages
 
-### Requirement: Minimum five tests to be ranked
-A player SHALL appear on the leaderboard only once they have at least 5 results.
+### Requirement: Every player with a result is ranked
+A player SHALL appear on the leaderboard as soon as they have one result. There is no minimum number of tests.
 
-#### Scenario: Four tests
-- **WHEN** a player has 4 results
-- **THEN** they are not on the leaderboard
-
-#### Scenario: Fifth test
-- **WHEN** that player completes a fifth test
+#### Scenario: First test
+- **WHEN** a player completes their first test
 - **THEN** they appear on the leaderboard
 
 ### Requirement: Favourite language shown
@@ -38,16 +34,16 @@ Each leaderboard entry SHALL show the player's favourite language: the language 
 - **THEN** their favourite language is shown as English
 
 ### Requirement: Leaderboard columns
-Each entry SHALL include average wpm (1 decimal), average accuracy (1 decimal, %), favourite language, and number of tests.
+Each entry SHALL include average wpm (1 decimal), average accuracy (1 decimal, %), favourite language, number of tests, and number of restarts.
 
 #### Scenario: Columns rendered
 - **WHEN** the typing leaderboard page is viewed
-- **THEN** each row shows Avg WPM, Accuracy, Language and Tests
+- **THEN** each row shows Avg WPM, Accuracy, Language, Tests and Restarts
 
 ### Requirement: Per-player typing stats
-The player detail page SHALL show the player's average wpm, average accuracy, best wpm, test count and favourite language. These appear as soon as the player has at least one result, even before they are ranked. A player with no results shows no typing stats.
+The player detail page SHALL show the player's average wpm, average accuracy, best wpm, test count, favourite language and restart count. These appear as soon as the player has at least one result. A player with no results shows no typing stats.
 
-#### Scenario: Unranked player stats
+#### Scenario: Player stats
 - **WHEN** a player with 2 results is viewed
 - **THEN** their typing stats are shown on their player page
 

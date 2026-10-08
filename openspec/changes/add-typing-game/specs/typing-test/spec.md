@@ -93,6 +93,17 @@ A rejected submission MUST NOT create a result.
 - **WHEN** the computed wpm is above 250
 - **THEN** the submission is rejected
 
+### Requirement: Restarts are recorded
+When a player starts a new solo test after typing in the current one but before it ended, the system SHALL mark the abandoned test as restarted. Tests that were issued but never typed in are not restarts. Only a pending solo test of the same player can be marked.
+
+#### Scenario: Restart mid-test
+- **WHEN** a player types in a test and presses Tab before the 30 seconds end
+- **THEN** that test is marked restarted and a new test is issued
+
+#### Scenario: Untouched test
+- **WHEN** a player switches language before typing anything
+- **THEN** the previous test is not marked restarted
+
 ### Requirement: Results screen and recent tests
 After submitting, the UI SHALL show the player's wpm, raw wpm and accuracy, plus a way to start a new test. The typing page SHALL list the 10 most recent results across all players. The last selected player, language and source are remembered in the browser.
 

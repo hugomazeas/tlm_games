@@ -50,6 +50,12 @@ GET  /leaderboards                  All game types
 GET  /leaderboards/{gameType:slug}  Per-game leaderboard (dynamic columns)
 GET  /notifications                 Web push opt-in (pick your player, enable)
 GET  /games/hot-potato              Hot potato: pick office + player, lobby, live game
+GET  /games/typing                  Typing: solo 30s test + hub-wide race
+POST /games/typing/tests            Issue a solo test (server picks the text)
+POST /games/typing/tests/{test}/submit  Submit a solo test (server scores it)
+GET  /games/typing/race             The open race, if any
+POST /games/typing/race             Join the open race, or create one
+POST /games/typing/race/{race}/leave|start|progress  Lobby actions and live progress
 POST /push/hot-potato/subscribe     Opt a player's browser into "a hot potato opened" pushes
 POST /push/hot-potato/unsubscribe   Opt out of those pushes
 GET  /push/config                   VAPID public key + whether push is set up

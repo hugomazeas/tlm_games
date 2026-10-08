@@ -86,7 +86,7 @@ There is one Blade page, `games/typing/play.blade.php`, with one Alpine componen
 **Echo:** the page reuses whatever Echo/Reverb setup ping-pong pages already load (see `resources/views/games/ping-pong/play.blade.php`).
 
 ### Leaderboard as one SQL aggregate
-`AverageWpmProvider` runs one query: `GROUP BY player_id HAVING COUNT(*) >= 5`, with `AVG(wpm)` and `AVG(accuracy)`, sorted by both.
+`AverageWpmProvider` runs one query: `GROUP BY player_id`, with `AVG(wpm)` and `AVG(accuracy)`, sorted by both.
 
 The favourite language comes from a second grouped query (`player_id, language, COUNT, MAX(submitted_at)`), reduced in PHP. That avoids the per-row `Player::find` that Putter's provider does.
 
