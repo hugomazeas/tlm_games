@@ -16,8 +16,11 @@
             </template>
             <template x-if="message.type !== 'join'">
                 <div class="rounded-lg bg-[#f5ecd6]/[0.04] border border-[#f5ecd6]/[0.08] px-3 py-2">
-                    <div class="flex items-baseline justify-between gap-2">
-                        <span class="pph-mono text-[11px] font-bold tracking-[0.12em] uppercase text-[#ffd166] truncate" x-text="message.player.name"></span>
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="flex items-center gap-1.5 min-w-0">
+                            <x-player-avatar-js name="message.player.name" url="message.player.avatar_url" size="xs" />
+                            <span class="pph-mono text-[11px] font-bold tracking-[0.12em] uppercase text-[#ffd166] truncate" x-text="message.player.name"></span>
+                        </span>
                         <span class="pph-mono text-[10px] text-[#f5ecd6]/35 flex-shrink-0" x-text="chatTime(message.created_at)"></span>
                     </div>
                     <template x-if="message.gif">

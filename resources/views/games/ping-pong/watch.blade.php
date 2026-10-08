@@ -71,6 +71,12 @@
                 <div class="flex flex-col items-center gap-6">
                     <div class="flex items-center gap-8">
                         <div class="text-center">
+                            <div class="flex justify-center gap-1.5 mb-2">
+                                <x-player-avatar-js name="match?.player_left?.name" url="match?.player_left?.avatar_url" size="lg" />
+                                <template x-if="match?.mode === '2v2' && match?.team_left_player2">
+                                    <x-player-avatar-js name="match.team_left_player2.name" url="match.team_left_player2.avatar_url" size="lg" />
+                                </template>
+                            </div>
                             <div class="text-[#ff5a4a] text-[1.6rem] font-bold pph-glow-red" x-text="match?.player_left?.name || 'Left'"></div>
                             <template x-if="match?.mode === '2v2' && match?.team_left_player2">
                                 <div class="text-[#ff5a4a]/70 text-base font-medium" x-text="match.team_left_player2.name"></div>
@@ -82,6 +88,12 @@
                             <span class="text-white text-[5rem] font-extrabold" x-text="match?.player_right_score ?? 0"></span>
                         </div>
                         <div class="text-center">
+                            <div class="flex justify-center gap-1.5 mb-2">
+                                <x-player-avatar-js name="match?.player_right?.name" url="match?.player_right?.avatar_url" size="lg" />
+                                <template x-if="match?.mode === '2v2' && match?.team_right_player2">
+                                    <x-player-avatar-js name="match.team_right_player2.name" url="match.team_right_player2.avatar_url" size="lg" />
+                                </template>
+                            </div>
                             <div class="text-[#3ec8ff] text-[1.6rem] font-bold pph-glow-blue" x-text="match?.player_right?.name || 'Right'"></div>
                             <template x-if="match?.mode === '2v2' && match?.team_right_player2">
                                 <div class="text-[#3ec8ff]/70 text-base font-medium" x-text="match.team_right_player2.name"></div>
@@ -129,6 +141,7 @@
                         <div x-show="eloOpen" data-elo-card="left" class="w-[320px] mb-3">
                             @include('games.ping-pong.partials.elo-preview', ['side' => 'left'])
                         </div>
+                        <x-player-avatar-js name="match?.player_left?.name" url="match?.player_left?.avatar_url" size="lg" class="mb-2 shadow-[0_4px_16px_rgba(0,0,0,0.6)]" />
                         <span class="text-[#ff5a4a] text-[2.5rem] font-bold pph-glow-red [text-shadow:0_2px_8px_rgba(0,0,0,0.8)]" x-text="match?.player_left?.name || 'Left'"></span>
                         <span x-show="isServingLeft()" class="pph-mono text-[#ffd166] text-[10px] tracking-[0.22em] font-bold [text-shadow:0_1px_4px_rgba(0,0,0,0.8)]">SERVING</span>
                         <span class="text-white text-[10rem] font-black leading-none pph-mono [text-shadow:0_4px_16px_rgba(0,0,0,0.8)]" x-text="match?.player_left_score ?? 0"></span>
@@ -137,6 +150,7 @@
                         <div x-show="eloOpen" data-elo-card="right" class="w-[320px] mb-3">
                             @include('games.ping-pong.partials.elo-preview', ['side' => 'right'])
                         </div>
+                        <x-player-avatar-js name="match?.player_right?.name" url="match?.player_right?.avatar_url" size="lg" class="mb-2 shadow-[0_4px_16px_rgba(0,0,0,0.6)]" />
                         <span class="text-[#3ec8ff] text-[2.5rem] font-bold pph-glow-blue [text-shadow:0_2px_8px_rgba(0,0,0,0.8)]" x-text="match?.player_right?.name || 'Right'"></span>
                         <span x-show="isServingRight()" class="pph-mono text-[#ffd166] text-[10px] tracking-[0.22em] font-bold [text-shadow:0_1px_4px_rgba(0,0,0,0.8)]">SERVING</span>
                         <span class="text-white text-[10rem] font-black leading-none pph-mono [text-shadow:0_4px_16px_rgba(0,0,0,0.8)]" x-text="match?.player_right_score ?? 0"></span>

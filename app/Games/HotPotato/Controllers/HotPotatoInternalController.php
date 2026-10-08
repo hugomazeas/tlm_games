@@ -25,6 +25,7 @@ class HotPotatoInternalController extends Controller
         return response()->json([
             'id' => $player->id,
             'name' => $player->name,
+            'avatar_url' => $player->avatarUrl(),
             'office_id' => $player->office_id,
         ]);
     }

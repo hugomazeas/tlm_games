@@ -72,13 +72,13 @@ window.pingPongChat = () => ({
      * Adds a "<name> joined the chat" line, Minecraft style. It lives only in
      * this browser: it isn't stored, so later arrivals don't see past joins.
      */
-    addChatJoin(name) {
+    addChatJoin(name, avatarUrl = null) {
         if (!this.chatMatchId || !name) return;
         const line = {
             id: 'join-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
             type: 'join',
             match_id: this.chatMatchId,
-            player: { name },
+            player: { name, avatar_url: avatarUrl },
             created_at: new Date().toISOString(),
         };
         this.chatMessages = [...this.chatMessages, line].slice(-this.chatHistoryLimit);

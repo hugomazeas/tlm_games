@@ -80,7 +80,7 @@
                                     <div class="flex flex-col gap-1.5">
                                         <template x-for="p in lobbyLeftPlayers" :key="p.player_id">
                                             <div class="pph-slot-in pph-shadow-left rounded-lg px-3 py-2.5 font-semibold text-[13px] text-[#f5ecd6] bg-[#f5ecd6]/[0.06] border border-[#f5ecd6]/15 border-l-[3px] border-l-[#ff5a4a] truncate">
-                                                <span x-text="p.player_name"></span>
+                                                <span class="flex items-center gap-2 min-w-0"><x-player-avatar-js name="p.player_name" url="p.avatar_url" size="sm" /><span class="truncate" x-text="p.player_name"></span></span>
                                             </div>
                                         </template>
                                         <template x-for="i in leftEmptySlots" :key="'left-empty-' + i">
@@ -96,7 +96,7 @@
                                     <div class="flex flex-col gap-1.5 w-full">
                                         <template x-for="p in lobbyRightPlayers" :key="p.player_id">
                                             <div class="pph-slot-in pph-shadow-right rounded-lg px-3 py-2.5 font-semibold text-[13px] text-[#f5ecd6] bg-[#f5ecd6]/[0.06] border border-[#f5ecd6]/15 border-r-[3px] border-r-[#3ec8ff] truncate text-right">
-                                                <span x-text="p.player_name"></span>
+                                                <span class="flex flex-row-reverse items-center gap-2 min-w-0"><x-player-avatar-js name="p.player_name" url="p.avatar_url" size="sm" /><span class="truncate" x-text="p.player_name"></span></span>
                                             </div>
                                         </template>
                                         <template x-for="i in rightEmptySlots" :key="'right-empty-' + i">
@@ -339,23 +339,32 @@
                 <div class="relative rounded-2xl border-2 border-[#ff5a4a]/25 bg-gradient-to-b from-[#ff5a4a]/[0.08] to-[#ff5a4a]/[0.02] p-3 md:p-8 flex flex-col items-center justify-center transition-all duration-300"
                      :class="isServing('left') ? '!border-[#ff5a4a]/75 !bg-[#ff5a4a]/[0.18] shadow-[inset_0_0_80px_rgba(255,90,74,0.16),0_0_40px_rgba(255,90,74,0.18)]' : ''">
 
-                    {{-- Player name(s) --}}
+                    {{-- Player name(s), photo beside each name so nothing below moves --}}
                     <template x-if="mode === '1v1'">
-                        <div class="pph-display text-[clamp(20px,4vw,56px)] tracking-[0.02em] uppercase text-[#ff5a4a] pph-glow-red text-center leading-none truncate max-w-full"
-                             x-text="match.player_left?.name || ''"></div>
+                        <div class="flex items-center justify-center gap-2 md:gap-3 max-w-full min-w-0">
+                            <x-player-avatar-js name="match.player_left?.name" url="match.player_left?.avatar_url" size="scoreboard" />
+                            <div class="pph-display text-[clamp(20px,4vw,56px)] tracking-[0.02em] uppercase text-[#ff5a4a] pph-glow-red text-center leading-none truncate min-w-0"
+                                 x-text="match.player_left?.name || ''"></div>
+                        </div>
                     </template>
                     <template x-if="mode === '2v2'">
-                        <div class="flex flex-col items-center gap-0.5">
-                            <div class="pph-display tracking-[0.02em] uppercase truncate max-w-full transition-all duration-300"
-                                 :class="isPlayerServing(match.player_left_id)
-                                    ? 'text-[clamp(32px,4.5vw,60px)] text-[#ff5a4a] pph-glow-red font-bold'
-                                    : 'text-[clamp(22px,3vw,42px)] text-[#f5ecd6]/50'"
-                                 x-text="match.player_left?.name || ''"></div>
-                            <div class="pph-display tracking-[0.02em] uppercase truncate max-w-full transition-all duration-300"
-                                 :class="isPlayerServing(match.team_left_player2_id)
-                                    ? 'text-[clamp(32px,4.5vw,60px)] text-[#ff5a4a] pph-glow-red font-bold'
-                                    : 'text-[clamp(22px,3vw,42px)] text-[#f5ecd6]/50'"
-                                 x-text="match.team_left_player2?.name || ''"></div>
+                        <div class="flex flex-col items-center gap-0.5 max-w-full min-w-0">
+                            <div class="flex items-center gap-2 md:gap-3 max-w-full min-w-0">
+                                <x-player-avatar-js name="match.player_left?.name" url="match.player_left?.avatar_url" size="scoreboard" />
+                                <div class="pph-display tracking-[0.02em] uppercase truncate min-w-0 transition-all duration-300"
+                                     :class="isPlayerServing(match.player_left_id)
+                                        ? 'text-[clamp(32px,4.5vw,60px)] text-[#ff5a4a] pph-glow-red font-bold'
+                                        : 'text-[clamp(22px,3vw,42px)] text-[#f5ecd6]/50'"
+                                     x-text="match.player_left?.name || ''"></div>
+                            </div>
+                            <div class="flex items-center gap-2 md:gap-3 max-w-full min-w-0">
+                                <x-player-avatar-js name="match.team_left_player2?.name" url="match.team_left_player2?.avatar_url" size="scoreboard" />
+                                <div class="pph-display tracking-[0.02em] uppercase truncate min-w-0 transition-all duration-300"
+                                     :class="isPlayerServing(match.team_left_player2_id)
+                                        ? 'text-[clamp(32px,4.5vw,60px)] text-[#ff5a4a] pph-glow-red font-bold'
+                                        : 'text-[clamp(22px,3vw,42px)] text-[#f5ecd6]/50'"
+                                     x-text="match.team_left_player2?.name || ''"></div>
+                            </div>
                         </div>
                     </template>
 
@@ -402,21 +411,30 @@
                      :class="isServing('right') ? '!border-[#3ec8ff]/75 !bg-[#3ec8ff]/[0.18] shadow-[inset_0_0_80px_rgba(62,200,255,0.16),0_0_40px_rgba(62,200,255,0.18)]' : ''">
 
                     <template x-if="mode === '1v1'">
-                        <div class="pph-display text-[clamp(20px,4vw,56px)] tracking-[0.02em] uppercase text-[#3ec8ff] pph-glow-blue text-center leading-none truncate max-w-full"
-                             x-text="match.player_right?.name || ''"></div>
+                        <div class="flex items-center justify-center gap-2 md:gap-3 max-w-full min-w-0">
+                            <x-player-avatar-js name="match.player_right?.name" url="match.player_right?.avatar_url" size="scoreboard" />
+                            <div class="pph-display text-[clamp(20px,4vw,56px)] tracking-[0.02em] uppercase text-[#3ec8ff] pph-glow-blue text-center leading-none truncate min-w-0"
+                                 x-text="match.player_right?.name || ''"></div>
+                        </div>
                     </template>
                     <template x-if="mode === '2v2'">
-                        <div class="flex flex-col items-center gap-0.5">
-                            <div class="pph-display tracking-[0.02em] uppercase truncate max-w-full transition-all duration-300"
-                                 :class="isPlayerServing(match.player_right_id)
-                                    ? 'text-[clamp(32px,4.5vw,60px)] text-[#3ec8ff] pph-glow-blue font-bold'
-                                    : 'text-[clamp(22px,3vw,42px)] text-[#f5ecd6]/50'"
-                                 x-text="match.player_right?.name || ''"></div>
-                            <div class="pph-display tracking-[0.02em] uppercase truncate max-w-full transition-all duration-300"
-                                 :class="isPlayerServing(match.team_right_player2_id)
-                                    ? 'text-[clamp(32px,4.5vw,60px)] text-[#3ec8ff] pph-glow-blue font-bold'
-                                    : 'text-[clamp(22px,3vw,42px)] text-[#f5ecd6]/50'"
-                                 x-text="match.team_right_player2?.name || ''"></div>
+                        <div class="flex flex-col items-center gap-0.5 max-w-full min-w-0">
+                            <div class="flex items-center gap-2 md:gap-3 max-w-full min-w-0">
+                                <x-player-avatar-js name="match.player_right?.name" url="match.player_right?.avatar_url" size="scoreboard" />
+                                <div class="pph-display tracking-[0.02em] uppercase truncate min-w-0 transition-all duration-300"
+                                     :class="isPlayerServing(match.player_right_id)
+                                        ? 'text-[clamp(32px,4.5vw,60px)] text-[#3ec8ff] pph-glow-blue font-bold'
+                                        : 'text-[clamp(22px,3vw,42px)] text-[#f5ecd6]/50'"
+                                     x-text="match.player_right?.name || ''"></div>
+                            </div>
+                            <div class="flex items-center gap-2 md:gap-3 max-w-full min-w-0">
+                                <x-player-avatar-js name="match.team_right_player2?.name" url="match.team_right_player2?.avatar_url" size="scoreboard" />
+                                <div class="pph-display tracking-[0.02em] uppercase truncate min-w-0 transition-all duration-300"
+                                     :class="isPlayerServing(match.team_right_player2_id)
+                                        ? 'text-[clamp(32px,4.5vw,60px)] text-[#3ec8ff] pph-glow-blue font-bold'
+                                        : 'text-[clamp(22px,3vw,42px)] text-[#f5ecd6]/50'"
+                                     x-text="match.team_right_player2?.name || ''"></div>
+                            </div>
                         </div>
                     </template>
 

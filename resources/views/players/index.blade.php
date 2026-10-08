@@ -38,8 +38,9 @@
             @foreach($players as $player)
                 <a href="{{ url('/players/' . $player->id) }}"
                    class="flex items-center justify-between bg-white/5 border border-white/10 rounded-lg px-4 sm:px-5 py-3 hover:bg-white/10 transition group">
-                    <div class="min-w-0">
-                        <span class="font-semibold text-sm sm:text-base">{{ $player->name }}</span>
+                    <div class="min-w-0 flex items-center gap-3">
+                        <x-player-avatar :player="$player" size="md" />
+                        <span class="font-semibold text-sm sm:text-base truncate">{{ $player->name }}</span>
                         <span class="text-xs text-white/40 ml-2 sm:ml-3 hidden sm:inline">Joined {{ $player->created_at->diffForHumans() }}</span>
                     </div>
                     <span class="text-white/30 group-hover:text-white/60 transition text-sm flex-shrink-0 ml-2">→</span>

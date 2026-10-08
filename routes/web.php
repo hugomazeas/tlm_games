@@ -6,7 +6,9 @@ use App\Http\Controllers\LeaderboardController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OfficeController;
 use App\Http\Controllers\PlayerController;
+use App\Http\Controllers\PlayerProfileController;
 use App\Http\Controllers\PushSubscriptionController;
+use App\Http\Middleware\EnsurePlayerUnlocked;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [HomeController::class, 'index']);
@@ -19,9 +21,18 @@ Route::put('/offices/{office}', [OfficeController::class, 'update']);
 Route::get('/players', [PlayerController::class, 'index']);
 Route::post('/players', [PlayerController::class, 'store']);
 Route::get('/players/{player}', [PlayerController::class, 'show']);
-Route::get('/players/{player}/edit', [PlayerController::class, 'edit']);
-Route::put('/players/{player}', [PlayerController::class, 'update']);
-Route::delete('/players/{player}', [PlayerController::class, 'destroy']);
+Route::post('/players/{player}/unlock', [PlayerProfileController::class, 'unlock']);
+Route::post('/players/{player}/lock', [PlayerProfileController::class, 'lock']);
+
+// A claimed player's profile only opens with their PIN (unclaimed ones pass).
+Route::middleware(EnsurePlayerUnlocked::class)->group(function () {
+    Route::get('/players/{player}/edit', [PlayerController::class, 'edit']);
+    Route::put('/players/{player}', [PlayerController::class, 'update']);
+    Route::delete('/players/{player}', [PlayerController::class, 'destroy']);
+    Route::post('/players/{player}/pin', [PlayerProfileController::class, 'setPin']);
+    Route::post('/players/{player}/avatar', [PlayerProfileController::class, 'storeAvatar']);
+    Route::delete('/players/{player}/avatar', [PlayerProfileController::class, 'destroyAvatar']);
+});
 
 Route::get('/notifications', [NotificationController::class, 'index']);
 Route::get('/push/config', [PushSubscriptionController::class, 'index']);

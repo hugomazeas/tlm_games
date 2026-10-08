@@ -22,6 +22,7 @@ class LobbyUpdated implements ShouldBroadcastNow
                 'id' => $p->id,
                 'player_id' => $p->player_id,
                 'player_name' => $p->player->name,
+                'avatar_url' => $p->player->avatarUrl(),
                 'side' => $p->side,
             ])->values()->toArray(),
         ];
@@ -29,7 +30,7 @@ class LobbyUpdated implements ShouldBroadcastNow
 
     public function broadcastOn(): array
     {
-        return [new Channel('ping-pong.lobby.' . $this->lobby['code'])];
+        return [new Channel('ping-pong.lobby.'.$this->lobby['code'])];
     }
 
     public function broadcastAs(): string

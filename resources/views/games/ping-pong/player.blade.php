@@ -917,8 +917,12 @@
         <div class="h2h-mobile-list" x-show="h2h.length > 0">
             <template x-for="r in h2h" :key="r.opponent.id || r.opponent">
                 <a class="h2h-mobile-row" :href="matchupUrl(r)">
-                    <span class="h2h-init" :class="((r.wins/(r.wins + r.losses || 1)) >= 0.5) ? 'win' : 'loss'"
-                          x-text="(r.opponent?.name || String(r.opponent)).charAt(0).toUpperCase()"></span>
+                    <span class="h2h-init overflow-hidden" :class="((r.wins/(r.wins + r.losses || 1)) >= 0.5) ? 'win' : 'loss'">
+                        <template x-if="r.opponent?.avatar_url">
+                            <img :src="r.opponent.avatar_url" alt="" class="w-full h-full object-cover" loading="lazy">
+                        </template>
+                        <span x-show="!r.opponent?.avatar_url" x-text="(r.opponent?.name || String(r.opponent)).charAt(0).toUpperCase()"></span>
+                    </span>
                     <span class="h2h-name" x-text="r.opponent?.name || String(r.opponent)"></span>
                     <span class="h2h-bar">
                         <span class="h2h-bar-win"

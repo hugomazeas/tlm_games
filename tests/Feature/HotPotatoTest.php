@@ -72,9 +72,24 @@ class HotPotatoTest extends TestCase
 
         $this->getJson("/internal/hot-potato/players/{$player->id}", $this->internal())
             ->assertOk()
-            ->assertExactJson(['id' => $player->id, 'name' => 'Alice', 'office_id' => $office->id]);
+            ->assertExactJson(['id' => $player->id, 'name' => 'Alice', 'avatar_url' => null, 'office_id' => $office->id]);
 
         $this->getJson('/internal/hot-potato/players/999', $this->internal())->assertNotFound();
+    }
+
+    public function test_the_sidecar_and_the_page_get_the_player_photo(): void
+    {
+        $player = Player::create(['name' => 'Alice']);
+        $player->forceFill(['avatar_path' => 'avatars/1-abc.jpg'])->save();
+
+        $this->getJson("/internal/hot-potato/players/{$player->id}", $this->internal())
+            ->assertOk()
+            ->assertJsonPath('avatar_url', '/storage/avatars/1-abc.jpg');
+
+        $this->get('/games/hot-potato')
+            ->assertOk()
+            ->assertSee('1-abc.jpg', false)
+            ->assertDontSee('avatar_path');
     }
 
     public function test_results_are_stored_with_every_player(): void

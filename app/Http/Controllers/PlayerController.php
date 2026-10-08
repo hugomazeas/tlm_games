@@ -6,6 +6,8 @@ use App\Models\GameType;
 use App\Models\Office;
 use App\Models\Player;
 use App\Services\LeaderboardService;
+use App\Services\PlayerAvatarService;
+use App\Services\PlayerPinService;
 use Illuminate\Http\Request;
 
 class PlayerController extends Controller
@@ -28,7 +30,7 @@ class PlayerController extends Controller
         return redirect('/players')->with('success', 'Player created.');
     }
 
-    public function show(Player $player, LeaderboardService $leaderboard)
+    public function show(Player $player, LeaderboardService $leaderboard, PlayerPinService $pins)
     {
         $gameStats = [];
 
@@ -52,6 +54,7 @@ class PlayerController extends Controller
         return view('players.show', [
             'player' => $player,
             'gameStats' => $gameStats,
+            'isUnlocked' => $pins->isUnlocked($player),
         ]);
     }
 
@@ -75,8 +78,9 @@ class PlayerController extends Controller
         return redirect('/players/'.$player->id)->with('success', 'Player updated.');
     }
 
-    public function destroy(Player $player)
+    public function destroy(Player $player, PlayerAvatarService $avatars)
     {
+        $avatars->remove($player);
         $player->delete();
 
         return redirect('/players')->with('success', 'Player deleted.');

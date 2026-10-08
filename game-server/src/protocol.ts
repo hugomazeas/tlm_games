@@ -7,6 +7,8 @@ import { isThemeId, type ThemeId } from './sim/themes.ts'
 export interface PlayerInfo {
     id: number
     name: string
+    /** Root-relative profile photo, null for initials. */
+    avatarUrl: string | null
 }
 
 export type Phase = 'lobby' | 'countdown' | 'playing' | 'results'

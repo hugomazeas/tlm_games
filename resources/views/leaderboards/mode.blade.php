@@ -24,7 +24,7 @@
                     document.querySelectorAll('#leaderboard-table tbody tr').forEach((row, i) => {
                         const cells = row.querySelectorAll('td');
                         const rank = medal[i] || `${i + 1}.`;
-                        const name = cells[1].textContent.trim();
+                        const name = cells[1].querySelector('.player-name').textContent.trim();
                         const stats = [];
                         @foreach($columns as $col)
                             stats.push('{{ $col['label'] }}: ' + cells[{{ $loop->index }} + 2].textContent.trim());
@@ -65,8 +65,9 @@
                             <tr class="border-b border-white/5 hover:bg-white/5 transition">
                                 <td class="px-3 sm:px-5 py-3 text-white/40 font-mono">{{ $index + 1 }}</td>
                                 <td class="px-3 sm:px-5 py-3 font-semibold whitespace-nowrap">
-                                    <a href="{{ url('/players/' . $entry['player_id']) }}" class="hover:text-indigo-400 transition">
-                                        {{ $entry['player_name'] }}
+                                    <a href="{{ url('/players/' . $entry['player_id']) }}" class="inline-flex items-center gap-2.5 hover:text-indigo-400 transition">
+                                        <x-player-avatar :name="$entry['player_name']" :url="$avatarUrls[$entry['player_id']] ?? null" size="sm" />
+                                        <span class="player-name">{{ $entry['player_name'] }}</span>
                                     </a>
                                 </td>
                                 @foreach($columns as $col)

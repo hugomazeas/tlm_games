@@ -32,7 +32,7 @@ class PingPongChatMessage extends Model
     /**
      * Shape shared by the history endpoint and the broadcast event.
      *
-     * @return array{id: int, match_id: int, body: string, gif: array{title: string, preview_url: string, url: string, width: int, height: int}|null, created_at: string, player: array{id: int, name: string}}
+     * @return array{id: int, match_id: int, body: string, gif: array{title: string, preview_url: string, url: string, width: int, height: int}|null, created_at: string, player: array{id: int, name: string, avatar_url: string|null}}
      */
     public function toChatPayload(): array
     {
@@ -53,6 +53,7 @@ class PingPongChatMessage extends Model
             'player' => [
                 'id' => $this->player->id,
                 'name' => $this->player->name,
+                'avatar_url' => $this->player->avatarUrl(),
             ],
         ];
     }

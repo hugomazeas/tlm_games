@@ -62,6 +62,7 @@ class PingPongViewerController extends Controller
                 'role' => $validated['role'],
                 'player_id' => $player?->id,
                 'name' => $player?->name,
+                'avatar_url' => $player?->avatarUrl(),
             ],
         );
 
