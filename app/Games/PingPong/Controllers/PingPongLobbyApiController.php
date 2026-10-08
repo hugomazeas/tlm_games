@@ -15,6 +15,7 @@ use App\Jobs\SendMatchStartedNotificationJob;
 use App\Models\Player;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class PingPongLobbyApiController extends Controller
@@ -73,7 +74,7 @@ class PingPongLobbyApiController extends Controller
             'player_name' => 'required_without:player_id|nullable|string|max:255',
         ]);
 
-        if (!empty($validated['player_name']) && empty($validated['player_id'])) {
+        if (! empty($validated['player_name']) && empty($validated['player_id'])) {
             $player = Player::create(['name' => $validated['player_name']]);
             $playerId = $player->id;
         } else {
@@ -162,6 +163,31 @@ class PingPongLobbyApiController extends Controller
         return response()->json(['side' => $validated['side']]);
     }
 
+    /**
+     * Flip every participant to the other side, so players can trade sides
+     * even when both are full. Teams stay together in 2v2.
+     */
+    public function swapSides(Request $request, string $code): JsonResponse
+    {
+        $lobby = PingPongLobby::where('code', $code)->where('status', 'waiting')->firstOrFail();
+
+        $validated = $request->validate([
+            'session_token' => 'required|string',
+        ]);
+
+        $participant = PingPongLobbyParticipant::where('lobby_id', $lobby->id)
+            ->where('session_token', $validated['session_token'])
+            ->firstOrFail();
+
+        $lobby->participants()->update([
+            'side' => DB::raw("CASE side WHEN 'left' THEN 'right' ELSE 'left' END"),
+        ]);
+
+        broadcast(new LobbyUpdated($lobby->fresh()));
+
+        return response()->json(['side' => $participant->fresh()->side]);
+    }
+
     public function leaveLobby(Request $request, string $code): JsonResponse
     {
         $lobby = PingPongLobby::where('code', $code)->firstOrFail();
@@ -192,11 +218,11 @@ class PingPongLobbyApiController extends Controller
 
         $authorized = false;
 
-        if (!empty($validated['host_token']) && $lobby->host_token === $validated['host_token']) {
+        if (! empty($validated['host_token']) && $lobby->host_token === $validated['host_token']) {
             $authorized = true;
         }
 
-        if (!empty($validated['session_token'])) {
+        if (! empty($validated['session_token'])) {
             $leftParticipant = PingPongLobbyParticipant::where('lobby_id', $lobby->id)
                 ->where('session_token', $validated['session_token'])
                 ->where('side', 'left')
@@ -206,11 +232,11 @@ class PingPongLobbyApiController extends Controller
             }
         }
 
-        if (!$authorized) {
+        if (! $authorized) {
             return response()->json(['error' => 'Only the left-side player can start the match'], 403);
         }
 
-        if (!$lobby->isReadyToStart()) {
+        if (! $lobby->isReadyToStart()) {
             return response()->json(['error' => 'Not enough players'], 422);
         }
 
