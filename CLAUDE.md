@@ -160,6 +160,60 @@ that is played live, in real time, rather than scored afterwards.
 - Tests: `cd game-server && bun test` (sim, arenas, sessions);
   `bun run typecheck`; `bun run format`. Laravel side: `tests/Feature/HotPotatoTest.php`.
 
+### Racing map (POC, `game-server/src/race/`)
+
+A 3D city map of Québec (Plains of Abraham to Old Québec) for a future racing
+game, built from OpenStreetMap and federal elevation data, viewed in Three.js.
+Not wired into the Hub yet: `bun run race:viewer` serves a standalone viewer on
+http://localhost:8091 (click, WASD, I identifies the building under the crosshair).
+
+- **Three layers, one direction.** `maps/<slug>/snapshot/` (raw OSM + elevation,
+  gzipped, committed) and `maps/<slug>/landmarks/*.json` (hand-made detail) build
+  `maps/<slug>/map.json`. **Never edit `map.json`**; `pipeline.test.ts` fails if
+  it differs from what the snapshot and landmarks build.
+- **`bun run race:map`** rebuilds offline in a second. `--refresh` downloads fresh
+  OSM into the snapshot, `--refresh-elevation` elevation too (~10 min, flaky
+  service, retries). Refreshes are deliberate: review the diff, commit snapshot
+  and map together. Area and grid live in `MAPS` (`map/pipeline.ts`).
+- **OSM says where, landmarks say how it looks.** A landmark file is keyed by OSM
+  element (`osm` + `id`: ways and relations share numbers), placed in lat/lon, and
+  only changes looks; collision stays the OSM footprint. Schema:
+  `maps/landmark.schema.json`; `parseLandmark` is authoritative and rejects unknown keys.
+- **Fingerprints catch drift.** Each landmark records the footprint it was made
+  against. After a refresh, the build refuses to write the map while a landmark
+  is orphaned (element gone: fix the id or delete the file) or stale (footprint
+  moved > 5 m or changed > 10% in area: check it in the viewer, then
+  `bun run race:map --accept`). New landmarks are unstamped until accepted.
+- **Adding detail to a building:** identify it in the viewer (I, Copy reference),
+  then, before writing any JSON, **analyse the photos and write a plan**:
+  1. Orient each photo: which street is in front, which end is which (match road
+     names to the OSM footprint in the façade's frame; print its corners as along/out).
+  2. Wall treatment, per section: windows grid, or concrete `fins` (spacing, width,
+     depth, recess colour); an `arcade` at street level; parapets; materials and colours.
+  3. Massing: every volume that reads as its own height (wings, blocks, towers,
+     plant rooms, decks, skylights), with storeys counted (~3.4 m each) and positions
+     in along/out.
+  4. Note what the format can't express yet and extend `format.ts`/`facades.ts`
+     rather than settling for a window grid everywhere.
+
+  Then write `landmarks/<id>-<name>.json` (heights are above the highest ground
+  under the footprint), `bun run race:map`, and compare in the viewer from the same
+  angles as the photos (`#lat,lon,altitude,heading,pitch`; heading 0 looks north,
+  90 west). Iterate, `--accept`, and commit the landmark file with the rebuilt map.
+  Reference photos are the user's own, kept in `maps/<slug>/reference/<id>/`.
+- **Walls** (`client/facades.ts`): `windows` paints a grid; `fins` are real ribs
+  (they run up past a flat roof's `parapet`); `arcade` sets arched openings into the
+  street-facing walls (`faces: front`, within 45° of the façade's way). Parts inherit
+  the building's look; a part's `wall`/`windows`/`fins`/`arcade` override it, `false`
+  removes one, and raised parts never get an arcade.
+- **Parts** are boxes, `shape: round` (cylinders, elliptical if width ≠ depth), or
+  terraced with `steps` (sliced into boxes falling toward one side). A landmark with
+  parts replaces OSM's `building:part`s for that building; one without keeps them.
+- **Orienting a photo:** match the road labels in it to the streets around the
+  footprint before deciding which end is which; a wrong guess mirrors the building.
+- Install packages with Bun 1.4 (the container's: `docker run oven/bun:1.4.0-alpine`);
+  an older local Bun rewrites `bun.lock` in an old format.
+
 ## Related Apps
 
 - `../arc_tracker/` — Standalone archery tracker (to be migrated into this hub)

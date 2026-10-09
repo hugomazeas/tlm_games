@@ -1,0 +1,304 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "landmark.schema.json",
+    "title": "Racing map landmark",
+    "description": "Hand-made detail for one OSM building: colours, real roof, windows or concrete fins, a ground floor of arches, and extra volumes (pavilions, towers, wings, plant rooms) placed against its façade. Visual only: collision stays on the OSM footprint. Positions are latitude/longitude; heights are metres above the ground. Checked by parseLandmark in game-server/src/race/map/landmarks.ts, which is authoritative.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["id", "osm", "name", "wall", "height"],
+    "properties": {
+        "$schema": {
+            "type": "string"
+        },
+        "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The OSM id of the building's way or relation."
+        },
+        "osm": {
+            "enum": ["way", "relation"],
+            "description": "OSM numbers ways and relations separately."
+        },
+        "name": {
+            "type": "string",
+            "minLength": 1
+        },
+        "notes": {
+            "type": "string",
+            "description": "What the building is and what this detail is going for."
+        },
+        "wall": {
+            "$ref": "#/$defs/colour"
+        },
+        "windows": {
+            "$ref": "#/$defs/windows"
+        },
+        "fins": {
+            "$ref": "#/$defs/fins"
+        },
+        "arcade": {
+            "$ref": "#/$defs/arcade"
+        },
+        "height": {
+            "type": "number",
+            "minimum": 1,
+            "description": "Where the walls stop, replacing OSM's guess."
+        },
+        "roof": {
+            "$ref": "#/$defs/roof"
+        },
+        "facade": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["from", "to"],
+            "description": "The main façade, end to end. Parts are placed along it and out from it; out is the side away from the building.",
+            "properties": {
+                "from": {
+                    "$ref": "#/$defs/latLon"
+                },
+                "to": {
+                    "$ref": "#/$defs/latLon"
+                }
+            }
+        },
+        "parts": {
+            "type": "array",
+            "description": "Extra volumes in the façade's frame: boxes, cylinders or terraces. Needs a facade. When a landmark has parts, OSM's building parts for it are dropped.",
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["along", "out", "width", "depth", "height"],
+                "properties": {
+                    "along": {
+                        "type": "number",
+                        "description": "Metres along the façade from its centre, positive towards `to`."
+                    },
+                    "out": {
+                        "type": "number",
+                        "description": "Metres out of the façade: positive in front, negative into the building."
+                    },
+                    "width": {
+                        "type": "number",
+                        "minimum": 0.5,
+                        "description": "Along the façade; a round part's diameter that way."
+                    },
+                    "depth": {
+                        "type": "number",
+                        "minimum": 0.5,
+                        "description": "Square to the façade; a round part's diameter that way."
+                    },
+                    "from": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "Where the part starts above the ground; 0 by default."
+                    },
+                    "height": {
+                        "type": "number",
+                        "minimum": 1,
+                        "description": "Where its walls stop above the ground."
+                    },
+                    "roof": {
+                        "$ref": "#/$defs/roof"
+                    },
+                    "wall": {
+                        "$ref": "#/$defs/colour",
+                        "description": "Its own wall colour; the building's by default."
+                    },
+                    "windows": {
+                        "description": "Its own windows, or false for none; the building's by default.",
+                        "oneOf": [
+                            {
+                                "$ref": "#/$defs/windows"
+                            },
+                            {
+                                "const": false
+                            }
+                        ]
+                    },
+                    "fins": {
+                        "description": "Its own fins, or false for none; the building's by default.",
+                        "oneOf": [
+                            {
+                                "$ref": "#/$defs/fins"
+                            },
+                            {
+                                "const": false
+                            }
+                        ]
+                    },
+                    "arcade": {
+                        "description": "Its own arcade, or false for none; the building's by default. Raised parts never have one.",
+                        "oneOf": [
+                            {
+                                "$ref": "#/$defs/arcade"
+                            },
+                            {
+                                "const": false
+                            }
+                        ]
+                    },
+                    "shape": {
+                        "enum": ["box", "round"],
+                        "description": "A box (default) or round: a cylinder, elliptical when width and depth differ."
+                    },
+                    "steps": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["count", "to", "toward"],
+                        "description": "Terraces: the part cut into `count` slices, their heights falling evenly from `height` to `to` at the side it steps toward. Not for round parts.",
+                        "properties": {
+                            "count": {
+                                "type": "integer",
+                                "minimum": 2
+                            },
+                            "to": {
+                                "type": "number",
+                                "minimum": 1,
+                                "description": "Height of the lowest terrace; below `height`, above `from`."
+                            },
+                            "toward": {
+                                "enum": ["+along", "-along", "+out", "-out"]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "fingerprint": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["lat", "lon", "area"],
+            "description": "The OSM footprint this was made against. Written by `bun run race:map --accept`; never by hand.",
+            "properties": {
+                "lat": {
+                    "type": "number"
+                },
+                "lon": {
+                    "type": "number"
+                },
+                "area": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Square metres."
+                }
+            }
+        }
+    },
+    "$defs": {
+        "colour": {
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "latLon": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["lat", "lon"],
+            "properties": {
+                "lat": {
+                    "type": "number"
+                },
+                "lon": {
+                    "type": "number"
+                }
+            }
+        },
+        "roof": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["shape", "height", "colour"],
+            "description": "A mansard slopes in by `inset` over `height`, then is flat; a pyramid meets in a point; a flat roof just closes the top.",
+            "properties": {
+                "shape": {
+                    "enum": ["mansard", "pyramid", "flat"]
+                },
+                "height": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "inset": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "colour": {
+                    "$ref": "#/$defs/colour"
+                },
+                "parapet": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "A flat roof's low edge wall, in metres."
+                }
+            }
+        },
+        "windows": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["floor", "spacing"],
+            "properties": {
+                "floor": {
+                    "type": "number",
+                    "minimum": 1,
+                    "description": "Metres per floor."
+                },
+                "spacing": {
+                    "type": "number",
+                    "minimum": 0.5,
+                    "description": "Metres between windows along a wall."
+                }
+            }
+        },
+        "fins": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["spacing", "width", "depth"],
+            "description": "Vertical concrete ribs standing out of the walls, in place of windows. They run up past a flat roof's parapet.",
+            "properties": {
+                "spacing": {
+                    "type": "number",
+                    "minimum": 0.5,
+                    "description": "Metres from one fin to the next."
+                },
+                "width": {
+                    "type": "number",
+                    "minimum": 0.05,
+                    "description": "Along the wall; less than spacing."
+                },
+                "depth": {
+                    "type": "number",
+                    "minimum": 0.05,
+                    "description": "How far they stand out of the wall."
+                },
+                "recess": {
+                    "$ref": "#/$defs/colour",
+                    "description": "The wall between them; a dark slot by default."
+                }
+            }
+        },
+        "arcade": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["height", "depth", "spacing"],
+            "description": "A ground floor of arched openings set into the walls.",
+            "properties": {
+                "height": {
+                    "type": "number",
+                    "minimum": 2,
+                    "description": "How tall the ground floor is."
+                },
+                "depth": {
+                    "type": "number",
+                    "minimum": 0.5,
+                    "description": "How deep the openings go."
+                },
+                "spacing": {
+                    "type": "number",
+                    "minimum": 1.5,
+                    "description": "Metres from one arch to the next."
+                },
+                "faces": {
+                    "enum": ["front", "all"],
+                    "description": "front (default): walls facing the façade's way, within 45°; all: every outside wall."
+                }
+            }
+        }
+    }
+}

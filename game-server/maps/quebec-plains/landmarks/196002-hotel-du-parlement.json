@@ -1,0 +1,153 @@
+{
+    "$schema": "../../landmark.schema.json",
+    "id": 196002,
+    "osm": "relation",
+    "name": "Hôtel du Parlement",
+    "notes": "Hôtel du Parlement (1886), Second Empire: four grey stone wings round a courtyard under a mansard roof, a pavilion at each corner and in the middle of each wing, and the 52 m central tower over the main entrance, which faces the Fontaine de Tourny.",
+    "wall": "#c4c5bf",
+    "windows": {
+        "floor": 4.2,
+        "spacing": 3.4
+    },
+    "height": 17,
+    "roof": {
+        "shape": "mansard",
+        "height": 6,
+        "inset": 2.5,
+        "colour": "#93a7a1"
+    },
+    "facade": {
+        "from": {
+            "lat": 46.8092752,
+            "lon": -71.2141384
+        },
+        "to": {
+            "lat": 46.8086401,
+            "lon": -71.2133326
+        }
+    },
+    "parts": [
+        {
+            "along": -36,
+            "out": -10,
+            "width": 22,
+            "depth": 22,
+            "height": 20,
+            "roof": {
+                "shape": "mansard",
+                "height": 9,
+                "inset": 3.5,
+                "colour": "#93a7a1"
+            }
+        },
+        {
+            "along": -36,
+            "out": -82,
+            "width": 22,
+            "depth": 22,
+            "height": 20,
+            "roof": {
+                "shape": "mansard",
+                "height": 9,
+                "inset": 3.5,
+                "colour": "#93a7a1"
+            }
+        },
+        {
+            "along": 36,
+            "out": -10,
+            "width": 22,
+            "depth": 22,
+            "height": 20,
+            "roof": {
+                "shape": "mansard",
+                "height": 9,
+                "inset": 3.5,
+                "colour": "#93a7a1"
+            }
+        },
+        {
+            "along": 36,
+            "out": -82,
+            "width": 22,
+            "depth": 22,
+            "height": 20,
+            "roof": {
+                "shape": "mansard",
+                "height": 9,
+                "inset": 3.5,
+                "colour": "#93a7a1"
+            }
+        },
+        {
+            "along": -38,
+            "out": -46,
+            "width": 19,
+            "depth": 24,
+            "height": 19,
+            "roof": {
+                "shape": "mansard",
+                "height": 8,
+                "inset": 3,
+                "colour": "#93a7a1"
+            }
+        },
+        {
+            "along": 38,
+            "out": -46,
+            "width": 19,
+            "depth": 24,
+            "height": 19,
+            "roof": {
+                "shape": "mansard",
+                "height": 8,
+                "inset": 3,
+                "colour": "#93a7a1"
+            }
+        },
+        {
+            "along": 0,
+            "out": -9,
+            "width": 32,
+            "depth": 20,
+            "height": 21,
+            "roof": {
+                "shape": "mansard",
+                "height": 8,
+                "inset": 3,
+                "colour": "#93a7a1"
+            }
+        },
+        {
+            "along": 0,
+            "out": -5,
+            "width": 13,
+            "depth": 13,
+            "height": 40,
+            "roof": {
+                "shape": "mansard",
+                "height": 8,
+                "inset": 2.5,
+                "colour": "#7f9c93"
+            }
+        },
+        {
+            "along": 0,
+            "out": -5,
+            "width": 5,
+            "depth": 5,
+            "from": 48,
+            "height": 52,
+            "roof": {
+                "shape": "pyramid",
+                "height": 7,
+                "colour": "#7f9c93"
+            }
+        }
+    ],
+    "fingerprint": {
+        "lat": 46.8085359,
+        "lon": -71.2143381,
+        "area": 8595
+    }
+}

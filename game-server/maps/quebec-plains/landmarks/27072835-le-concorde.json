@@ -1,0 +1,152 @@
+{
+    "$schema": "../../landmark.schema.json",
+    "id": 27072835,
+    "osm": "way",
+    "name": "Le Concorde",
+    "notes": "Hôtel Le Concorde (1974), Grande Allée: a 26-floor concrete slab tower whose Grande Allée side falls in terraces like a ski jump, under the revolving restaurant L’Astral. Façade frame on Cours du Général-De Montcalm, Grande Allée (−along) to Wilfrid-Laurier (+along). From an aerial photo looking south-west. A 13 m podium on the whole footprint, showing either side of the 22 m-deep tower; the tower is two slabs either side of a recessed darker channel, centred on the restaurant; ten terraces from 72 m down to 18 m toward Grande Allée; the restaurant where OSM maps it (76–91 m): a glazed ring, a concrete band and a smaller drum. Replaces OSM’s restaurant part.",
+    "wall": "#aaa59b",
+    "windows": {
+        "floor": 2.9,
+        "spacing": 3
+    },
+    "height": 13,
+    "roof": {
+        "shape": "flat",
+        "height": 0,
+        "colour": "#7d7e7b",
+        "parapet": 0.8
+    },
+    "facade": {
+        "from": {
+            "lat": 46.8055012,
+            "lon": -71.217721
+        },
+        "to": {
+            "lat": 46.8049994,
+            "lon": -71.2171164
+        }
+    },
+    "parts": [
+        {
+            "along": -1.1,
+            "width": 11,
+            "out": -17.3,
+            "depth": 22,
+            "height": 76,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#7d7e7b",
+                "parapet": 1
+            }
+        },
+        {
+            "along": 15.9,
+            "width": 11,
+            "out": -17.3,
+            "depth": 22,
+            "height": 76,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#7d7e7b",
+                "parapet": 1
+            }
+        },
+        {
+            "along": 7.4,
+            "out": -17.3,
+            "width": 6,
+            "depth": 16,
+            "height": 76,
+            "wall": "#76787a",
+            "windows": false,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#7d7e7b"
+            }
+        },
+        {
+            "along": -18.3,
+            "out": -17.3,
+            "width": 23.4,
+            "depth": 22,
+            "height": 72,
+            "steps": {
+                "count": 10,
+                "to": 18,
+                "toward": "-along"
+            },
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#8a8781",
+                "parapet": 0.9
+            }
+        },
+        {
+            "along": 18,
+            "out": -24,
+            "width": 6,
+            "depth": 5,
+            "from": 76,
+            "height": 79,
+            "windows": false,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#93918b"
+            }
+        },
+        {
+            "along": 7.4,
+            "out": -17.4,
+            "width": 19.4,
+            "depth": 19.4,
+            "shape": "round",
+            "from": 76,
+            "height": 80.5,
+            "wall": "#3d4852",
+            "windows": false
+        },
+        {
+            "along": 7.4,
+            "out": -17.4,
+            "width": 19.4,
+            "depth": 19.4,
+            "shape": "round",
+            "from": 80.5,
+            "height": 83,
+            "wall": "#8f8c86",
+            "windows": false,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#8a8a86",
+                "parapet": 0.6
+            }
+        },
+        {
+            "along": 7.4,
+            "out": -17.4,
+            "width": 11,
+            "depth": 11,
+            "shape": "round",
+            "from": 83,
+            "height": 89,
+            "wall": "#8f8c86",
+            "windows": false,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#9a9994"
+            }
+        }
+    ],
+    "fingerprint": {
+        "lat": 46.8052785,
+        "lon": -71.2172923,
+        "area": 2397
+    }
+}
