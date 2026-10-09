@@ -142,8 +142,11 @@
         .create-player-section {
             padding: 16px;
             display: flex;
+            flex-wrap: wrap;
             gap: 10px;
         }
+        .create-player-section .search-input { flex: 1; width: auto; }
+        .create-player-section .free-play-btn { flex-basis: 100%; margin-bottom: 0; }
         .search-input {
             width: 100%;
             padding: 12px 14px;
@@ -561,9 +564,11 @@
             .select-layout .create-player-section {
                 padding: 0;
                 flex-direction: column;
+                flex-wrap: nowrap;
                 gap: 10px;
             }
-            .select-layout .create-player-section .search-input { padding: 10px 12px; }
+            .select-layout .create-player-section .search-input { padding: 10px 12px; flex: none; }
+            .select-layout .create-player-section .free-play-btn { flex-basis: auto; }
             .select-layout .create-player-section .create-btn { width: 100%; padding: 12px; }
             .select-layout .player-list {
                 padding: 0;
@@ -673,6 +678,11 @@
                             :disabled="!canCreate"
                             @click="createAndJoin()">
                         Join
+                    </button>
+                    <button type="button" role="switch" class="swap-btn free-play-btn"
+                            :class="{ 'on': freePlay }" :aria-checked="freePlay"
+                            @click="toggleFreePlay()">
+                        Free play · <span x-text="freePlay ? 'On — no ELO change' : 'Off'"></span>
                     </button>
                 </div>
 
@@ -990,6 +1000,9 @@
                     const lobbyRes = await fetch(`${this.API}/lobbies/${this.lobbyCode}`);
                     const lobby = await lobbyRes.json();
                     this.participants = lobby.participants || [];
+                    if (this.freePlay !== !!lobby.free_play) {
+                        await this.sendFreePlay();
+                    }
 
                     this.screen = 'waiting';
                 } catch (err) {
@@ -1069,8 +1082,14 @@
             },
 
             async toggleFreePlay() {
-                if (!this.sessionToken) return;
                 this.freePlay = !this.freePlay;
+                // Not seated yet (player picker): doJoin() applies the choice once we are
+                if (this.sessionToken) {
+                    await this.sendFreePlay();
+                }
+            },
+
+            async sendFreePlay() {
                 try {
                     await fetch(`${this.API}/lobbies/${this.lobbyCode}/free-play`, {
                         method: 'PATCH',
