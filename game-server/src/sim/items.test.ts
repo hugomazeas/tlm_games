@@ -3,6 +3,8 @@ import { type Arena, AVATAR_RADIUS, generateArena } from './arena.ts'
 import { createGame, FREEZE_MS, type GameEvent, type GameState, type Input, step } from './game.ts'
 import { contactWith, sweptBox } from './geometry.ts'
 import {
+    type Effect,
+    EFFECTS,
     FIRST_ITEM_MS,
     findItemSpot,
     ITEM_INTERVAL_MAX_MS,
@@ -24,7 +26,7 @@ const TICK = 50
 const still: ReadonlyMap<number, Input> = new Map()
 
 function emptyArena(): Arena {
-    return { seed: 0, theme: 'open_space', width: 60, height: 40, obstacles: [], spawns: [] }
+    return { seed: 0, theme: 'open_space', width: 60, height: 40, obstacles: [], pads: [], spawns: [] }
 }
 
 /** Players in a row along y = 20, ten units apart; player 1 holds a potato that won't blow. */
@@ -65,7 +67,7 @@ function dropOn(game: GameState, id: number, kind: ItemKind) {
 }
 
 describe('spawning', () => {
-    test('the first item drops 10 s in, then one every 12 to 20 s', () => {
+    test('the first item drops 6 s in, then one every 7 to 12 s', () => {
         const game = setup(3, true)
         const drops: number[] = []
         let seen = 0
@@ -86,7 +88,7 @@ describe('spawning', () => {
         }
     })
 
-    test('never more than three items on the floor', () => {
+    test('never more than four items on the floor', () => {
         const game = setup(3, true)
 
         for (let t = 0; t < 120_000; t += TICK) {
@@ -192,7 +194,7 @@ describe('picking up', () => {
     test('a mystery box turns into one of the other items and applies it', () => {
         const seen = new Set<string>()
 
-        for (let seed = 1; seed <= 40; seed++) {
+        for (let seed = 1; seed <= 300; seed++) {
             const game = setup()
             dropOn(game, 2, 'mystery')
             const events = step(game, still, TICK, createRng(seed))
@@ -200,14 +202,24 @@ describe('picking up', () => {
             if (pickup?.kind !== 'pickup') throw new Error('no pickup')
 
             expect(pickup.item).toBe('mystery')
-            expect(['shield', 'speed', 'banana']).toContain(pickup.effect)
+            expect(EFFECTS).toContain(pickup.effect)
             const p = player(game, 2)
-            const applied = { shield: p.shieldMs, speed: p.speedMs, banana: p.slipMs }[pickup.effect]
-            expect(applied).toBeGreaterThan(0)
+            const timers: Partial<Record<Effect, number>> = {
+                shield: p.shieldMs,
+                speed: p.speedMs,
+                banana: p.slipMs,
+                ghost: p.ghostMs,
+                reverse: p.reverseMs,
+                magnet: p.magnetMs,
+                tiny: p.tinyMs,
+            }
+            const applied = timers[pickup.effect]
+            if (applied !== undefined) expect(applied).toBeGreaterThan(0)
+            if (pickup.effect === 'swap') expect(pickup.targetId).toBeDefined()
             seen.add(pickup.effect)
         }
 
-        expect(seen.size).toBe(3)
+        expect(seen.size).toBe(EFFECTS.length)
     })
 
     test('effects wear off', () => {

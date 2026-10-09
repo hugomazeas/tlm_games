@@ -151,7 +151,12 @@ that is played live, in real time, rather than scored afterwards.
 - **The fuse is secret.** It never leaves the server; clients only get a
   0–1 `shake` level. Keep it that way: `sessions.test.ts` checks it.
 - `game-server/src/sim/` is pure (seeded RNG, no clock, no I/O) and shared by
-  server and browser. Arena themes are data in `sim/themes.ts`.
+  server and browser. Arena themes are data in `sim/themes.ts`: furniture,
+  L/T/U walls (blocks sharing a `group`), movers and physics. Boost pads are
+  generated per arena; items and their effects live in `sim/items.ts` + `sim/game.ts`.
+- **Open tabs pick up a deploy on their own.** The bundle is stamped with a
+  build id (`client/build.ts`); `welcome` carries the server's, and a tab on an
+  older one reloads once it isn't mid-game. `client.js` is `no-cache` + ETag.
 - Tests: `cd game-server && bun test` (sim, arenas, sessions);
   `bun run typecheck`; `bun run format`. Laravel side: `tests/Feature/HotPotatoTest.php`.
 

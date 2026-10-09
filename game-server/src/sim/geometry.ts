@@ -10,10 +10,14 @@ export interface Mover {
     periodMs: number
 }
 
-/** Rectangles are axis-aligned and positioned by their centre. */
+/**
+ * Rectangles are axis-aligned and positioned by their centre. The blocks of
+ * one wall (an L, T or U) share a `group`; the spacing rule only applies
+ * between different groups.
+ */
 export type Obstacle =
-    | { kind: 'rect'; x: number; y: number; w: number; h: number; mover?: Mover }
-    | { kind: 'circle'; x: number; y: number; r: number; mover?: Mover }
+    | { kind: 'rect'; x: number; y: number; w: number; h: number; mover?: Mover; group?: number }
+    | { kind: 'circle'; x: number; y: number; r: number; mover?: Mover; group?: number }
 
 /** Where an obstacle is at a given time; a static obstacle never moves. */
 export function obstacleAt(obstacle: Obstacle, timeMs: number): Obstacle {

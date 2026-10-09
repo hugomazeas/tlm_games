@@ -47,6 +47,18 @@ class HotPotatoTest extends TestCase
             ->assertViewHas('players', fn ($players) => $players->pluck('name')->all() === ['Alice']);
     }
 
+    public function test_the_page_has_the_countdown_reveal_the_emote_bar_and_the_item_legend(): void
+    {
+        $this->get('/games/hot-potato')
+            ->assertOk()
+            ->assertSee('data-countdown-intro', false)
+            ->assertSee('x-show="showIntro"', false)
+            ->assertSee('data-emote-bar', false)
+            ->assertSee('@click="emote(option)"', false)
+            ->assertSee('lastEmotes[row.id]', false)
+            ->assertSee('data-item-legend', false);
+    }
+
     public function test_internal_endpoints_refuse_a_missing_or_wrong_secret(): void
     {
         $player = Player::create(['name' => 'Alice']);

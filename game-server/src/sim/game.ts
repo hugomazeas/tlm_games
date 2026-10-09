@@ -1,21 +1,30 @@
-import { type Arena, AVATAR_RADIUS } from './arena.ts'
+import { type Arena, AVATAR_RADIUS, PAD_RADIUS } from './arena.ts'
 import { contactWith } from './geometry.ts'
 import {
     type Effect,
     findItemSpot,
     FIRST_ITEM_MS,
+    FREEZE_BOMB_MS,
+    FREEZE_RADIUS,
+    GHOST_MS,
     ITEM_LIFETIME_MS,
     ITEM_RADIUS,
     type Item,
     type ItemKind,
+    MAGNET_MS,
+    MAGNET_PULL,
+    MAGNET_RADIUS,
     MAX_ITEMS,
     nextItemDelay,
     pickKind,
     reveal,
+    REVERSE_MS,
     SHIELD_MS,
     SLIP_MS,
     SPEED_BOOST,
     SPEED_MS,
+    TINY_MS,
+    TINY_RADIUS,
 } from './items.ts'
 import { pickOne, randomBetween, type Rng } from './rng.ts'
 import { THEMES, type Theme } from './themes.ts'
@@ -36,6 +45,11 @@ export const SHAKE_WINDOW_MS = 5000
 export const KING_SLOWDOWN = 0.9
 /** A new king can't be robbed for this long, so the potato doesn't flip back every frame. */
 export const STEAL_SAFETY_MS = 2000
+/** A boost pad fires you at this speed, past the usual top speed, with no steering for LAUNCH_MS. */
+export const LAUNCH_SPEED = 24
+export const LAUNCH_MS = 350
+/** After a launch, pads ignore you this long, so landing on one doesn't fire you again at once. */
+export const PAD_COOLDOWN_MS = 600
 /** Physics runs in fixed slices so fast avatars never tunnel through each other. */
 const SUBSTEP_MS = 25
 /** Avatars bounce off each other like bumper cars, with at least this much kick. */
@@ -43,6 +57,9 @@ const BUMP_RESTITUTION = 0.9
 const MIN_BUMP_SPEED = 5
 /** Touch tolerance on top of two radii. */
 const TOUCH_SLACK = 0.05
+/** How far, in rings of half a unit, a ghost who ends up inside an obstacle is searched a way out. */
+const EJECT_RINGS = 40
+const EJECT_ANGLES = 24
 
 /**
  * `survival`: pass the potato before it blows; the last ones standing win.
@@ -70,6 +87,14 @@ export interface SimPlayer {
     shieldMs: number
     speedMs: number
     slipMs: number
+    ghostMs: number
+    reverseMs: number
+    magnetMs: number
+    tinyMs: number
+    /** Flying off a boost pad: no steering until it runs out. */
+    launchMs: number
+    /** Pads ignore you until this runs out. */
+    padCooldownMs: number
     /** King of the Potato: a fresh king can't be robbed until this runs out. */
     safeMs: number
 }
@@ -96,7 +121,8 @@ export type GameEvent =
     | { kind: 'pass'; from: number; to: number }
     | { kind: 'boom'; playerId: number }
     | { kind: 'newPotato'; playerId: number }
-    | { kind: 'pickup'; playerId: number; item: ItemKind; effect: Effect }
+    /** `targetId`: who a swap traded places with; absent when nobody could be swapped. */
+    | { kind: 'pickup'; playerId: number; item: ItemKind; effect: Effect; targetId?: number }
     /** Survivors, or in King of the Potato the longest holders (ties share). */
     | { kind: 'ended'; survivorIds: number[] }
 
@@ -124,6 +150,12 @@ export function createGame(
             shieldMs: 0,
             speedMs: 0,
             slipMs: 0,
+            ghostMs: 0,
+            reverseMs: 0,
+            magnetMs: 0,
+            tinyMs: 0,
+            launchMs: 0,
+            padCooldownMs: 0,
             safeMs: 0,
         }
     })
@@ -163,6 +195,8 @@ export function step(game: GameState, inputs: ReadonlyMap<number, Input>, dtMs: 
 
         tickEffects(game, slice)
         spawnItems(game, rng)
+        launchFromPads(game)
+        pullTowardMagnets(game, slice)
         move(game, inputs, slice, theme)
         collide(game, theme)
         pickUpItems(game, rng, events)
@@ -208,6 +242,47 @@ export function alivePlayers(game: GameState): SimPlayer[] {
     return game.players.filter(p => !p.out)
 }
 
+/** A tiny player is smaller for everything: bumping, tagging, items, pads and walls. */
+export function radiusOf(p: SimPlayer): number {
+    return p.tinyMs > 0 ? TINY_RADIUS : AVATAR_RADIUS
+}
+
+/** Rolling over a pad fires you its way, unless you're frozen, slipping, or it just fired you. */
+function launchFromPads(game: GameState) {
+    for (const p of alivePlayers(game)) {
+        if (p.frozenMs > 0 || p.slipMs > 0 || p.padCooldownMs > 0) continue
+
+        const pad = game.arena.pads.find(candidate => Math.hypot(candidate.x - p.x, candidate.y - p.y) <= PAD_RADIUS)
+        if (!pad) continue
+
+        p.vx = pad.dx * LAUNCH_SPEED
+        p.vy = pad.dy * LAUNCH_SPEED
+        p.launchMs = LAUNCH_MS
+        p.padCooldownMs = LAUNCH_MS + PAD_COOLDOWN_MS
+    }
+}
+
+/** A magnet tugs everyone in range toward its owner, harder the closer they are. Shields and statues hold. */
+function pullTowardMagnets(game: GameState, sliceMs: number) {
+    const dt = sliceMs / 1000
+    const alive = alivePlayers(game)
+
+    for (const magnet of alive.filter(p => p.magnetMs > 0)) {
+        for (const p of alive) {
+            if (p.id === magnet.id || p.frozenMs > 0 || p.shieldMs > 0) continue
+
+            const dx = magnet.x - p.x
+            const dy = magnet.y - p.y
+            const distance = Math.hypot(dx, dy)
+            if (distance === 0 || distance >= MAGNET_RADIUS) continue
+
+            const pull = MAGNET_PULL * (1 - distance / MAGNET_RADIUS) * dt
+            p.vx += (dx / distance) * pull
+            p.vy += (dy / distance) * pull
+        }
+    }
+}
+
 function move(game: GameState, inputs: ReadonlyMap<number, Input>, sliceMs: number, theme: Theme) {
     const dt = sliceMs / 1000
     const damping = Math.exp(-theme.physics.friction * dt)
@@ -220,8 +295,8 @@ function move(game: GameState, inputs: ReadonlyMap<number, Input>, sliceMs: numb
             continue
         }
 
-        // On a banana: no steering and no grip, you keep whatever speed you had.
-        if (p.slipMs > 0) {
+        // On a banana or off a pad: no steering and no grip, you keep whatever speed you had.
+        if (p.slipMs > 0 || p.launchMs > 0) {
             p.x += p.vx * dt
             p.y += p.vy * dt
             continue
@@ -230,7 +305,8 @@ function move(game: GameState, inputs: ReadonlyMap<number, Input>, sliceMs: numb
         const holding = p.id === game.holderId ? (game.mode === 'king' ? KING_SLOWDOWN : HOLDER_BOOST) : 1
         const boost = holding * (p.speedMs > 0 ? SPEED_BOOST : 1)
         const input = normalise(inputs.get(p.id))
-        const accel = ACCELERATION * theme.physics.grip * boost
+        const direction = p.reverseMs > 0 ? -1 : 1
+        const accel = ACCELERATION * theme.physics.grip * boost * direction
 
         p.vx = (p.vx + input.dx * accel * dt) * damping
         p.vy = (p.vy + input.dy * accel * dt) * damping
@@ -248,7 +324,6 @@ function move(game: GameState, inputs: ReadonlyMap<number, Input>, sliceMs: numb
 }
 
 function collide(game: GameState, theme: Theme) {
-    const r = AVATAR_RADIUS
     const alive = alivePlayers(game)
 
     // Avatars against each other. A frozen avatar is a statue: it doesn't budge.
@@ -257,7 +332,7 @@ function collide(game: GameState, theme: Theme) {
             const dx = b.x - a.x
             const dy = b.y - a.y
             const distance = Math.hypot(dx, dy)
-            const overlap = 2 * r - distance
+            const overlap = radiusOf(a) + radiusOf(b) - distance
             if (overlap <= 0) continue
 
             const nx = distance === 0 ? 1 : dx / distance
@@ -285,16 +360,27 @@ function collide(game: GameState, theme: Theme) {
         }
     }
 
-    // Obstacles and walls last, so nobody is ever left inside one.
+    // Obstacles and walls last, so nobody is ever left inside one. Ghosts drift through obstacles.
     for (const p of alive) {
-        for (const obstacle of game.arena.obstacles) {
-            const contact = contactWith(p, obstacle, game.elapsedMs)
-            const overlap = r - contact.distance
-            if (overlap <= 0) continue
+        const r = radiusOf(p)
 
-            p.x += contact.nx * overlap
-            p.y += contact.ny * overlap
-            bounce(p, contact.nx, contact.ny, theme.physics.restitution)
+        if (p.ghostMs <= 0) {
+            // A ghost that wore off deep inside a wall comes out at the nearest open spot.
+            if (game.arena.obstacles.some(o => contactWith(p, o, game.elapsedMs).distance < 0)) {
+                const spot = nearestOpenSpot(game, p.x, p.y, r)
+                p.x = spot.x
+                p.y = spot.y
+            }
+
+            for (const obstacle of game.arena.obstacles) {
+                const contact = contactWith(p, obstacle, game.elapsedMs)
+                const overlap = r - contact.distance
+                if (overlap <= 0) continue
+
+                p.x += contact.nx * overlap
+                p.y += contact.ny * overlap
+                bounce(p, contact.nx, contact.ny, theme.physics.restitution)
+            }
         }
 
         if (p.x < r) {
@@ -316,6 +402,28 @@ function collide(game: GameState, theme: Theme) {
     }
 }
 
+/** The closest spot, ring by ring, where an avatar of radius `r` touches no obstacle and no wall. */
+function nearestOpenSpot(game: GameState, x: number, y: number, r: number): { x: number; y: number } {
+    const { width, height, obstacles } = game.arena
+    const open = (point: { x: number; y: number }) =>
+        point.x >= r &&
+        point.y >= r &&
+        point.x <= width - r &&
+        point.y <= height - r &&
+        obstacles.every(o => contactWith(point, o, game.elapsedMs).distance >= r)
+
+    for (let ring = 1; ring <= EJECT_RINGS; ring++) {
+        const distance = ring * 0.5
+        for (let i = 0; i < EJECT_ANGLES; i++) {
+            const angle = (i / EJECT_ANGLES) * Math.PI * 2
+            const point = { x: x + Math.cos(angle) * distance, y: y + Math.sin(angle) * distance }
+            if (open(point)) return point
+        }
+    }
+
+    return { x, y }
+}
+
 /** Reflects the velocity component heading into a surface. */
 function bounce(p: SimPlayer, nx: number, ny: number, restitution: number) {
     const into = p.vx * nx + p.vy * ny
@@ -325,14 +433,15 @@ function bounce(p: SimPlayer, nx: number, ny: number, restitution: number) {
     p.vy -= (1 + restitution) * into * ny
 }
 
+function touching(a: SimPlayer, b: SimPlayer): boolean {
+    return Math.hypot(a.x - b.x, a.y - b.y) <= radiusOf(a) + radiusOf(b) + TOUCH_SLACK
+}
+
 function passPotato(game: GameState, events: GameEvent[]) {
     const holder = game.players.find(p => p.id === game.holderId)
     if (!holder || holder.out || holder.frozenMs > 0) return
 
-    const reach = 2 * AVATAR_RADIUS + TOUCH_SLACK
-    const receiver = alivePlayers(game).find(
-        p => p.id !== holder.id && p.shieldMs <= 0 && Math.hypot(p.x - holder.x, p.y - holder.y) <= reach
-    )
+    const receiver = alivePlayers(game).find(p => p.id !== holder.id && p.shieldMs <= 0 && touching(p, holder))
     if (!receiver) return
 
     game.holderId = receiver.id
@@ -392,23 +501,37 @@ function eliminate(game: GameState, p: SimPlayer) {
     p.shieldMs = 0
     p.speedMs = 0
     p.slipMs = 0
+    p.ghostMs = 0
+    p.reverseMs = 0
+    p.magnetMs = 0
+    p.tinyMs = 0
+    p.launchMs = 0
     p.safeMs = 0
 }
 
-/** Getting the potato stops you dead, banana or not. */
-function freeze(p: SimPlayer) {
-    p.frozenMs = FREEZE_MS
+/** Getting the potato (or caught in a freeze bomb) stops you dead, banana, pad or not. */
+function freeze(p: SimPlayer, ms = FREEZE_MS) {
+    p.frozenMs = Math.max(p.frozenMs, ms)
     p.slipMs = 0
+    p.launchMs = 0
     p.vx = 0
     p.vy = 0
 }
 
 function tickEffects(game: GameState, sliceMs: number) {
+    const tick = (ms: number) => Math.max(0, ms - sliceMs)
+
     for (const p of alivePlayers(game)) {
-        p.shieldMs = Math.max(0, p.shieldMs - sliceMs)
-        p.speedMs = Math.max(0, p.speedMs - sliceMs)
-        p.slipMs = Math.max(0, p.slipMs - sliceMs)
-        p.safeMs = Math.max(0, p.safeMs - sliceMs)
+        p.shieldMs = tick(p.shieldMs)
+        p.speedMs = tick(p.speedMs)
+        p.slipMs = tick(p.slipMs)
+        p.ghostMs = tick(p.ghostMs)
+        p.reverseMs = tick(p.reverseMs)
+        p.magnetMs = tick(p.magnetMs)
+        p.tinyMs = tick(p.tinyMs)
+        p.launchMs = tick(p.launchMs)
+        p.padCooldownMs = tick(p.padCooldownMs)
+        p.safeMs = tick(p.safeMs)
     }
 }
 
@@ -434,19 +557,61 @@ function spawnItems(game: GameState, rng: Rng) {
 
 /** Whoever touches an item takes it, and its effect starts at once (a repeat restarts the timer). */
 function pickUpItems(game: GameState, rng: Rng, events: GameEvent[]) {
-    const reach = AVATAR_RADIUS + ITEM_RADIUS
-
     for (const item of [...game.items]) {
-        const taker = alivePlayers(game).find(p => Math.hypot(p.x - item.x, p.y - item.y) <= reach)
+        const taker = alivePlayers(game).find(p => Math.hypot(p.x - item.x, p.y - item.y) <= radiusOf(p) + ITEM_RADIUS)
         if (!taker) continue
 
         game.items = game.items.filter(other => other.id !== item.id)
         const effect = reveal(item.kind, rng)
-        if (effect === 'shield') taker.shieldMs = SHIELD_MS
-        if (effect === 'speed') taker.speedMs = SPEED_MS
-        // A frozen player is planted: the banana is spent but they don't slide.
-        if (effect === 'banana' && taker.frozenMs <= 0) taker.slipMs = SLIP_MS
-        events.push({ kind: 'pickup', playerId: taker.id, item: item.kind, effect })
+        const event: GameEvent = { kind: 'pickup', playerId: taker.id, item: item.kind, effect }
+
+        switch (effect) {
+            case 'shield':
+                taker.shieldMs = SHIELD_MS
+                break
+            case 'speed':
+                taker.speedMs = SPEED_MS
+                break
+            case 'banana':
+                // A frozen player is planted: the banana is spent but they don't slide.
+                if (taker.frozenMs <= 0) taker.slipMs = SLIP_MS
+                break
+            case 'ghost':
+                taker.ghostMs = GHOST_MS
+                break
+            case 'reverse':
+                taker.reverseMs = REVERSE_MS
+                break
+            case 'magnet':
+                taker.magnetMs = MAGNET_MS
+                break
+            case 'tiny':
+                taker.tinyMs = TINY_MS
+                break
+            case 'freeze':
+                for (const p of alivePlayers(game)) {
+                    if (p.id === taker.id || p.shieldMs > 0) continue
+                    if (Math.hypot(p.x - taker.x, p.y - taker.y) <= FREEZE_RADIUS) freeze(p, FREEZE_BOMB_MS)
+                }
+                break
+            case 'swap': {
+                const targets = alivePlayers(game).filter(p => p.id !== taker.id && p.shieldMs <= 0)
+                if (targets.length === 0) break
+
+                const target = pickOne(rng, targets)
+                ;[taker.x, target.x] = [target.x, taker.x]
+                ;[taker.y, target.y] = [target.y, taker.y]
+                for (const p of [taker, target]) {
+                    p.vx = 0
+                    p.vy = 0
+                    p.launchMs = 0
+                }
+                event.targetId = target.id
+                break
+            }
+        }
+
+        events.push(event)
     }
 }
 
@@ -479,8 +644,7 @@ function stealPotato(game: GameState, events: GameEvent[]) {
     const king = game.players.find(p => p.id === game.holderId)
     if (!king || king.out || king.safeMs > 0 || king.shieldMs > 0) return
 
-    const reach = 2 * AVATAR_RADIUS + TOUCH_SLACK
-    const thief = alivePlayers(game).find(p => p.id !== king.id && Math.hypot(p.x - king.x, p.y - king.y) <= reach)
+    const thief = alivePlayers(game).find(p => p.id !== king.id && touching(p, king))
     if (!thief) return
 
     game.holderId = thief.id

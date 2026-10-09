@@ -36,6 +36,12 @@ export interface SnapshotPlayer {
     shieldMs: number
     speedMs: number
     slipMs: number
+    ghostMs: number
+    reverseMs: number
+    magnetMs: number
+    tinyMs: number
+    /** Flying off a boost pad. */
+    launchMs: number
     /** Time held so far: the score in King of the Potato. */
     holdMs: number
     /** A fresh king's head start; can't be robbed while it lasts. */
@@ -67,6 +73,11 @@ export type ClientMessage =
     | { type: 'start'; durationMin: number; theme: ThemeId | 'random'; mode: GameMode }
     | { type: 'input'; dx: number; dy: number }
     | { type: 'close' }
+    | { type: 'emote'; emote: Emote }
+
+/** End-of-game reactions: tap one on the results screen and it pops over your avatar. */
+export const EMOTES = ['😂', '🔥', '👏', '😭', '🤬', '🥔', '💀', '🫡'] as const
+export type Emote = (typeof EMOTES)[number]
 
 export type ErrorCode =
     | 'BAD_MESSAGE'
@@ -82,7 +93,8 @@ export type ErrorCode =
     | 'UNAVAILABLE'
 
 export type ServerMessage =
-    | { type: 'welcome'; player: PlayerInfo | null }
+    /** `build` identifies the browser bundle this server serves; a tab running another one reloads. */
+    | { type: 'welcome'; player: PlayerInfo | null; build: string }
     | { type: 'office'; session: SessionView | null }
     | { type: 'countdown'; arena: Arena; playerIds: number[]; durationMs: number; startsInMs: number }
     | {
@@ -96,7 +108,9 @@ export type ServerMessage =
     | { type: 'pass'; from: number; to: number }
     | { type: 'boom'; playerId: number }
     | { type: 'newPotato'; playerId: number }
-    | { type: 'pickup'; playerId: number; item: ItemKind; effect: Effect }
+    /** `targetId`: who a swap traded places with. */
+    | { type: 'pickup'; playerId: number; item: ItemKind; effect: Effect; targetId?: number }
+    | { type: 'emote'; playerId: number; emote: Emote }
     | { type: 'results'; results: Results }
     | { type: 'error'; code: ErrorCode }
 
@@ -140,6 +154,9 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
                 theme: message.theme,
                 mode: (message.mode as GameMode | undefined) ?? 'survival',
             }
+        case 'emote':
+            if (!(EMOTES as readonly unknown[]).includes(message.emote)) return null
+            return { type: 'emote', emote: message.emote as Emote }
         case 'input':
             if (!isUnitish(message.dx) || !isUnitish(message.dy)) return null
             return { type: 'input', dx: message.dx, dy: message.dy }

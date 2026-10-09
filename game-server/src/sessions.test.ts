@@ -1,7 +1,15 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { parseClientMessage, type PlayerInfo, type ServerMessage } from './protocol.ts'
-import { COUNTDOWN_MS, type GameResult, RECONNECT_GRACE_MS, RESULTS_MS, SessionManager, TICK_MS } from './sessions.ts'
-import { FIRST_ITEM_MS } from './sim/items.ts'
+import {
+    COUNTDOWN_MS,
+    EMOTE_COOLDOWN_MS,
+    type GameResult,
+    RECONNECT_GRACE_MS,
+    RESULTS_MS,
+    SessionManager,
+    TICK_MS,
+} from './sessions.ts'
+import { EFFECTS, FIRST_ITEM_MS } from './sim/items.ts'
 import { createRng } from './sim/rng.ts'
 
 const OFFICE = 1
@@ -25,6 +33,7 @@ beforeEach(() => {
     results = []
     connCount = 0
     manager = new SessionManager({
+        build: 'build-1',
         now: () => now,
         rng: createRng(42),
         nextSeed: () => 1234,
@@ -86,6 +95,13 @@ function lobbyOfThree() {
 
     return { a, b, c }
 }
+
+describe('connecting', () => {
+    test('every tab is told which browser bundle is current, so an old one can reload', () => {
+        expect(connect(alice).inbox[0]).toEqual({ type: 'welcome', player: alice, build: 'build-1' })
+        expect(connect(null).inbox[0]).toEqual({ type: 'welcome', player: null, build: 'build-1' })
+    })
+})
 
 describe('opening and joining', () => {
     test('opening makes you host and announces it once', () => {
@@ -236,25 +252,40 @@ describe('a whole game', () => {
 
         const item = last(b, 'snapshot')?.items[0]
         if (!item) throw new Error('no item after the first drop')
-        expect(['shield', 'speed', 'banana', 'mystery']).toContain(item.kind)
+        expect([...EFFECTS, 'mystery']).toContain(item.kind)
         expect(item.expiresInMs).toBeGreaterThan(0)
 
-        // Alice homes in on it.
-        for (let t = 0; t < 12_000 && !last(b, 'pickup'); t += TICK_MS) {
+        // Alice homes in on it, sidestepping for a moment whenever a wall stops her getting closer.
+        let best = Number.POSITIVE_INFINITY
+        let stuckFor = 0
+        let sidestep = 0
+        for (let t = 0; t < 20_000 && !last(b, 'pickup'); t += TICK_MS) {
             const me = last(a, 'snapshot')?.players.find(p => p.id === 1)
             const target = last(a, 'snapshot')?.items.find(i => i.id === item.id)
             if (!me || !target) break
             const dx = target.x - me.x
             const dy = target.y - me.y
             const length = Math.hypot(dx, dy) || 1
-            send(a, { type: 'input', dx: dx / length, dy: dy / length })
+            if (length < best - 0.05) {
+                best = length
+                stuckFor = 0
+            } else if ((stuckFor += TICK_MS) >= 400) {
+                sidestep = 600
+                stuckFor = 0
+            }
+            if (sidestep > 0) {
+                sidestep -= TICK_MS
+                send(a, { type: 'input', dx: -dy / length, dy: dx / length })
+            } else {
+                send(a, { type: 'input', dx: dx / length, dy: dy / length })
+            }
             advance(TICK_MS)
         }
 
         const pickup = last(b, 'pickup')
         if (!pickup) throw new Error('nobody took the item')
         expect(pickup.item).toBe(item.kind)
-        expect(['shield', 'speed', 'banana']).toContain(pickup.effect)
+        expect(EFFECTS).toContain(pickup.effect)
         expect(last(b, 'snapshot')?.items.some(i => i.id === item.id)).toBe(false)
     })
 
@@ -376,6 +407,86 @@ describe('hosts and leaving', () => {
         advance(TICK_MS)
 
         expect(last(a, 'snapshot')?.players.find(p => p.id === 3)?.out).toBe(true)
+    })
+})
+
+describe('end-of-game emotes', () => {
+    /** Plays a one-minute game through to the results screen (two booms can end it early). */
+    function playToResults(conn: FakeConn) {
+        send(conn, { type: 'start', durationMin: 1, theme: 'random' })
+        for (let t = 0; t < COUNTDOWN_MS + 60_000 + TICK_MS; t += TICK_MS) {
+            if (last(conn, 'office')?.session?.phase === 'results') break
+            advance(TICK_MS)
+        }
+        expect(last(conn, 'office')?.session?.phase).toBe('results')
+    }
+
+    function toResults() {
+        const players = lobbyOfThree()
+        playToResults(players.a)
+
+        return players
+    }
+
+    test('the countdown lasts six seconds and the results screen twelve', () => {
+        expect(COUNTDOWN_MS).toBe(6000)
+        expect(RESULTS_MS).toBe(12_000)
+    })
+
+    test('a player from the game reacts on the results screen, and the whole office sees it', () => {
+        const { a, c } = toResults()
+        const watcher = connect(null)
+
+        send(c, { type: 'emote', emote: '🔥' })
+
+        expect(last(watcher, 'emote')).toEqual({ type: 'emote', playerId: 3, emote: '🔥' })
+        expect(last(a, 'emote')).toEqual({ type: 'emote', playerId: 3, emote: '🔥' })
+    })
+
+    test('one emote per player every 700 ms', () => {
+        const { a, b } = toResults()
+
+        send(a, { type: 'emote', emote: '😂' })
+        send(a, { type: 'emote', emote: '💀' })
+        send(b, { type: 'emote', emote: '👏' })
+        expect(b.inbox.filter(m => m.type === 'emote')).toHaveLength(2)
+
+        advance(EMOTE_COOLDOWN_MS)
+        send(a, { type: 'emote', emote: '💀' })
+        expect(last(b, 'emote')).toEqual({ type: 'emote', playerId: 1, emote: '💀' })
+    })
+
+    test('nobody outside the game, and nobody before the results, can emote', () => {
+        const { a, b } = lobbyOfThree()
+        send(a, { type: 'start', durationMin: 1, theme: 'random' })
+        advance(COUNTDOWN_MS + TICK_MS)
+        send(b, { type: 'emote', emote: '🥔' })
+
+        advance(60_000)
+        const late = connect(dave)
+        send(late, { type: 'join' })
+        send(late, { type: 'emote', emote: '🫡' })
+
+        expect(a.inbox.filter(m => m.type === 'emote')).toEqual([])
+    })
+
+    test('every results screen takes emotes again', () => {
+        const { a, b } = toResults()
+        send(a, { type: 'emote', emote: '😭' })
+        advance(RESULTS_MS)
+        playToResults(a)
+
+        send(a, { type: 'emote', emote: '🤬' })
+        expect(last(b, 'emote')).toEqual({ type: 'emote', playerId: 1, emote: '🤬' })
+    })
+
+    test('only the eight emotes go through', () => {
+        expect(parseClientMessage(JSON.stringify({ type: 'emote', emote: '🔥' }))).toEqual({
+            type: 'emote',
+            emote: '🔥',
+        })
+        expect(parseClientMessage(JSON.stringify({ type: 'emote', emote: '<script>' }))).toBeNull()
+        expect(parseClientMessage(JSON.stringify({ type: 'emote' }))).toBeNull()
     })
 })
 

@@ -1,9 +1,19 @@
-import { type Arena, AVATAR_RADIUS } from './arena.ts'
-import { contactWith, type Obstacle, sweptBox, type Vec } from './geometry.ts'
+import { type Arena, AVATAR_RADIUS, clearance, PAD_RADIUS } from './arena.ts'
+import type { Vec } from './geometry.ts'
 import { pickOne, randomBetween, type Rng } from './rng.ts'
 
 /** A mystery box turns into one of the others when someone takes it. */
-export type ItemKind = 'shield' | 'speed' | 'banana' | 'mystery'
+export type ItemKind =
+    | 'shield'
+    | 'speed'
+    | 'banana'
+    | 'ghost'
+    | 'swap'
+    | 'reverse'
+    | 'freeze'
+    | 'magnet'
+    | 'tiny'
+    | 'mystery'
 export type Effect = Exclude<ItemKind, 'mystery'>
 
 export interface Item {
@@ -15,33 +25,64 @@ export interface Item {
 }
 
 export const ITEM_RADIUS = 0.6
-export const FIRST_ITEM_MS = 10_000
-export const ITEM_INTERVAL_MIN_MS = 12_000
-export const ITEM_INTERVAL_MAX_MS = 20_000
-export const MAX_ITEMS = 3
+export const FIRST_ITEM_MS = 6000
+export const ITEM_INTERVAL_MIN_MS = 7000
+export const ITEM_INTERVAL_MAX_MS = 12_000
+export const MAX_ITEMS = 4
 /** An item nobody takes disappears after this long. */
 export const ITEM_LIFETIME_MS = 15_000
 
-/** While shielded, the holder can't hand you the potato. */
+/** While shielded, the holder can't hand you the potato, and nobody's freeze, magnet or swap reaches you. */
 export const SHIELD_MS = 5000
 export const SPEED_MS = 4000
 /** Top speed and acceleration while boosted; multiplies the holder's own boost. */
 export const SPEED_BOOST = 1.35
 /** A banana takes your controls and your grip for this long. */
 export const SLIP_MS = 1500
+/** Walk through obstacles (never the arena walls) for this long. */
+export const GHOST_MS = 3000
+/** Your own keys are inverted for this long. */
+export const REVERSE_MS = 4000
+/** Everyone this close to whoever sets the freeze bomb off is frozen for FREEZE_BOMB_MS. */
+export const FREEZE_RADIUS = 5
+export const FREEZE_BOMB_MS = 1500
+/** For MAGNET_MS, everyone within MAGNET_RADIUS is pulled toward you, harder the closer they are. */
+export const MAGNET_MS = 4000
+export const MAGNET_RADIUS = 8
+export const MAGNET_PULL = 30
+/** Shrunk to TINY_RADIUS for TINY_MS: harder to tag, and every gap gets wider. */
+export const TINY_MS = 5000
+export const TINY_RADIUS = 0.6
 
-/** Items land on open floor, never hugging an obstacle, a wall or a player. */
+/** Items land on open floor, never hugging an obstacle, a wall, a pad or a player. */
 export const OBSTACLE_CLEARANCE = 2
 export const PLAYER_CLEARANCE = 3
+export const PAD_ITEM_CLEARANCE = 1
 const ITEM_SPACING = 2
 const SPOT_ATTEMPTS = 30
 
-const EFFECTS: readonly Effect[] = ['shield', 'speed', 'banana']
+export const EFFECTS: readonly Effect[] = [
+    'shield',
+    'speed',
+    'banana',
+    'ghost',
+    'swap',
+    'reverse',
+    'freeze',
+    'magnet',
+    'tiny',
+]
 const WEIGHTS: ReadonlyArray<[ItemKind, number]> = [
-    ['shield', 0.3],
-    ['speed', 0.3],
-    ['banana', 0.25],
-    ['mystery', 0.15],
+    ['shield', 0.14],
+    ['speed', 0.14],
+    ['banana', 0.11],
+    ['ghost', 0.09],
+    ['swap', 0.08],
+    ['reverse', 0.09],
+    ['freeze', 0.09],
+    ['magnet', 0.08],
+    ['tiny', 0.08],
+    ['mystery', 0.1],
 ]
 
 export function nextItemDelay(rng: Rng): number {
@@ -65,7 +106,7 @@ export function reveal(kind: ItemKind, rng: Rng): Effect {
 
 /**
  * A random spot of open floor for a new item, or null when none turned up:
- * clear of walls, obstacles (a mover's whole sweep), players and other items.
+ * clear of walls, obstacles (a mover's whole sweep), pads, players and other items.
  */
 export function findItemSpot(arena: Arena, players: readonly Vec[], items: readonly Vec[], rng: Rng): Vec | null {
     const margin = OBSTACLE_CLEARANCE + ITEM_RADIUS
@@ -76,7 +117,11 @@ export function findItemSpot(arena: Arena, players: readonly Vec[], items: reado
             y: randomBetween(rng, margin, arena.height - margin),
         }
 
-        if (arena.obstacles.some(o => distanceToSweep(spot, o) < margin)) continue
+        if (arena.obstacles.some(o => clearance(spot, o) < margin)) continue
+        if (
+            arena.pads.some(p => Math.hypot(p.x - spot.x, p.y - spot.y) < PAD_RADIUS + PAD_ITEM_CLEARANCE + ITEM_RADIUS)
+        )
+            continue
         if (players.some(p => Math.hypot(p.x - spot.x, p.y - spot.y) < PLAYER_CLEARANCE + AVATAR_RADIUS)) continue
         if (items.some(i => Math.hypot(i.x - spot.x, i.y - spot.y) < ITEM_SPACING + 2 * ITEM_RADIUS)) continue
 
@@ -84,13 +129,4 @@ export function findItemSpot(arena: Arena, players: readonly Vec[], items: reado
     }
 
     return null
-}
-
-/** Distance to everywhere an obstacle can ever be, so a mover never sweeps over an item. */
-function distanceToSweep(point: Vec, obstacle: Obstacle): number {
-    if (!obstacle.mover) return contactWith(point, obstacle, 0).distance
-
-    const box = sweptBox(obstacle)
-
-    return contactWith(point, { kind: 'rect', x: box.x, y: box.y, w: box.hw * 2, h: box.hh * 2 }, 0).distance
 }

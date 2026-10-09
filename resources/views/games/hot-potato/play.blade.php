@@ -212,7 +212,17 @@
                     <div class="relative rounded-xl overflow-hidden border border-white/10 bg-black/30">
                         <canvas x-ref="canvas" class="block w-full"></canvas>
 
-                        <div x-show="phase === 'countdown' && countdownLeft > 0"
+                        {{-- Countdown: first the reveal (mode, its rule, the arena), then 3 · 2 · 1 --}}
+                        <div x-show="showIntro" x-transition.opacity data-countdown-intro
+                             class="absolute inset-0 flex items-center justify-center bg-black/55 p-4 pointer-events-none">
+                            <div class="text-center">
+                                <p class="text-xs uppercase tracking-[0.3em] text-white/50 mb-2">Next up</p>
+                                <p class="text-4xl sm:text-5xl font-extrabold mb-2 drop-shadow" x-text="intro?.mode"></p>
+                                <p class="text-white/80 text-lg mb-4" x-text="intro?.hint"></p>
+                                <span class="inline-block rounded-full bg-white/10 border border-white/20 px-4 py-1.5 text-sm font-semibold" x-text="intro?.arena"></span>
+                            </div>
+                        </div>
+                        <div x-show="phase === 'countdown' && countdownLeft > 0 && !showIntro"
                              class="absolute inset-0 flex items-center justify-center bg-black/40 pointer-events-none">
                             <span class="text-8xl font-extrabold" x-text="countdownLeft"></span>
                         </div>
@@ -225,7 +235,7 @@
                         </div>
 
                         <template x-if="phase === 'results' && results">
-                            <div class="absolute inset-0 flex items-center justify-center bg-black/60 p-4">
+                            <div class="absolute inset-0 flex items-center justify-center bg-black/35 p-4">
                                 <div class="bg-slate-900/95 border border-white/10 rounded-xl p-5 w-full max-w-md">
                                     <h2 class="text-xl font-extrabold mb-3 text-center" x-text="results.headline"></h2>
                                     <table class="w-full text-sm">
@@ -240,6 +250,7 @@
                                                         <span class="inline-flex items-center gap-2">
                                                             <x-player-avatar-js name="row.name" url="avatarOf(row.id)" size="xs" class="!w-5 !h-5 !text-[9px]" />
                                                             <span x-text="row.name"></span>
+                                                            <span x-show="lastEmotes[row.id]" x-text="lastEmotes[row.id]" class="text-base leading-none"></span>
                                                         </span>
                                                     </td>
                                                     <td class="text-right" x-text="row.holdSeconds + 's'"></td>
@@ -248,12 +259,27 @@
                                             </template>
                                         </tbody>
                                     </table>
+                                    {{-- End-of-game emotes: only the game's own players get the buttons --}}
+                                    <div x-show="canEmote" class="mt-4 flex flex-wrap justify-center gap-1.5" data-emote-bar>
+                                        <template x-for="option in emotes" :key="option">
+                                            <button type="button" @click="emote(option)"
+                                                    class="w-10 h-10 rounded-lg bg-white/10 hover:bg-white/20 active:scale-90 text-xl transition"
+                                                    :aria-label="'React ' + option" x-text="option"></button>
+                                        </template>
+                                    </div>
                                     <p class="text-xs text-white/40 text-center mt-3">Back to the lobby in a few seconds…</p>
                                 </div>
                             </div>
                         </template>
                     </div>
                     <p class="text-xs text-white/40 mt-2" x-show="isMember">Move with the arrow keys or WASD.</p>
+                    {{-- What everything on the floor does --}}
+                    <ul class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/50" data-item-legend>
+                        <template x-for="entry in itemLegend" :key="entry.kind">
+                            <li><span class="mr-1" x-text="entry.icon"></span><span x-text="entry.label"></span></li>
+                        </template>
+                        <li><span class="mr-1 text-cyan-300">»</span><span x-text="padLegend"></span></li>
+                    </ul>
                 </div>
 
                 {{-- Push opt-in --}}
