@@ -17,6 +17,7 @@ class LobbyUpdated implements ShouldBroadcastNow
         $this->lobby = [
             'code' => $lobby->code,
             'mode' => $lobby->mode,
+            'free_play' => $lobby->free_play,
             'status' => $lobby->status,
             'participants' => $lobby->participants->map(fn ($p) => [
                 'id' => $p->id,

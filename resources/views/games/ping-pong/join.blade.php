@@ -341,6 +341,14 @@
         .swap-btn:active { transform: scale(0.98); border-color: var(--paper-faint); color: var(--paper); }
         .swap-btn:disabled { opacity: 0.5; cursor: default; }
 
+        /* Free play toggle: reuses .swap-btn, solid amber when on */
+        .free-play-btn { margin-bottom: 10px; border-style: solid; }
+        .free-play-btn.on {
+            border-color: var(--amber);
+            background: rgba(255, 209, 102, 0.12);
+            color: var(--amber);
+        }
+
         /* ===== Waiting screen header ===== */
         .reselect-player {
             cursor: pointer;
@@ -732,6 +740,11 @@
                 </div>
 
                 <div class="start-row">
+                    <button type="button" role="switch" class="swap-btn free-play-btn"
+                            :class="{ 'on': freePlay }" :aria-checked="freePlay"
+                            @click="toggleFreePlay()">
+                        Free play · <span x-text="freePlay ? 'On — no ELO change' : 'Off'"></span>
+                    </button>
                     <template x-if="mySide === 'left'">
                         <button class="start-btn"
                                 :disabled="!lobbyReady || starting"
@@ -787,6 +800,7 @@
             errorMessage: '',
             starting: false,
             swapping: false,
+            freePlay: false,
 
             echo: null,
 
@@ -824,6 +838,7 @@
                     }
 
                     this.participants = lobby.participants || [];
+                    this.freePlay = !!lobby.free_play;
 
                     // If we have a session, verify it's still valid
                     if (this.sessionToken) {
@@ -883,6 +898,7 @@
                 this.echo.channel('ping-pong.lobby.' + this.lobbyCode)
                     .listen('.lobby.updated', (e) => {
                         this.participants = e.lobby.participants || [];
+                        this.freePlay = !!e.lobby.free_play;
                         // Update my side if changed
                         if (this.myPlayerId) {
                             const me = this.participants.find(p => p.player_id === this.myPlayerId);
@@ -1050,6 +1066,24 @@
                     // Silently ignore
                 }
                 this.swapping = false;
+            },
+
+            async toggleFreePlay() {
+                if (!this.sessionToken) return;
+                this.freePlay = !this.freePlay;
+                try {
+                    await fetch(`${this.API}/lobbies/${this.lobbyCode}/free-play`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': this.csrf,
+                        },
+                        body: JSON.stringify({ free_play: this.freePlay, session_token: this.sessionToken }),
+                    });
+                    // The LobbyUpdated WebSocket event syncs everyone else
+                } catch (err) {
+                    // Silently ignore
+                }
             },
 
             async startGame() {

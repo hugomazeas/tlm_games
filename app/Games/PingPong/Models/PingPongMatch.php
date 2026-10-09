@@ -15,6 +15,7 @@ class PingPongMatch extends Model
 
     protected $fillable = [
         'mode',
+        'free_play',
         'tournament_id',
         'player_left_id',
         'team_left_player2_id',
@@ -44,6 +45,7 @@ class PingPongMatch extends Model
     protected function casts(): array
     {
         return [
+            'free_play' => 'boolean',
             'started_at' => 'datetime',
             'last_score_activity_at' => 'datetime',
             'ended_at' => 'datetime',
@@ -88,6 +90,14 @@ class PingPongMatch extends Model
     public function isTournament(): bool
     {
         return $this->tournament_id !== null;
+    }
+
+    /**
+     * Tournament and free-play matches still count for stats but never move ELO.
+     */
+    public function isRanked(): bool
+    {
+        return ! $this->isTournament() && ! $this->free_play;
     }
 
     public function playerLeft(): BelongsTo

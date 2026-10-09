@@ -106,6 +106,23 @@
                                 </div>
                             </div>
 
+                            {{-- Free play: counts for stats, never moves ELO --}}
+                            <button type="button" role="switch" :aria-checked="lobbyFreePlay"
+                                    @click="toggleFreePlay()" :disabled="!hostToken"
+                                    class="flex items-center justify-between gap-3 rounded-xl px-4 py-3 border transition cursor-pointer disabled:cursor-default"
+                                    :class="lobbyFreePlay ? 'border-[#ffd166]/60 bg-[#ffd166]/10' : 'border-[#f5ecd6]/15 bg-[#f5ecd6]/[0.03]'">
+                                <span class="flex flex-col items-start text-left">
+                                    <span class="pph-mono text-xs font-bold tracking-[0.18em] uppercase"
+                                          :class="lobbyFreePlay ? 'text-[#ffd166]' : 'text-[#f5ecd6]/70'">Free play</span>
+                                    <span class="pph-mono text-[10px] tracking-[0.08em] text-[#f5ecd6]/45">No ELO change</span>
+                                </span>
+                                <span class="relative w-10 h-6 rounded-full transition flex-shrink-0"
+                                      :class="lobbyFreePlay ? 'bg-[#ffd166]' : 'bg-[#f5ecd6]/20'">
+                                    <span class="absolute top-1 left-1 w-4 h-4 rounded-full bg-[#06081b] transition-transform"
+                                          :class="lobbyFreePlay && 'translate-x-4'"></span>
+                                </span>
+                            </button>
+
                             {{-- Start --}}
                             <button class="appearance-none border-0 mt-0.5 bg-[#f5ecd6] text-[#06081b] px-5 py-3.5 rounded-xl pph-display text-[22px] tracking-[0.06em] uppercase cursor-pointer transition shadow-[0_8px_22px_rgba(245,236,214,0.18)] hover:enabled:-translate-y-px hover:enabled:bg-[#fffaf0] hover:enabled:shadow-[0_12px_30px_rgba(245,236,214,0.28)] disabled:opacity-[0.35] disabled:cursor-not-allowed disabled:shadow-none disabled:bg-[#f5ecd6]/40"
                                     :disabled="!lobbyReady || loading || !hostToken"
@@ -296,6 +313,8 @@
                         Live ·
                         <span x-text="mode === '2v2' ? '2v2 · First to 11' : 'First to 11'"></span>
                     </span>
+                    <span x-show="match?.free_play" x-cloak
+                          class="inline-flex items-center px-3 py-1 rounded-full bg-[#ffd166]/15 border border-[#ffd166]/40 text-[#ffd166] pph-mono text-[10px] font-bold tracking-[0.18em] uppercase">Free play</span>
                 </div>
                 <div class="flex items-baseline gap-5">
                     <span class="pph-mono font-bold text-[#f5ecd6] text-[clamp(28px,2.8vw,40px)] tracking-[0.06em] tabular-nums" x-text="clockDisplay"></span>
@@ -567,6 +586,7 @@ function pingPong() {
         // Lobby state
         lobbyCode: '',
         hostToken: '',
+        lobbyFreePlay: false,
         lobbyParticipants: [],
         lobbyJoinUrl: '',
 
@@ -631,6 +651,7 @@ function pingPong() {
                 this.lobbyCode = lobby.code;
                 this.hostToken = '';
                 this.mode = lobby.mode;
+                this.lobbyFreePlay = !!lobby.free_play;
                 this.lobbyParticipants = lobby.participants || [];
                 this.lobbyJoinUrl = `${window.location.origin}/games/ping-pong/lobby/${this.lobbyCode}`;
 
@@ -955,6 +976,7 @@ function pingPong() {
                 const data = await res.json();
                 this.lobbyCode = data.code;
                 this.hostToken = data.host_token;
+                this.lobbyFreePlay = false;
                 this.lobbyParticipants = [];
 
                 this.lobbyJoinUrl = `${window.location.origin}/games/ping-pong/lobby/${this.lobbyCode}`;
@@ -991,6 +1013,20 @@ function pingPong() {
             }
         },
 
+        async toggleFreePlay() {
+            if (!this.hostToken) return;
+            this.lobbyFreePlay = !this.lobbyFreePlay;
+            try {
+                await fetch(`${this.API}/lobbies/${this.lobbyCode}/free-play`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf },
+                    body: JSON.stringify({ free_play: this.lobbyFreePlay, host_token: this.hostToken }),
+                });
+            } catch (err) {
+                console.warn('Could not toggle free play:', err);
+            }
+        },
+
         generateLobbyQr() {
             const el = document.getElementById('lobbyQrContainer');
             if (el) {
@@ -1016,6 +1052,7 @@ function pingPong() {
             this.lobbyChannel.listen('.lobby.updated', (e) => {
                 console.log('[WS] Lobby updated:', e);
                 this.lobbyParticipants = e.lobby.participants || [];
+                this.lobbyFreePlay = !!e.lobby.free_play;
             }).listen('.lobby.match-started', (e) => {
                 console.log('[WS] Match started:', e);
                 this.loadAndStartMatch(e.matchId);
