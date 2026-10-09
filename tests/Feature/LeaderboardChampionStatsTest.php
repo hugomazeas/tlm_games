@@ -111,6 +111,30 @@ class LeaderboardChampionStatsTest extends TestCase
         $this->assertSame(0, $entries[$carla->id]['title_defenses']);
     }
 
+    public function test_days_on_top_counts_completed_weekdays_ended_as_number_one(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-07 12:00')); // Wednesday
+
+        $alice = Player::create(['name' => 'Alice']);
+        $bob = Player::create(['name' => 'Bob']);
+
+        // Mon 28 Sep: Alice takes #1 -> holds it through Mon, Tue, Wed (3 days).
+        $m1 = $this->match($alice->id, $bob->id, $alice->id, Carbon::parse('2026-09-28 10:00'));
+        $this->rating($m1, $alice->id, 30);
+        $this->rating($m1, $bob->id, -30);
+
+        // Thu 1 Oct: Bob takes #1 -> Thu, Fri, Mon, Tue (4 days); the weekend
+        // and today (not over yet) don't count.
+        $m2 = $this->match($alice->id, $bob->id, $bob->id, Carbon::parse('2026-10-01 10:00'));
+        $this->rating($m2, $bob->id, 40);
+        $this->rating($m2, $alice->id, -40);
+
+        $entries = $this->leaderboardByPlayer();
+
+        $this->assertSame(3, $entries[$alice->id]['days_on_top']);
+        $this->assertSame(4, $entries[$bob->id]['days_on_top']);
+    }
+
     public function test_a_tie_at_the_top_yields_no_champion(): void
     {
         $dave = Player::create(['name' => 'Dave']);

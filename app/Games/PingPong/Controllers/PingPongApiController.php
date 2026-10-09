@@ -212,6 +212,7 @@ class PingPongApiController extends Controller
                 'win_rate_30d' => $winRate30,
                 'champion_beats' => $championStats['beats'][$playerId] ?? 0,
                 'title_defenses' => $championStats['defenses'][$playerId] ?? 0,
+                'days_on_top' => $championStats['days'][$playerId] ?? 0,
                 'win_streak' => $winStreak,
                 'losing_streak' => $losingStreak,
                 'games_played' => $totalGames,
@@ -413,18 +414,20 @@ class PingPongApiController extends Controller
      * many times they defended the title, by replaying rating history in match
      * order. The "champion" before any match is the unique player with the
      * strictly highest reconstructed ELO at that moment (ties yield no champion).
+     * Also counts, per player, the completed weekdays they ended as #1.
      *
      * Only meaningful for singles; returns empty maps for other modes.
      *
-     * @return array{beats: array<int, int>, defenses: array<int, int>}
+     * @return array{beats: array<int, int>, defenses: array<int, int>, days: array<int, int>}
      */
     private function computeChampionStats(string $mode): array
     {
         $beats = [];
         $defenses = [];
+        $days = [];
 
         if ($mode !== '1v1') {
-            return ['beats' => $beats, 'defenses' => $defenses];
+            return ['beats' => $beats, 'defenses' => $defenses, 'days' => $days];
         }
 
         $matches = PingPongMatch::whereNotNull('ended_at')
@@ -432,10 +435,10 @@ class PingPongApiController extends Controller
             ->whereNotNull('winner_id')
             ->orderBy('ended_at')
             ->orderBy('id')
-            ->get(['id', 'player_left_id', 'player_right_id', 'winner_id']);
+            ->get(['id', 'player_left_id', 'player_right_id', 'winner_id', 'ended_at']);
 
         if ($matches->isEmpty()) {
-            return ['beats' => $beats, 'defenses' => $defenses];
+            return ['beats' => $beats, 'defenses' => $defenses, 'days' => $days];
         }
 
         // Sum every rating delta per match so we can advance ELO match-by-match.
@@ -450,7 +453,28 @@ class PingPongApiController extends Controller
         $elo = [];    // playerId => reconstructed ELO
         $played = []; // playerId => true once they have entered the pool
 
+        // Credit each weekday in [$from, $until) to whoever is #1 once it ended.
+        $creditDays = function (Carbon $from, Carbon $until) use (&$elo, &$played, &$days): void {
+            $champion = $this->reigningChampion($elo, $played);
+            if ($champion === null) {
+                return;
+            }
+            for ($day = $from->copy(); $day->lt($until); $day->addDay()) {
+                if ($day->isWeekday()) {
+                    $days[$champion] = ($days[$champion] ?? 0) + 1;
+                }
+            }
+        };
+
+        $currentDay = $matches->first()->ended_at->copy()->startOfDay();
+
         foreach ($matches as $match) {
+            $matchDay = $match->ended_at->copy()->startOfDay();
+            if ($matchDay->gt($currentDay)) {
+                $creditDays($currentDay, $matchDay);
+                $currentDay = $matchDay;
+            }
+
             $left = $match->player_left_id;
             $right = $match->player_right_id;
             $winner = $match->winner_id;
@@ -477,7 +501,10 @@ class PingPongApiController extends Controller
             }
         }
 
-        return ['beats' => $beats, 'defenses' => $defenses];
+        // Today hasn't ended yet, so it isn't counted.
+        $creditDays($currentDay, Carbon::today());
+
+        return ['beats' => $beats, 'defenses' => $defenses, 'days' => $days];
     }
 
     /**

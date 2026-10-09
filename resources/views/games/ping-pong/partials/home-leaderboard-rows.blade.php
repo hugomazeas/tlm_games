@@ -13,7 +13,7 @@
     <div class="hidden md:grid items-center gap-2.5 px-3 pt-1 pb-2 mb-1 pph-mono text-[10px] tracking-[0.24em] uppercase text-[#f5ecd6]/45 border-b border-[#f5ecd6]/15 sticky top-0 bg-[#0a0f24] z-10"
          :class="mode === '2v2'
             ? 'grid-cols-[46px_1fr_76px_72px_80px_120px_60px]'
-            : 'grid-cols-[46px_1fr_72px_66px_76px_88px_104px_56px_auto]'">
+            : 'grid-cols-[46px_1fr_72px_66px_76px_88px_64px_104px_56px_auto]'">
         <span>Rank</span>
         <span>Player</span>
         <span>ELO</span>
@@ -21,6 +21,9 @@
         <span class="text-center" title="Lifetime win rate / last 30 days">Win %</span>
         <template x-if="mode !== '2v2'">
             <span class="text-center" title="Times beaten the reigning #1 · title defenses as #1">Champion</span>
+        </template>
+        <template x-if="mode !== '2v2'">
+            <span class="text-center" title="Weekdays ended as #1 since ranking began">Days #1</span>
         </template>
         <span class="text-center">Last 10</span>
         <span class="text-center">Streak</span>
@@ -34,7 +37,7 @@
            class="relative grid grid-cols-[40px_1fr_auto_auto] items-center gap-x-2.5 gap-y-1 px-3 py-2.5 md:py-2 rounded-[10px] no-underline text-[#f5ecd6]/80 hover:bg-[#f5ecd6]/[0.05] transition
                   before:content-[''] before:absolute before:left-0.5 before:top-2.5 before:bottom-2.5 before:w-[3px] before:rounded-sm before:bg-transparent hover:before:bg-[#f5ecd6]"
            :class="{
-               'md:grid-cols-[46px_1fr_72px_66px_76px_88px_104px_56px_auto]': mode !== '2v2',
+               'md:grid-cols-[46px_1fr_72px_66px_76px_88px_64px_104px_56px_auto]': mode !== '2v2',
                'md:grid-cols-[46px_1fr_76px_72px_80px_120px_60px]': mode === '2v2',
                'pph-rank-1 before:!bg-[#ffd166]': i === 0,
                'pph-rank-2 before:!bg-[#f5ecd6]/70': i === 1,
@@ -97,6 +100,13 @@
                         <span class="pph-mono text-[9px] tracking-[0.14em] text-[#f5ecd6]/40">DEF</span>
                     </span>
                 </span>
+            </template>
+
+            {{-- Days #1: weekdays ended at the top of the ranking, 1v1 only --}}
+            <template x-if="mode !== '2v2'">
+                <span class="hidden md:block text-center pph-mono text-[13px] font-bold"
+                      :class="entry.days_on_top > 0 ? 'text-[#ffd166]' : 'text-[#f5ecd6]/25'"
+                      x-text="entry.days_on_top"></span>
             </template>
 
             {{-- Last 10 --}}
