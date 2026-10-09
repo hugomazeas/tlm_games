@@ -53,4 +53,16 @@ return [
 
     'recording_tail_seconds' => (int) env('RECORDING_TAIL_SECONDS', 20),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Match Video Upload
+    |--------------------------------------------------------------------------
+    |
+    | Every finished match video is POSTed here as multipart, field "file",
+    | named {match_id}.mp4. Empty disables the upload.
+    |
+    */
+
+    'video_upload_url' => env('VIDEO_UPLOAD_URL', 'http://192.168.1.141:8000/api/videos'),
+
 ];

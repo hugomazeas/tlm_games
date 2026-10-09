@@ -104,6 +104,8 @@ class FinalizeRecordingJob implements ShouldQueue
                 'duration' => $durationSeconds,
             ]);
 
+            UploadRecordingJob::dispatch($match->id);
+
             try {
                 $clipService = app(ClipExtractionService::class);
                 $clips = $clipService->extractFlaggedClips($recording->fresh());
