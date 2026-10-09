@@ -985,8 +985,8 @@
                     <div class="match-result" :class="m.won ? 'win' : 'loss'" x-text="m.won ? 'W' : 'L'"></div>
                     <div class="match-opponent" x-text="'vs ' + m.opponent.name"></div>
                     <div class="match-score" x-text="m.player_score + ' - ' + m.opponent_score"></div>
-                    <div class="match-free-play" x-show="m.free_play">Free play</div>
                     <div class="match-duration" x-text="m.duration_formatted || '-'"></div>
+                    <div class="match-free-play" x-show="m.free_play">Free play</div>
                     <div class="match-time" x-text="m.ended_at_human"></div>
                     <div class="match-arrow">&rsaquo;</div>
                 </a>
