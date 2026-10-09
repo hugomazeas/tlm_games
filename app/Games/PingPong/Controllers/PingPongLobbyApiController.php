@@ -49,6 +49,7 @@ class PingPongLobbyApiController extends Controller
         return response()->json([
             'code' => $lobby->code,
             'mode' => $lobby->mode,
+            'free_play' => $lobby->free_play,
             'status' => $lobby->status,
             'match_id' => $lobby->match_id,
             'participants' => $lobby->participants->map(fn ($p) => [
@@ -189,6 +190,35 @@ class PingPongLobbyApiController extends Controller
         return response()->json(['side' => $participant->fresh()->side]);
     }
 
+    /**
+     * Toggle free play: the match is played normally but never moves ELO.
+     * The host screen or anyone seated in the lobby can flip it.
+     */
+    public function setFreePlay(Request $request, string $code): JsonResponse
+    {
+        $lobby = PingPongLobby::where('code', $code)->where('status', 'waiting')->firstOrFail();
+
+        $validated = $request->validate([
+            'free_play' => 'required|boolean',
+            'host_token' => 'nullable|string',
+            'session_token' => 'nullable|string',
+        ]);
+
+        $isHost = ! empty($validated['host_token']) && $lobby->host_token === $validated['host_token'];
+        $isParticipant = ! empty($validated['session_token'])
+            && $lobby->participants()->where('session_token', $validated['session_token'])->exists();
+
+        if (! $isHost && ! $isParticipant) {
+            return response()->json(['error' => 'Only lobby members can change free play'], 403);
+        }
+
+        $lobby->update(['free_play' => $validated['free_play']]);
+
+        broadcast(new LobbyUpdated($lobby->fresh()));
+
+        return response()->json(['free_play' => $lobby->free_play]);
+    }
+
     public function leaveLobby(Request $request, string $code): JsonResponse
     {
         $lobby = PingPongLobby::where('code', $code)->firstOrFail();
@@ -248,6 +278,7 @@ class PingPongLobbyApiController extends Controller
 
         $matchData = [
             'mode' => $lobby->mode,
+            'free_play' => $lobby->free_play,
             'player_left_id' => $leftParticipants[0]->player_id,
             'player_right_id' => $rightParticipants[0]->player_id,
             'player_left_score' => 0,

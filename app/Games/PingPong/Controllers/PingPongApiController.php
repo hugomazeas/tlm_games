@@ -718,6 +718,10 @@ class PingPongApiController extends Controller
             return response()->json(['error' => 'Tournament matches do not affect ELO'], 422);
         }
 
+        if ($match->free_play) {
+            return response()->json(['error' => 'Free play matches do not affect ELO'], 422);
+        }
+
         return response()->json($this->eloService->previewMatchResult($match));
     }
 
@@ -829,7 +833,7 @@ class PingPongApiController extends Controller
 
             if ($match->isTournament()) {
                 $this->tournamentService->recordResult($match);
-            } else {
+            } elseif ($match->isRanked()) {
                 $eloChanges = $this->eloService->applyMatchResult($match);
             }
 
@@ -1258,6 +1262,7 @@ class PingPongApiController extends Controller
         $lobby = PingPongLobby::create([
             'code' => PingPongLobby::generateCode(),
             'mode' => $previousMatch->mode,
+            'free_play' => $previousMatch->free_play,
             'host_token' => \Illuminate\Support\Str::random(64),
             'status' => 'waiting',
             'expires_at' => now()->addYears(10),

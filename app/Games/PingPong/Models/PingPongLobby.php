@@ -15,6 +15,7 @@ class PingPongLobby extends Model
     protected $fillable = [
         'code',
         'mode',
+        'free_play',
         'host_token',
         'status',
         'match_id',
@@ -25,6 +26,7 @@ class PingPongLobby extends Model
     protected function casts(): array
     {
         return [
+            'free_play' => 'boolean',
             'expires_at' => 'datetime',
         ];
     }

@@ -142,8 +142,11 @@
         .create-player-section {
             padding: 16px;
             display: flex;
+            flex-wrap: wrap;
             gap: 10px;
         }
+        .create-player-section .search-input { flex: 1; width: auto; }
+        .create-player-section .free-play-btn { flex-basis: 100%; margin-bottom: 0; }
         .search-input {
             width: 100%;
             padding: 12px 14px;
@@ -340,6 +343,14 @@
         }
         .swap-btn:active { transform: scale(0.98); border-color: var(--paper-faint); color: var(--paper); }
         .swap-btn:disabled { opacity: 0.5; cursor: default; }
+
+        /* Free play toggle: reuses .swap-btn, solid amber when on */
+        .free-play-btn { margin-bottom: 10px; border-style: solid; }
+        .free-play-btn.on {
+            border-color: var(--amber);
+            background: rgba(255, 209, 102, 0.12);
+            color: var(--amber);
+        }
 
         /* ===== Waiting screen header ===== */
         .reselect-player {
@@ -553,9 +564,11 @@
             .select-layout .create-player-section {
                 padding: 0;
                 flex-direction: column;
+                flex-wrap: nowrap;
                 gap: 10px;
             }
-            .select-layout .create-player-section .search-input { padding: 10px 12px; }
+            .select-layout .create-player-section .search-input { padding: 10px 12px; flex: none; }
+            .select-layout .create-player-section .free-play-btn { flex-basis: auto; }
             .select-layout .create-player-section .create-btn { width: 100%; padding: 12px; }
             .select-layout .player-list {
                 padding: 0;
@@ -666,6 +679,11 @@
                             @click="createAndJoin()">
                         Join
                     </button>
+                    <button type="button" role="switch" class="swap-btn free-play-btn"
+                            :class="{ 'on': freePlay }" :aria-checked="freePlay"
+                            @click="toggleFreePlay()">
+                        Free play · <span x-text="freePlay ? 'On — no ELO change' : 'Off'"></span>
+                    </button>
                 </div>
 
                 <div class="player-list">
@@ -732,6 +750,11 @@
                 </div>
 
                 <div class="start-row">
+                    <button type="button" role="switch" class="swap-btn free-play-btn"
+                            :class="{ 'on': freePlay }" :aria-checked="freePlay"
+                            @click="toggleFreePlay()">
+                        Free play · <span x-text="freePlay ? 'On — no ELO change' : 'Off'"></span>
+                    </button>
                     <template x-if="mySide === 'left'">
                         <button class="start-btn"
                                 :disabled="!lobbyReady || starting"
@@ -787,6 +810,7 @@
             errorMessage: '',
             starting: false,
             swapping: false,
+            freePlay: false,
 
             echo: null,
 
@@ -824,6 +848,7 @@
                     }
 
                     this.participants = lobby.participants || [];
+                    this.freePlay = !!lobby.free_play;
 
                     // If we have a session, verify it's still valid
                     if (this.sessionToken) {
@@ -883,6 +908,7 @@
                 this.echo.channel('ping-pong.lobby.' + this.lobbyCode)
                     .listen('.lobby.updated', (e) => {
                         this.participants = e.lobby.participants || [];
+                        this.freePlay = !!e.lobby.free_play;
                         // Update my side if changed
                         if (this.myPlayerId) {
                             const me = this.participants.find(p => p.player_id === this.myPlayerId);
@@ -974,6 +1000,9 @@
                     const lobbyRes = await fetch(`${this.API}/lobbies/${this.lobbyCode}`);
                     const lobby = await lobbyRes.json();
                     this.participants = lobby.participants || [];
+                    if (this.freePlay !== !!lobby.free_play) {
+                        await this.sendFreePlay();
+                    }
 
                     this.screen = 'waiting';
                 } catch (err) {
@@ -1050,6 +1079,30 @@
                     // Silently ignore
                 }
                 this.swapping = false;
+            },
+
+            async toggleFreePlay() {
+                this.freePlay = !this.freePlay;
+                // Not seated yet (player picker): doJoin() applies the choice once we are
+                if (this.sessionToken) {
+                    await this.sendFreePlay();
+                }
+            },
+
+            async sendFreePlay() {
+                try {
+                    await fetch(`${this.API}/lobbies/${this.lobbyCode}/free-play`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': this.csrf,
+                        },
+                        body: JSON.stringify({ free_play: this.freePlay, session_token: this.sessionToken }),
+                    });
+                    // The LobbyUpdated WebSocket event syncs everyone else
+                } catch (err) {
+                    // Silently ignore
+                }
             },
 
             async startGame() {

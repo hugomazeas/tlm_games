@@ -45,11 +45,13 @@ class EloService
     /**
      * Count consecutive wins for a player (most recent first), excluding
      * the match currently being processed so the caller can add 1.
+     * Free-play matches are skipped: they never feed ELO bonuses.
      */
     public function getCurrentWinStreak(int $playerId, string $mode, ?int $excludeMatchId = null): int
     {
         $query = PingPongMatch::whereNotNull('ended_at')
             ->where('mode', $mode)
+            ->where('free_play', false)
             ->where(function ($q) use ($playerId) {
                 $q->where('player_left_id', $playerId)
                     ->orWhere('player_right_id', $playerId)
