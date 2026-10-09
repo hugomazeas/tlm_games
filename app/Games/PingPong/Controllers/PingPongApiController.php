@@ -582,6 +582,7 @@ class PingPongApiController extends Controller
                 return [
                     'id' => $match->id,
                     'mode' => $match->mode,
+                    'free_play' => $match->free_play,
                     'left_label' => $leftLabel,
                     'right_label' => $rightLabel,
                     'player_left_score' => $match->player_left_score,
@@ -1918,6 +1919,7 @@ class PingPongApiController extends Controller
                 return [
                     'id' => $match->id,
                     'mode' => $match->mode,
+                    'free_play' => $match->free_play,
                     'opponent' => $opponent,
                     'player_score' => $playerScore,
                     'opponent_score' => $opponentScore,

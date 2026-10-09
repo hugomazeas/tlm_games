@@ -222,6 +222,19 @@
         min-width: 120px;
     }
 
+    .pps .match-free-play {
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: rgba(255, 209, 102, 0.15);
+        border: 1px solid rgba(255, 209, 102, 0.4);
+        color: #ffd166;
+        white-space: nowrap;
+    }
+
     .pps .match-score {
         font-weight: 700;
         font-family: monospace;
@@ -972,6 +985,7 @@
                     <div class="match-result" :class="m.won ? 'win' : 'loss'" x-text="m.won ? 'W' : 'L'"></div>
                     <div class="match-opponent" x-text="'vs ' + m.opponent.name"></div>
                     <div class="match-score" x-text="m.player_score + ' - ' + m.opponent_score"></div>
+                    <div class="match-free-play" x-show="m.free_play">Free play</div>
                     <div class="match-duration" x-text="m.duration_formatted || '-'"></div>
                     <div class="match-time" x-text="m.ended_at_human"></div>
                     <div class="match-arrow">&rsaquo;</div>

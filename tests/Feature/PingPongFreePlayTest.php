@@ -206,6 +206,15 @@ class PingPongFreePlayTest extends TestCase
             ->assertJsonPath('highest_lose_streak', 0);
     }
 
+    public function test_match_histories_flag_free_play_games(): void
+    {
+        [$ada] = $this->rankedWinThenFreePlayLoss();
+
+        // Newest first: the free-play loss, then the ranked win.
+        $this->assertSame([true, false], collect($this->getJson('/games/ping-pong/api/matches/recent')->assertOk()->json())->pluck('free_play')->all());
+        $this->assertSame([true, false], collect($this->getJson("/games/ping-pong/api/players/{$ada->id}/matches")->assertOk()->json('matches'))->pluck('free_play')->all());
+    }
+
     public function test_a_rematch_keeps_free_play(): void
     {
         Event::fake();
