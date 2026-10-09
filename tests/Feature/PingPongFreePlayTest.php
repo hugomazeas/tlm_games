@@ -215,6 +215,15 @@ class PingPongFreePlayTest extends TestCase
         $this->assertSame([true, false], collect($this->getJson("/games/ping-pong/api/players/{$ada->id}/matches")->assertOk()->json('matches'))->pluck('free_play')->all());
     }
 
+    public function test_match_details_flag_free_play_games(): void
+    {
+        $this->rankedWinThenFreePlayLoss();
+        [$freePlay, $ranked] = [PingPongMatch::where('free_play', true)->firstOrFail(), PingPongMatch::where('free_play', false)->firstOrFail()];
+
+        $this->getJson("/games/ping-pong/api/matches/{$freePlay->id}")->assertOk()->assertJsonPath('free_play', true);
+        $this->getJson("/games/ping-pong/api/matches/{$ranked->id}")->assertOk()->assertJsonPath('free_play', false);
+    }
+
     public function test_a_rematch_keeps_free_play(): void
     {
         Event::fake();
