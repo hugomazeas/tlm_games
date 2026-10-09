@@ -76,6 +76,7 @@ class EloRankingProvider implements LeaderboardProviderInterface
 
             $last10Matches = PingPongMatch::whereNotNull('ended_at')
                 ->where('mode', '1v1')
+                ->where('free_play', false)
                 ->where(function ($q) use ($playerId) {
                     $q->where('player_left_id', $playerId)
                       ->orWhere('player_right_id', $playerId);

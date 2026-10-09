@@ -265,11 +265,13 @@ class PingPongApiController extends Controller
 
     /**
      * Get current win streak (consecutive wins from most recent match).
+     * Free-play matches are skipped: they neither extend nor break a streak.
      */
     private function getCurrentWinStreak(int $playerId, string $mode): int
     {
         $matches = PingPongMatch::whereNotNull('ended_at')
             ->where('mode', $mode)
+            ->where('free_play', false)
             ->where(function ($q) use ($playerId) {
                 $q->where('player_left_id', $playerId)
                     ->orWhere('player_right_id', $playerId)
@@ -297,11 +299,13 @@ class PingPongApiController extends Controller
 
     /**
      * Get current losing streak (consecutive losses from most recent match).
+     * Free-play matches are skipped: they neither extend nor break a streak.
      */
     private function getCurrentLosingStreak(int $playerId, string $mode): int
     {
         $matches = PingPongMatch::whereNotNull('ended_at')
             ->where('mode', $mode)
+            ->where('free_play', false)
             ->where(function ($q) use ($playerId) {
                 $q->where('player_left_id', $playerId)
                     ->orWhere('player_right_id', $playerId)
@@ -331,6 +335,7 @@ class PingPongApiController extends Controller
     {
         $matches = PingPongMatch::whereNotNull('ended_at')
             ->where('mode', $mode)
+            ->where('free_play', false)
             ->where(function ($q) use ($playerId) {
                 $q->where('player_left_id', $playerId)
                     ->orWhere('player_right_id', $playerId)
@@ -1406,9 +1411,10 @@ class PingPongApiController extends Controller
         $streak = max($winStreak, $loseStreak);
         $streakType = $winStreak >= $loseStreak ? ($winStreak > 0 ? 'W' : null) : 'L';
 
-        // Fetch recent matches for highest streak calculation
+        // Fetch recent matches for highest streak calculation (free play never counts toward streaks)
         $recentMatches = PingPongMatch::whereNotNull('ended_at')
             ->where('mode', $mode)
+            ->where('free_play', false)
             ->where(function ($q) use ($id) {
                 $q->where('player_left_id', $id)
                     ->orWhere('player_right_id', $id)

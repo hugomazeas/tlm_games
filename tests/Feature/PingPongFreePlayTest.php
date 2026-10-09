@@ -9,6 +9,7 @@ use App\Games\PingPong\Models\PingPongMatch;
 use App\Games\PingPong\Models\PingPongRating;
 use App\Games\PingPong\Models\PingPongRatingChange;
 use App\Games\PingPong\Services\EloService;
+use App\Games\PingPong\Services\Leaderboards\EloRankingProvider;
 use App\Games\PingPong\Services\VideoRecordingService;
 use App\Models\Player;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -152,6 +153,57 @@ class PingPongFreePlayTest extends TestCase
         $match->update(['winner_id' => $match->player_left_id, 'ended_at' => now()]);
 
         $this->assertSame(0, app(EloService::class)->getCurrentWinStreak($match->player_left_id, '1v1'));
+    }
+
+    /**
+     * Ada beats Bo in a ranked match, then Bo beats Ada in free play.
+     *
+     * @return array{0: Player, 1: Player}
+     */
+    private function rankedWinThenFreePlayLoss(): array
+    {
+        $ada = Player::create(['name' => 'Ada']);
+        $bo = Player::create(['name' => 'Bo']);
+
+        foreach ([[false, $ada, now()->subHours(2)], [true, $bo, now()->subHour()]] as [$freePlay, $winner, $endedAt]) {
+            PingPongMatch::create([
+                'mode' => '1v1', 'free_play' => $freePlay, 'player_left_id' => $ada->id, 'player_right_id' => $bo->id,
+                'first_server_id' => $ada->id, 'winner_id' => $winner->id, 'started_at' => $endedAt->copy()->subMinutes(10), 'ended_at' => $endedAt,
+            ]);
+        }
+
+        return [$ada, $bo];
+    }
+
+    public function test_free_play_does_not_touch_streaks_or_last_10_on_the_home_leaderboard(): void
+    {
+        [$ada, $bo] = $this->rankedWinThenFreePlayLoss();
+
+        $entries = collect($this->getJson('/games/ping-pong/api/leaderboard?mode=1v1')->assertOk()->json())->keyBy('player_id');
+
+        $this->assertSame([1, 0, ['W']], [$entries[$ada->id]['win_streak'], $entries[$ada->id]['losing_streak'], $entries[$ada->id]['last_10']]);
+        $this->assertSame([0, 1, ['L']], [$entries[$bo->id]['win_streak'], $entries[$bo->id]['losing_streak'], $entries[$bo->id]['last_10']]);
+    }
+
+    public function test_free_play_does_not_touch_last_10_on_the_game_leaderboard(): void
+    {
+        [$ada, $bo] = $this->rankedWinThenFreePlayLoss();
+
+        $entries = app(EloRankingProvider::class)->getLeaderboard()->keyBy('player_id');
+
+        $this->assertSame(['W'], $entries[$ada->id]['last_10']);
+        $this->assertSame(['L'], $entries[$bo->id]['last_10']);
+    }
+
+    public function test_free_play_does_not_touch_streaks_on_the_player_page(): void
+    {
+        [$ada] = $this->rankedWinThenFreePlayLoss();
+
+        $this->getJson("/games/ping-pong/api/players/{$ada->id}/stats?mode=1v1")
+            ->assertOk()
+            ->assertJsonPath('streak', 1)
+            ->assertJsonPath('streak_type', 'W')
+            ->assertJsonPath('highest_lose_streak', 0);
     }
 
     public function test_a_rematch_keeps_free_play(): void
