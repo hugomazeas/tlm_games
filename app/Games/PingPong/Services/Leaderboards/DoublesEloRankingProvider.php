@@ -90,6 +90,7 @@ class DoublesEloRankingProvider implements LeaderboardProviderInterface
 
             $last10Matches = PingPongMatch::whereNotNull('ended_at')
                 ->where('mode', '2v2')
+                ->where('free_play', false)
                 ->where(function ($q) use ($playerId) {
                     $q->where('player_left_id', $playerId)
                       ->orWhere('player_right_id', $playerId)

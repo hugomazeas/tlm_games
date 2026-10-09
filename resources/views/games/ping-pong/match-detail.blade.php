@@ -547,6 +547,10 @@
                class="inline-flex items-center gap-2 mb-4 px-3 py-1.5 rounded-full border border-[#ffd166]/35 bg-[#ffd166]/10 text-[#ffd166] no-underline pph-mono text-[10px] tracking-[0.18em] uppercase">
                 🏆 Tournament match · no ELO · not in official stats ›
             </a>
+            <div x-show="match.free_play"
+                 class="inline-flex items-center gap-2 mb-4 px-3 py-1.5 rounded-full border border-[#ffd166]/35 bg-[#ffd166]/10 text-[#ffd166] pph-mono text-[10px] tracking-[0.18em] uppercase">
+                Free play · no ELO change · not in streaks
+            </div>
             {{-- ====== After-game Hero ====== --}}
             <section class="relative overflow-hidden rounded-2xl border border-[#f5ecd6]/15 bg-gradient-to-b from-[#f5ecd6]/[0.04] to-[#f5ecd6]/[0.01] px-3 md:px-10 py-6 md:py-10 mb-6">
 
@@ -555,6 +559,8 @@
                     <div class="flex items-center gap-2.5">
                         <span class="pph-display text-[clamp(20px,2vw,28px)] tracking-[0.06em] uppercase text-[#f5ecd6]">Final</span>
                         <span class="pph-mono text-[10px] tracking-[0.28em] uppercase text-[#f5ecd6]/45" x-text="match.mode?.toUpperCase() + ' · First to 11'"></span>
+                        <span x-show="match.free_play"
+                              class="pph-mono text-[10px] font-bold tracking-[0.18em] uppercase px-2.5 py-1 rounded-full bg-[#ffd166]/15 border border-[#ffd166]/40 text-[#ffd166]">Free play</span>
                     </div>
                     <div class="pph-mono text-[10px] tracking-[0.18em] uppercase text-[#f5ecd6]/45">
                         <span x-show="match.duration_formatted" x-text="match.duration_formatted"></span>
