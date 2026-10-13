@@ -31,9 +31,18 @@ class SupervisorConfigTest extends TestCase
         $nginx = file_get_contents(dirname(__DIR__, 2).'/docker/nginx/default.conf');
 
         $this->assertStringContainsString('container_name: games-hub-hot-potato', $compose);
-        $this->assertStringContainsString('command: bun game-server/src/server.ts', $compose);
+        // Packages first (node_modules isn't in git; the racing bundles need three.js), then the server.
+        $this->assertStringContainsString('bun install --frozen-lockfile && cd .. && exec bun game-server/src/server.ts', $compose);
         $this->assertStringContainsString('location /games/hot-potato/live/', $nginx);
         $this->assertStringContainsString('games-hub-hot-potato:8090', $nginx);
+    }
+
+    public function test_the_racing_pages_get_their_bundles_from_the_game_server(): void
+    {
+        $nginx = file_get_contents(dirname(__DIR__, 2).'/docker/nginx/default.conf');
+
+        $this->assertStringContainsString('location /games/racing/live/', $nginx);
+        $this->assertMatchesRegularExpression('#location /games/racing/live/ \{[^}]*games-hub-hot-potato:8090#', $nginx);
     }
 
     public function test_supervisor_works_the_camera_queue_that_stops_recordings(): void

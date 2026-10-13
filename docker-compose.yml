@@ -76,7 +76,11 @@ services:
       - HOT_POTATO_HOST=0.0.0.0
       - HOT_POTATO_PORT=8090
       - HOT_POTATO_LARAVEL_URL=http://games-hub
-    command: bun game-server/src/server.ts
+      # The container's user has no home to keep Bun's download cache in.
+      - BUN_INSTALL_CACHE_DIR=/tmp/bun-cache
+    # Packages first: the racing bundles it builds at start need three.js, and
+    # node_modules isn't in git. Frozen: installs exactly what bun.lock says.
+    command: sh -c "cd game-server && bun install --frozen-lockfile && cd .. && exec bun game-server/src/server.ts"
     user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
 
 networks:

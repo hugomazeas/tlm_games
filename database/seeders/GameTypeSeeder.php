@@ -176,6 +176,20 @@ class GameTypeSeeder extends Seeder
             ]
         );
 
+        GameType::updateOrCreate(
+            ['slug' => 'racing'],
+            [
+                'name' => 'Racing',
+                'description' => 'Kart races through Québec. Pick a track or make your own.',
+                'icon' => "\xF0\x9F\x8F\x8E\xEF\xB8\x8F",
+                'color' => '#ea580c',
+                'is_active' => true,
+                'min_players' => 1,
+                'max_players' => 8,
+                'leaderboard_columns' => null,
+            ]
+        );
+
         GameMode::updateOrCreate(
             ['game_type_id' => $typing->id, 'slug' => 'average-wpm'],
             [

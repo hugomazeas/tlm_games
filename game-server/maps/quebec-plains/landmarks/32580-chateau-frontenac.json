@@ -1,0 +1,24 @@
+{
+    "$schema": "../../landmark.schema.json",
+    "id": 32580,
+    "osm": "relation",
+    "name": "Château Frontenac",
+    "notes": "Fairmont Le Château Frontenac (1893), on the cliff over the river: orange-brown brick under steep verdigris copper roofs. Its central block and towers come from OSM building parts, which keep their own heights and roofs; this sets the brick, the windows and the main roof.",
+    "wall": "#b07a5e",
+    "windows": {
+        "floor": 3.3,
+        "spacing": 2.8
+    },
+    "height": 18,
+    "roof": {
+        "shape": "mansard",
+        "height": 7,
+        "inset": 3,
+        "colour": "#6c7965"
+    },
+    "fingerprint": {
+        "lat": 46.8117852,
+        "lon": -71.2054171,
+        "area": 10484
+    }
+}

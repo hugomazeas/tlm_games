@@ -2,6 +2,7 @@ import type { ServerWebSocket } from 'bun'
 import { LaravelClient } from './laravel.ts'
 import { parseClientMessage, type ServerMessage } from './protocol.ts'
 import { BUILD_PLACEHOLDER } from './client/build.ts'
+import { buildRacingAssets, serveRacing } from './race/serve.ts'
 import { SessionManager, TICK_MS } from './sessions.ts'
 
 /**
@@ -26,6 +27,12 @@ if (!secret) console.warn('HOT_POTATO_INTERNAL_SECRET is not set; the game stays
 const laravel = new LaravelClient(laravelUrl, secret)
 
 const clientBundle = await buildClient()
+// The racing game's pages load their bundles and the map from here too (see race/serve.ts).
+// A failed build (missing packages, say) closes racing, not the whole server.
+const racingAssets = await buildRacingAssets().catch(error => {
+    console.error('Racing is unavailable, its bundles did not build:', (error as Error).message)
+    return null
+})
 
 const manager = new SessionManager({
     build: clientBundle.build,
@@ -60,6 +67,8 @@ const server = Bun.serve<SocketData>({
 
     fetch(request, server) {
         const { pathname } = new URL(request.url)
+        const racing = serveRacing(racingAssets, request)
+        if (racing) return racing
 
         if (pathname === `${PREFIX}/ws`) {
             const upgraded = server.upgrade(request, { data: { id: `ws${++nextId}`, ready: null } })

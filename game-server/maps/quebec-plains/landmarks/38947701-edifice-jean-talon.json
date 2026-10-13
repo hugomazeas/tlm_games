@@ -1,0 +1,255 @@
+{
+    "$schema": "../../landmark.schema.json",
+    "id": 38947701,
+    "osm": "way",
+    "name": "Édifice Jean-Talon",
+    "notes": "Édifice Jean-Talon (Complexe H et J, 1969–1972), brutalist. From aerial photos over Wilfrid-Laurier and over Grande Allée: beige concrete fins (~0.9 m every 1.5 m, dark slots between) on every wall, no windows; a scalloped arcade on the Wilfrid-Laurier ground floor, broken by four solid stair towers; gravel roofs with parapets the fins rise past. Façade frame on Wilfrid-Laurier, Place George-V (−along) to Avenue George-VI (+along). Massing: a 17 m wing on Grande Allée, a 22 m range on Wilfrid-Laurier, the 24 m George-V block with a plant room and a square deck, a glazed slot with red rails, the green-roofed centre block, and the George-VI block set back, stepping up 26 → 29 → 32 m.",
+    "wall": "#cfc7b6",
+    "fins": {
+        "spacing": 1.5,
+        "width": 0.9,
+        "depth": 0.7,
+        "recess": "#454b50"
+    },
+    "arcade": {
+        "height": 5,
+        "depth": 2.5,
+        "spacing": 6
+    },
+    "height": 17,
+    "roof": {
+        "shape": "flat",
+        "height": 0,
+        "colour": "#8c8e8a",
+        "parapet": 1.0
+    },
+    "facade": {
+        "from": {
+            "lat": 46.8070616,
+            "lon": -71.2134708
+        },
+        "to": {
+            "lat": 46.8078336,
+            "lon": -71.2121196
+        }
+    },
+    "parts": [
+        {
+            "along": 0,
+            "out": -15,
+            "width": 134,
+            "depth": 30,
+            "height": 22,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#8c8e8a",
+                "parapet": 1.0
+            }
+        },
+        {
+            "along": -50,
+            "out": 0.5,
+            "width": 4.5,
+            "depth": 3,
+            "height": 23,
+            "arcade": false,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#8c8e8a"
+            }
+        },
+        {
+            "along": -14,
+            "out": 0.5,
+            "width": 4.5,
+            "depth": 3,
+            "height": 23,
+            "arcade": false,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#8c8e8a"
+            }
+        },
+        {
+            "along": 24,
+            "out": 0.5,
+            "width": 4.5,
+            "depth": 3,
+            "height": 23,
+            "arcade": false,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#8c8e8a"
+            }
+        },
+        {
+            "along": 52,
+            "out": 0.5,
+            "width": 4.5,
+            "depth": 3,
+            "height": 23,
+            "arcade": false,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#8c8e8a"
+            }
+        },
+        {
+            "along": -40.5,
+            "out": -36.5,
+            "width": 53,
+            "depth": 73,
+            "height": 24,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#8c8e8a",
+                "parapet": 1.0
+            }
+        },
+        {
+            "along": -40,
+            "out": -50,
+            "width": 22,
+            "depth": 14,
+            "from": 24,
+            "height": 28,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#9b9c98",
+                "parapet": 0.6
+            },
+            "fins": false,
+            "windows": false
+        },
+        {
+            "along": -52,
+            "out": -22,
+            "width": 15,
+            "depth": 15,
+            "from": 24,
+            "height": 25,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#b1ada2",
+                "parapet": 0.4
+            },
+            "fins": false,
+            "windows": false
+        },
+        {
+            "along": -11,
+            "out": -45,
+            "width": 6,
+            "depth": 50,
+            "height": 18,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#8f5f4a"
+            },
+            "fins": false,
+            "windows": false
+        },
+        {
+            "along": 12,
+            "out": -37,
+            "width": 40,
+            "depth": 50,
+            "height": 24,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#5d8f78",
+                "parapet": 1.0
+            }
+        },
+        {
+            "along": 14,
+            "out": -55,
+            "width": 18,
+            "depth": 12,
+            "from": 24,
+            "height": 26.5,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#6b9a85",
+                "parapet": 0.4
+            },
+            "fins": false,
+            "windows": false
+        },
+        {
+            "along": 50,
+            "out": -15,
+            "width": 8,
+            "depth": 4,
+            "from": 22,
+            "height": 23.5,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#a3a39e"
+            },
+            "fins": false,
+            "windows": false
+        },
+        {
+            "along": 68,
+            "out": -59.5,
+            "width": 41,
+            "depth": 36,
+            "height": 26,
+            "arcade": false,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#8c8e8a",
+                "parapet": 1.0
+            }
+        },
+        {
+            "along": 66,
+            "out": -60,
+            "width": 30,
+            "depth": 26,
+            "from": 26,
+            "height": 29,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#7e8082",
+                "parapet": 1.0
+            }
+        },
+        {
+            "along": 60,
+            "out": -62,
+            "width": 13,
+            "depth": 13,
+            "from": 29,
+            "height": 32,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#5c5f63",
+                "parapet": 0.5
+            },
+            "fins": false,
+            "windows": false
+        }
+    ],
+    "fingerprint": {
+        "lat": 46.807924,
+        "lon": -71.2130215,
+        "area": 10351
+    }
+}

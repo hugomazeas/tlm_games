@@ -1,0 +1,11 @@
+{
+    "bounds": {
+        "south": 46.792,
+        "west": -71.253,
+        "north": 46.8175,
+        "east": -71.199
+    },
+    "cell": 16,
+    "osmFetchedAt": "2026-10-09T15:29:03.278Z",
+    "elevationFetchedAt": "2026-10-09T15:39:00.493Z"
+}

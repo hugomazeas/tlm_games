@@ -56,6 +56,15 @@ POST /games/typing/tests/{test}/submit  Submit a solo test (server scores it)
 GET  /games/typing/race             The open race, if any
 POST /games/typing/race             Join the open race, or create one
 POST /games/typing/race/{race}/leave|start|progress  Lobby actions and live progress
+GET  /games/racing                  Racing: pick a track (Play / Edit / Delete) or make one
+GET  /games/racing/tracks/create    Track editor, new track (2D map; the editor comes from the game server)
+POST /games/racing/tracks           Save a new track (JSON from the editor)
+GET  /games/racing/tracks/{track}/edit  Track editor on a track
+PUT  /games/racing/tracks/{track}   Save a track's changes
+DELETE /games/racing/tracks/{track} Delete a track
+GET  /games/racing/tracks/{track}/play  Race a track (the 3D game, full window; ?player= drives as them)
+GET  /games/racing/garage/{player}  Garage: paint a player's kart (body + accent)
+PUT  /games/racing/garage/{player}  Save a player's kart colours
 POST /push/hot-potato/subscribe     Opt a player's browser into "a hot potato opened" pushes
 POST /push/hot-potato/unsubscribe   Opt out of those pushes
 GET  /push/config                   VAPID public key + whether push is set up
@@ -136,7 +145,8 @@ that is played live, in real time, rather than scored afterwards.
   WebSocket server that runs the game itself, one in-memory session per office,
   20 ticks a second, server-authoritative.
 - **It runs as the `hot-potato` compose service** (`oven/bun` image, mounted
-  repo, `bun game-server/src/server.ts`), not inside the app image, so
+  repo, `bun install --frozen-lockfile` then `bun game-server/src/server.ts`: the
+  racing bundles need `three`), not inside the app image, so
   `deploy.sh` (pull + restart, never rebuild) ships it. nginx sends
   `/games/hot-potato/live/` to `games-hub-hot-potato:8090`; supervisord copies
   `docker/nginx/default.conf` from the repo at start for the same reason.
@@ -159,6 +169,93 @@ that is played live, in real time, rather than scored afterwards.
   older one reloads once it isn't mid-game. `client.js` is `no-cache` + ETag.
 - Tests: `cd game-server && bun test` (sim, arenas, sessions);
   `bun run typecheck`; `bun run format`. Laravel side: `tests/Feature/HotPotatoTest.php`.
+
+### Racing map (POC, `game-server/src/race/`)
+
+A kart racing game on a 3D city map of Québec (Plains of Abraham to Old Québec),
+built from OpenStreetMap and federal elevation data, drawn with Three.js.
+
+- **In the Hub:** `app/Games/Racing/` keeps tracks (`racing_tracks`: name, laps,
+  checkpoints as lat/lon JSON, lap length) and serves three pages: the track list,
+  the 2D track editor and the play page. The editor and the game are bundles from the
+  game server (`game-server/src/race/serve.ts`: `play.js`, `editor.js`, `map.json`
+  under `/games/racing/live/`, proxied by nginx to the hot-potato container like hot
+  potato's client; restart it to ship client changes). Pages hand them a config
+  (`window.racingConfig`, `window.trackEditorConfig`). `RacingTrackSeeder` adds the
+  default tracks from `game-server/maps/<map>/courses/*.json` when missing.
+  `RacingTrack::MAPS` must match `MAPS` in `map/pipeline.ts` (a test checks).
+- **Drivers:** the track list's "Driving as" picker (remembered in localStorage) adds
+  `?player=` to Play; `RacingKart::lookOf()` gives the game their name and garage
+  colours (`racing_karts`), or a guest's. The kart (`client/kart.ts`) is painted body
+  (chassis, nose) + accent (wing, suit), with a name tag sprite over it.
+- **Standalone viewer:** `bun run race:viewer` on http://localhost:8091, free roam and
+  landmark work (click, WASD, I identifies the building under the crosshair).
+
+- **Three layers, one direction.** `maps/<slug>/snapshot/` (raw OSM + elevation,
+  gzipped, committed) and `maps/<slug>/landmarks/*.json` (hand-made detail) build
+  `maps/<slug>/map.json`. **Never edit `map.json`**; `pipeline.test.ts` fails if
+  it differs from what the snapshot and landmarks build.
+- **`bun run race:map`** rebuilds offline in a second. `--refresh` downloads fresh
+  OSM into the snapshot, `--refresh-elevation` elevation too (~10 min, flaky
+  service, retries). Refreshes are deliberate: review the diff, commit snapshot
+  and map together. Area and grid live in `MAPS` (`map/pipeline.ts`).
+- **OSM says where, landmarks say how it looks.** A landmark file is keyed by OSM
+  element (`osm` + `id`: ways and relations share numbers), placed in lat/lon, and
+  only changes looks; collision stays the OSM footprint. Schema:
+  `maps/landmark.schema.json`; `parseLandmark` is authoritative and rejects unknown keys.
+- **Fingerprints catch drift.** Each landmark records the footprint it was made
+  against. After a refresh, the build refuses to write the map while a landmark
+  is orphaned (element gone: fix the id or delete the file) or stale (footprint
+  moved > 5 m or changed > 10% in area: check it in the viewer, then
+  `bun run race:map --accept`). New landmarks are unstamped until accepted.
+- **Adding detail to a building:** identify it in the viewer (I, Copy reference),
+  then, before writing any JSON, **analyse the photos and write a plan**:
+  1. Orient each photo: which street is in front, which end is which (match road
+     names to the OSM footprint in the façade's frame; print its corners as along/out).
+  2. Wall treatment, per section: windows grid, or concrete `fins` (spacing, width,
+     depth, recess colour); an `arcade` at street level; parapets; materials and colours.
+  3. Massing: every volume that reads as its own height (wings, blocks, towers,
+     plant rooms, decks, skylights), with storeys counted (~3.4 m each) and positions
+     in along/out.
+  4. Note what the format can't express yet and extend `format.ts`/`facades.ts`
+     rather than settling for a window grid everywhere.
+
+  Then write `landmarks/<id>-<name>.json` (heights are above the highest ground
+  under the footprint), `bun run race:map`, and compare in the viewer from the same
+  angles as the photos (`#lat,lon,altitude,heading,pitch`; heading 0 looks north,
+  90 west). Iterate, `--accept`, and commit the landmark file with the rebuilt map.
+  Reference photos are the user's own, kept in `maps/<slug>/reference/<id>/`.
+- **Walls** (`client/facades.ts`): `windows` paints a grid; `fins` are real ribs
+  (they run up past a flat roof's `parapet`); `arcade` sets arched openings into the
+  street-facing walls (`faces: front`, within 45° of the façade's way). Parts inherit
+  the building's look; a part's `wall`/`windows`/`fins`/`arcade` override it, `false`
+  removes one, and raised parts never get an arcade.
+- **Parts** are boxes, `shape: round` (cylinders, elliptical if width ≠ depth), or
+  terraced with `steps` (sliced into boxes falling toward one side). A landmark with
+  parts replaces OSM's `building:part`s for that building; one without keeps them.
+- **Orienting a photo:** match the road labels in it to the streets around the
+  footprint before deciding which end is which; a wrong guess mirrors the building.
+- **Driving** (`src/race/drive/`, pure like `sim/`): `world.ts` turns the map into
+  what a kart needs (ground height, a 2 m road/offroad/water raster, building and
+  wall colliders in a grid, nearest road, generated boost pads on long straights);
+  `kart.ts` steps an arcade kart at a fixed 60 Hz (slow pull to 150 km/h, offroad
+  cap, drift → mini-turbo, jumps off crests, bounce off walls). Tuning constants sit
+  at the top of `kart.ts`; `kart.test.ts` pins the feel (0–60 in 3 s, ~700 m to top
+  speed). The viewer starts driving unless the URL has a view; F switches to flying.
+- **Tracks** (`Course` in the TS code; `map/courses.ts` projects lat/lon checkpoints):
+  circuits only, gate 0 the start/finish, the grid behind it. `drive/laps.ts` counts
+  gates only in order and the right way; `drive/trial.ts` is the step-counted clock.
+  A track must pass `drive/checks.ts` (streets join every gate, nothing built across
+  one, the 8-kart grid fits): the editor won't save one that doesn't, and
+  `pipeline.test.ts` holds the default tracks to it after a map refresh. The editor
+  (`client/track-editor.ts`): click a street to add a checkpoint, click the route to
+  insert, drag to move, right-click to remove; each points to the next
+  (`drive/editing.ts`). Laravel validates shape and that checkpoints are on the map.
+- **Race HUD:** the course's route along the streets (`drive/route.ts`, Dijkstra gate to
+  gate) feeds the minimap, chevron boards and road arrows at bends, the HUD arrow, and
+  the standings (`drive/standings.ts`, shared with the future server).
+- Install packages with Bun 1.4 (the container's: `docker run oven/bun:1.4.0-alpine`);
+  an older local Bun rewrites `bun.lock` in an old format.
 
 ## Related Apps
 
