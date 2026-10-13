@@ -3,6 +3,7 @@
 namespace App\Games\Racing\Controllers;
 
 use App\Games\Racing\Models\RacingKart;
+use App\Games\Racing\Models\RacingResult;
 use App\Games\Racing\Models\RacingTrack;
 use App\Http\Controllers\Controller;
 use App\Models\Player;
@@ -37,15 +38,34 @@ class RacingTrackController extends Controller
         return view('games.racing.editor', ['track' => $track]);
     }
 
-    /** Races the track as the player picked on the track list (?player=), or as a guest. */
+    /**
+     * Races the track as the player picked on the track list (?player=), or as
+     * a guest: in the lobby given (?lobby=, from the lobby list), or in a new
+     * one the driver hosts. Lobbies live in the game server.
+     */
     public function play(Request $request, RacingTrack $track): View
     {
         $player = $request->integer('player') ? Player::find($request->integer('player')) : null;
+        $lobby = $request->string('lobby')->toString();
 
         return view('games.racing.play', [
             'track' => $track,
+            'player' => $player,
             'driver' => RacingKart::lookOf($player),
+            'lobby' => preg_match('/^[a-z0-9]{1,16}$/', $lobby) ? $lobby : null,
         ]);
+    }
+
+    /** The map with no race: fly around and identify buildings. */
+    public function roam(): View
+    {
+        return view('games.racing.play', ['track' => null, 'player' => null, 'driver' => null, 'lobby' => null]);
+    }
+
+    /** The track's record table, for the game's Records panel. */
+    public function records(RacingTrack $track): JsonResponse
+    {
+        return response()->json(RacingResult::recordsFor($track));
     }
 
     public function store(Request $request): JsonResponse

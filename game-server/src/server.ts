@@ -2,7 +2,9 @@ import type { ServerWebSocket } from 'bun'
 import { LaravelClient } from './laravel.ts'
 import { parseClientMessage, type ServerMessage } from './protocol.ts'
 import { BUILD_PLACEHOLDER } from './client/build.ts'
-import { buildRacingAssets, serveRacing } from './race/serve.ts'
+import { createRacingLive } from './race/live.ts'
+import { parseClientMessage as parseRaceMessage, type ServerMessage as RaceServerMessage } from './race/protocol.ts'
+import { buildRacingAssets, RACING_PREFIX, serveRacing } from './race/serve.ts'
 import { SessionManager, TICK_MS } from './sessions.ts'
 
 /**
@@ -49,8 +51,16 @@ const manager = new SessionManager({
 
 setInterval(() => manager.tick(), TICK_MS)
 
+// Racing lobbies share the socket server: /games/racing/live/ws, and the lobby list the Hub's racing page polls.
+const racing = await createRacingLive(laravel).catch(error => {
+    console.error('Racing lobbies are unavailable:', (error as Error).message)
+    return null
+})
+if (racing) setInterval(() => racing.manager.tick(), TICK_MS)
+
 interface SocketData {
     id: string
+    game: 'hot-potato' | 'racing'
     /**
      * Settles once `hello` has been answered: true when the connection is
      * registered. Later messages wait on it, in order, so nothing sent while
@@ -67,11 +77,19 @@ const server = Bun.serve<SocketData>({
 
     fetch(request, server) {
         const { pathname } = new URL(request.url)
-        const racing = serveRacing(racingAssets, request)
-        if (racing) return racing
+        if (pathname === `${RACING_PREFIX}/ws`) {
+            if (!racing) return new Response('Racing is unavailable', { status: 503 })
+            const upgraded = server.upgrade(request, { data: { id: `race${++nextId}`, game: 'racing', ready: null } })
+            return upgraded ? undefined : new Response('Expected a WebSocket', { status: 426 })
+        }
+        if (pathname === `${RACING_PREFIX}/lobbies`) {
+            return Response.json(racing?.manager.summaries() ?? [], { headers: { 'Cache-Control': 'no-store' } })
+        }
+        const racingAsset = serveRacing(racingAssets, request)
+        if (racingAsset) return racingAsset
 
         if (pathname === `${PREFIX}/ws`) {
-            const upgraded = server.upgrade(request, { data: { id: `ws${++nextId}`, ready: null } })
+            const upgraded = server.upgrade(request, { data: { id: `ws${++nextId}`, game: 'hot-potato', ready: null } })
             return upgraded ? undefined : new Response('Expected a WebSocket', { status: 426 })
         }
 
@@ -98,6 +116,7 @@ const server = Bun.serve<SocketData>({
         sendPings: true,
 
         async message(ws, raw) {
+            if (ws.data.game === 'racing') return raceMessage(ws, typeof raw === 'string' ? raw : raw.toString())
             const message = parseClientMessage(typeof raw === 'string' ? raw : raw.toString())
             if (!message) return send(ws, { type: 'error', code: 'BAD_MESSAGE' })
 
@@ -112,6 +131,7 @@ const server = Bun.serve<SocketData>({
         },
 
         close(ws) {
+            if (ws.data.game === 'racing') return racing?.manager.leave(ws.data.id)
             manager.disconnect(ws.data.id)
         },
     },
@@ -139,6 +159,26 @@ async function greet(ws: ServerWebSocket<SocketData>, officeId: number, playerId
 
     manager.connect({ id: ws.data.id, send: m => send(ws, m) }, officeId, player)
     return true
+}
+
+/** A racing tab's message: hello first, then start and pose, in order once hello is answered. */
+async function raceMessage(ws: ServerWebSocket<SocketData>, raw: string): Promise<void> {
+    if (!racing) return
+    const message = parseRaceMessage(raw)
+    const reply = (m: RaceServerMessage) => {
+        ws.send(JSON.stringify(m))
+    }
+    if (!message) return reply({ type: 'error', code: 'BAD_MESSAGE' })
+
+    if (message.type === 'hello') {
+        if (ws.data.ready) return reply({ type: 'error', code: 'BAD_MESSAGE' })
+        ws.data.ready = racing.hello({ id: ws.data.id, send: reply, isOpen: () => ws.readyState === 1 }, message)
+        return
+    }
+    if (!ws.data.ready) return reply({ type: 'error', code: 'HELLO_FIRST' })
+    if (!(await ws.data.ready)) return
+    if (message.type === 'start') racing.manager.start(ws.data.id)
+    else racing.manager.pose(ws.data.id, message.pose, message.samples)
 }
 
 function send(ws: ServerWebSocket<SocketData>, message: ServerMessage) {

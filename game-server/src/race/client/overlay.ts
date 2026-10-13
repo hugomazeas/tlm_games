@@ -24,6 +24,24 @@ const CSS = `
     #race-standings { top: auto; bottom: 340px; left: auto; right: 12px; min-width: 120px; font-size: 14px; }
     #race-standings .position { font: 800 34px system-ui, sans-serif; }
     #race-standings .you { color: #ffd22e; font-weight: 700; }
+    #race-lobby { top: 12px; pointer-events: auto; width: 250px; max-height: calc(100vh - 360px); overflow-y: auto; display: grid; gap: 6px; font-size: 14px; }
+    #race-lobby .title { font-weight: 700; font-size: 15px; }
+    #race-lobby .phase { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; }
+    #race-lobby .phase-waiting { color: #6ee7b7; }
+    #race-lobby .phase-countdown, #race-lobby .phase-racing { color: #fcd34d; }
+    #race-lobby .note { color: #cbd5e1; font-size: 13px; }
+    #race-lobby ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+    #race-lobby li { display: flex; align-items: center; gap: 6px; }
+    #race-lobby .dot { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 1px #fff; flex: none; }
+    #race-lobby .tag { font-size: 11px; color: #94a3b8; }
+    #race-lobby .you { color: #ffd22e; font-weight: 700; }
+    #race-lobby button { font: inherit; padding: 5px 10px; border-radius: 6px; border: 0; cursor: pointer; background: rgb(255 255 255 / 0.12); color: #f8fafc; text-align: left; }
+    #race-lobby button:hover { background: rgb(255 255 255 / 0.2); }
+    #race-lobby button.primary { background: #ea580c; font-weight: 700; text-align: center; }
+    #race-lobby button.primary:hover { background: #f97316; }
+    #race-lobby .results, #race-lobby .records { display: grid; gap: 2px; font-variant-numeric: tabular-nums; }
+    #race-lobby .results > div, #race-lobby .records > div:not(.note):not(.lap) { display: grid; grid-template-columns: 24px 1fr auto; gap: 6px; }
+    #race-lobby .lap { margin-top: 4px; color: #fcd34d; font-size: 13px; }
     #race-arrow { position: fixed; top: 56px; left: 50%; width: 56px; height: 56px; margin-left: -28px; pointer-events: none; filter: drop-shadow(0 2px 4px rgb(15 23 42 / 0.7)); }
 `
 
@@ -32,6 +50,7 @@ const HTML = `
     <div id="race-hud" class="panel"></div>
     <div id="race-identify" class="panel" hidden></div>
     <div id="race-panel" class="panel"></div>
+    <div id="race-lobby" class="panel" hidden></div>
     <a id="race-back" hidden>← Tracks</a>
     <div id="race-banner"></div>
     <canvas id="race-minimap" width="300" height="300"></canvas>
@@ -49,6 +68,8 @@ export interface Overlay {
     hud: HTMLElement
     identify: HTMLElement
     panel: HTMLElement
+    lobby: HTMLElement
+    crosshair: HTMLElement
     back: HTMLAnchorElement
     banner: HTMLElement
     minimap: HTMLCanvasElement
@@ -76,6 +97,8 @@ export function createOverlay(parent: HTMLElement = document.body): Overlay {
         hud: find('hud'),
         identify: find('identify'),
         panel: find('panel'),
+        lobby: find('lobby'),
+        crosshair: find('crosshair'),
         back: find<HTMLAnchorElement>('back'),
         banner: find('banner'),
         minimap: find<HTMLCanvasElement>('minimap'),

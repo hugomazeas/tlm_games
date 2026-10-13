@@ -4,20 +4,42 @@
 
 @section('content')
     {{-- Who's driving is remembered in this browser; Play takes them along (?player=), the garage paints their kart. --}}
+    {{-- Lobbies live in the game server; the list asks it every couple of seconds. --}}
     <div x-data="{
             playerId: localStorage.getItem('racing_player') ?? '',
+            lobbies: [],
+            lobbiesLoaded: false,
+            phases: { waiting: 'Getting ready', countdown: 'Starting', racing: 'Racing', finished: 'Finished' },
             pick() { localStorage.setItem('racing_player', this.playerId) },
             play(url) { return this.playerId ? url + '?player=' + this.playerId : url },
-         }">
+            join(lobby) {
+                const url = '{{ url('/games/racing/tracks') }}/' + lobby.trackId + '/play?lobby=' + lobby.id
+                return this.playerId ? url + '&player=' + this.playerId : url
+            },
+            async refresh() {
+                try {
+                    const response = await fetch('{{ url('/games/racing/live/lobbies') }}', { cache: 'no-store' })
+                    if (response.ok) this.lobbies = await response.json()
+                } catch {}
+                this.lobbiesLoaded = true
+            },
+         }"
+         x-init="refresh(); setInterval(() => refresh(), 2000)">
     <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
             <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight mb-1">🏎️ Racing</h1>
-            <p class="text-white/50 text-sm">Kart races through Québec, from the Plains of Abraham to Old Québec. Pick a track, or make your own.</p>
+            <p class="text-white/50 text-sm">Kart races through Québec, from the Plains of Abraham to Old Québec. Join a lobby, or press Play on a track to open one.</p>
         </div>
-        <a href="{{ url('/games/racing/tracks/create') }}"
-           class="bg-orange-600 hover:bg-orange-500 px-4 py-2 rounded-lg font-semibold text-sm transition">
-            + New track
-        </a>
+        <div class="flex gap-2">
+            <a href="{{ url('/games/racing/roam') }}"
+               class="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg text-sm transition">
+                🛩️ Free roam
+            </a>
+            <a href="{{ url('/games/racing/tracks/create') }}"
+               class="bg-orange-600 hover:bg-orange-500 px-4 py-2 rounded-lg font-semibold text-sm transition">
+                + New track
+            </a>
+        </div>
     </div>
 
     <div class="mb-6 flex flex-wrap items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3">
@@ -36,6 +58,36 @@
         <span x-show="!playerId" class="text-sm text-white/50">Pick yourself to race under your name, in your colours.</span>
     </div>
 
+    <section class="mb-8">
+        <h2 class="text-lg font-bold mb-3">Lobbies</h2>
+        <div x-show="lobbies.length > 0" x-cloak class="bg-white/5 border border-white/10 rounded-xl divide-y divide-white/10">
+            <template x-for="lobby in lobbies" :key="lobby.id">
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+                    <div class="flex-1 min-w-40">
+                        <div class="font-semibold" x-text="lobby.trackName"></div>
+                        <div class="text-white/50 text-sm" x-text="'Hosted by ' + lobby.host"></div>
+                    </div>
+                    <div class="text-sm text-white/70 tabular-nums" x-text="lobby.players + ' / ' + lobby.max + ' players'"></div>
+                    <span class="text-xs font-semibold px-2 py-1 rounded-full"
+                          :class="{
+                              'bg-emerald-500/20 text-emerald-300': lobby.phase === 'waiting',
+                              'bg-amber-500/20 text-amber-300': lobby.phase === 'countdown' || lobby.phase === 'racing',
+                              'bg-white/10 text-white/60': lobby.phase === 'finished',
+                          }"
+                          x-text="phases[lobby.phase] ?? lobby.phase"></span>
+                    <a x-show="lobby.players < lobby.max" :href="join(lobby)"
+                       class="bg-orange-600 hover:bg-orange-500 px-4 py-2 rounded-lg font-semibold text-sm transition"
+                       x-text="lobby.phase === 'racing' || lobby.phase === 'countdown' ? 'Watch' : 'Join'"></a>
+                    <span x-show="lobby.players >= lobby.max" class="text-sm text-white/40 px-4 py-2">Full</span>
+                </div>
+            </template>
+        </div>
+        <p x-show="lobbiesLoaded && lobbies.length === 0" x-cloak class="text-white/50 text-sm">
+            No lobby open. Press Play on a track to open one; others can join from here.
+        </p>
+    </section>
+
+    <h2 class="text-lg font-bold mb-3">Tracks</h2>
     @if($tracks->isEmpty())
         <div class="bg-white/5 border border-white/10 rounded-xl p-8 text-center text-white/60">
             No tracks yet. <a href="{{ url('/games/racing/tracks/create') }}" class="text-orange-300 hover:text-orange-200">Make the first one →</a>

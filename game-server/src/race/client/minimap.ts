@@ -29,6 +29,8 @@ export interface MinimapKart {
     z: number
     heading: number
     isYou: boolean
+    /** Another driver's body colour. */
+    colour?: string
 }
 
 export interface Minimap {
@@ -100,7 +102,7 @@ export function createMinimap(map: RaceMap, canvas: HTMLCanvasElement): Minimap 
                 context.translate(kart.x, kart.z)
                 context.rotate(-kart.heading)
                 context.scale(1 / scale, 1 / scale)
-                context.fillStyle = kart.isYou ? COLOURS.you : COLOURS.other
+                context.fillStyle = kart.isYou ? COLOURS.you : (kart.colour ?? COLOURS.other)
                 context.strokeStyle = '#ffffff'
                 context.lineWidth = 1.5
                 context.beginPath()

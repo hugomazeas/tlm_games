@@ -21,6 +21,8 @@ const PAD_LIFT = 0.14
 
 export interface Driver {
     kart: KartState
+    /** The steering as eased in from the keys, −1 (right) to 1 (left). */
+    readonly steer: number
     /** Steps the physics to catch up with `dt` seconds and poses the model and camera. */
     update(dt: number): void
     /** Puts the kart on the nearest road to x, z, facing about `heading`. */
@@ -43,7 +45,8 @@ export function createDriver(
     camera: THREE.PerspectiveCamera,
     look: KartLook = DEFAULT_LOOK
 ): Driver {
-    const model = buildKartModel(look)
+    // No name tag over your own kart: you know who you are, and it hides the road ahead.
+    const model = buildKartModel(look, false)
     scene.add(model.root)
     scene.add(buildPads(world))
 
@@ -84,6 +87,10 @@ export function createDriver(
     const driver: Driver = {
         get kart() {
             return current
+        },
+
+        get steer() {
+            return steer
         },
 
         update(dt) {
@@ -167,7 +174,7 @@ export function createDriver(
 }
 
 /** The ground's normal at a point, from its slope a metre either way. */
-function groundNormal(world: DriveWorld, x: number, z: number): THREE.Vector3 {
+export function groundNormal(world: DriveWorld, x: number, z: number): THREE.Vector3 {
     const dx = world.ground(x + 1, z) - world.ground(x - 1, z)
     const dz = world.ground(x, z + 1) - world.ground(x, z - 1)
 
