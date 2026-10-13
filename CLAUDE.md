@@ -188,15 +188,18 @@ built from OpenStreetMap and federal elevation data, drawn with Three.js.
   `RacingTrack::MAPS` must match `MAPS` in `map/pipeline.ts` (a test checks).
 - **Lobbies** (`race/lobbies.ts`, pure; `race/live.ts` wires it to the socket at
   `/games/racing/live/ws` and the list at `/games/racing/live/lobbies`, which the track
-  list polls). Play opens a lobby on the track, the lobby list joins one; up to 8, the
-  host starts, late joiners watch (camera on the leader) and race the next one. Each tab
+  list polls). Play joins the lobby already on that track (one getting ready first, else
+  one racing, to watch) or opens one; up to 8, the host starts, late joiners watch
+  (camera on the leader) and race the next one. The host's Close lobby, or Close on the
+  Hub's list (`POST /games/racing/live/lobbies/{id}/close`, open to anyone like deleting
+  a track), ends a lobby for everyone. A dropped socket reconnects to the same lobby. Each tab
   drives its own kart and sends poses at 20 Hz plus every physics step while racing
   (`client/lobby.ts`); the server re-runs `drive/laps.ts` over those steps on the tab's
   step clock, refusing clocks ahead of real time and jumps that gain ground (only R
   back to the last checkpoint passes). Race over when all are in, or 30 s after the
   winner (DNF). Results go to `/internal/racing/*` (`RacingInternalController`, same
   `HOT_POTATO_INTERNAL_SECRET`: racing lobbies need it set too) → `racing_results`.
-  No kart-to-kart collisions, no reconnect: closing the tab leaves the lobby.
+  No kart-to-kart collisions; a reconnect mid-race comes back as a watcher.
 - **Keys:** racing is drive-only (W/S, A/D, Space/Shift drift, R back on track); flying
   and I (identify) are free roam's (`/games/racing/roam`). The standalone viewer keeps both (F).
 - **Drivers:** the track list's "Driving as" picker (remembered in localStorage) adds

@@ -39,6 +39,8 @@ const CSS = `
     #race-lobby button:hover { background: rgb(255 255 255 / 0.2); }
     #race-lobby button.primary { background: #ea580c; font-weight: 700; text-align: center; }
     #race-lobby button.primary:hover { background: #f97316; }
+    #race-lobby button.danger { color: #fca5a5; }
+    #race-lobby a { color: #fdba74; }
     #race-lobby .results, #race-lobby .records { display: grid; gap: 2px; font-variant-numeric: tabular-nums; }
     #race-lobby .results > div, #race-lobby .records > div:not(.note):not(.lap) { display: grid; grid-template-columns: 24px 1fr auto; gap: 6px; }
     #race-lobby .lap { margin-top: 4px; color: #fcd34d; font-size: 13px; }
