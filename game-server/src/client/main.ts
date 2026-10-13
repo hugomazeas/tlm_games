@@ -1,5 +1,5 @@
 import type { Emote, PlayerInfo, Results, ServerMessage, SessionView } from '../protocol.ts'
-import { EMOTES, GAME_MODES, MIN_PLAYERS } from '../protocol.ts'
+import { EMOTES, GAME_MODES, MAX_PLAYERS, MIN_PLAYERS } from '../protocol.ts'
 import type { GameMode } from '../sim/game.ts'
 import type { ItemKind } from '../sim/items.ts'
 import { THEMES, THEME_IDS, type ThemeId } from '../sim/themes.ts'
@@ -161,6 +161,9 @@ function hotPotatoApp(config: Config) {
         get canStart() {
             return this.isHost && this.phase === 'lobby' && this.presentCount >= MIN_PLAYERS
         },
+        get canAddBot() {
+            return this.isHost && this.phase === 'lobby' && (this.session?.players.length ?? 0) < MAX_PLAYERS
+        },
         /** The mode of the game on screen, or the one the host has picked. */
         get gameMode(): GameMode {
             return this.session?.settings.mode ?? this.mode
@@ -233,6 +236,12 @@ function hotPotatoApp(config: Config) {
         },
         close() {
             this.send({ type: 'close' })
+        },
+        addBot() {
+            if (this.canAddBot) this.send({ type: 'addBot' })
+        },
+        removeBot(playerId: number) {
+            if (this.isHost) this.send({ type: 'removeBot', playerId })
         },
         emote(emote: Emote) {
             if (this.canEmote) this.send({ type: 'emote', emote })

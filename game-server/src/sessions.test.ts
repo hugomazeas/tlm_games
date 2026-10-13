@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
-import { parseClientMessage, type PlayerInfo, type ServerMessage } from './protocol.ts'
+import type { TrainedPolicy } from './ai/policy.ts'
+import { MAX_PLAYERS, parseClientMessage, type PlayerInfo, type ServerMessage } from './protocol.ts'
 import {
     COUNTDOWN_MS,
     EMOTE_COOLDOWN_MS,
@@ -11,6 +12,8 @@ import {
 } from './sessions.ts'
 import { EFFECTS, FIRST_ITEM_MS } from './sim/items.ts'
 import { createRng } from './sim/rng.ts'
+
+const policy = (await Bun.file(new URL('./ai/trained-policy.json', import.meta.url)).json()) as TrainedPolicy
 
 const OFFICE = 1
 const OTHER_OFFICE = 2
@@ -487,6 +490,143 @@ describe('end-of-game emotes', () => {
         })
         expect(parseClientMessage(JSON.stringify({ type: 'emote', emote: '<script>' }))).toBeNull()
         expect(parseClientMessage(JSON.stringify({ type: 'emote' }))).toBeNull()
+    })
+})
+
+describe('AI players', () => {
+    beforeEach(() => {
+        manager = new SessionManager({
+            build: 'build-1',
+            now: () => now,
+            rng: createRng(42),
+            nextSeed: () => 1234,
+            onOpened: (officeId, hostPlayerId) => opened.push({ officeId, hostPlayerId }),
+            onResults: result => results.push(result),
+            botPolicy: policy,
+        })
+    })
+
+    /** Alice hosts alone, with `count` AIs. */
+    function soloWith(count: number) {
+        const a = connect(alice)
+        send(a, { type: 'open' })
+        for (let i = 0; i < count; i++) send(a, { type: 'addBot' })
+
+        return a
+    }
+
+    test('the host seats AIs; they show in the lobby with negative ids', () => {
+        const a = soloWith(2)
+
+        expect(last(a, 'office')?.session?.players).toEqual([
+            { ...alice, away: false },
+            { id: -1, name: 'AI 1', avatarUrl: null, bot: true, away: false },
+            { id: -2, name: 'AI 2', avatarUrl: null, bot: true, away: false },
+        ])
+        expect(errors(a)).toEqual([])
+    })
+
+    test('the host takes an AI out; the next one gets the free name', () => {
+        const a = soloWith(2)
+        send(a, { type: 'removeBot', playerId: -1 })
+        send(a, { type: 'addBot' })
+
+        expect(last(a, 'office')?.session?.players.map(p => [p.id, p.name])).toEqual([
+            [1, 'Alice'],
+            [-2, 'AI 2'],
+            [-3, 'AI 1'],
+        ])
+    })
+
+    test('only the host, only in the lobby, never a person', () => {
+        const { a, b } = lobbyOfThree()
+        send(b, { type: 'addBot' })
+        send(a, { type: 'addBot' })
+        send(b, { type: 'removeBot', playerId: -1 })
+        send(a, { type: 'removeBot', playerId: -9 })
+        expect(errors(b)).toEqual(['NOT_HOST', 'NOT_HOST'])
+        expect(errors(a)).toEqual(['BAD_MESSAGE'])
+
+        send(a, { type: 'start', durationMin: 1, theme: 'random' })
+        send(a, { type: 'addBot' })
+        expect(errors(a)).toEqual(['BAD_MESSAGE', 'NOT_IN_LOBBY'])
+        expect(parseClientMessage({ type: 'removeBot', playerId: 2 })).toBeNull()
+    })
+
+    test('AIs count toward the lobby limit', () => {
+        const a = soloWith(MAX_PLAYERS - 1)
+        send(a, { type: 'addBot' })
+
+        expect(errors(a)).toEqual(['LOBBY_FULL'])
+        expect(last(a, 'office')?.session?.players).toHaveLength(MAX_PLAYERS)
+    })
+
+    test('a server without a policy refuses AIs', () => {
+        manager = new SessionManager({
+            build: 'build-1',
+            now: () => now,
+            rng: createRng(42),
+            nextSeed: () => 1234,
+            onOpened: () => {},
+            onResults: () => {},
+        })
+        const a = soloWith(1)
+
+        expect(errors(a)).toEqual(['NO_BOTS'])
+    })
+
+    test('one person and two AIs is enough to play, and the AIs move on their own', () => {
+        const a = soloWith(2)
+        send(a, { type: 'start', durationMin: 1, theme: 'open_space' })
+        expect(errors(a)).toEqual([])
+        expect(last(a, 'countdown')?.playerIds).toEqual([1, -1, -2])
+
+        advance(COUNTDOWN_MS + TICK_MS)
+        const start = last(a, 'snapshot')?.players.filter(p => p.id < 0)
+        advance(2000)
+        const later = last(a, 'snapshot')?.players.filter(p => p.id < 0)
+
+        expect(start).toHaveLength(2)
+        for (const bot of later ?? []) {
+            const before = start?.find(p => p.id === bot.id)
+            expect(Math.hypot(bot.x - (before?.x ?? 0), bot.y - (before?.y ?? 0))).toBeGreaterThan(1)
+        }
+    })
+
+    test('results reach the Hub without the AIs, positions counting them', () => {
+        const a = soloWith(3)
+        send(a, { type: 'start', durationMin: 1, theme: 'random' })
+        advance(COUNTDOWN_MS + 60_000 + TICK_MS)
+
+        expect(
+            last(a, 'results')
+                ?.results.stats.map(s => s.id)
+                .sort((x, y) => x - y)
+        ).toEqual([-3, -2, -1, 1])
+        expect(results).toHaveLength(1)
+        expect(results[0]?.players.map(p => p.playerId)).toEqual([1])
+        const alicePosition = results[0]?.players[0]?.position ?? 0
+        expect(alicePosition).toBeGreaterThanOrEqual(1)
+        expect(alicePosition).toBeLessThanOrEqual(4)
+    })
+
+    test('when the last person leaves, the AIs do not keep the game open', () => {
+        const a = soloWith(2)
+        const watcher = connect(null)
+        send(a, { type: 'leave' })
+
+        expect(last(watcher, 'office')?.session).toBeNull()
+    })
+
+    test('the host leaving hands hosting to a person, never an AI', () => {
+        const a = connect(alice)
+        const b = connect(bob)
+        send(a, { type: 'open' })
+        send(a, { type: 'addBot' })
+        send(b, { type: 'join' })
+        send(a, { type: 'leave' })
+
+        expect(last(b, 'office')?.session?.hostId).toBe(2)
     })
 })
 

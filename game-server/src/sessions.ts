@@ -24,6 +24,8 @@ import {
 } from './sim/game.ts'
 import { createRng, pickOne, type Rng } from './sim/rng.ts'
 import { THEME_IDS, type ThemeId } from './sim/themes.ts'
+import { TrainedPilot } from './ai/pilot.ts'
+import type { TrainedPolicy } from './ai/policy.ts'
 
 export const TICK_MS = 50
 /** Three seconds to announce the mode and arena, then three to count down. */
@@ -70,6 +72,8 @@ export interface SessionHooks {
     nextSeed(): number
     onOpened(officeId: number, hostPlayerId: number): void
     onResults(result: GameResult): void
+    /** The policy AI seats play with; without one, `addBot` is refused. */
+    botPolicy?: TrainedPolicy | null
 }
 
 interface Member {
@@ -93,6 +97,10 @@ interface Session {
     lastTickAt: number
     /** When each player last sent an emote, for the cooldown. */
     emotedAt: Map<number, number>
+    /** The id the next AI seat gets: -1, -2, … */
+    nextBotId: number
+    /** One per AI seat of the current game. */
+    pilots: Map<number, TrainedPilot>
 }
 
 interface Client {
@@ -180,6 +188,8 @@ export class SessionManager {
                     inputs: new Map(),
                     lastTickAt: this.hooks.now(),
                     emotedAt: new Map(),
+                    nextBotId: -1,
+                    pilots: new Map(),
                 }
                 this.sessions.set(client.officeId, created)
                 this.broadcastOffice(created)
@@ -247,6 +257,32 @@ export class SessionManager {
                 this.closeSession(session)
                 return
             }
+
+            case 'addBot': {
+                if (!session) return fail('NO_SESSION')
+                if (session.hostId !== player.id) return fail('NOT_HOST')
+                if (session.phase !== 'lobby') return fail('NOT_IN_LOBBY')
+                if (!this.hooks.botPolicy) return fail('NO_BOTS')
+                if (session.members.length >= MAX_PLAYERS) return fail('LOBBY_FULL')
+                const id = session.nextBotId--
+                session.members.push({
+                    player: { id, name: botName(session), avatarUrl: null, bot: true },
+                    connId: null,
+                    awayUntil: null,
+                })
+                this.broadcastOffice(session)
+                return
+            }
+
+            case 'removeBot': {
+                if (!session) return fail('NO_SESSION')
+                if (session.hostId !== player.id) return fail('NOT_HOST')
+                if (session.phase !== 'lobby') return fail('NOT_IN_LOBBY')
+                if (!session.members.some(m => m.player.bot && m.player.id === message.playerId))
+                    return fail('BAD_MESSAGE')
+                this.removeMember(session, message.playerId)
+                return
+            }
         }
     }
 
@@ -268,7 +304,10 @@ export class SessionManager {
             } else if (session.phase === 'playing' && session.game) {
                 const dt = Math.min(MAX_STEP_MS, now - session.lastTickAt)
                 session.lastTickAt = now
-                if (dt > 0) this.applyEvents(session, step(session.game, session.inputs, dt, this.hooks.rng))
+                if (dt > 0) {
+                    this.steerBots(session, session.game)
+                    this.applyEvents(session, step(session.game, session.inputs, dt, this.hooks.rng))
+                }
                 if (session.phase === 'playing') this.broadcastSnapshot(session)
             } else if (session.phase === 'results' && now >= session.phaseEndsAt) {
                 session.phase = 'lobby'
@@ -295,6 +334,15 @@ export class SessionManager {
         )
         session.gameMeta = { seed, theme, startedAt: this.hooks.now() }
         session.inputs.clear()
+        session.pilots.clear()
+        const policy = this.hooks.botPolicy
+        if (policy) {
+            for (const member of session.members) {
+                if (member.player.bot && playerIds.includes(member.player.id)) {
+                    session.pilots.set(member.player.id, new TrainedPilot(policy, session.game, member.player.id))
+                }
+            }
+        }
         session.phase = 'countdown'
         session.phaseEndsAt = this.hooks.now() + COUNTDOWN_MS
 
@@ -309,6 +357,13 @@ export class SessionManager {
             playerIds: session.game?.players.map(p => p.id) ?? [],
             durationMs: session.game?.durationMs ?? 0,
             startsInMs: Math.max(0, session.phaseEndsAt - this.hooks.now()),
+        }
+    }
+
+    /** Every AI seat still in the game picks its steering for this tick, before the simulation steps. */
+    private steerBots(session: Session, game: GameState) {
+        for (const [id, pilot] of session.pilots) {
+            if (game.players.some(p => p.id === id && !p.out)) session.inputs.set(id, pilot.steer(game))
         }
     }
 
@@ -356,6 +411,9 @@ export class SessionManager {
         this.broadcast(session.officeId, { type: 'results', results })
         this.broadcastOffice(session)
 
+        // AI seats never reach the Hub: their places stay in the humans' positions, their rows don't.
+        const humans = players.filter(p => p.playerId > 0)
+        if (humans.length === 0) return
         this.hooks.onResults({
             mode: game.mode,
             officeId: session.officeId,
@@ -364,7 +422,7 @@ export class SessionManager {
             durationSeconds: Math.round(game.durationMs / 1000),
             startedAt: new Date(meta.startedAt).toISOString(),
             endedAt: new Date(this.hooks.now()).toISOString(),
-            players,
+            players: humans,
         })
     }
 
@@ -375,7 +433,8 @@ export class SessionManager {
             this.applyEvents(session, removePlayer(session.game, playerId, this.hooks.rng))
         }
 
-        const first = session.members[0]
+        // AIs can't host: once the last person leaves, the game closes.
+        const first = session.members.find(m => !m.player.bot)
         if (!first) {
             this.closeSession(session)
             return
@@ -480,6 +539,14 @@ function rankByReign(game: GameState): GameResult['players'] {
         holdMs: p.holdMs,
         passes: p.passes,
     }))
+}
+
+/** "AI 1", "AI 2", …: the lowest number no AI in the lobby has. */
+function botName(session: Session): string {
+    const taken = new Set(session.members.filter(m => m.player.bot).map(m => m.player.name))
+    let n = 1
+    while (taken.has(`AI ${n}`)) n++
+    return `AI ${n}`
 }
 
 function round(value: number): number {

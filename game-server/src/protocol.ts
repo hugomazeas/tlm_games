@@ -9,6 +9,8 @@ export interface PlayerInfo {
     name: string
     /** Root-relative profile photo, null for initials. */
     avatarUrl: string | null
+    /** An AI seat added by the host: negative id, never a Hub player, never in results. */
+    bot?: boolean
 }
 
 export type Phase = 'lobby' | 'countdown' | 'playing' | 'results'
@@ -74,6 +76,9 @@ export type ClientMessage =
     | { type: 'input'; dx: number; dy: number }
     | { type: 'close' }
     | { type: 'emote'; emote: Emote }
+    /** Host, lobby only: seat one more AI, or take one out (`playerId` is the AI's negative id). */
+    | { type: 'addBot' }
+    | { type: 'removeBot'; playerId: number }
 
 /** End-of-game reactions: tap one on the results screen and it pops over your avatar. */
 export const EMOTES = ['😂', '🔥', '👏', '😭', '🤬', '🥔', '💀', '🫡'] as const
@@ -91,6 +96,7 @@ export type ErrorCode =
     | 'LOBBY_FULL'
     | 'NOT_IN_LOBBY'
     | 'UNAVAILABLE'
+    | 'NO_BOTS'
 
 export type ServerMessage =
     /** `build` identifies the browser bundle this server serves; a tab running another one reloads. */
@@ -114,6 +120,7 @@ export type ServerMessage =
     | { type: 'results'; results: Results }
     | { type: 'error'; code: ErrorCode }
 
+/** Players in a game, AIs included: one player and two AIs is a solo game. */
 export const MIN_PLAYERS = 3
 export const MAX_PLAYERS = 12
 export const DURATIONS_MIN = [1, 2, 3, 4, 5] as const
@@ -142,7 +149,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
         case 'join':
         case 'leave':
         case 'close':
+        case 'addBot':
             return { type: message.type }
+        case 'removeBot':
+            if (typeof message.playerId !== 'number' || !Number.isInteger(message.playerId) || message.playerId >= 0)
+                return null
+            return { type: 'removeBot', playerId: message.playerId }
         case 'start':
             if (!(DURATIONS_MIN as readonly unknown[]).includes(message.durationMin)) return null
             if (message.theme !== 'random' && !isThemeId(message.theme)) return null

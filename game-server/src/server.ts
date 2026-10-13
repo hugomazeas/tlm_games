@@ -1,4 +1,5 @@
 import type { ServerWebSocket } from 'bun'
+import { checkPolicy, type TrainedPolicy } from './ai/policy.ts'
 import { LaravelClient } from './laravel.ts'
 import { parseClientMessage, type ServerMessage } from './protocol.ts'
 import { BUILD_PLACEHOLDER } from './client/build.ts'
@@ -29,6 +30,8 @@ if (!secret) console.warn('HOT_POTATO_INTERNAL_SECRET is not set; the game stays
 const laravel = new LaravelClient(laravelUrl, secret)
 
 const clientBundle = await buildClient()
+// The AI seats' policy. A missing or mismatched file only turns AIs off.
+const botPolicy = await loadBotPolicy()
 // The racing game's pages load their bundles and the map from here too (see race/serve.ts).
 // A failed build (missing packages, say) closes racing, not the whole server.
 const racingAssets = await buildRacingAssets().catch(error => {
@@ -47,6 +50,7 @@ const manager = new SessionManager({
     onResults: result => {
         laravel.postResults(result).catch(error => console.error('Results not saved:', error.message))
     },
+    botPolicy,
 })
 
 setInterval(() => manager.tick(), TICK_MS)
@@ -211,4 +215,15 @@ async function buildClient(): Promise<{ code: string; etag: string; build: strin
     const code = built.replaceAll(BUILD_PLACEHOLDER, build)
 
     return { code, etag: `"${build}"`, build }
+}
+
+async function loadBotPolicy(): Promise<TrainedPolicy | null> {
+    try {
+        const policy = (await Bun.file(new URL('./ai/trained-policy.json', import.meta.url)).json()) as TrainedPolicy
+        checkPolicy(policy)
+        return policy
+    } catch (error) {
+        console.error('AI players are unavailable, the policy did not load:', (error as Error).message)
+        return null
+    }
 }

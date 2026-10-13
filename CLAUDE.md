@@ -169,6 +169,15 @@ that is played live, in real time, rather than scored afterwards.
 - **Open tabs pick up a deploy on their own.** The bundle is stamped with a
   build id (`client/build.ts`); `welcome` carries the server's, and a tab on an
   older one reloads once it isn't mid-game. `client.js` is `no-cache` + ETag.
+- **AI players.** The host adds them in the lobby (`addBot` / `removeBot`, negative
+  ids, up to the 12 seats; they count toward the 3-player minimum, so one person
+  and two AIs is a solo game). They are never hosts and never reach Laravel:
+  results keep only people. Each AI seat is a `TrainedPilot` (`game-server/src/ai/`)
+  running a neural policy trained by self-play on this simulation
+  (`ai/trained-policy.json`, loaded at start-up; missing or mismatched → AIs off,
+  `NO_BOTS`). The policy only knows the rules it trained on: changing the sim
+  (items, physics, arenas) or the observation means retraining. How to train and
+  ship a new policy: `game-server/src/ai/README.md`.
 - Tests: `cd game-server && bun test` (sim, arenas, sessions);
   `bun run typecheck`; `bun run format`. Laravel side: `tests/Feature/HotPotatoTest.php`.
 

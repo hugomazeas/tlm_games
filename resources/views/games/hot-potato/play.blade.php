@@ -115,6 +115,10 @@
                                             class="bg-white/10 hover:bg-white/20 rounded-lg px-4 py-2 text-sm transition">Leave</button>
                                 </template>
                                 <template x-if="isHost">
+                                    <button @click="addBot()" :disabled="!canAddBot" data-add-bot
+                                            class="bg-white/10 hover:bg-white/20 disabled:text-white/30 rounded-lg px-4 py-2 text-sm transition">🤖 Add AI</button>
+                                </template>
+                                <template x-if="isHost">
                                     <button @click="close()"
                                             class="bg-white/10 hover:bg-red-500/40 rounded-lg px-4 py-2 text-sm transition">Close game</button>
                                 </template>
@@ -132,9 +136,14 @@
                                     <template x-if="!player.avatarUrl">
                                         <span class="w-2.5 h-2.5 rounded-full" :style="'background:' + colourFor(player.id)"></span>
                                     </template>
+                                    <span x-show="player.bot" title="AI">🤖</span>
                                     <span x-text="player.name"></span>
                                     <span x-show="player.id === session.hostId" title="Host">👑</span>
                                     <span x-show="player.away" class="text-xs">(away)</span>
+                                    <template x-if="player.bot && isHost">
+                                        <button @click="removeBot(player.id)" title="Remove this AI" data-remove-bot
+                                                class="-mr-1 text-white/40 hover:text-white transition">✕</button>
+                                    </template>
                                 </span>
                             </template>
                         </div>
@@ -185,7 +194,7 @@
                                             class="bg-emerald-500 hover:bg-emerald-400 disabled:bg-white/10 disabled:text-white/30 text-white font-bold rounded-lg px-6 py-2 transition">
                                         Start
                                     </button>
-                                    <p x-show="!canStart" class="text-xs text-white/40 mt-1">Needs at least 3 players.</p>
+                                    <p x-show="!canStart" class="text-xs text-white/40 mt-1">Needs at least 3 players. Alone? Add 2 AIs or more.</p>
                                 </div>
                             </div>
                         </template>

@@ -77,9 +77,10 @@ export const STRINGS = {
         SESSION_EXISTS: 'Someone already opened a game here.',
         NO_SESSION: 'That game is over.',
         NOT_HOST: 'Only the host can do that.',
-        NOT_ENOUGH_PLAYERS: 'You need at least 3 players.',
+        NOT_ENOUGH_PLAYERS: 'You need at least 3 players — add AIs to play solo.',
         LOBBY_FULL: 'This game is full (12 players).',
         NOT_IN_LOBBY: 'Wait for the current game to finish.',
         UNAVAILABLE: 'The game server can’t reach the Hub right now.',
+        NO_BOTS: 'AI players aren’t available on this server.',
     } satisfies Record<ErrorCode, string>,
 }
