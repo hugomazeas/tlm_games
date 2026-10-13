@@ -1,0 +1,92 @@
+{
+    "$schema": "../../course.schema.json",
+    "name": "Tour de la Citadelle",
+    "notes": "Grande Allée past the Parliament, Avenue George-VI, round the Citadelle's glacis on Avenue Cap-aux-Diamants, back along Place George-V. About 2.1 km a lap.",
+    "laps": 3,
+    "gates": [
+        {
+            "lat": 46.8076378,
+            "lon": -71.2142563,
+            "heading": -49,
+            "width": 17
+        },
+        {
+            "lat": 46.8085383,
+            "lon": -71.2127356,
+            "heading": -51,
+            "width": 17
+        },
+        {
+            "lat": 46.8078062,
+            "lon": -71.2114474,
+            "heading": -157,
+            "width": 10
+        },
+        {
+            "lat": 46.8066685,
+            "lon": -71.2105723,
+            "heading": -138,
+            "width": 10
+        },
+        {
+            "lat": 46.8053911,
+            "lon": -71.2105113,
+            "heading": 163,
+            "width": 10
+        },
+        {
+            "lat": 46.8041014,
+            "lon": -71.2112026,
+            "heading": 153,
+            "width": 10
+        },
+        {
+            "lat": 46.8034242,
+            "lon": -71.2106732,
+            "heading": -48,
+            "width": 10
+        },
+        {
+            "lat": 46.8046275,
+            "lon": -71.2097469,
+            "heading": -34,
+            "width": 10
+        },
+        {
+            "lat": 46.805191,
+            "lon": -71.2081437,
+            "heading": 5,
+            "width": 10
+        },
+        {
+            "lat": 46.8060869,
+            "lon": -71.2095301,
+            "heading": 45,
+            "width": 10
+        },
+        {
+            "lat": 46.8069944,
+            "lon": -71.2110344,
+            "heading": 36,
+            "width": 11
+        },
+        {
+            "lat": 46.8071644,
+            "lon": -71.2123059,
+            "heading": 42,
+            "width": 9
+        },
+        {
+            "lat": 46.8067603,
+            "lon": -71.2137914,
+            "heading": 130,
+            "width": 13
+        },
+        {
+            "lat": 46.8068098,
+            "lon": -71.2151888,
+            "heading": 39,
+            "width": 10
+        }
+    ]
+}

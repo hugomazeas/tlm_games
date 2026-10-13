@@ -57,7 +57,15 @@ export function projector(bounds: Bounds): {
     project: (point: LatLon) => [number, number]
     unproject: (point: [number, number]) => LatLon
 } {
-    const origin = { lat: (bounds.south + bounds.north) / 2, lon: (bounds.west + bounds.east) / 2 }
+    return projectionAt({ lat: (bounds.south + bounds.north) / 2, lon: (bounds.west + bounds.east) / 2 })
+}
+
+/** The same projection, from the point at x = 0, z = 0: what a map's `origin` gives the browser. */
+export function projectionAt(origin: LatLon): {
+    origin: LatLon
+    project: (point: LatLon) => [number, number]
+    unproject: (point: [number, number]) => LatLon
+} {
     const metresPerDegreeLon = METRES_PER_DEGREE_LAT * Math.cos((origin.lat * Math.PI) / 180)
 
     return {

@@ -9,6 +9,7 @@ import {
     heightAt,
     type LatLon,
     type OsmElement,
+    projectionAt,
     projector,
     ringArea,
     riverPolygon,
@@ -56,6 +57,14 @@ describe('projector', () => {
         const [x] = project({ lat: origin.lat, lon: origin.lon + 0.01 })
         expect(-z).toBeCloseTo(1113.2, 0)
         expect(x).toBeCloseTo(1113.2 * Math.cos((origin.lat * Math.PI) / 180), 0)
+    })
+    test("projectionAt from a map's origin matches the build's projection, both ways", () => {
+        const fromOrigin = projectionAt(origin)
+        const point = { lat: origin.lat + 0.004, lon: origin.lon - 0.007 }
+        expect(fromOrigin.project(point)).toEqual(project(point))
+        const back = fromOrigin.unproject(project(point))
+        expect(back.lat).toBeCloseTo(point.lat, 9)
+        expect(back.lon).toBeCloseTo(point.lon, 9)
     })
 })
 

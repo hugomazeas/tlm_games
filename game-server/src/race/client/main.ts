@@ -1,7 +1,15 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { gridSlot } from '../drive/laps.ts'
+import { buildWorld } from '../drive/world.ts'
 import { heightAt } from '../map/convert.ts'
-import type { AreaKind, Building, RaceMap } from '../map/format.ts'
+import { type GateSpec, projectCourse } from '../map/courses.ts'
+import type { AreaKind, Building, Course, RaceMap } from '../map/format.ts'
+import { createDriver } from './drive.ts'
+import type { KartLook } from './kart.ts'
+import { createMinimap } from './minimap.ts'
+import { createOverlay } from './overlay.ts'
+import { createRace } from './race.ts'
 import { buildFurniture } from './furniture.ts'
 import { identifyByRanges, setupIdentify } from './identify.ts'
 import { buildWalls } from './walls.ts'
@@ -9,10 +17,25 @@ import { buildLandmarks } from './landmarks.ts'
 import { ASPHALT, buildStreets } from './streets.ts'
 
 /**
- * Proof of concept: draws a racing map and lets you fly around it. Click to
- * capture the mouse, WASD to move, Space / C to rise and sink, Shift to go
- * faster, the wheel to change speed.
+ * Draws a racing map and lets you drive a kart round it (drive.ts), or fly:
+ * F switches. Flying, click to capture the mouse, WASD to move, Space / C to
+ * rise and sink, Shift to go faster, the wheel to change speed.
+ *
+ * Two pages load it. The Hub's play page sets `window.racingConfig` with the
+ * map's URL and the track to race (race.ts), and you start on its grid. The
+ * standalone viewer (poc-server.ts) sets nothing: free roam, and a link with
+ * a view in it (#lat,lon,…) opens flying there, for landmark work.
  */
+
+/** What the Hub's play page tells the game. */
+interface RacingConfig {
+    mapUrl: string
+    track: { id: number; name: string; laps: number; gates: GateSpec[] } | null
+    /** Where "← Tracks" goes. */
+    backUrl?: string
+    /** Who's driving, in their garage colours; a guest when nobody is picked. */
+    driver?: KartLook
+}
 
 const SKY = 0xbfd9ee
 const GROUND = '#d9d4c7'
@@ -31,16 +54,28 @@ const EYE_HEIGHT = 2
 const BASE_SPEED = 40
 const LANDMARK = { name: 'Hôtel du Parlement', lat: 46.80868, lon: -71.2142 }
 
-const hud = document.getElementById('hud')!
-const status = document.getElementById('status')!
+const KMH = 3.6
+const HELP = {
+    drive: 'W/S gas · brake · A/D steer · Space or Shift drift (let go for a boost) · R reset · F fly · I identify building',
+    fly: 'Click to look around · WASD move · Space / C up / down · Shift faster · wheel speed · F drive · I identify building · Esc release mouse',
+}
 
-const map = (await (await fetch('./map.json')).json()) as RaceMap
+const config = (window as { racingConfig?: RacingConfig }).racingConfig ?? null
+const overlay = createOverlay()
+const { hud, status, help } = overlay
+if (config?.backUrl) {
+    overlay.back.href = config.backUrl
+    overlay.back.hidden = false
+}
+
+const map = (await (await fetch(config?.mapUrl ?? './map.json')).json()) as RaceMap
 const ground = (x: number, z: number) => heightAt(map.terrain, map.width, map.depth, x, z)
 
 const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 renderer.setSize(window.innerWidth, window.innerHeight)
-document.body.appendChild(renderer.domElement)
+renderer.domElement.classList.add('race-view')
+overlay.root.prepend(renderer.domElement)
 
 const scene = new THREE.Scene()
 scene.background = new THREE.Color(SKY)
@@ -63,21 +98,73 @@ scene.add(buildFurniture(map, ground))
 scene.add(buildWalls(map.walls, ground))
 
 const controls = flyControls(camera, renderer.domElement)
-setupIdentify(camera, [buildings, landmarks], document.getElementById('identify')!, renderer.domElement)
+const world = buildWorld(map)
+const driver = createDriver(world, scene, camera, config?.driver)
+let mode: 'drive' | 'fly' = 'fly'
+const course: Course | null = config?.track
+    ? projectCourse(`track-${config.track.id}`, config.track, ({ lat, lon }) => {
+          const { x, z } = toLocal(lat, lon)
+          return [x, z]
+      })
+    : null
+const race = createRace({
+    world,
+    scene,
+    driver,
+    course,
+    here: () => {
+        if (mode === 'drive') return driver.kart
+        const angles = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ')
+        return { x: camera.position.x, z: camera.position.z, heading: angles.y }
+    },
+    startDriving: () => {
+        if (mode === 'fly') flyToDrive()
+    },
+    roads: map.roads,
+    minimap: createMinimap(map, overlay.minimap),
+    panel: overlay.panel,
+    banner: overlay.banner,
+    standingsPanel: overlay.standings,
+    arrow: overlay.arrow,
+    speedometer: overlay.speedometer,
+})
+setupIdentify(camera, [buildings, landmarks], overlay.identify, renderer.domElement)
 
-// Start where the URL says, else over the city looking at the Parliament.
-if (!applyViewFromHash()) {
-    const target = toLocal(LANDMARK.lat, LANDMARK.lon)
-    camera.position.set(target.x - 1500, ground(target.x - 1500, target.z + 900) + 140, target.z + 900)
-    camera.lookAt(target.x, ground(target.x, target.z) + 30, target.z)
-    controls.syncFromCamera()
+// On a track, start on its grid. Otherwise fly to the view in the URL, or drive in front of the Parliament.
+if (config || !applyViewFromHash()) {
+    if (course) {
+        const slot = gridSlot(course, 0)
+        driver.place(slot.x, slot.z, slot.heading)
+    } else {
+        const target = toLocal(LANDMARK.lat, LANDMARK.lon)
+        driver.placeAt(target.x - 120, target.z, Math.PI / 2)
+    }
+    setMode('drive')
+} else {
+    setMode('fly')
 }
+document.addEventListener('keydown', event => {
+    if (event.code !== 'KeyF' || event.repeat) return
+    if (mode === 'fly') {
+        flyToDrive()
+    } else {
+        controls.syncFromCamera()
+        setMode('fly')
+    }
+})
 // Read the hash from the event: by the time it runs, the timer below may already have rewritten the URL.
-window.addEventListener('hashchange', event => applyViewFromHash(new URL(event.newURL).hash))
+window.addEventListener('hashchange', event => {
+    if (!config && applyViewFromHash(new URL(event.newURL).hash)) setMode('fly')
+})
 
 // Keep the view in the URL, so a refresh (or a link) lands on the same spot. Latitude/longitude,
-// not map metres: a link stays good when the map's area changes.
+// not map metres: a link stays good when the map's area changes. Only in the viewer: a track page has its own URL.
 setInterval(() => {
+    if (config) return
+    if (mode === 'drive') {
+        if (location.hash) history.replaceState(null, '', location.pathname + location.search)
+        return
+    }
     const p = camera.position
     const angles = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ')
     const { lat, lon } = toLatLon(p.x, p.z)
@@ -97,17 +184,44 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight)
 })
 
-status.textContent = `${map.buildings.length} buildings · ${map.roads.length} roads · click to fly`
+status.textContent = `${map.buildings.length} buildings · ${map.roads.length} roads`
 
 const clock = new THREE.Clock()
 renderer.setAnimationLoop(() => {
-    controls.update(Math.min(clock.getDelta(), 0.1), ground)
-    const p = camera.position
-    hud.textContent =
-        `x ${p.x.toFixed(0)}  z ${p.z.toFixed(0)}  ` +
-        `alt ${(p.y - ground(p.x, p.z)).toFixed(0)} m  speed ${controls.speed.toFixed(0)} m/s`
+    const dt = Math.min(clock.getDelta(), 0.1)
+    if (mode === 'drive') {
+        driver.update(dt)
+        const kart = driver.kart
+        const speed = Math.hypot(kart.vx, kart.vz) * KMH
+        hud.textContent =
+            `${speed.toFixed(0).padStart(3)} km/h  ${kart.surface}` +
+            (kart.drift !== 0 ? `  drift ${kart.charge.toFixed(1)} s` : '') +
+            (kart.boost > 0 ? '  BOOST' : '') +
+            (kart.airborne && kart.y - ground(kart.x, kart.z) > 0.5 ? '  airborne' : '')
+    } else {
+        controls.update(dt, ground)
+        const p = camera.position
+        hud.textContent =
+            `x ${p.x.toFixed(0)}  z ${p.z.toFixed(0)}  ` +
+            `alt ${(p.y - ground(p.x, p.z)).toFixed(0)} m  speed ${controls.speed.toFixed(0)} m/s`
+    }
+    race.update(mode === 'drive')
     renderer.render(scene, camera)
 })
+
+/** Lands on the road under where you're looking from, heading the way the camera faces. */
+function flyToDrive(): void {
+    const angles = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ')
+    driver.placeAt(camera.position.x, camera.position.z, angles.y)
+    setMode('drive')
+}
+
+function setMode(next: 'drive' | 'fly'): void {
+    mode = next
+    driver.setActive(next === 'drive')
+    controls.setActive(next === 'fly')
+    help.textContent = HELP[next]
+}
 
 /** Moves the camera to the view in the URL (#lat,lon,altitude,heading,pitch, in degrees). False when there is none. */
 function applyViewFromHash(hash = location.hash): boolean {
@@ -279,14 +393,20 @@ function flyControls(camera: THREE.PerspectiveCamera, element: HTMLElement) {
     const right = new THREE.Vector3()
     let speed = BASE_SPEED
 
-    element.addEventListener('click', () => element.requestPointerLock())
+    let active = true
+
+    element.addEventListener('click', () => {
+        if (active) element.requestPointerLock()
+    })
     document.addEventListener('mousemove', event => {
         if (document.pointerLockElement !== element) return
         euler.y -= event.movementX * 0.0022
         euler.x = THREE.MathUtils.clamp(euler.x - event.movementY * 0.0022, -1.5, 1.5)
         camera.quaternion.setFromEuler(euler)
     })
-    document.addEventListener('keydown', event => keys.add(event.code))
+    document.addEventListener('keydown', event => {
+        if (active) keys.add(event.code)
+    })
     document.addEventListener('keyup', event => keys.delete(event.code))
     window.addEventListener('blur', () => keys.clear())
     element.addEventListener('wheel', event => {
@@ -296,6 +416,12 @@ function flyControls(camera: THREE.PerspectiveCamera, element: HTMLElement) {
     return {
         get speed() {
             return speed * (keys.has('ShiftLeft') || keys.has('ShiftRight') ? 4 : 1)
+        },
+
+        setActive(isActive: boolean) {
+            active = isActive
+            keys.clear()
+            if (!isActive && document.pointerLockElement === element) document.exitPointerLock()
         },
 
         syncFromCamera() {

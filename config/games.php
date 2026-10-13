@@ -19,6 +19,7 @@ return [
         App\Games\Putter\Providers\PutterServiceProvider::class,
         App\Games\HotPotato\Providers\HotPotatoServiceProvider::class,
         App\Games\Typing\Providers\TypingServiceProvider::class,
+        App\Games\Racing\Providers\RacingServiceProvider::class,
     ],
 
     /*

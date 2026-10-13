@@ -1,4 +1,5 @@
 import { readdir } from 'node:fs/promises'
+import { type CourseSpec, parseCourse } from './courses.ts'
 import { type Bounds, convertMap, type ElevationGrid, type LatLon, type OsmElement, projector } from './convert.ts'
 import type { RaceMap } from './format.ts'
 import {
@@ -15,6 +16,7 @@ import {
  *
  *   maps/<slug>/snapshot/    raw OSM and elevation, gzipped, committed; only `--refresh` rewrites it
  *   maps/<slug>/landmarks/   hand-made detail, one JSON file per landmark
+ *   maps/<slug>/courses/     default race tracks the Hub seeds its database with (not part of map.json)
  *   maps/<slug>/map.json     what the game loads, always generated from the two above
  *
  * The same snapshot and landmarks always build the same map.json byte for
@@ -64,8 +66,9 @@ export interface Snapshot {
 const MAPS_DIR = `${import.meta.dir}/../../../maps`
 const SNAPSHOT_PARTS = ['osm', 'nodes', 'shore', 'elevation'] as const
 
-/** The JSON schema landmark files point their editors at. */
+/** The JSON schemas landmark and course files point their editors at. */
 export const LANDMARK_SCHEMA = `${MAPS_DIR}/landmark.schema.json`
+export const COURSE_SCHEMA = `${MAPS_DIR}/course.schema.json`
 
 export function mapDir(slug: string): string {
     return `${MAPS_DIR}/${slug}`
@@ -135,6 +138,26 @@ export async function readLandmarks(slug: string): Promise<LandmarkFile[]> {
         const key = landmarkKey(landmark.osm, landmark.id)
         if (seen.has(key)) throw new Error(`${path}: ${key} already has a landmark file`)
         seen.add(key)
+    }
+
+    return files
+}
+
+export interface CourseFile {
+    path: string
+    slug: string
+    spec: CourseSpec
+}
+
+/** A map's default tracks, checked; throws on the first invalid one, naming its problems. */
+export async function readCourses(slug: string): Promise<CourseFile[]> {
+    const dir = `${mapDir(slug)}/courses`
+    const names = (await readdir(dir).catch(() => [] as string[])).filter(name => name.endsWith('.json')).sort()
+
+    const files: CourseFile[] = []
+    for (const name of names) {
+        const path = `${dir}/${name}`
+        files.push({ path, slug: name.slice(0, -5), spec: parseCourse(await Bun.file(path).json(), `courses/${name}`) })
     }
 
     return files

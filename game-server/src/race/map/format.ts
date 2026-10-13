@@ -32,6 +32,28 @@ export interface RaceMap {
     props: Props
 }
 
+/**
+ * A race track (a course): gates to pass in order, `laps` times round.
+ * Gate 0 is the start and finish line. Tracks live in the Hub's database and
+ * reach the game in latitude/longitude (see courses.ts), never in map.json.
+ */
+export interface Course {
+    /** The course file's name without .json. */
+    slug: string
+    name: string
+    laps: number
+    gates: Gate[]
+}
+
+/** A line across the road centred at x, z, `width` wide, crossed going along (dx, dz). */
+export interface Gate {
+    x: number
+    z: number
+    dx: number
+    dz: number
+    width: number
+}
+
 export interface Wall {
     name?: string
     points: number[]

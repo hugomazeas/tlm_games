@@ -56,6 +56,15 @@ POST /games/typing/tests/{test}/submit  Submit a solo test (server scores it)
 GET  /games/typing/race             The open race, if any
 POST /games/typing/race             Join the open race, or create one
 POST /games/typing/race/{race}/leave|start|progress  Lobby actions and live progress
+GET  /games/racing                  Racing: pick a track (Play / Edit / Delete) or make one
+GET  /games/racing/tracks/create    Track editor, new track (2D map; the editor comes from the game server)
+POST /games/racing/tracks           Save a new track (JSON from the editor)
+GET  /games/racing/tracks/{track}/edit  Track editor on a track
+PUT  /games/racing/tracks/{track}   Save a track's changes
+DELETE /games/racing/tracks/{track} Delete a track
+GET  /games/racing/tracks/{track}/play  Race a track (the 3D game, full window; ?player= drives as them)
+GET  /games/racing/garage/{player}  Garage: paint a player's kart (body + accent)
+PUT  /games/racing/garage/{player}  Save a player's kart colours
 POST /push/hot-potato/subscribe     Opt a player's browser into "a hot potato opened" pushes
 POST /push/hot-potato/unsubscribe   Opt out of those pushes
 GET  /push/config                   VAPID public key + whether push is set up
@@ -136,7 +145,8 @@ that is played live, in real time, rather than scored afterwards.
   WebSocket server that runs the game itself, one in-memory session per office,
   20 ticks a second, server-authoritative.
 - **It runs as the `hot-potato` compose service** (`oven/bun` image, mounted
-  repo, `bun game-server/src/server.ts`), not inside the app image, so
+  repo, `bun install --frozen-lockfile` then `bun game-server/src/server.ts`: the
+  racing bundles need `three`), not inside the app image, so
   `deploy.sh` (pull + restart, never rebuild) ships it. nginx sends
   `/games/hot-potato/live/` to `games-hub-hot-potato:8090`; supervisord copies
   `docker/nginx/default.conf` from the repo at start for the same reason.
@@ -162,10 +172,24 @@ that is played live, in real time, rather than scored afterwards.
 
 ### Racing map (POC, `game-server/src/race/`)
 
-A 3D city map of Québec (Plains of Abraham to Old Québec) for a future racing
-game, built from OpenStreetMap and federal elevation data, viewed in Three.js.
-Not wired into the Hub yet: `bun run race:viewer` serves a standalone viewer on
-http://localhost:8091 (click, WASD, I identifies the building under the crosshair).
+A kart racing game on a 3D city map of Québec (Plains of Abraham to Old Québec),
+built from OpenStreetMap and federal elevation data, drawn with Three.js.
+
+- **In the Hub:** `app/Games/Racing/` keeps tracks (`racing_tracks`: name, laps,
+  checkpoints as lat/lon JSON, lap length) and serves three pages: the track list,
+  the 2D track editor and the play page. The editor and the game are bundles from the
+  game server (`game-server/src/race/serve.ts`: `play.js`, `editor.js`, `map.json`
+  under `/games/racing/live/`, proxied by nginx to the hot-potato container like hot
+  potato's client; restart it to ship client changes). Pages hand them a config
+  (`window.racingConfig`, `window.trackEditorConfig`). `RacingTrackSeeder` adds the
+  default tracks from `game-server/maps/<map>/courses/*.json` when missing.
+  `RacingTrack::MAPS` must match `MAPS` in `map/pipeline.ts` (a test checks).
+- **Drivers:** the track list's "Driving as" picker (remembered in localStorage) adds
+  `?player=` to Play; `RacingKart::lookOf()` gives the game their name and garage
+  colours (`racing_karts`), or a guest's. The kart (`client/kart.ts`) is painted body
+  (chassis, nose) + accent (wing, suit), with a name tag sprite over it.
+- **Standalone viewer:** `bun run race:viewer` on http://localhost:8091, free roam and
+  landmark work (click, WASD, I identifies the building under the crosshair).
 
 - **Three layers, one direction.** `maps/<slug>/snapshot/` (raw OSM + elevation,
   gzipped, committed) and `maps/<slug>/landmarks/*.json` (hand-made detail) build
@@ -211,6 +235,25 @@ http://localhost:8091 (click, WASD, I identifies the building under the crosshai
   parts replaces OSM's `building:part`s for that building; one without keeps them.
 - **Orienting a photo:** match the road labels in it to the streets around the
   footprint before deciding which end is which; a wrong guess mirrors the building.
+- **Driving** (`src/race/drive/`, pure like `sim/`): `world.ts` turns the map into
+  what a kart needs (ground height, a 2 m road/offroad/water raster, building and
+  wall colliders in a grid, nearest road, generated boost pads on long straights);
+  `kart.ts` steps an arcade kart at a fixed 60 Hz (slow pull to 150 km/h, offroad
+  cap, drift → mini-turbo, jumps off crests, bounce off walls). Tuning constants sit
+  at the top of `kart.ts`; `kart.test.ts` pins the feel (0–60 in 3 s, ~700 m to top
+  speed). The viewer starts driving unless the URL has a view; F switches to flying.
+- **Tracks** (`Course` in the TS code; `map/courses.ts` projects lat/lon checkpoints):
+  circuits only, gate 0 the start/finish, the grid behind it. `drive/laps.ts` counts
+  gates only in order and the right way; `drive/trial.ts` is the step-counted clock.
+  A track must pass `drive/checks.ts` (streets join every gate, nothing built across
+  one, the 8-kart grid fits): the editor won't save one that doesn't, and
+  `pipeline.test.ts` holds the default tracks to it after a map refresh. The editor
+  (`client/track-editor.ts`): click a street to add a checkpoint, click the route to
+  insert, drag to move, right-click to remove; each points to the next
+  (`drive/editing.ts`). Laravel validates shape and that checkpoints are on the map.
+- **Race HUD:** the course's route along the streets (`drive/route.ts`, Dijkstra gate to
+  gate) feeds the minimap, chevron boards and road arrows at bends, the HUD arrow, and
+  the standings (`drive/standings.ts`, shared with the future server).
 - Install packages with Bun 1.4 (the container's: `docker run oven/bun:1.4.0-alpine`);
   an older local Bun rewrites `bun.lock` in an old format.
 

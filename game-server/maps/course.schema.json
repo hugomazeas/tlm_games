@@ -1,0 +1,39 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Race course",
+    "description": "Gates to pass in order, laps times round. Gate 0 is the start and finish line; the grid lines up behind it. Lay one with the viewer's course editor (E, then G), then `bun run race:map`.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["name", "laps", "gates"],
+    "properties": {
+        "$schema": { "type": "string" },
+        "name": { "type": "string", "minLength": 1 },
+        "notes": { "type": "string" },
+        "laps": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "gates": {
+            "type": "array",
+            "minItems": 3,
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["lat", "lon", "heading", "width"],
+                "properties": {
+                    "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+                    "lon": { "type": "number", "minimum": -180, "maximum": 180 },
+                    "heading": {
+                        "type": "number",
+                        "minimum": -360,
+                        "maximum": 360,
+                        "description": "The way through the gate, in degrees: 0 north, 90 west (as in the viewer's URL)."
+                    },
+                    "width": {
+                        "type": "number",
+                        "minimum": 3,
+                        "maximum": 60,
+                        "description": "Metres across the road; a kart must pass within it."
+                    }
+                }
+            }
+        }
+    }
+}
