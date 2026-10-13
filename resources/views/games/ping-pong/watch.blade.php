@@ -68,8 +68,8 @@
 
             {{-- Score-only mode --}}
             <template x-if="!hasVideo">
-                <div class="flex flex-col items-center gap-6">
-                    <div class="flex items-center gap-8">
+                <div class="flex flex-col items-center gap-6 px-4">
+                    <div class="flex items-center gap-4 md:gap-8">
                         <div class="text-center">
                             <div class="flex justify-center gap-1.5 mb-2">
                                 <x-player-avatar-js name="match?.player_left?.name" url="match?.player_left?.avatar_url" size="lg" />
@@ -77,15 +77,15 @@
                                     <x-player-avatar-js name="match.team_left_player2.name" url="match.team_left_player2.avatar_url" size="lg" />
                                 </template>
                             </div>
-                            <div class="text-[#ff5a4a] text-[1.6rem] font-bold pph-glow-red" x-text="match?.player_left?.name || 'Left'"></div>
+                            <div class="text-[#ff5a4a] text-lg md:text-[1.6rem] font-bold pph-glow-red" x-text="match?.player_left?.name || 'Left'"></div>
                             <template x-if="match?.mode === '2v2' && match?.team_left_player2">
                                 <div class="text-[#ff5a4a]/70 text-base font-medium" x-text="match.team_left_player2.name"></div>
                             </template>
                         </div>
                         <div class="flex items-center gap-3 pph-mono tabular-nums">
-                            <span class="text-white text-[5rem] font-extrabold" x-text="match?.player_left_score ?? 0"></span>
-                            <span class="text-white/20 text-5xl">·</span>
-                            <span class="text-white text-[5rem] font-extrabold" x-text="match?.player_right_score ?? 0"></span>
+                            <span class="text-white text-[3rem] md:text-[5rem] font-extrabold" x-text="match?.player_left_score ?? 0"></span>
+                            <span class="text-white/20 text-3xl md:text-5xl">·</span>
+                            <span class="text-white text-[3rem] md:text-[5rem] font-extrabold" x-text="match?.player_right_score ?? 0"></span>
                         </div>
                         <div class="text-center">
                             <div class="flex justify-center gap-1.5 mb-2">
@@ -94,22 +94,22 @@
                                     <x-player-avatar-js name="match.team_right_player2.name" url="match.team_right_player2.avatar_url" size="lg" />
                                 </template>
                             </div>
-                            <div class="text-[#3ec8ff] text-[1.6rem] font-bold pph-glow-blue" x-text="match?.player_right?.name || 'Right'"></div>
+                            <div class="text-[#3ec8ff] text-lg md:text-[1.6rem] font-bold pph-glow-blue" x-text="match?.player_right?.name || 'Right'"></div>
                             <template x-if="match?.mode === '2v2' && match?.team_right_player2">
                                 <div class="text-[#3ec8ff]/70 text-base font-medium" x-text="match.team_right_player2.name"></div>
                             </template>
                         </div>
                     </div>
                     <div class="pph-mono text-[11px] tracking-[0.3em] uppercase text-[#f5ecd6]/30" x-text="match?.mode?.toUpperCase()"></div>
-                    <div x-show="eloOpen" class="flex gap-6 items-start">
-                        <div class="w-[320px]">@include('games.ping-pong.partials.elo-preview', ['side' => 'left'])</div>
-                        <div class="w-[320px]">@include('games.ping-pong.partials.elo-preview', ['side' => 'right'])</div>
+                    <div x-show="eloOpen" class="flex flex-col md:flex-row gap-3 md:gap-6 items-center md:items-start">
+                        <div class="w-full max-w-[320px]">@include('games.ping-pong.partials.elo-preview', ['side' => 'left'])</div>
+                        <div class="w-full max-w-[320px]">@include('games.ping-pong.partials.elo-preview', ['side' => 'right'])</div>
                     </div>
                 </div>
             </template>
 
             {{-- LIVE badge, viewer count, and who just joined --}}
-            <div class="absolute top-4 left-4 flex flex-col items-start gap-2">
+            <div class="absolute top-3 left-3 md:top-4 md:left-4 flex flex-col items-start gap-2">
                 <div class="flex items-center gap-2">
                     <div class="flex items-center gap-1.5 bg-black/70 px-3 py-1 rounded-md backdrop-blur-sm">
                         <span class="pph-flicker w-2 h-2 rounded-full bg-[#ff5a4a]"></span>
@@ -122,7 +122,7 @@
                             <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path>
                             <circle cx="12" cy="12" r="3"></circle>
                         </svg>
-                        <span x-text="viewerCount() + ' watching'"></span>
+                        <span x-text="viewerCount()"></span><span class="hidden md:inline">watching</span>
                     </div>
                 </div>
                 <template x-for="join in viewerJoins" :key="join.key">
@@ -137,45 +137,45 @@
             {{-- Corner scores over video --}}
             <template x-if="hasVideo && match">
                 <div>
-                    <div class="absolute bottom-6 left-6 flex flex-col items-center">
-                        <div x-show="eloOpen" data-elo-card="left" class="w-[320px] mb-3">
+                    <div class="absolute bottom-3 left-3 md:bottom-6 md:left-6 max-w-[calc(50%-1rem)] flex flex-col items-center">
+                        <div x-show="eloOpen" data-elo-card="left" class="hidden md:block w-[320px] mb-3">
                             @include('games.ping-pong.partials.elo-preview', ['side' => 'left'])
                         </div>
                         <x-player-avatar-js name="match?.player_left?.name" url="match?.player_left?.avatar_url" size="lg" class="mb-2 shadow-[0_4px_16px_rgba(0,0,0,0.6)]" />
-                        <span class="text-[#ff5a4a] text-[2.5rem] font-bold pph-glow-red [text-shadow:0_2px_8px_rgba(0,0,0,0.8)]" x-text="match?.player_left?.name || 'Left'"></span>
+                        <span class="max-w-full truncate text-[#ff5a4a] text-2xl md:text-[2.5rem] font-bold pph-glow-red [text-shadow:0_2px_8px_rgba(0,0,0,0.8)]" x-text="match?.player_left?.name || 'Left'"></span>
                         <span x-show="isServingLeft()" class="pph-mono text-[#ffd166] text-[10px] tracking-[0.22em] font-bold [text-shadow:0_1px_4px_rgba(0,0,0,0.8)]">SERVING</span>
-                        <span class="text-white text-[10rem] font-black leading-none pph-mono [text-shadow:0_4px_16px_rgba(0,0,0,0.8)]" x-text="match?.player_left_score ?? 0"></span>
+                        <span class="text-white text-[4.5rem] md:text-[10rem] font-black leading-none pph-mono [text-shadow:0_4px_16px_rgba(0,0,0,0.8)]" x-text="match?.player_left_score ?? 0"></span>
                     </div>
-                    <div class="absolute bottom-6 right-6 flex flex-col items-center">
-                        <div x-show="eloOpen" data-elo-card="right" class="w-[320px] mb-3">
+                    <div class="absolute bottom-3 right-3 md:bottom-6 md:right-6 max-w-[calc(50%-1rem)] flex flex-col items-center">
+                        <div x-show="eloOpen" data-elo-card="right" class="hidden md:block w-[320px] mb-3">
                             @include('games.ping-pong.partials.elo-preview', ['side' => 'right'])
                         </div>
                         <x-player-avatar-js name="match?.player_right?.name" url="match?.player_right?.avatar_url" size="lg" class="mb-2 shadow-[0_4px_16px_rgba(0,0,0,0.6)]" />
-                        <span class="text-[#3ec8ff] text-[2.5rem] font-bold pph-glow-blue [text-shadow:0_2px_8px_rgba(0,0,0,0.8)]" x-text="match?.player_right?.name || 'Right'"></span>
+                        <span class="max-w-full truncate text-[#3ec8ff] text-2xl md:text-[2.5rem] font-bold pph-glow-blue [text-shadow:0_2px_8px_rgba(0,0,0,0.8)]" x-text="match?.player_right?.name || 'Right'"></span>
                         <span x-show="isServingRight()" class="pph-mono text-[#ffd166] text-[10px] tracking-[0.22em] font-bold [text-shadow:0_1px_4px_rgba(0,0,0,0.8)]">SERVING</span>
-                        <span class="text-white text-[10rem] font-black leading-none pph-mono [text-shadow:0_4px_16px_rgba(0,0,0,0.8)]" x-text="match?.player_right_score ?? 0"></span>
+                        <span class="text-white text-[4.5rem] md:text-[10rem] font-black leading-none pph-mono [text-shadow:0_4px_16px_rgba(0,0,0,0.8)]" x-text="match?.player_right_score ?? 0"></span>
                     </div>
                 </div>
             </template>
 
             {{-- Top-right chip cluster --}}
-            <div class="absolute top-4 right-4 flex items-center gap-2">
+            <div class="absolute top-3 right-3 md:top-4 md:right-4 flex items-center gap-1.5 md:gap-2 whitespace-nowrap">
                 <button type="button" x-show="eloPreview" @click="toggleElo()" data-elo-toggle
-                        class="inline-flex items-center gap-1 px-3 py-1 rounded-md bg-black/70 text-white text-xs border-0 cursor-pointer backdrop-blur-sm pph-mono uppercase tracking-[0.12em]">
+                        class="hidden md:inline-flex items-center gap-1 px-3 py-1 rounded-md bg-black/70 text-white text-xs border-0 cursor-pointer backdrop-blur-sm pph-mono uppercase tracking-[0.12em]">
                     ELO <span x-text="eloOpen ? '▾' : '▸'"></span>
                 </button>
-                <button type="button" @click="shareEmbed()"
+                <button type="button" @click="shareEmbed()" :aria-label="shareLabel"
                         class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-black/70 text-white text-xs border-0 cursor-pointer backdrop-blur-sm pph-mono uppercase tracking-[0.12em]">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
                         <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
                     </svg>
-                    <span x-text="shareLabel"></span>
+                    <span class="hidden md:inline" x-text="shareLabel"></span>
                 </button>
                 <a x-show="matchId" :href="'/games/ping-pong/matches/' + matchId + '/scoreboard'"
-                   class="px-3 py-1 rounded-md bg-black/70 text-white no-underline text-xs backdrop-blur-sm pph-mono uppercase tracking-[0.12em]">Scoreboard →</a>
+                   class="px-3 py-1 rounded-md bg-black/70 text-white no-underline text-xs backdrop-blur-sm pph-mono uppercase tracking-[0.12em]"><span class="md:hidden">Score</span><span class="hidden md:inline">Scoreboard</span> →</a>
                 <a href="/games/ping-pong"
-                   class="px-3 py-1 rounded-md bg-black/70 text-white no-underline text-xs backdrop-blur-sm pph-mono uppercase tracking-[0.12em]">← Back</a>
+                   class="px-3 py-1 rounded-md bg-black/70 text-white no-underline text-xs backdrop-blur-sm pph-mono uppercase tracking-[0.12em]" aria-label="Back to Ping Pong">←<span class="hidden md:inline"> Back</span></a>
             </div>
         </div>
     </template>
@@ -210,7 +210,7 @@
                 <label for="chatName" class="pph-mono text-[11px] tracking-[0.14em] uppercase text-[#f5ecd6]/55">Pick your name to chat</label>
                 <div class="flex gap-2">
                     <input id="chatName" type="text" list="chatPlayerOptions" x-model="chatNameInput" maxlength="255" autocomplete="off" placeholder="Your name"
-                           class="flex-1 min-w-0 rounded-md bg-[#f5ecd6]/[0.06] border border-[#f5ecd6]/15 px-3 py-2 text-[#f5ecd6] text-sm placeholder:text-[#f5ecd6]/30 focus:outline-none focus:border-[#ffd166]/60">
+                           class="flex-1 min-w-0 rounded-md bg-[#f5ecd6]/[0.06] border border-[#f5ecd6]/15 px-3 py-2 text-[#f5ecd6] text-base md:text-sm placeholder:text-[#f5ecd6]/30 focus:outline-none focus:border-[#ffd166]/60">
                     <button type="submit" :disabled="!chatNameInput.trim() || chatBusy"
                             class="px-3 py-2 rounded-md bg-[#f5ecd6] text-[#06081b] border-0 cursor-pointer pph-mono text-[11px] font-bold uppercase tracking-[0.12em] disabled:opacity-40 disabled:cursor-default">Join</button>
                 </div>
@@ -251,7 +251,7 @@
             <div class="flex gap-2">
                 <input type="text" x-model="chatDraft" maxlength="200" autocomplete="off"
                        :disabled="!chatPlayer || !chatMatchId" :placeholder="!chatMatchId ? 'Chat opens when a match starts' : (chatPlayer ? 'Say something… or /giphy cats' : 'Pick a name first')"
-                       class="flex-1 min-w-0 rounded-md bg-[#f5ecd6]/[0.06] border border-[#f5ecd6]/15 px-3 py-2 text-[#f5ecd6] text-sm placeholder:text-[#f5ecd6]/30 focus:outline-none focus:border-[#ffd166]/60 disabled:opacity-50">
+                       class="flex-1 min-w-0 rounded-md bg-[#f5ecd6]/[0.06] border border-[#f5ecd6]/15 px-3 py-2 text-[#f5ecd6] text-base md:text-sm placeholder:text-[#f5ecd6]/30 focus:outline-none focus:border-[#ffd166]/60 disabled:opacity-50">
                 <button type="submit" :disabled="!chatPlayer || !chatMatchId || !chatDraft.trim() || chatBusy"
                         class="px-3 py-2 rounded-md bg-[#ffd166] text-[#06081b] border-0 cursor-pointer pph-mono text-[11px] font-bold uppercase tracking-[0.12em] disabled:opacity-40 disabled:cursor-default">Send</button>
             </div>

@@ -52,6 +52,25 @@ class PingPongWatchPageTest extends TestCase
         $response->assertSee('Chat opens when a match starts');
     }
 
+    /**
+     * The floating QR scanner sat on top of the chat composer on phones.
+     */
+    public function test_watch_page_leaves_out_the_camera_fab(): void
+    {
+        $this->get('/games/ping-pong/watch')->assertOk()->assertDontSee('cameraFab()', false);
+        $this->get('/games/ping-pong')->assertOk()->assertSee('cameraFab()', false);
+    }
+
+    /**
+     * iOS zooms into any input under 16px on focus.
+     */
+    public function test_watch_page_chat_inputs_are_16px_on_mobile(): void
+    {
+        $html = $this->get('/games/ping-pong/watch')->assertOk()->getContent();
+
+        $this->assertSame(2, substr_count($html, 'text-base md:text-sm'));
+    }
+
     public function test_watch_page_has_the_elo_toggle_and_cards(): void
     {
         $response = $this->get('/games/ping-pong/watch');
@@ -69,8 +88,8 @@ class PingPongWatchPageTest extends TestCase
 
         $this->assertMatchesRegularExpression('/<video[^>]*id="watchPlayer"[^>]*-scale-x-100/s', $html);
 
-        $leftCorner = strpos($html, 'absolute bottom-6 left-6');
-        $rightCorner = strpos($html, 'absolute bottom-6 right-6');
+        $leftCorner = strpos($html, 'absolute bottom-3 left-3 md:bottom-6 md:left-6');
+        $rightCorner = strpos($html, 'absolute bottom-3 right-3 md:bottom-6 md:right-6');
         $this->assertNotFalse($leftCorner);
         $this->assertLessThan($rightCorner, strpos($html, 'match?.player_left?.name', $leftCorner));
         $this->assertGreaterThan($rightCorner, strpos($html, 'match?.player_right?.name', $leftCorner));

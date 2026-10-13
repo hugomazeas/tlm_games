@@ -147,7 +147,7 @@
         @yield('content')
     </main>
 
-    @if(!request()->is('games/*') || request()->is('games/ping-pong*'))
+    @if((!request()->is('games/*') || request()->is('games/ping-pong*')) && !request()->is('games/ping-pong/watch'))
         <x-camera-fab />
     @endif
 
