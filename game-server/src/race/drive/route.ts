@@ -318,3 +318,17 @@ class MinHeap {
         return top
     }
 }
+
+/**
+ * Metres along the route from x, z to gate `next`, placing the point on the
+ * stretch leading to that gate: how the standings tell two karts apart
+ * between the same gates.
+ */
+export function toGate(route: Route, next: number, x: number, z: number): number {
+    const count = route.gateAlong.length
+    const from = route.gateAlong[(next - 1 + count) % count]!
+    const to = route.gateAlong[next]!
+    const along = locate(route, x, z, from, to)
+
+    return (((to - along) % route.length) + route.length) % route.length
+}

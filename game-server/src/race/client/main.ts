@@ -1,13 +1,14 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { gridSlot } from '../drive/laps.ts'
 import { buildWorld } from '../drive/world.ts'
 import { heightAt } from '../map/convert.ts'
 import { type GateSpec, projectCourse } from '../map/courses.ts'
 import type { AreaKind, Building, Course, RaceMap } from '../map/format.ts'
 import { createDriver } from './drive.ts'
 import type { KartLook } from './kart.ts'
+import { joinLobby, type Lobby } from './lobby.ts'
 import { createMinimap } from './minimap.ts'
+import { createOthers } from './others.ts'
 import { createOverlay } from './overlay.ts'
 import { createRace } from './race.ts'
 import { buildFurniture } from './furniture.ts'
@@ -17,24 +18,32 @@ import { buildLandmarks } from './landmarks.ts'
 import { ASPHALT, buildStreets } from './streets.ts'
 
 /**
- * Draws a racing map and lets you drive a kart round it (drive.ts), or fly:
- * F switches. Flying, click to capture the mouse, WASD to move, Space / C to
- * rise and sink, Shift to go faster, the wheel to change speed.
+ * Draws a racing map, and depending on the page that loads it:
  *
- * Two pages load it. The Hub's play page sets `window.racingConfig` with the
- * map's URL and the track to race (race.ts), and you start on its grid. The
- * standalone viewer (poc-server.ts) sets nothing: free roam, and a link with
- * a view in it (#lat,lon,…) opens flying there, for landmark work.
+ * - The Hub's play page (`window.racingConfig`, mode `race`): a lobby on a
+ *   track (lobby.ts). Driving only: W/S, A/D, Space or Shift to drift, R back
+ *   on track. The host starts races from the lobby panel.
+ * - The Hub's free roam page (mode `roam`): flying only, out of any race.
+ *   Click to capture the mouse, WASD to move, Space / C to rise and sink,
+ *   Shift to go faster, the wheel to change speed, I to identify a building.
+ * - The standalone viewer (poc-server.ts, no config): both, F switches; a
+ *   link with a view in it (#lat,lon,…) opens flying there, for landmark work.
  */
 
-/** What the Hub's play page tells the game. */
+/** What the Hub's pages tell the game. */
 interface RacingConfig {
+    mode: 'race' | 'roam'
     mapUrl: string
     track: { id: number; name: string; laps: number; gates: GateSpec[] } | null
     /** Where "← Tracks" goes. */
     backUrl?: string
     /** Who's driving, in their garage colours; a guest when nobody is picked. */
     driver?: KartLook
+    /** The Hub player driving; null for a guest. */
+    playerId?: number | null
+    /** The lobby to join; null opens a new one. */
+    lobby?: string | null
+    recordsUrl?: string
 }
 
 const SKY = 0xbfd9ee
@@ -53,20 +62,34 @@ const MAX_TEXTURE = 4096
 const EYE_HEIGHT = 2
 const BASE_SPEED = 40
 const LANDMARK = { name: 'Hôtel du Parlement', lat: 46.80868, lon: -71.2142 }
+/** Free roam starts here, looking at the Parliament from above the Plains. */
+const ROAM_VIEW = '#46.806500,-71.218500,80,-60,-15'
 
 const KMH = 3.6
+const DRIVE_KEYS = 'W/S gas · brake · A/D steer · Space or Shift drift (let go for a boost) · R back on track'
+const FLY_KEYS =
+    'Click to look around · WASD move · Space / C up / down · Shift faster · wheel speed · I identify building · Esc release mouse'
 const HELP = {
-    drive: 'W/S gas · brake · A/D steer · Space or Shift drift (let go for a boost) · R reset · F fly · I identify building',
-    fly: 'Click to look around · WASD move · Space / C up / down · Shift faster · wheel speed · F drive · I identify building · Esc release mouse',
+    race: DRIVE_KEYS,
+    watch: 'Watching the race: you race the next one',
+    roam: FLY_KEYS,
+    viewerDrive: `${DRIVE_KEYS} · F fly · I identify building`,
+    viewerFly: `${FLY_KEYS} · F drive`,
 }
 
 const config = (window as { racingConfig?: RacingConfig }).racingConfig ?? null
+const racing = config?.mode === 'race' && config.track !== null
+const roaming = config?.mode === 'roam'
 const overlay = createOverlay()
 const { hud, status, help } = overlay
 if (config?.backUrl) {
     overlay.back.href = config.backUrl
+    overlay.back.textContent = racing ? '← Leave lobby' : '← Tracks'
     overlay.back.hidden = false
 }
+// Racing shows only what a driver needs: no map stats, no debug line, no crosshair.
+status.hidden = racing
+hud.hidden = racing
 
 const map = (await (await fetch(config?.mapUrl ?? './map.json')).json()) as RaceMap
 const ground = (x: number, z: number) => heightAt(map.terrain, map.width, map.depth, x, z)
@@ -100,13 +123,15 @@ scene.add(buildWalls(map.walls, ground))
 const controls = flyControls(camera, renderer.domElement)
 const world = buildWorld(map)
 const driver = createDriver(world, scene, camera, config?.driver)
-let mode: 'drive' | 'fly' = 'fly'
-const course: Course | null = config?.track
-    ? projectCourse(`track-${config.track.id}`, config.track, ({ lat, lon }) => {
-          const { x, z } = toLocal(lat, lon)
-          return [x, z]
-      })
-    : null
+const others = createOthers(world, scene)
+let mode: 'drive' | 'fly' | 'watch' = 'fly'
+const course: Course | null =
+    racing && config.track
+        ? projectCourse(`track-${config.track.id}`, config.track, ({ lat, lon }) => {
+              const { x, z } = toLocal(lat, lon)
+              return [x, z]
+          })
+        : null
 const race = createRace({
     world,
     scene,
@@ -117,9 +142,6 @@ const race = createRace({
         const angles = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ')
         return { x: camera.position.x, z: camera.position.z, heading: angles.y }
     },
-    startDriving: () => {
-        if (mode === 'fly') flyToDrive()
-    },
     roads: map.roads,
     minimap: createMinimap(map, overlay.minimap),
     panel: overlay.panel,
@@ -128,23 +150,40 @@ const race = createRace({
     arrow: overlay.arrow,
     speedometer: overlay.speedometer,
 })
-setupIdentify(camera, [buildings, landmarks], overlay.identify, renderer.domElement)
+if (!racing) setupIdentify(camera, [buildings, landmarks], overlay.identify, renderer.domElement)
 
-// On a track, start on its grid. Otherwise fly to the view in the URL, or drive in front of the Parliament.
-if (config || !applyViewFromHash()) {
-    if (course) {
-        const slot = gridSlot(course, 0)
-        driver.place(slot.x, slot.z, slot.heading)
-    } else {
-        const target = toLocal(LANDMARK.lat, LANDMARK.lon)
-        driver.placeAt(target.x - 120, target.z, Math.PI / 2)
-    }
+let lobby: Lobby | null = null
+if (racing && config.track) {
+    // Until the lobby says where the grid slot is, wait on the start line.
+    race.placeOnGrid(0)
+    setMode('drive')
+    lobby = joinLobby({
+        trackId: config.track.id,
+        laps: config.track.laps,
+        lobby: config.lobby ?? null,
+        playerId: config.playerId ?? null,
+        recordsUrl: config.recordsUrl ?? '',
+        driver,
+        race,
+        others,
+        panel: overlay.lobby,
+        setWatching: watching => setMode(watching ? 'watch' : 'drive'),
+    })
+} else if (roaming) {
+    applyViewFromHash(location.hash || ROAM_VIEW)
+    setMode('fly')
+} else if (!applyViewFromHash()) {
+    // The viewer: drive in front of the Parliament, or fly to the view in the URL.
+    const target = toLocal(LANDMARK.lat, LANDMARK.lon)
+    driver.placeAt(target.x - 120, target.z, Math.PI / 2)
     setMode('drive')
 } else {
     setMode('fly')
 }
+
+// F switches between driving and flying, in the viewer only.
 document.addEventListener('keydown', event => {
-    if (event.code !== 'KeyF' || event.repeat) return
+    if (config || event.code !== 'KeyF' || event.repeat) return
     if (mode === 'fly') {
         flyToDrive()
     } else {
@@ -154,14 +193,14 @@ document.addEventListener('keydown', event => {
 })
 // Read the hash from the event: by the time it runs, the timer below may already have rewritten the URL.
 window.addEventListener('hashchange', event => {
-    if (!config && applyViewFromHash(new URL(event.newURL).hash)) setMode('fly')
+    if (!racing && applyViewFromHash(new URL(event.newURL).hash)) setMode('fly')
 })
 
 // Keep the view in the URL, so a refresh (or a link) lands on the same spot. Latitude/longitude,
-// not map metres: a link stays good when the map's area changes. Only in the viewer: a track page has its own URL.
+// not map metres: a link stays good when the map's area changes. Not while racing: a lobby has its own URL.
 setInterval(() => {
-    if (config) return
-    if (mode === 'drive') {
+    if (racing) return
+    if (mode !== 'fly') {
         if (location.hash) history.replaceState(null, '', location.pathname + location.search)
         return
     }
@@ -189,6 +228,7 @@ status.textContent = `${map.buildings.length} buildings · ${map.roads.length} r
 const clock = new THREE.Clock()
 renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 0.1)
+    others.update(dt)
     if (mode === 'drive') {
         driver.update(dt)
         const kart = driver.kart
@@ -198,6 +238,9 @@ renderer.setAnimationLoop(() => {
             (kart.drift !== 0 ? `  drift ${kart.charge.toFixed(1)} s` : '') +
             (kart.boost > 0 ? '  BOOST' : '') +
             (kart.airborne && kart.y - ground(kart.x, kart.z) > 0.5 ? '  airborne' : '')
+    } else if (mode === 'watch') {
+        const leader = lobby?.leader
+        if (leader) others.follow(leader, camera, dt)
     } else {
         controls.update(dt, ground)
         const p = camera.position
@@ -205,7 +248,7 @@ renderer.setAnimationLoop(() => {
             `x ${p.x.toFixed(0)}  z ${p.z.toFixed(0)}  ` +
             `alt ${(p.y - ground(p.x, p.z)).toFixed(0)} m  speed ${controls.speed.toFixed(0)} m/s`
     }
-    race.update(mode === 'drive')
+    race.update(mode === 'drive', others.minimapKarts())
     renderer.render(scene, camera)
 })
 
@@ -216,11 +259,14 @@ function flyToDrive(): void {
     setMode('drive')
 }
 
-function setMode(next: 'drive' | 'fly'): void {
+function setMode(next: 'drive' | 'fly' | 'watch'): void {
     mode = next
     driver.setActive(next === 'drive')
     controls.setActive(next === 'fly')
-    help.textContent = HELP[next]
+    overlay.crosshair.hidden = next !== 'fly'
+    if (racing) help.textContent = next === 'watch' ? HELP.watch : HELP.race
+    else if (roaming) help.textContent = HELP.roam
+    else help.textContent = next === 'fly' ? HELP.viewerFly : HELP.viewerDrive
 }
 
 /** Moves the camera to the view in the URL (#lat,lon,altitude,heading,pitch, in degrees). False when there is none. */

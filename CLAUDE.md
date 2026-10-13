@@ -56,13 +56,15 @@ POST /games/typing/tests/{test}/submit  Submit a solo test (server scores it)
 GET  /games/typing/race             The open race, if any
 POST /games/typing/race             Join the open race, or create one
 POST /games/typing/race/{race}/leave|start|progress  Lobby actions and live progress
-GET  /games/racing                  Racing: pick a track (Play / Edit / Delete) or make one
+GET  /games/racing                  Racing: live lobby list (Join / Watch), tracks (Play opens a lobby), Free roam
+GET  /games/racing/roam             Free roam: fly over the map, I identifies buildings (no race)
 GET  /games/racing/tracks/create    Track editor, new track (2D map; the editor comes from the game server)
 POST /games/racing/tracks           Save a new track (JSON from the editor)
 GET  /games/racing/tracks/{track}/edit  Track editor on a track
 PUT  /games/racing/tracks/{track}   Save a track's changes
 DELETE /games/racing/tracks/{track} Delete a track
-GET  /games/racing/tracks/{track}/play  Race a track (the 3D game, full window; ?player= drives as them)
+GET  /games/racing/tracks/{track}/play  Race a track in a lobby (?lobby= joins one, none opens one; ?player= drives as them)
+GET  /games/racing/tracks/{track}/records  The track's records (JSON): each player's best time, the fastest lap
 GET  /games/racing/garage/{player}  Garage: paint a player's kart (body + accent)
 PUT  /games/racing/garage/{player}  Save a player's kart colours
 POST /push/hot-potato/subscribe     Opt a player's browser into "a hot potato opened" pushes
@@ -184,10 +186,23 @@ built from OpenStreetMap and federal elevation data, drawn with Three.js.
   (`window.racingConfig`, `window.trackEditorConfig`). `RacingTrackSeeder` adds the
   default tracks from `game-server/maps/<map>/courses/*.json` when missing.
   `RacingTrack::MAPS` must match `MAPS` in `map/pipeline.ts` (a test checks).
+- **Lobbies** (`race/lobbies.ts`, pure; `race/live.ts` wires it to the socket at
+  `/games/racing/live/ws` and the list at `/games/racing/live/lobbies`, which the track
+  list polls). Play opens a lobby on the track, the lobby list joins one; up to 8, the
+  host starts, late joiners watch (camera on the leader) and race the next one. Each tab
+  drives its own kart and sends poses at 20 Hz plus every physics step while racing
+  (`client/lobby.ts`); the server re-runs `drive/laps.ts` over those steps on the tab's
+  step clock, refusing clocks ahead of real time and jumps that gain ground (only R
+  back to the last checkpoint passes). Race over when all are in, or 30 s after the
+  winner (DNF). Results go to `/internal/racing/*` (`RacingInternalController`, same
+  `HOT_POTATO_INTERNAL_SECRET`: racing lobbies need it set too) → `racing_results`.
+  No kart-to-kart collisions, no reconnect: closing the tab leaves the lobby.
+- **Keys:** racing is drive-only (W/S, A/D, Space/Shift drift, R back on track); flying
+  and I (identify) are free roam's (`/games/racing/roam`). The standalone viewer keeps both (F).
 - **Drivers:** the track list's "Driving as" picker (remembered in localStorage) adds
   `?player=` to Play; `RacingKart::lookOf()` gives the game their name and garage
   colours (`racing_karts`), or a guest's. The kart (`client/kart.ts`) is painted body
-  (chassis, nose) + accent (wing, suit), with a name tag sprite over it.
+  (chassis, nose) + accent (wing, suit), with a name tag sprite over other drivers' karts (not your own).
 - **Standalone viewer:** `bun run race:viewer` on http://localhost:8091, free roam and
   landmark work (click, WASD, I identifies the building under the crosshair).
 
