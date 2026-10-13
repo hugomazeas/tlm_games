@@ -25,10 +25,10 @@ export interface Item {
 }
 
 export const ITEM_RADIUS = 0.6
-export const FIRST_ITEM_MS = 6000
-export const ITEM_INTERVAL_MIN_MS = 7000
-export const ITEM_INTERVAL_MAX_MS = 12_000
-export const MAX_ITEMS = 4
+export const FIRST_ITEM_MS = 3000
+export const ITEM_INTERVAL_MIN_MS = 3000
+export const ITEM_INTERVAL_MAX_MS = 6000
+export const MAX_ITEMS = 6
 /** An item nobody takes disappears after this long. */
 export const ITEM_LIFETIME_MS = 15_000
 

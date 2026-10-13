@@ -67,7 +67,7 @@ function dropOn(game: GameState, id: number, kind: ItemKind) {
 }
 
 describe('spawning', () => {
-    test('the first item drops 6 s in, then one every 7 to 12 s', () => {
+    test('the first item drops 3 s in, then one every 3 to 6 s', () => {
         const game = setup(3, true)
         const drops: number[] = []
         let seen = 0
@@ -88,7 +88,7 @@ describe('spawning', () => {
         }
     })
 
-    test('never more than four items on the floor', () => {
+    test('never more than six items on the floor', () => {
         const game = setup(3, true)
 
         for (let t = 0; t < 120_000; t += TICK) {
