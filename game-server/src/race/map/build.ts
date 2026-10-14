@@ -1,4 +1,4 @@
-import { fetchCityTrees, fetchElevation, fetchNodes, fetchOsm, fetchShore } from './fetch.ts'
+import { fetchCityTrees, fetchElevation, fetchLidar, fetchNodes, fetchOsm, fetchShore } from './fetch.ts'
 import type { Review } from './landmarks.ts'
 import {
     buildMap,
@@ -6,12 +6,14 @@ import {
     mapFile,
     readDecor,
     readLandmarks,
+    readLooks,
     readSnapshot,
     reviewMap,
     serialise,
     type Snapshot,
     snapshotMatches,
     stampLandmark,
+    writeLidar,
     writeSnapshot,
 } from './pipeline.ts'
 
@@ -22,6 +24,7 @@ import {
  *   bun run race:map --refresh             download fresh OSM data and the city's trees into the snapshot first
  *   bun run race:map --refresh-elevation   …and fresh elevation too (minutes)
  *   bun run race:map --refresh-trees       only the city's trees
+ *   bun run race:map --refresh-lidar       only the lidar survey's heights (a quarter of an hour: a slow server)
  *   bun run race:map --accept              trust the landmarks as they are now (stamps their fingerprints)
  *
  * After a refresh, landmarks whose OSM footprint vanished or changed are
@@ -42,6 +45,9 @@ if (flags.has('--refresh') || flags.has('--refresh-elevation')) {
 } else if (flags.has('--refresh-trees') && coversArea) {
     snapshot = { ...snapshot!, trees: await fetchCityTrees(config), meta: { ...snapshot!.meta, treesFetchedAt: now() } }
     await writeSnapshot(slug, snapshot)
+} else if (flags.has('--refresh-lidar') && coversArea) {
+    snapshot = { ...snapshot!, lidar: await fetchLidar(config), meta: { ...snapshot!.meta, lidarFetchedAt: now() } }
+    await writeSnapshot(slug, snapshot)
 } else if (!coversArea) {
     console.error(
         snapshot
@@ -53,12 +59,18 @@ if (flags.has('--refresh') || flags.has('--refresh-elevation')) {
 
 const landmarks = await readLandmarks(slug)
 const decor = await readDecor(slug)
+const looks = await readLooks(slug)
 const map = buildMap(
     config,
     snapshot!,
     landmarks.map(file => file.landmark),
-    decor
+    decor,
+    looks
 )
+const keys = new Set(map.buildings.map(building => `${building.relation ? 'relation' : 'way'}/${building.id}`))
+const orphanedLooks = Object.keys(looks.buildings).filter(key => !keys.has(key))
+if (orphanedLooks.length > 0)
+    console.log(`Looks for buildings no longer in the data (left out): ${orphanedLooks.join(', ')}`)
 const reviews = reviewMap(
     config,
     map,
@@ -113,12 +125,15 @@ async function refresh(previous: Snapshot | null, keepElevation: boolean): Promi
             osmFetchedAt: fetchedAt,
             elevationFetchedAt: keepElevation ? previous!.meta.elevationFetchedAt : fetchedAt,
             treesFetchedAt: fetchedAt,
+            ...(previous?.meta.lidarFetchedAt ? { lidarFetchedAt: previous.meta.lidarFetchedAt } : {}),
         },
         osm,
         nodes,
         shore,
         elevation,
         trees,
+        // The survey doesn't change with OSM: kept, refreshed on its own with --refresh-lidar.
+        lidar: previous?.lidar ?? null,
     }
 
     await writeSnapshot(slug, next)

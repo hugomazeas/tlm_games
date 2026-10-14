@@ -27,9 +27,9 @@ interface Shape {
 }
 
 const BROADLEAF_LEAVES = [0x4f8f46, 0x5a9a4a, 0x3f7d3a, 0x6aa352, 0x4a8a3f, 0x568c3c, 0x467f3e]
-/** A few broadleaf trees have turned: orange, red and yellow. */
-const FALL_LEAVES = [0xc8742e, 0xb5432f, 0xa5a83c]
-const FALL_SHARE = 0.07
+/** A few broadleaf trees have turned: muted orange, red and yellow. */
+const FALL_LEAVES = [0xb07a3c, 0x9c4a35, 0x9a9a45]
+const FALL_SHARE = 0.03
 
 const SHAPES: Record<TreeKind, Shape> = {
     broadleaf: { crown: detail => blob(detail, 0.3, 1), trunk: 0.45, leaves: BROADLEAF_LEAVES },

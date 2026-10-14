@@ -1,0 +1,319 @@
+{
+    "$schema": "../../decor.schema.json",
+    "name": "Fontaine de Tourny",
+    "notes": "The Fontaine de Tourny (Mathurin Moreau, 1857; here since 2007) in the roundabout before the Parliament: a 16 m stone pool ringed by jets, four seated bronze figures round a pedestal, and three cast-iron bowls rising to about 7 m. The pool is OSM's outline; the bowls are from photos.",
+    "replaces": [
+        "way/577383256"
+    ],
+    "items": [
+        {
+            "kind": "fountain",
+            "at": {
+                "lat": 46.8096104,
+                "lon": -71.2126733
+            },
+            "basins": [
+                {
+                    "diameter": 16.4,
+                    "height": 0.6
+                },
+                {
+                    "diameter": 6.4,
+                    "height": 2.6
+                },
+                {
+                    "diameter": 3.4,
+                    "height": 4.4
+                },
+                {
+                    "diameter": 1.6,
+                    "height": 5.8
+                }
+            ],
+            "jet": 1.0,
+            "falls": true,
+            "finial": 1.2,
+            "stone": "#cfc8b8",
+            "metal": "#3d4a43",
+            "water": "#6fb3d6"
+        },
+        {
+            "kind": "structure",
+            "at": {
+                "lat": 46.8096104,
+                "lon": -71.2126733
+            },
+            "facing": 0,
+            "pieces": [
+                {
+                    "shape": "cylinder",
+                    "width": 4.6,
+                    "depth": 4.6,
+                    "height": 1.5,
+                    "colour": "#cfc8b8",
+                    "solid": true
+                },
+                {
+                    "shape": "cylinder",
+                    "right": 7.0,
+                    "ahead": 0.0,
+                    "width": 0.14,
+                    "depth": 0.14,
+                    "from": 0.45,
+                    "height": 1.6,
+                    "colour": "#bfe0ef",
+                    "taper": 0.4,
+                    "water": true
+                },
+                {
+                    "shape": "cylinder",
+                    "right": 6.47,
+                    "ahead": 2.68,
+                    "width": 0.14,
+                    "depth": 0.14,
+                    "from": 0.45,
+                    "height": 1.6,
+                    "colour": "#bfe0ef",
+                    "taper": 0.4,
+                    "water": true
+                },
+                {
+                    "shape": "cylinder",
+                    "right": 4.95,
+                    "ahead": 4.95,
+                    "width": 0.14,
+                    "depth": 0.14,
+                    "from": 0.45,
+                    "height": 1.6,
+                    "colour": "#bfe0ef",
+                    "taper": 0.4,
+                    "water": true
+                },
+                {
+                    "shape": "cylinder",
+                    "right": 2.68,
+                    "ahead": 6.47,
+                    "width": 0.14,
+                    "depth": 0.14,
+                    "from": 0.45,
+                    "height": 1.6,
+                    "colour": "#bfe0ef",
+                    "taper": 0.4,
+                    "water": true
+                },
+                {
+                    "shape": "cylinder",
+                    "right": 0.0,
+                    "ahead": 7.0,
+                    "width": 0.14,
+                    "depth": 0.14,
+                    "from": 0.45,
+                    "height": 1.6,
+                    "colour": "#bfe0ef",
+                    "taper": 0.4,
+                    "water": true
+                },
+                {
+                    "shape": "cylinder",
+                    "right": -2.68,
+                    "ahead": 6.47,
+                    "width": 0.14,
+                    "depth": 0.14,
+                    "from": 0.45,
+                    "height": 1.6,
+                    "colour": "#bfe0ef",
+                    "taper": 0.4,
+                    "water": true
+                },
+                {
+                    "shape": "cylinder",
+                    "right": -4.95,
+                    "ahead": 4.95,
+                    "width": 0.14,
+                    "depth": 0.14,
+                    "from": 0.45,
+                    "height": 1.6,
+                    "colour": "#bfe0ef",
+                    "taper": 0.4,
+                    "water": true
+                },
+                {
+                    "shape": "cylinder",
+                    "right": -6.47,
+                    "ahead": 2.68,
+                    "width": 0.14,
+                    "depth": 0.14,
+                    "from": 0.45,
+                    "height": 1.6,
+                    "colour": "#bfe0ef",
+                    "taper": 0.4,
+                    "water": true
+                },
+                {
+                    "shape": "cylinder",
+                    "right": -7.0,
+                    "ahead": 0.0,
+                    "width": 0.14,
+                    "depth": 0.14,
+                    "from": 0.45,
+                    "height": 1.6,
+                    "colour": "#bfe0ef",
+                    "taper": 0.4,
+                    "water": true
+                },
+                {
+                    "shape": "cylinder",
+                    "right": -6.47,
+                    "ahead": -2.68,
+                    "width": 0.14,
+                    "depth": 0.14,
+                    "from": 0.45,
+                    "height": 1.6,
+                    "colour": "#bfe0ef",
+                    "taper": 0.4,
+                    "water": true
+                },
+                {
+                    "shape": "cylinder",
+                    "right": -4.95,
+                    "ahead": -4.95,
+                    "width": 0.14,
+                    "depth": 0.14,
+                    "from": 0.45,
+                    "height": 1.6,
+                    "colour": "#bfe0ef",
+                    "taper": 0.4,
+                    "water": true
+                },
+                {
+                    "shape": "cylinder",
+                    "right": -2.68,
+                    "ahead": -6.47,
+                    "width": 0.14,
+                    "depth": 0.14,
+                    "from": 0.45,
+                    "height": 1.6,
+                    "colour": "#bfe0ef",
+                    "taper": 0.4,
+                    "water": true
+                },
+                {
+                    "shape": "cylinder",
+                    "right": -0.0,
+                    "ahead": -7.0,
+                    "width": 0.14,
+                    "depth": 0.14,
+                    "from": 0.45,
+                    "height": 1.6,
+                    "colour": "#bfe0ef",
+                    "taper": 0.4,
+                    "water": true
+                },
+                {
+                    "shape": "cylinder",
+                    "right": 2.68,
+                    "ahead": -6.47,
+                    "width": 0.14,
+                    "depth": 0.14,
+                    "from": 0.45,
+                    "height": 1.6,
+                    "colour": "#bfe0ef",
+                    "taper": 0.4,
+                    "water": true
+                },
+                {
+                    "shape": "cylinder",
+                    "right": 4.95,
+                    "ahead": -4.95,
+                    "width": 0.14,
+                    "depth": 0.14,
+                    "from": 0.45,
+                    "height": 1.6,
+                    "colour": "#bfe0ef",
+                    "taper": 0.4,
+                    "water": true
+                },
+                {
+                    "shape": "cylinder",
+                    "right": 6.47,
+                    "ahead": -2.68,
+                    "width": 0.14,
+                    "depth": 0.14,
+                    "from": 0.45,
+                    "height": 1.6,
+                    "colour": "#bfe0ef",
+                    "taper": 0.4,
+                    "water": true
+                }
+            ]
+        },
+        {
+            "kind": "statue",
+            "at": {
+                "lat": 46.8096241,
+                "lon": -71.2126533
+            },
+            "facing": 45,
+            "figure": "seated",
+            "height": 1.7,
+            "plinth": {
+                "width": 1.3,
+                "depth": 1.3,
+                "height": 1.45,
+                "colour": "#cfc8b8"
+            },
+            "colour": "#3d4a43"
+        },
+        {
+            "kind": "statue",
+            "at": {
+                "lat": 46.8095967,
+                "lon": -71.2126533
+            },
+            "facing": 135,
+            "figure": "seated",
+            "height": 1.7,
+            "plinth": {
+                "width": 1.3,
+                "depth": 1.3,
+                "height": 1.45,
+                "colour": "#cfc8b8"
+            },
+            "colour": "#3d4a43"
+        },
+        {
+            "kind": "statue",
+            "at": {
+                "lat": 46.8095967,
+                "lon": -71.2126933
+            },
+            "facing": 225,
+            "figure": "seated",
+            "height": 1.7,
+            "plinth": {
+                "width": 1.3,
+                "depth": 1.3,
+                "height": 1.45,
+                "colour": "#cfc8b8"
+            },
+            "colour": "#3d4a43"
+        },
+        {
+            "kind": "statue",
+            "at": {
+                "lat": 46.8096241,
+                "lon": -71.2126933
+            },
+            "facing": 315,
+            "figure": "seated",
+            "height": 1.7,
+            "plinth": {
+                "width": 1.3,
+                "depth": 1.3,
+                "height": 1.45,
+                "colour": "#cfc8b8"
+            },
+            "colour": "#3d4a43"
+        }
+    ]
+}

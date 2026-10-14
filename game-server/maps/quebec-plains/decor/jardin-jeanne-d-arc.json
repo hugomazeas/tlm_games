@@ -1,0 +1,27 @@
+{
+    "$schema": "../../decor.schema.json",
+    "name": "Jardin Jeanne-d'Arc",
+    "notes": "Anna Hyatt Huntington's Joan of Arc (1938), on horseback with her sword raised, on a granite plinth in the middle of the garden, looking out over the Plains. The garden's beds, paths and benches come from OSM.",
+    "replaces": [
+        "node/1606709286"
+    ],
+    "items": [
+        {
+            "kind": "statue",
+            "at": {
+                "lat": 46.80405,
+                "lon": -71.217791
+            },
+            "facing": 135,
+            "figure": "equestrian",
+            "height": 4.2,
+            "plinth": {
+                "width": 2.4,
+                "depth": 4.8,
+                "height": 3.2,
+                "colour": "#a3a19a"
+            },
+            "colour": "#4b5a4c"
+        }
+    ]
+}

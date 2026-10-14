@@ -1,0 +1,46 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "looks.schema.json",
+    "title": "Racing map looks",
+    "description": "How ordinary buildings really look, keyed by OSM element (\"way/123\", \"relation/456\"): wall and roof colours, sampled from aerial photos and checked by eye, and windows or glass where a building isn't the usual. Heights come from the lidar survey or OSM, never from here; a building with a landmark file ignores its entry. Checked by parseLooks in game-server/src/race/map/looks.ts, which is authoritative.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["buildings"],
+    "properties": {
+        "$schema": { "type": "string" },
+        "notes": { "type": "string" },
+        "buildings": {
+            "type": "object",
+            "propertyNames": { "pattern": "^(way|relation)/\\d+$" },
+            "additionalProperties": { "$ref": "#/$defs/look" }
+        }
+    },
+    "$defs": {
+        "colour": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+        "look": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "wall": { "$ref": "#/$defs/colour" },
+                "roof": { "$ref": "#/$defs/colour", "description": "Flat unless the survey found a pitched roof, which takes this colour." },
+                "windows": {
+                    "description": "Windows other than the usual for its height, or false for none.",
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["floor", "spacing"],
+                            "properties": {
+                                "floor": { "type": "number", "minimum": 1 },
+                                "spacing": { "type": "number", "minimum": 0.5 },
+                                "style": { "enum": ["punched", "square", "arched", "ribbon", "curtain"] }
+                            }
+                        },
+                        { "const": false }
+                    ]
+                },
+                "glass": { "$ref": "#/$defs/colour" }
+            }
+        }
+    }
+}

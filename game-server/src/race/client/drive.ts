@@ -158,14 +158,15 @@ export function createDriver(
         },
 
         setActive(isActive) {
+            // Leaving the wheel gives the camera its normal lens back (speed widens it).
+            if (active && !isActive) {
+                camera.fov = BASE_FOV
+                camera.updateProjectionMatrix()
+            }
             active = isActive
             model.root.visible = isActive
             keys.clear()
             steer = 0
-            if (!isActive) {
-                camera.fov = BASE_FOV
-                camera.updateProjectionMatrix()
-            }
         },
     }
     model.root.visible = false

@@ -1,6 +1,8 @@
 import type { Area, AreaKind, Building, RaceMap, Road, RoadKind, Terrain, Wall } from './format.ts'
 import { type DecorFile, expandDecor, type OsmLine, type OsmPoint, osmDecor, sortPaint } from './decor.ts'
 import { applyLandmark, type Landmark, landmarkKey } from './landmarks.ts'
+import { buildingMask, type LidarGrid, surveyed, surveyedShape, surveyedTrees } from './lidar.ts'
+import { applyLook, type Look } from './looks.ts'
 import {
     findCrossings,
     findJunctions,
@@ -10,7 +12,7 @@ import {
     RoadIndex,
     roadProfile,
 } from './streets.ts'
-import { attachParts, gateArch, type OsmPart, wallFrom } from './structures.ts'
+import { attachParts, gateArch, orientedBox, type OsmPart, wallFrom } from './structures.ts'
 import { blockedGround, type CityTree, cityTree, fillWoods, mergeTrees, osmTree } from './trees.ts'
 
 /** A latitude/longitude box, as Overpass takes it. */
@@ -45,6 +47,8 @@ const METRES_PER_DEGREE_LAT = 111_320
 const FLOOR_HEIGHT = 3.2
 /** Room for a roof or a parapet above the top floor. */
 const ROOF_ALLOWANCE = 1.5
+/** Shingle and sheet-metal greys and browns for pitched roofs no one has coloured. */
+const PITCHED_ROOFS = ['#5d5a57', '#6b5e55', '#4f5357', '#76695e', '#5a6060']
 /** Elevation is sampled to the metre, so a height this close to sea level is the river. */
 const WATER_LEVEL = 1
 /** Water sits this far below its banks so the shore reads as an edge. */
@@ -455,10 +459,14 @@ export interface MapExtras {
     nodes?: OsmElement[]
     /** The city's tree inventory: species and trunk sizes (see trees.ts). */
     cityTrees?: CityTree[]
+    /** Heights above the ground from the lidar survey: buildings' heights and tree crowns (see lidar.ts). */
+    lidar?: LidarGrid | null
     /** Hand-made detail for some buildings (see landmarks.ts). */
     landmarks?: Landmark[]
     /** Hand-made fountains, statues, gardens and the like (see decor.ts). */
     decor?: DecorFile[]
+    /** Ordinary buildings' real colours and windows, by OSM key (see looks.ts). */
+    looks?: Record<string, Look>
 }
 
 /** Assembles the map from raw OSM elements and an elevation grid sampled over the same bounds. */
@@ -468,7 +476,7 @@ export function convertMap(
     elements: OsmElement[],
     elevation: ElevationGrid,
     cell: number,
-    { river, nodes = [], cityTrees = [], landmarks = [], decor = [] }: MapExtras = {}
+    { river, nodes = [], cityTrees = [], lidar = null, landmarks = [], decor = [], looks = {} }: MapExtras = {}
 ): RaceMap {
     const landmarksByKey = new Map(landmarks.map(landmark => [landmarkKey(landmark.osm, landmark.id), landmark]))
     const { origin, project } = projector(bounds)
@@ -536,25 +544,45 @@ export function convertMap(
                 )
                 if (!inside(centre as [number, number])) continue
 
-                // Sat on the lowest corner and rising from the highest, so a building on a slope never floats.
+                // Sat on the lowest corner and rising from the highest, so a building on a slope never floats;
+                // measured by the lidar survey, its roof is that high above the ground under it.
                 const grounds = outer.map(([x, z]) => ground(x, z))
                 const holes = polygon.holes.map(hole => flatRing(hole.map(project)))
+                const outline = flatRing(outer)
+                const measured = lidar ? surveyedShape(lidar, width, depth, outline, holes, orientedBox(outline)) : null
+                const level = grounds.reduce((sum, y) => sum + y, 0) / grounds.length
+                const roofRise = measured?.roof?.height ?? 0
                 const building: Building = {
                     id: element.id,
                     ...(element.type === 'relation' ? { relation: true } : {}),
                     ...(tags.name ? { name: tags.name } : {}),
                     base: round(Math.min(...grounds) - 1),
-                    top: round(Math.max(...grounds) + buildingHeight(tags, element.id)),
-                    outline: flatRing(outer),
+                    top: round(
+                        measured
+                            ? Math.max(level + measured.walls, Math.min(...grounds) + 2) + roofRise
+                            : Math.max(...grounds) + buildingHeight(tags, element.id)
+                    ),
+                    outline,
                     ...(holes.length > 0 ? { holes } : {}),
+                    ...(measured?.roof
+                        ? {
+                              roof: {
+                                  ...measured.roof,
+                                  colour: PITCHED_ROOFS[element.id % PITCHED_ROOFS.length]!,
+                              },
+                          }
+                        : {}),
                 }
                 // Gates wait for the roads, to know which one runs through them.
                 if (tags.historic === 'city_gate') gates.push({ building, groundLevel: Math.max(...grounds) })
                 else {
-                    const landmark = landmarksByKey.get(
-                        landmarkKey(element.type === 'relation' ? 'relation' : 'way', element.id)
+                    const key = landmarkKey(element.type === 'relation' ? 'relation' : 'way', element.id)
+                    buildings.push(
+                        applyLook(
+                            applyLandmark(building, landmarksByKey.get(key), project, Math.max(...grounds)),
+                            looks[key]
+                        )
                     )
-                    buildings.push(applyLandmark(building, landmark, project, Math.max(...grounds)))
                 }
             }
             continue
@@ -641,7 +669,31 @@ export function convertMap(
         project,
         ground
     )
-    const standing = [...mergeTrees(listed, [...mapped, ...fromOsm.trees]), ...handMade.trees]
+    // Where the lidar survey reaches, its crowns are the trees: the city's keep their species and take
+    // the measured size, OSM's (placed by eye) give way. Elsewhere the city's and OSM's stand as mapped.
+    const guessed = [...mapped, ...fromOsm.trees]
+    const inSurvey = (tree: { x: number; z: number }) => lidar !== null && surveyed(lidar, width, depth, tree.x, tree.z)
+    const measuredTrees = lidar
+        ? surveyedTrees(
+              lidar,
+              width,
+              depth,
+              buildingMask(
+                  lidar,
+                  width,
+                  depth,
+                  buildings.map(building => building.outline)
+              ),
+              listed
+          )
+        : listed
+    const standing = [
+        ...mergeTrees(
+            measuredTrees,
+            guessed.filter(tree => !inSurvey(tree))
+        ),
+        ...handMade.trees,
+    ]
     const blocked = blockedGround(
         width,
         depth,
@@ -651,7 +703,7 @@ export function convertMap(
     )
     const props = placeFurniture(
         {
-            trees: [...standing, ...fillWoods(areas, blocked, standing)],
+            trees: [...standing, ...fillWoods(areas, (x, z) => blocked(x, z) || inSurvey({ x, z }), standing)],
             benches: [...pointsTagged(tags => tags.amenity === 'bench'), ...fromOsm.benches, ...handMade.benches],
             signals: pointsTagged(tags => tags.highway === 'traffic_signals'),
             busStops: pointsTagged(tags => tags.highway === 'bus_stop'),

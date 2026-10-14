@@ -89,18 +89,27 @@ export interface Building {
     holes?: number[][]
     /** Overrides the colour picked from the palette (stone for city gates). */
     colour?: string
+    /** A pitched roof (or a coloured flat one): the walls stop `roof.height` below `top`. */
+    roof?: Roof
+    /** Windows other than the usual ones for its height (false: none), and their glass. */
+    windows?: WindowGrid | false
+    glass?: string
     /** Detail from a landmark file or from OSM's building parts; without it the footprint is drawn as a plain box. */
     detail?: BuildingDetail
     /** Set when the detail comes from a landmark file. */
     landmark?: true
 }
 
+export type RoofShape = 'mansard' | 'pyramid' | 'flat' | 'gable' | 'hip'
+
 /**
  * A roof on top of walls. A mansard slopes in by `inset` over `height`, then
- * is flat; a pyramid meets in a point; a flat roof just closes the top.
+ * is flat; a pyramid meets in a point; a hip roof slopes in from every side
+ * to a ridge; a gable roof slopes from two sides to a ridge along the
+ * footprint's length, its ends walled up; a flat roof just closes the top.
  */
 export interface Roof {
-    shape: 'mansard' | 'pyramid' | 'flat'
+    shape: RoofShape
     height: number
     inset?: number
     colour: string
@@ -108,10 +117,30 @@ export interface Roof {
     parapet?: number
 }
 
+/**
+ * How windows look: tall framed ones (punched, the default), small square
+ * ones, round-headed ones (arched), continuous bands of glass (ribbon), or a
+ * wall of glass between thin mullions (curtain).
+ */
+export type WindowStyle = 'punched' | 'square' | 'arched' | 'ribbon' | 'curtain'
+
 /** Rows of windows on the walls: one per `spacing` metres along, one per `floor` metres up. */
 export interface WindowGrid {
     floor: number
     spacing: number
+    style?: WindowStyle
+}
+
+/**
+ * Balconies or floor slabs standing out of the walls: a slab `height` thick
+ * and `depth` deep every `floor` metres, the first at map height `first`.
+ */
+export interface Bands {
+    floor: number
+    depth: number
+    height: number
+    first: number
+    colour?: string
 }
 
 /**
@@ -141,12 +170,15 @@ export interface Arcade {
     edges: number[]
 }
 
-/** How walls look: their colour, and windows, fins or an arcade. */
+/** How walls look: their colour, and windows (with their glass), fins, balconies or an arcade. */
 export interface Look {
     wall: string
     windows?: WindowGrid
+    /** The windows' glass; a dark blue-grey by default. */
+    glass?: string
     fins?: Fins
     arcade?: Arcade
+    bands?: Bands
 }
 
 export interface BuildingDetail extends Look {
