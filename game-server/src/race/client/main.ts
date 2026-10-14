@@ -1,9 +1,8 @@
 import * as THREE from 'three'
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { buildWorld } from '../drive/world.ts'
 import { heightAt } from '../map/convert.ts'
 import { type GateSpec, projectCourse } from '../map/courses.ts'
-import type { AreaKind, Building, Course, RaceMap } from '../map/format.ts'
+import type { AreaKind, Course, RaceMap } from '../map/format.ts'
 import { createDriver } from './drive.ts'
 import type { KartLook } from './kart.ts'
 import { joinLobby, type Lobby } from './lobby.ts'
@@ -11,10 +10,11 @@ import { createMinimap } from './minimap.ts'
 import { createOthers } from './others.ts'
 import { createOverlay } from './overlay.ts'
 import { createRace } from './race.ts'
+import { buildDecor } from './decor.ts'
 import { buildFurniture } from './furniture.ts'
-import { identifyByRanges, setupIdentify } from './identify.ts'
+import { setupIdentify } from './identify.ts'
 import { buildWalls } from './walls.ts'
-import { buildLandmarks } from './landmarks.ts'
+import { buildBuildings } from './landmarks.ts'
 import { ASPHALT, buildStreets } from './streets.ts'
 
 /**
@@ -55,11 +55,12 @@ const AREA_COLOURS: Record<AreaKind, string> = {
     parking: '#c4c1bb',
 }
 const PATH_COLOUR = '#e9e2d0'
-const WALL_COLOURS = [0xd8cfc0, 0xc9b9a3, 0xb7a58e, 0xa9746a, 0x9b6455, 0xcfc9c2, 0xb9bec4, 0xe2d9c6]
 /** The ground texture is at most this many pixels on its long side. */
 const MAX_TEXTURE = 4096
 /** The camera never goes lower than this above the ground. */
 const EYE_HEIGHT = 2
+/** Vertical field of view, in degrees, unless a view link asks for another. */
+const FOV = 70
 const BASE_SPEED = 40
 const LANDMARK = { name: 'Hôtel du Parlement', lat: 46.80868, lon: -71.2142 }
 /** Free roam starts here, looking at the Parliament from above the Plains. */
@@ -108,16 +109,15 @@ const sun = new THREE.DirectionalLight(0xfff4e0, 1.8)
 sun.position.set(-0.6, 1, 0.35)
 scene.add(sun)
 
-const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.5, 8000)
+const camera = new THREE.PerspectiveCamera(FOV, window.innerWidth / window.innerHeight, 0.5, 8000)
 
 scene.add(buildTerrain(map))
 scene.add(buildWater(map))
-const buildings = buildBuildings(map)
-const landmarks = buildLandmarks(map.buildings)
+const buildings = buildBuildings(map.buildings)
 scene.add(buildings)
-scene.add(landmarks)
 scene.add(buildStreets(map, ground))
 scene.add(buildFurniture(map, ground))
+scene.add(buildDecor(map.decor))
 scene.add(buildWalls(map.walls, ground))
 
 const controls = flyControls(camera, renderer.domElement)
@@ -150,7 +150,7 @@ const race = createRace({
     arrow: overlay.arrow,
     speedometer: overlay.speedometer,
 })
-if (!racing) setupIdentify(camera, [buildings, landmarks], overlay.identify, renderer.domElement)
+if (!racing) setupIdentify(camera, [buildings], overlay.identify, renderer.domElement)
 
 let lobby: Lobby | null = null
 if (racing && config.track) {
@@ -213,6 +213,8 @@ setInterval(() => {
         (p.y - ground(p.x, p.z)).toFixed(0),
         THREE.MathUtils.radToDeg(angles.y).toFixed(0),
         THREE.MathUtils.radToDeg(angles.x).toFixed(0),
+        // A zoomed view (matching a photo's lens) keeps its field of view.
+        ...(camera.fov !== FOV ? [camera.fov.toFixed(1)] : []),
     ].join(',')
     if (location.hash !== `#${hash}`) history.replaceState(null, '', `#${hash}`)
 }, 500)
@@ -269,18 +271,24 @@ function setMode(next: 'drive' | 'fly' | 'watch'): void {
     else help.textContent = next === 'fly' ? HELP.viewerFly : HELP.viewerDrive
 }
 
-/** Moves the camera to the view in the URL (#lat,lon,altitude,heading,pitch, in degrees). False when there is none. */
+/**
+ * Moves the camera to the view in the URL (#lat,lon,altitude,heading,pitch in
+ * degrees, then optionally the vertical field of view, to line up with a
+ * photo's lens). False when there is none.
+ */
 function applyViewFromHash(hash = location.hash): boolean {
     const view = hash.slice(1).split(',').map(Number)
-    if (view.length !== 5 || !view.every(Number.isFinite)) return false
+    if ((view.length !== 5 && view.length !== 6) || !view.every(Number.isFinite)) return false
 
-    const [lat, lon, altitude, heading, pitch] = view as [number, number, number, number, number]
+    const [lat, lon, altitude, heading, pitch, fov = FOV] = view as [number, number, number, number, number, number?]
     const { x, z } = toLocal(lat, lon)
     // Old links were in map metres (#1491,-839,…): read as latitude/longitude they land far off the
     // map, leaving nothing but sky. Anything outside the map is ignored.
     if (Math.abs(x) > map.width / 2 || Math.abs(z) > map.depth / 2) return false
     camera.position.set(x, ground(x, z) + altitude, z)
     camera.rotation.set(THREE.MathUtils.degToRad(pitch), THREE.MathUtils.degToRad(heading), 0, 'YXZ')
+    camera.fov = THREE.MathUtils.clamp(fov, 5, 120)
+    camera.updateProjectionMatrix()
     controls.syncFromCamera()
 
     return true
@@ -345,6 +353,15 @@ function paintGround(map: RaceMap, sizeX: number, sizeZ: number): HTMLCanvasElem
         context.fill()
     }
 
+    // Lawns, paving, gravel and flowerbed soil from the decor, over the parks.
+    for (const paint of map.decor.paint) {
+        context.fillStyle = paint.colour
+        context.beginPath()
+        tracePath(context, paint.outline)
+        context.closePath()
+        context.fill()
+    }
+
     // Footpaths only exist here. Streets are geometry, but are painted underneath too, so no ground shows through a seam.
     context.lineCap = 'round'
     context.lineJoin = 'round'
@@ -374,61 +391,6 @@ function buildWater(map: RaceMap): THREE.Mesh {
     geometry.translate(0, map.terrain.waterLevel, 0)
 
     return new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ color: AREA_COLOURS.water }))
-}
-
-/**
- * Every footprint extruded to its height and merged into a single mesh: one
- * draw call for the whole city. Roofs are tinted a little darker than walls.
- */
-function buildBuildings(map: RaceMap): THREE.Mesh {
-    const geometries: THREE.BufferGeometry[] = []
-    const owners: Building[] = []
-    const firstVertices: number[] = []
-    let vertices = 0
-    const wall = new THREE.Color()
-    const roof = new THREE.Color()
-
-    for (const building of map.buildings) {
-        // Landmarks with hand-made detail are drawn by landmarks.ts.
-        if (building.detail) continue
-        const shape = new THREE.Shape(toVectors(building.outline))
-        for (const hole of building.holes ?? []) shape.holes.push(new THREE.Path(toVectors(hole)))
-
-        const geometry = new THREE.ExtrudeGeometry(shape, { depth: building.top - building.base, bevelEnabled: false })
-        // The shape is drawn in (x, -z) and extruded along +z; tip it so the extrusion points up.
-        geometry.rotateX(-Math.PI / 2)
-        geometry.translate(0, building.base, 0)
-
-        if (building.colour) wall.set(building.colour)
-        else wall.setHex(WALL_COLOURS[building.id % WALL_COLOURS.length]!)
-        roof.copy(wall).multiplyScalar(0.72)
-        const normals = geometry.attributes.normal!
-        const colours = new Float32Array(normals.count * 3)
-        for (let i = 0; i < normals.count; i++) {
-            const colour = normals.getY(i) > 0.5 ? roof : wall
-            colours.set([colour.r, colour.g, colour.b], i * 3)
-        }
-        geometry.setAttribute('color', new THREE.BufferAttribute(colours, 3))
-        geometries.push(geometry)
-        owners.push(building)
-        firstVertices.push(vertices)
-        vertices += normals.count
-    }
-
-    const merged = mergeGeometries(geometries)
-    for (const geometry of geometries) geometry.dispose()
-
-    const mesh = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ vertexColors: true }))
-    mesh.userData.identify = identifyByRanges(owners, firstVertices)
-
-    return mesh
-}
-
-function toVectors(flat: number[]): THREE.Vector2[] {
-    const points: THREE.Vector2[] = []
-    for (let i = 0; i < flat.length; i += 2) points.push(new THREE.Vector2(flat[i]!, -flat[i + 1]!))
-
-    return points
 }
 
 /** Mouse-look fly camera with WASD, held above the ground. */

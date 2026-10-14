@@ -1,5 +1,16 @@
 import type { LatLon } from './convert.ts'
-import type { Arcade, Building, BuildingDetail, BuildingPart, Fins, Look, Roof, WindowGrid } from './format.ts'
+import type {
+    Arcade,
+    Bands,
+    Building,
+    BuildingDetail,
+    BuildingPart,
+    Fins,
+    Look,
+    Roof,
+    WallMaterial,
+    WindowGrid,
+} from './format.ts'
 
 /**
  * Hand-made detail for landmarks. OSM gives a footprint and maybe a height;
@@ -26,15 +37,21 @@ export type FinsSpec = Omit<Fins, 'recess'> & { recess?: string }
 /** An arcade as written in a landmark file: on the walls facing the façade's way, or on all of them. */
 export type ArcadeSpec = Omit<Arcade, 'edges' | 'top'> & { faces?: 'front' | 'all' }
 
+/** Balconies or floor slabs as written in a landmark file: the first `from` metres above the ground (a floor up by default). */
+export type BandsSpec = Omit<Bands, 'first' | 'height'> & { height?: number; from?: number }
+
 /**
  * A part takes the building's look unless it says otherwise; `false`
  * takes windows, fins or an arcade away (a plant room on the roof).
  */
 export interface LookOverrides {
     wall?: string
+    material?: WallMaterial
     windows?: WindowGrid | false
+    glass?: string
     fins?: FinsSpec | false
     arcade?: ArcadeSpec | false
+    bands?: BandsSpec | false
 }
 
 /**
@@ -77,9 +94,12 @@ export interface Landmark {
     name: string
     notes?: string
     wall: string
+    material?: WallMaterial
     windows?: WindowGrid
+    glass?: string
     fins?: FinsSpec
     arcade?: ArcadeSpec
+    bands?: BandsSpec
     /** Wall height above the ground, replacing OSM's guess. */
     height: number
     roof?: Roof
@@ -131,11 +151,16 @@ export function applyLandmark(
         parts,
     }
 
-    return { ...building, top: round(ground + landmark.height + roofHeight), detail, landmark: true }
+    // The landmark's roof replaces any the survey measured.
+    const { roof: _, ...plain } = building
+
+    return { ...plain, top: round(ground + landmark.height + roofHeight), detail, landmark: true }
 }
 
 /** Fins without a recess colour get this: a dark window slot. */
 const RECESS = '#3b4248'
+/** Balconies and floor slabs are this thick unless a landmark says otherwise. */
+const BAND_HEIGHT = 0.25
 
 /** An edge counts as facing the façade's way when it turns less than this from it. */
 const FRONT_ANGLE = Math.PI / 4
@@ -153,9 +178,23 @@ function resolveLook(
     const windows = pick(overrides.windows, landmark.windows)
     const fins = pick(overrides.fins, landmark.fins)
     const arcade = pick(overrides.arcade, landmark.arcade)
+    const bands = pick(overrides.bands, landmark.bands)
+    const glass = overrides.glass ?? landmark.glass
 
     const look: Look = { wall: overrides.wall ?? landmark.wall }
+    const material = overrides.material ?? landmark.material
+    if (material && material !== 'plain') look.material = material
     if (windows) look.windows = windows
+    if (glass) look.glass = glass
+    if (bands) {
+        look.bands = {
+            floor: bands.floor,
+            depth: bands.depth,
+            height: bands.height ?? BAND_HEIGHT,
+            first: round(ground + (bands.from ?? bands.floor)),
+            ...(bands.colour ? { colour: bands.colour } : {}),
+        }
+    }
     if (fins) look.fins = { spacing: fins.spacing, width: fins.width, depth: fins.depth, recess: fins.recess ?? RECESS }
     if (arcade) {
         const edges = facingEdges(ring, arcade.faces === 'all' || !frame ? null : frame)
@@ -385,9 +424,12 @@ export const LANDMARK_KEYS = [
     'name',
     'notes',
     'wall',
+    'material',
     'windows',
+    'glass',
     'fins',
     'arcade',
+    'bands',
     'height',
     'roof',
     'facade',
@@ -403,9 +445,12 @@ export const PART_KEYS = [
     'height',
     'roof',
     'wall',
+    'material',
     'windows',
+    'glass',
     'fins',
     'arcade',
+    'bands',
     'shape',
     'steps',
 ]
@@ -413,6 +458,11 @@ export const STEPS_KEYS = ['count', 'to', 'toward']
 export const ROOF_KEYS = ['shape', 'height', 'inset', 'colour', 'parapet']
 export const FINS_KEYS = ['spacing', 'width', 'depth', 'recess']
 export const ARCADE_KEYS = ['height', 'depth', 'spacing', 'faces']
+export const WINDOWS_KEYS = ['floor', 'spacing', 'style']
+export const BANDS_KEYS = ['floor', 'depth', 'height', 'from', 'colour']
+export const ROOF_SHAPES = ['mansard', 'pyramid', 'flat', 'gable', 'hip']
+export const WINDOW_STYLES = ['punched', 'square', 'arched', 'ribbon', 'curtain']
+export const WALL_MATERIALS = ['plain', 'brick', 'stone', 'concrete', 'siding']
 const COLOUR = /^#[0-9a-fA-F]{6}$/
 
 /**
@@ -450,8 +500,7 @@ export function parseLandmark(value: unknown, file: string): Landmark {
         if (input === undefined) return
         const r = record(path, input, ROOF_KEYS)
         if (!r) return
-        if (!['mansard', 'pyramid', 'flat'].includes(r.shape as string))
-            fail(`${path}.shape`, 'must be mansard, pyramid or flat')
+        if (!ROOF_SHAPES.includes(r.shape as string)) fail(`${path}.shape`, `must be ${ROOF_SHAPES.join(', ')}`)
         number(`${path}.height`, r.height, { min: 0 })
         number(`${path}.inset`, r.inset, { min: 0, optional: true })
         number(`${path}.parapet`, r.parapet, { min: 0, optional: true })
@@ -459,10 +508,28 @@ export function parseLandmark(value: unknown, file: string): Landmark {
     }
     const windows = (path: string, input: unknown) => {
         if (input === undefined || input === false) return
-        const w = record(path, input, ['floor', 'spacing'])
+        const w = record(path, input, WINDOWS_KEYS)
         if (!w) return
         number(`${path}.floor`, w.floor, { min: 1 })
         number(`${path}.spacing`, w.spacing, { min: 0.5 })
+        if (w.style !== undefined && !WINDOW_STYLES.includes(w.style as string)) {
+            fail(`${path}.style`, `must be ${WINDOW_STYLES.join(', ')}`)
+        }
+    }
+    const material = (path: string, input: unknown) => {
+        if (input !== undefined && !WALL_MATERIALS.includes(input as string)) {
+            fail(path, `must be ${WALL_MATERIALS.join(', ')}`)
+        }
+    }
+    const bands = (path: string, input: unknown) => {
+        if (input === undefined || input === false) return
+        const b = record(path, input, BANDS_KEYS)
+        if (!b) return
+        number(`${path}.floor`, b.floor, { min: 1 })
+        number(`${path}.depth`, b.depth, { min: 0.05 })
+        number(`${path}.height`, b.height, { min: 0.05, optional: true })
+        number(`${path}.from`, b.from, { min: 0, optional: true })
+        if (b.colour !== undefined) colour(`${path}.colour`, b.colour)
     }
     const fins = (path: string, input: unknown) => {
         if (input === undefined || input === false) return
@@ -496,7 +563,11 @@ export function parseLandmark(value: unknown, file: string): Landmark {
         if (typeof landmark.name !== 'string' || landmark.name === '') fail('name', 'must be a name')
         if (landmark.notes !== undefined && typeof landmark.notes !== 'string') fail('notes', 'must be text')
         colour('wall', landmark.wall)
+        material('material', landmark.material)
+        if (landmark.glass !== undefined) colour('glass', landmark.glass)
         number('height', landmark.height, { min: 1 })
+        if (landmark.bands === false) fail('bands', 'leave it out instead')
+        bands('bands', landmark.bands)
         if (landmark.windows === false) fail('windows', 'leave it out instead')
         windows('windows', landmark.windows)
         if (landmark.fins === false) fail('fins', 'leave it out instead')
@@ -551,6 +622,9 @@ export function parseLandmark(value: unknown, file: string): Landmark {
                         }
                     }
                     if (part.wall !== undefined) colour(`parts[${i}].wall`, part.wall)
+                    material(`parts[${i}].material`, part.material)
+                    if (part.glass !== undefined) colour(`parts[${i}].glass`, part.glass)
+                    bands(`parts[${i}].bands`, part.bands)
                     windows(`parts[${i}].windows`, part.windows)
                     fins(`parts[${i}].fins`, part.fins)
                     arcade(`parts[${i}].arcade`, part.arcade, true)

@@ -1,0 +1,62 @@
+{
+    "$schema": "../../decor.schema.json",
+    "name": "Croix du Sacrifice",
+    "notes": "The Croix du Sacrifice (1924), Québec's war memorial on Grande Allée before the Parliament: a granite Latin cross on a stepped base, its arms along the street.",
+    "replaces": [
+        "node/7450242812"
+    ],
+    "items": [
+        {
+            "kind": "structure",
+            "at": {
+                "lat": 46.808664,
+                "lon": -71.212037
+            },
+            "facing": 325,
+            "pieces": [
+                {
+                    "shape": "box",
+                    "width": 6.2,
+                    "depth": 6.2,
+                    "height": 0.4,
+                    "colour": "#cfccc3",
+                    "solid": true
+                },
+                {
+                    "shape": "box",
+                    "width": 4.6,
+                    "depth": 4.6,
+                    "from": 0.4,
+                    "height": 0.4,
+                    "colour": "#cfccc3",
+                    "solid": true
+                },
+                {
+                    "shape": "box",
+                    "width": 3.0,
+                    "depth": 3.0,
+                    "from": 0.8,
+                    "height": 0.8,
+                    "colour": "#cfccc3",
+                    "solid": true
+                },
+                {
+                    "shape": "box",
+                    "width": 0.9,
+                    "depth": 0.9,
+                    "from": 1.6,
+                    "height": 9.2,
+                    "colour": "#cfccc3"
+                },
+                {
+                    "shape": "box",
+                    "width": 3.8,
+                    "depth": 0.9,
+                    "from": 7.6,
+                    "height": 0.9,
+                    "colour": "#cfccc3"
+                }
+            ]
+        }
+    ]
+}

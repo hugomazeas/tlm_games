@@ -1,0 +1,143 @@
+{
+    "$schema": "../../landmark.schema.json",
+    "id": 30793055,
+    "osm": "way",
+    "name": "Manège militaire Voltigeurs de Québec",
+    "notes": "Manège militaire des Voltigeurs de Québec (Eugène-Étienne Taché, 1887; rebuilt after the 2008 fire, reopened 2018), Grande Allée: the stone drill hall under a steep slate roof, the château-style head building with turrets at its north-east end towards Place George-V, and the new low annex on the Plains side. Heights from the lidar survey: the hall's eaves 12.5 m and ridge 23 m, the head 25 m, the annex 6 m. Façade frame along Grande Allée, south-west to north-east.",
+    "wall": "#dcdad3",
+    "windows": {
+        "floor": 3.2,
+        "spacing": 2,
+        "style": "curtain"
+    },
+    "glass": "#56646f",
+    "height": 5,
+    "roof": {
+        "shape": "flat",
+        "height": 0,
+        "colour": "#b5b4ae",
+        "parapet": 0.5
+    },
+    "facade": {
+        "from": {
+            "lat": 46.8061049,
+            "lon": -71.2147344
+        },
+        "to": {
+            "lat": 46.80687,
+            "lon": -71.2134199
+        }
+    },
+    "parts": [
+        {
+            "along": -13,
+            "out": -22,
+            "width": 82,
+            "depth": 28,
+            "height": 11.1,
+            "wall": "#aaa08f",
+            "material": "stone",
+            "windows": {
+                "floor": 5.5,
+                "spacing": 4.2,
+                "style": "arched"
+            },
+            "roof": {
+                "shape": "gable",
+                "height": 10.5,
+                "colour": "#4b5058"
+            }
+        },
+        {
+            "along": 54,
+            "out": -24,
+            "width": 18,
+            "depth": 42,
+            "height": 13.6,
+            "wall": "#aaa08f",
+            "material": "stone",
+            "windows": {
+                "floor": 3.6,
+                "spacing": 3,
+                "style": "punched"
+            },
+            "roof": {
+                "shape": "hip",
+                "height": 10,
+                "colour": "#4b5058"
+            }
+        },
+        {
+            "along": -60,
+            "out": -10,
+            "width": 12,
+            "depth": 14,
+            "height": 11.6,
+            "wall": "#aaa08f",
+            "material": "stone",
+            "windows": {
+                "floor": 3.6,
+                "spacing": 3,
+                "style": "punched"
+            },
+            "roof": {
+                "shape": "pyramid",
+                "height": 5,
+                "colour": "#4b5058"
+            }
+        },
+        {
+            "along": 46,
+            "out": -4,
+            "width": 5,
+            "depth": 5,
+            "shape": "round",
+            "height": 15,
+            "wall": "#aaa08f",
+            "material": "stone",
+            "windows": false,
+            "roof": {
+                "shape": "pyramid",
+                "height": 8,
+                "colour": "#4b5058"
+            }
+        },
+        {
+            "along": 62,
+            "out": -4,
+            "width": 5,
+            "depth": 5,
+            "shape": "round",
+            "height": 15,
+            "wall": "#aaa08f",
+            "material": "stone",
+            "windows": false,
+            "roof": {
+                "shape": "pyramid",
+                "height": 8,
+                "colour": "#4b5058"
+            }
+        },
+        {
+            "along": -55,
+            "out": -6,
+            "width": 4.5,
+            "depth": 4.5,
+            "shape": "round",
+            "height": 14,
+            "wall": "#aaa08f",
+            "material": "stone",
+            "windows": false,
+            "roof": {
+                "shape": "pyramid",
+                "height": 7,
+                "colour": "#4b5058"
+            }
+        }
+    ],
+    "fingerprint": {
+        "lat": 46.8063384,
+        "lon": -71.2138271,
+        "area": 4847
+    }
+}

@@ -30,14 +30,25 @@
         "wall": {
             "$ref": "#/$defs/colour"
         },
+        "material": {
+            "enum": ["plain", "brick", "stone", "concrete", "siding"],
+            "description": "What the walls are made of, drawn faintly over their colour up close; plain by default."
+        },
         "windows": {
             "$ref": "#/$defs/windows"
+        },
+        "glass": {
+            "$ref": "#/$defs/colour",
+            "description": "The windows' glass; a dark blue-grey by default."
         },
         "fins": {
             "$ref": "#/$defs/fins"
         },
         "arcade": {
             "$ref": "#/$defs/arcade"
+        },
+        "bands": {
+            "$ref": "#/$defs/bands"
         },
         "height": {
             "type": "number",
@@ -104,6 +115,10 @@
                         "$ref": "#/$defs/colour",
                         "description": "Its own wall colour; the building's by default."
                     },
+                    "material": {
+                        "enum": ["plain", "brick", "stone", "concrete", "siding"],
+                        "description": "Its own material; the building's by default."
+                    },
                     "windows": {
                         "description": "Its own windows, or false for none; the building's by default.",
                         "oneOf": [
@@ -114,6 +129,10 @@
                                 "const": false
                             }
                         ]
+                    },
+                    "glass": {
+                        "$ref": "#/$defs/colour",
+                        "description": "Its own glass; the building's by default."
                     },
                     "fins": {
                         "description": "Its own fins, or false for none; the building's by default.",
@@ -131,6 +150,17 @@
                         "oneOf": [
                             {
                                 "$ref": "#/$defs/arcade"
+                            },
+                            {
+                                "const": false
+                            }
+                        ]
+                    },
+                    "bands": {
+                        "description": "Its own balconies, or false for none; the building's by default.",
+                        "oneOf": [
+                            {
+                                "$ref": "#/$defs/bands"
                             },
                             {
                                 "const": false
@@ -206,10 +236,10 @@
             "type": "object",
             "additionalProperties": false,
             "required": ["shape", "height", "colour"],
-            "description": "A mansard slopes in by `inset` over `height`, then is flat; a pyramid meets in a point; a flat roof just closes the top.",
+            "description": "A mansard slopes in by `inset` over `height`, then is flat; a hip roof slopes in from every side to a ridge; a gable roof slopes from the two long sides to a ridge, its ends walled up; a pyramid meets in a point; a flat roof just closes the top.",
             "properties": {
                 "shape": {
-                    "enum": ["mansard", "pyramid", "flat"]
+                    "enum": ["mansard", "pyramid", "flat", "gable", "hip"]
                 },
                 "height": {
                     "type": "number",
@@ -243,6 +273,10 @@
                     "type": "number",
                     "minimum": 0.5,
                     "description": "Metres between windows along a wall."
+                },
+                "style": {
+                    "enum": ["punched", "square", "arched", "ribbon", "curtain"],
+                    "description": "Tall framed windows (punched, the default), small square ones, round-headed ones (arched), continuous bands of glass (ribbon), or a wall of glass between thin mullions (curtain)."
                 }
             }
         },
@@ -297,6 +331,38 @@
                 "faces": {
                     "enum": ["front", "all"],
                     "description": "front (default): walls facing the façade's way, within 45°; all: every outside wall."
+                }
+            }
+        },
+        "bands": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["floor", "depth"],
+            "description": "Balconies or floor slabs standing out of the walls, one every `floor` metres.",
+            "properties": {
+                "floor": {
+                    "type": "number",
+                    "minimum": 1,
+                    "description": "Metres between slabs."
+                },
+                "depth": {
+                    "type": "number",
+                    "minimum": 0.05,
+                    "description": "How far they stand out of the wall."
+                },
+                "height": {
+                    "type": "number",
+                    "minimum": 0.05,
+                    "description": "How thick they are; 0.25 m by default."
+                },
+                "from": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "The first one's height above the ground; a floor up by default."
+                },
+                "colour": {
+                    "$ref": "#/$defs/colour",
+                    "description": "Their colour; the wall's by default."
                 }
             }
         }

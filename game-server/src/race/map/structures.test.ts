@@ -68,11 +68,15 @@ describe('roofFromTags', () => {
         expect(roofFromTags({ 'roof:shape': 'dome', 'roof:height': '4' }, 100)).toMatchObject({ height: 4 })
     })
 
-    test('sloped-all-round shapes are mansards', () => {
+    test('gabled roofs are gables, hipped ones hips, the rest that slope all round mansards', () => {
         const roof = roofFromTags({ 'roof:shape': 'hipped', 'roof:colour': '#6C7965' }, 400)!
-        expect(roof.shape).toBe('mansard')
+        expect(roof.shape).toBe('hip')
         expect(roof.height).toBe(6)
         expect(roof.colour).toBe('#6C7965')
+        expect(roofFromTags({ 'roof:shape': 'gabled' }, 400)!.shape).toBe('gable')
+        const mansard = roofFromTags({ 'roof:shape': 'mansard' }, 400)!
+        expect(mansard.shape).toBe('mansard')
+        expect(mansard.inset).toBeCloseTo(4.2)
     })
 
     test('flat or untagged roofs are none', () => {

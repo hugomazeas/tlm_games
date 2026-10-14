@@ -1,10 +1,11 @@
 import * as THREE from 'three'
 import type { RaceMap } from '../map/format.ts'
 import type { HeightAt } from './strips.ts'
+import { buildTrees } from './trees.ts'
 
 /**
- * Trees, traffic lights, stop signs, benches and bus shelters. Each part is
- * one instanced mesh: thousands of trees cost two draw calls.
+ * Trees (trees.ts), traffic lights, stop signs, benches and bus shelters.
+ * Each part of the furniture is one instanced mesh.
  */
 
 interface Placement {
@@ -36,10 +37,7 @@ export function buildFurniture(map: RaceMap, heightAt: HeightAt): THREE.Group {
         group.add(instanced(geometry, material, placements, heightAt))
     }
 
-    // Trees vary in size and turn by their place in the list, so the same map always looks the same.
-    const trees = pairs(props.trees).map(([x, z], i) => ({ x, z, turn: i * 2.39, scale: 0.75 + ((i * 37) % 10) / 15 }))
-    add(new THREE.CylinderGeometry(0.22, 0.3, 2.6, 6).translate(0, 1.3, 0), flat(0x6b4f3a), trees)
-    add(new THREE.IcosahedronGeometry(2.4, 0).translate(0, 4.2, 0), flat(0x4f8f46), trees)
+    group.add(buildTrees(props.trees, heightAt))
 
     addTrafficLights(add, flat, groups(props.signals, 5))
     addStopSigns(add, flat, groups(map.stops, 5))

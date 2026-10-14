@@ -1,0 +1,69 @@
+{
+    "$schema": "../../landmark.schema.json",
+    "id": 27372377,
+    "osm": "way",
+    "name": "Édifice Marie-Guyart (tour)",
+    "notes": "Édifice Marie-Guyart's tower (Complexe G, 1972), Québec's tallest: beige precast concrete, rows of small square windows on every floor, and a narrower crown of top floors (the Observatoire de la Capitale) and plant. Heights from the lidar survey: the main roof 123 m, the crown 132 m, the mast higher still. Façade frame on its south-east side.",
+    "wall": "#cdc5b5",
+    "material": "concrete",
+    "windows": {
+        "floor": 3.9,
+        "spacing": 2.2,
+        "style": "square"
+    },
+    "height": 122,
+    "roof": {
+        "shape": "flat",
+        "height": 0,
+        "colour": "#9f9f9b",
+        "parapet": 1.2
+    },
+    "facade": {
+        "from": {
+            "lat": 46.8077796,
+            "lon": -71.2176593
+        },
+        "to": {
+            "lat": 46.8079645,
+            "lon": -71.217177
+        }
+    },
+    "parts": [
+        {
+            "along": 0,
+            "out": -24,
+            "width": 28,
+            "depth": 28,
+            "from": 122,
+            "height": 131,
+            "windows": {
+                "floor": 4.5,
+                "spacing": 1.8,
+                "style": "ribbon"
+            },
+            "glass": "#3d4954",
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#8e8f8c",
+                "parapet": 0.8
+            }
+        },
+        {
+            "along": 0,
+            "out": -24,
+            "width": 1.2,
+            "depth": 1.2,
+            "shape": "round",
+            "from": 131,
+            "height": 160,
+            "windows": false,
+            "wall": "#d8d6d0"
+        }
+    ],
+    "fingerprint": {
+        "lat": 46.8080593,
+        "lon": -71.2175805,
+        "area": 1989
+    }
+}

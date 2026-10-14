@@ -78,23 +78,24 @@ export function gateArch(gate: Building, road: NearestRoad, groundLevel: number)
 
 /**
  * A roof from OSM's `roof:*` tags, or none for a flat or untagged one.
- * Pointed shapes become pyramids; the sloped-all-round ones (hipped,
- * gabled, mansard…) become mansards. Without `roof:height`, the height
- * follows the footprint's size.
+ * Pointed shapes become pyramids, gabled ones gables, hipped ones hips; the
+ * rest that slope all round (mansard, gambrel, round…) mansards. Without
+ * `roof:height`, the height follows the footprint's size.
  */
 export function roofFromTags(tags: Record<string, string>, area: number): Roof | undefined {
-    const shape = tags['roof:shape']
+    const shape = tags['roof:shape'] ?? ''
     const tagged = parseFloat(tags['roof:height'] ?? '')
     const colour = tags['roof:colour'] ?? ROOF_COLOUR
     const size = Math.sqrt(Math.max(area, 1))
+    const sloped = tagged > 0 ? tagged : clamp(size * 0.3, 2, 8)
 
-    if (['pyramidal', 'dome', 'cone', 'onion'].includes(shape ?? '')) {
+    if (['pyramidal', 'dome', 'cone', 'onion'].includes(shape)) {
         return { shape: 'pyramid', height: tagged > 0 ? tagged : clamp(size * 0.9, 2, 16), colour }
     }
-    if (['hipped', 'gabled', 'half-hipped', 'mansard', 'gambrel', 'round', 'saltbox'].includes(shape ?? '')) {
-        const height = tagged > 0 ? tagged : clamp(size * 0.3, 2, 8)
-        return { shape: 'mansard', height, inset: height * 0.7, colour }
-    }
+    if (['gabled', 'saltbox'].includes(shape)) return { shape: 'gable', height: sloped, colour }
+    if (['hipped', 'half-hipped'].includes(shape)) return { shape: 'hip', height: sloped, colour }
+    if (['mansard', 'gambrel', 'round'].includes(shape))
+        return { shape: 'mansard', height: sloped, inset: sloped * 0.7, colour }
 
     return undefined
 }
@@ -160,6 +161,54 @@ export function attachParts(buildings: Building[], parts: OsmPart[]): Building[]
 
         return { ...building, top: round(top), detail: { ...detail, parts: [...detail.parts, ...added] } }
     })
+}
+
+/** The smallest rectangle round a ring, lined up with one of its edges: centre, long axis and half sizes. */
+export function orientedBox(ring: number[]): {
+    cx: number
+    cz: number
+    ux: number
+    uz: number
+    halfLong: number
+    halfShort: number
+} {
+    const count = ring.length / 2
+    let best = { area: Infinity, cx: 0, cz: 0, ux: 1, uz: 0, halfLong: 0, halfShort: 0 }
+    for (let i = 0; i < count; i++) {
+        const j = (i + 1) % count
+        const dx = ring[j * 2]! - ring[i * 2]!
+        const dz = ring[j * 2 + 1]! - ring[i * 2 + 1]!
+        const length = Math.hypot(dx, dz)
+        if (length < 1e-6) continue
+        const ux = dx / length
+        const uz = dz / length
+        let [minU, maxU, minV, maxV] = [Infinity, -Infinity, Infinity, -Infinity]
+        for (let k = 0; k < count; k++) {
+            const x = ring[k * 2]!
+            const z = ring[k * 2 + 1]!
+            const u = x * ux + z * uz
+            const v = -x * uz + z * ux
+            minU = Math.min(minU, u)
+            maxU = Math.max(maxU, u)
+            minV = Math.min(minV, v)
+            maxV = Math.max(maxV, v)
+        }
+        const area = (maxU - minU) * (maxV - minV)
+        if (area >= best.area) continue
+        const mu = (minU + maxU) / 2
+        const mv = (minV + maxV) / 2
+        const cx = mu * ux - mv * uz
+        const cz = mu * uz + mv * ux
+        const along = (maxU - minU) / 2
+        const across = (maxV - minV) / 2
+        // The long axis: along the edge if it's the longer side, else square to it.
+        best =
+            along >= across
+                ? { area, cx, cz, ux, uz, halfLong: along, halfShort: across }
+                : { area, cx, cz, ux: -uz, uz: ux, halfLong: across, halfShort: along }
+    }
+
+    return best
 }
 
 function pairs(flat: number[]): Point[] {

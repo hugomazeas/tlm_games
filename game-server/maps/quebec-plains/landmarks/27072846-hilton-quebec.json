@@ -1,0 +1,61 @@
+{
+    "$schema": "../../landmark.schema.json",
+    "id": 27072846,
+    "osm": "way",
+    "name": "Hilton Québec",
+    "notes": "Hilton Québec (1974), boulevard René-Lévesque: a white concrete slab, every wall a deep grid of balconies between piers. Height from the lidar survey: 83 m above the ground (here above its highest point), a plant room on top.",
+    "wall": "#e4e2dc",
+    "material": "concrete",
+    "fins": {
+        "spacing": 3.4,
+        "width": 0.4,
+        "depth": 1.1,
+        "recess": "#5d646b"
+    },
+    "bands": {
+        "floor": 2.85,
+        "depth": 1.1,
+        "height": 0.25
+    },
+    "height": 80.3,
+    "roof": {
+        "shape": "flat",
+        "height": 0,
+        "colour": "#a7a7a3",
+        "parapet": 1
+    },
+    "facade": {
+        "from": {
+            "lat": 46.8108648,
+            "lon": -71.2148195
+        },
+        "to": {
+            "lat": 46.8105368,
+            "lon": -71.2144752
+        }
+    },
+    "parts": [
+        {
+            "along": -2,
+            "out": -22,
+            "width": 18,
+            "depth": 12,
+            "from": 80.3,
+            "height": 85.5,
+            "fins": false,
+            "bands": false,
+            "windows": false,
+            "wall": "#cfcdc7",
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#8f908d"
+            }
+        }
+    ],
+    "fingerprint": {
+        "lat": 46.8105803,
+        "lon": -71.2149466,
+        "area": 1459
+    }
+}

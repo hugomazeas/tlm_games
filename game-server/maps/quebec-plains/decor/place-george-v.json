@@ -1,0 +1,73 @@
+{
+    "$schema": "../../decor.schema.json",
+    "name": "Place George-V",
+    "notes": "Place George-V, between the Parliament's Édifice Jean-Talon and the Manège militaire: a paved square along Grande Allée, and two lawns towards Wilfrid-Laurier either side of a path, the western one small. From the aerial photos.",
+    "items": [
+        {
+            "kind": "paint",
+            "surface": "paving",
+            "area": [
+                {
+                    "lat": 46.8069825,
+                    "lon": -71.2152459
+                },
+                {
+                    "lat": 46.8074594,
+                    "lon": -71.2143871
+                },
+                {
+                    "lat": 46.8069081,
+                    "lon": -71.2137151
+                },
+                {
+                    "lat": 46.8064111,
+                    "lon": -71.2145779
+                }
+            ]
+        },
+        {
+            "kind": "paint",
+            "surface": "lawn",
+            "area": [
+                {
+                    "lat": 46.80674,
+                    "lon": -71.2149195
+                },
+                {
+                    "lat": 46.8068517,
+                    "lon": -71.2147215
+                },
+                {
+                    "lat": 46.8065573,
+                    "lon": -71.2143737
+                },
+                {
+                    "lat": 46.8064432,
+                    "lon": -71.2145721
+                }
+            ]
+        },
+        {
+            "kind": "paint",
+            "surface": "lawn",
+            "area": [
+                {
+                    "lat": 46.8068955,
+                    "lon": -71.2146441
+                },
+                {
+                    "lat": 46.8072016,
+                    "lon": -71.2141019
+                },
+                {
+                    "lat": 46.8069147,
+                    "lon": -71.2137525
+                },
+                {
+                    "lat": 46.806602,
+                    "lon": -71.214296
+                }
+            ]
+        }
+    ]
+}

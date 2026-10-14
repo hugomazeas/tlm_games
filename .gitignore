@@ -25,3 +25,6 @@ Homestead.yaml
 Thumbs.db
 .playwright-mcp/
 /game-server/node_modules
+
+# Aerial screenshots matched against the racing map (game-server/tools/aerial): not ours to commit.
+game-server/maps/*/aerial/

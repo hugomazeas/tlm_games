@@ -3,17 +3,34 @@ import { courseProblems } from '../drive/checks.ts'
 import { buildWorld } from '../drive/world.ts'
 import { projector } from './convert.ts'
 import { COURSE_KEYS, GATE_KEYS, projectCourse } from './courses.ts'
-import { ARCADE_KEYS, FINS_KEYS, LANDMARK_KEYS, PART_KEYS, ROOF_KEYS, STEPS_KEYS } from './landmarks.ts'
+import { BASIN_KEYS, DECOR_KEYS, type DecorFile, ITEM_KEYS, PIECE_KEYS, PLINTH_KEYS } from './decor.ts'
+import { LOOK_KEYS, LOOKS_KEYS, type LooksFile } from './looks.ts'
+import {
+    ARCADE_KEYS,
+    BANDS_KEYS,
+    FINS_KEYS,
+    LANDMARK_KEYS,
+    PART_KEYS,
+    ROOF_KEYS,
+    ROOF_SHAPES,
+    STEPS_KEYS,
+    WINDOW_STYLES,
+    WINDOWS_KEYS,
+} from './landmarks.ts'
 import {
     buildMap,
     COURSE_SCHEMA,
     type CourseFile,
+    DECOR_SCHEMA,
     LANDMARK_SCHEMA,
+    LOOKS_SCHEMA,
     type LandmarkFile,
     MAPS,
     mapFile,
     readCourses,
+    readDecor,
     readLandmarks,
+    readLooks,
     readSnapshot,
     reviewMap,
     serialise,
@@ -31,10 +48,14 @@ for (const config of Object.values(MAPS)) {
     describe(`the ${config.slug} map`, () => {
         let snapshot: Snapshot | null
         let files: LandmarkFile[]
+        let decor: DecorFile[]
+        let looks: LooksFile
         let courses: CourseFile[]
         beforeAll(async () => {
             snapshot = await readSnapshot(config.slug)
             files = await readLandmarks(config.slug)
+            decor = await readDecor(config.slug)
+            looks = await readLooks(config.slug)
             courses = await readCourses(config.slug)
         })
         const landmarks = () => files.map(file => file.landmark)
@@ -44,8 +65,8 @@ for (const config of Object.values(MAPS)) {
             expect(snapshotMatches(snapshot!.meta, config)).toBe(true)
         })
 
-        test('its committed map.json is exactly what the snapshot and landmarks build', async () => {
-            const built = serialise(buildMap(config, snapshot!, landmarks()))
+        test('its committed map.json is exactly what the snapshot, landmarks, decor and looks build', async () => {
+            const built = serialise(buildMap(config, snapshot!, landmarks(), decor, looks))
             const committed = await Bun.file(mapFile(config.slug)).text()
             // Not toBe: a mismatch would print two 2 MB strings. Rebuild with `bun run race:map`.
             expect(built === committed).toBe(true)
@@ -60,7 +81,7 @@ for (const config of Object.values(MAPS)) {
         })
 
         test('every default track can be raced: on streets, gates clear, room for a full grid', () => {
-            const map = buildMap(config, snapshot!, landmarks())
+            const map = buildMap(config, snapshot!, landmarks(), decor, looks)
             const world = buildWorld(map)
             const { project } = projector(config.bounds)
             const problems = courses.flatMap(({ slug, spec }) =>
@@ -101,6 +122,29 @@ describe('the course schema', () => {
     })
 })
 
+describe('the looks schema', () => {
+    test('knows the same keys as the validator', async () => {
+        const schema = await Bun.file(LOOKS_SCHEMA).json()
+        expect(Object.keys(schema.properties).sort()).toEqual([...LOOKS_KEYS].sort())
+        expect(Object.keys(schema.$defs.look.properties).sort()).toEqual([...LOOK_KEYS].sort())
+    })
+})
+
+describe('the decor schema', () => {
+    test('knows the same keys as the validator', async () => {
+        const schema = await Bun.file(DECOR_SCHEMA).json()
+        expect(Object.keys(schema.properties).sort()).toEqual([...DECOR_KEYS].sort())
+        for (const [kind, keys] of Object.entries(ITEM_KEYS)) {
+            expect(Object.keys(schema.$defs[kind].properties).sort()).toEqual([...keys].sort())
+        }
+        expect(Object.keys(schema.$defs.piece.properties).sort()).toEqual([...PIECE_KEYS].sort())
+        expect(Object.keys(schema.$defs.statue.properties.plinth.properties).sort()).toEqual([...PLINTH_KEYS].sort())
+        expect(Object.keys(schema.$defs.fountain.properties.basins.items.properties).sort()).toEqual(
+            [...BASIN_KEYS].sort()
+        )
+    })
+})
+
 describe('the landmark schema', () => {
     test('knows the same keys as the validator', async () => {
         const schema = await Bun.file(LANDMARK_SCHEMA).json()
@@ -109,6 +153,10 @@ describe('the landmark schema', () => {
         expect(Object.keys(schema.$defs.roof.properties).sort()).toEqual([...ROOF_KEYS].sort())
         expect(Object.keys(schema.$defs.fins.properties).sort()).toEqual([...FINS_KEYS].sort())
         expect(Object.keys(schema.$defs.arcade.properties).sort()).toEqual([...ARCADE_KEYS].sort())
+        expect(Object.keys(schema.$defs.bands.properties).sort()).toEqual([...BANDS_KEYS].sort())
+        expect(Object.keys(schema.$defs.windows.properties).sort()).toEqual([...WINDOWS_KEYS].sort())
+        expect(schema.$defs.windows.properties.style.enum).toEqual(WINDOW_STYLES)
+        expect(schema.$defs.roof.properties.shape.enum).toEqual(ROOF_SHAPES)
         const steps = schema.properties.parts.items.properties.steps
         expect(Object.keys(steps.properties).sort()).toEqual([...STEPS_KEYS].sort())
     })

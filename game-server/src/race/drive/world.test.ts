@@ -52,6 +52,33 @@ describe('colliders', () => {
         const [wall] = world.collidersNear(0, 50, 2)
         expect(wall).toMatchObject({ radius: 1.5, bottom: 9, top: 16 })
     })
+
+    test('solid decor blocks, turned as it stands: a plinth’s edges, a pool’s round rim; a hedge doesn’t', () => {
+        const shape = { y: 10, height: 2, colour: '#888888' }
+        const world = buildWorld(
+            testMap({
+                decor: {
+                    shapes: [
+                        { ...shape, shape: 'box', x: 0, z: 0, width: 4, depth: 2, turn: Math.PI / 2, solid: true },
+                        { ...shape, shape: 'cylinder', x: 100, z: 0, width: 10, depth: 10, turn: 0, solid: true },
+                        { ...shape, shape: 'box', x: 200, z: 0, width: 20, depth: 1, turn: 0 },
+                    ],
+                    paint: [],
+                },
+            })
+        )
+        // Turned a quarter, the 4 m side runs north–south: its corners are 1 m east and west, 2 m north and south.
+        const plinth = world.collidersNear(0, 0, 1)
+        expect(plinth).toHaveLength(4)
+        const xs = plinth.flatMap(c => [c.x1, c.x2])
+        const zs = plinth.flatMap(c => [c.z1, c.z2])
+        expect(Math.max(...xs)).toBeCloseTo(1)
+        expect(Math.max(...zs)).toBeCloseTo(2)
+        expect(world.collidersNear(100, 0, 1)).toEqual([
+            { x1: 100, z1: 0, x2: 100, z2: 0, radius: 5, bottom: 10, top: 12 },
+        ])
+        expect(world.collidersNear(200, 0, 3)).toEqual([])
+    })
 })
 
 describe('nearestRoad', () => {

@@ -30,6 +30,8 @@ export interface RaceMap {
     /** Fortifications and other free-standing walls. */
     walls: Wall[]
     props: Props
+    /** Fountains, statues, hedges, fences, lamps, flowerbeds and the like (decor.ts). */
+    decor: Decor
 }
 
 /**
@@ -87,18 +89,28 @@ export interface Building {
     holes?: number[][]
     /** Overrides the colour picked from the palette (stone for city gates). */
     colour?: string
+    /** A pitched roof (or a coloured flat one): the walls stop `roof.height` below `top`. */
+    roof?: Roof
+    /** Windows other than the usual ones for its height (false: none), and their glass. */
+    windows?: WindowGrid | false
+    glass?: string
+    material?: WallMaterial
     /** Detail from a landmark file or from OSM's building parts; without it the footprint is drawn as a plain box. */
     detail?: BuildingDetail
     /** Set when the detail comes from a landmark file. */
     landmark?: true
 }
 
+export type RoofShape = 'mansard' | 'pyramid' | 'flat' | 'gable' | 'hip'
+
 /**
  * A roof on top of walls. A mansard slopes in by `inset` over `height`, then
- * is flat; a pyramid meets in a point; a flat roof just closes the top.
+ * is flat; a pyramid meets in a point; a hip roof slopes in from every side
+ * to a ridge; a gable roof slopes from two sides to a ridge along the
+ * footprint's length, its ends walled up; a flat roof just closes the top.
  */
 export interface Roof {
-    shape: 'mansard' | 'pyramid' | 'flat'
+    shape: RoofShape
     height: number
     inset?: number
     colour: string
@@ -106,10 +118,30 @@ export interface Roof {
     parapet?: number
 }
 
+/**
+ * How windows look: tall framed ones (punched, the default), small square
+ * ones, round-headed ones (arched), continuous bands of glass (ribbon), or a
+ * wall of glass between thin mullions (curtain).
+ */
+export type WindowStyle = 'punched' | 'square' | 'arched' | 'ribbon' | 'curtain'
+
 /** Rows of windows on the walls: one per `spacing` metres along, one per `floor` metres up. */
 export interface WindowGrid {
     floor: number
     spacing: number
+    style?: WindowStyle
+}
+
+/**
+ * Balconies or floor slabs standing out of the walls: a slab `height` thick
+ * and `depth` deep every `floor` metres, the first at map height `first`.
+ */
+export interface Bands {
+    floor: number
+    depth: number
+    height: number
+    first: number
+    colour?: string
 }
 
 /**
@@ -139,12 +171,22 @@ export interface Arcade {
     edges: number[]
 }
 
-/** How walls look: their colour, and windows, fins or an arcade. */
+/**
+ * What walls are made of, drawn faintly over their colour up close: brick
+ * courses, stone blocks, concrete panels, or wooden siding. Plain by default.
+ */
+export type WallMaterial = 'plain' | 'brick' | 'stone' | 'concrete' | 'siding'
+
+/** How walls look: their colour and material, and windows (with their glass), fins, balconies or an arcade. */
 export interface Look {
     wall: string
+    material?: WallMaterial
     windows?: WindowGrid
+    /** The windows' glass; a dark blue-grey by default. */
+    glass?: string
     fins?: Fins
     arcade?: Arcade
+    bands?: Bands
 }
 
 export interface BuildingDetail extends Look {
@@ -184,13 +226,52 @@ export interface Road {
 
 /** Street furniture, each kind a flat list. */
 export interface Props {
-    /** [x, z, …] */
+    /** [x, z, height, crown, kind, …]: ground to treetop and crown width in metres, kind an index into TREE_KINDS (trees.ts). */
     trees: number[]
     benches: number[]
     /** [x, z, dx, dz, reach, …]: the pole at the kerb, and its mast arm reaching `reach` metres over the road along (dx, dz). */
     signals: number[]
     /** [x, z, angle, …]: beside the road, the angle being the road's direction there. */
     busStops: number[]
+}
+
+/** Things on the ground that aren't buildings, as plain shapes, and the ground painted under them. */
+export interface Decor {
+    shapes: Shape[]
+    /** Lawns, paving, gravel, soil: painted on the ground over the parks, under the roads. */
+    paint: Paint[]
+}
+
+export type ShapeKind = 'box' | 'cylinder' | 'cone' | 'sphere' | 'pyramid' | 'prism'
+
+/**
+ * One block of decor standing at x, z with its base at map height `y`:
+ * `width` along its own x, `depth` along its z, turned `turn` radians about
+ * the vertical (as Three.js turns things). A prism follows its own outline
+ * instead, in map metres, and ignores x, z, width, depth and turn.
+ */
+export interface Shape {
+    shape: ShapeKind
+    x: number
+    y: number
+    z: number
+    width: number
+    depth: number
+    height: number
+    turn: number
+    colour: string
+    /** A cylinder's top as a share of its bottom: 0 a cone, above 1 a bowl. */
+    taper?: number
+    /** Karts bump into it. */
+    solid?: true
+    /** See-through: water falling, a jet. */
+    water?: true
+    outline?: number[]
+}
+
+export interface Paint {
+    colour: string
+    outline: number[]
 }
 
 export type AreaKind = 'park' | 'wood' | 'water' | 'parking'
