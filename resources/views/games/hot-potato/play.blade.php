@@ -48,8 +48,9 @@
                 <div class="grid sm:grid-cols-2 gap-3 mb-6">
                     <label class="block">
                         <span class="block text-xs font-medium text-white/60 mb-1">Office</span>
-                        <select x-model="officeId"
-                                class="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-orange-400">
+                        <select x-model="officeId" :disabled="pickersLocked"
+                                :title="pickersLocked ? 'Locked until this game is over' : ''"
+                                class="disabled:opacity-40 w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-orange-400">
                             <option value="" class="bg-slate-800">Pick your office…</option>
                             <template x-for="office in offices" :key="office.id">
                                 <option :value="String(office.id)" x-text="office.name" class="bg-slate-800"></option>
@@ -58,7 +59,8 @@
                     </label>
                     <label class="block">
                         <span class="block text-xs font-medium text-white/60 mb-1">You are</span>
-                        <select x-model="playerId" :disabled="!officeId"
+                        <select x-model="playerId" :disabled="!officeId || pickersLocked"
+                                :title="pickersLocked ? 'Locked until this game is over' : ''"
                                 class="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-orange-400 disabled:opacity-40">
                             <option value="" class="bg-slate-800">Just watching</option>
                             <template x-for="player in officePlayers" :key="player.id">
@@ -96,6 +98,9 @@
                     </div>
                 </template>
 
+                {{-- Lobby and arena: what goes full screen (F, or ⛶) --}}
+                <div x-ref="stage" data-stage
+                     :class="fullscreen && 'gradient-bg overflow-y-auto p-4 sm:p-6'">
                 {{-- Lobby --}}
                 <template x-if="session && phase === 'lobby'">
                     <div class="bg-white/5 border border-white/10 rounded-xl p-6 mb-6">
@@ -122,6 +127,10 @@
                                     <button @click="close()"
                                             class="bg-white/10 hover:bg-red-500/40 rounded-lg px-4 py-2 text-sm transition">Close game</button>
                                 </template>
+                                <button @click="toggleFullscreen()" data-fullscreen
+                                        :title="fullscreen ? 'Exit full screen (F)' : 'Full screen (F)'"
+                                        class="bg-white/10 hover:bg-white/20 rounded-lg px-3 py-2 text-sm transition"
+                                        x-text="fullscreen ? '⤡' : '⛶'"></button>
                             </div>
                         </div>
 
@@ -207,7 +216,13 @@
                 <div x-show="session && phase !== 'lobby'">
                     <div class="flex items-center justify-between mb-2 text-sm">
                         <span class="font-mono text-lg font-bold" x-text="timerText"></span>
-                        <span x-show="gameMode !== 'king'" class="text-white/60"><span x-text="aliveCount"></span> left</span>
+                        <span class="flex items-center gap-3">
+                            <span x-show="gameMode !== 'king'" class="text-white/60"><span x-text="aliveCount"></span> left</span>
+                            <button @click="toggleFullscreen()" data-fullscreen
+                                    :title="fullscreen ? 'Exit full screen (F)' : 'Full screen (F)'"
+                                    class="bg-white/10 hover:bg-white/20 rounded-lg px-2.5 py-1 text-sm transition"
+                                    x-text="fullscreen ? '⤡' : '⛶'"></button>
+                        </span>
                         {{-- King of the Potato: the live top three by time held --}}
                         <ol x-show="gameMode === 'king'" class="flex gap-3 text-white/70" data-king-board>
                             <template x-for="(entry, index) in kingBoard" :key="entry.id">
@@ -220,7 +235,7 @@
                         </ol>
                     </div>
                     <div class="relative rounded-xl overflow-hidden border border-white/10 bg-black/30">
-                        <canvas x-ref="canvas" class="block w-full"></canvas>
+                        <canvas x-ref="canvas" class="block w-full mx-auto"></canvas>
 
                         {{-- Countdown: first the reveal (mode, its rule, the arena), then 3 · 2 · 1 --}}
                         <div x-show="showIntro" x-transition.opacity data-countdown-intro
@@ -277,7 +292,16 @@
                                                     :aria-label="'React ' + option" x-text="option"></button>
                                         </template>
                                     </div>
-                                    <p class="text-xs text-white/40 text-center mt-3">Back to the lobby in a few seconds…</p>
+                                    <div class="mt-4 text-center" data-back-to-lobby>
+                                        <template x-if="isHost">
+                                            <button type="button" @click="backToLobby()"
+                                                    class="bg-orange-500 hover:bg-orange-400 text-white font-semibold rounded-lg px-5 py-2 text-sm transition">
+                                                Back to lobby <span class="font-normal text-white/70" x-show="countdownLeft > 0" x-text="'(' + countdownLeft + ')'"></span>
+                                            </button>
+                                        </template>
+                                        <p x-show="!isHost" class="text-xs text-white/40"
+                                           x-text="'Waiting for ' + hostName + '… back to the lobby in ' + countdownLeft + 's'"></p>
+                                    </div>
                                 </div>
                             </div>
                         </template>
@@ -290,6 +314,7 @@
                         </template>
                         <li><span class="mr-1 text-cyan-300">»</span><span x-text="padLegend"></span></li>
                     </ul>
+                </div>
                 </div>
 
                 {{-- Push opt-in --}}

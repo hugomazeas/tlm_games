@@ -414,24 +414,71 @@ describe('hosts and leaving', () => {
     })
 })
 
+/** Plays a one-minute game through to the results screen (two booms can end it early). */
+function playToResults(conn: FakeConn) {
+    send(conn, { type: 'start', durationMin: 1, theme: 'random' })
+    for (let t = 0; t < COUNTDOWN_MS + 60_000 + TICK_MS; t += TICK_MS) {
+        if (last(conn, 'office')?.session?.phase === 'results') break
+        advance(TICK_MS)
+    }
+    expect(last(conn, 'office')?.session?.phase).toBe('results')
+}
+
+function toResults() {
+    const players = lobbyOfThree()
+    playToResults(players.a)
+
+    return players
+}
+
+describe('back to the lobby', () => {
+    test('the host ends the results screen for the whole office', () => {
+        const { a, b } = toResults()
+        const watcher = connect(null)
+
+        send(a, { type: 'backToLobby' })
+
+        expect(errors(a)).toEqual([])
+        expect(last(b, 'office')?.session?.phase).toBe('lobby')
+        expect(last(watcher, 'office')?.session?.phase).toBe('lobby')
+        send(a, { type: 'start', durationMin: 1, theme: 'random' })
+        expect(last(b, 'office')?.session?.phase).toBe('countdown')
+    })
+
+    test('nobody else can', () => {
+        const { b } = toResults()
+
+        send(b, { type: 'backToLobby' })
+
+        expect(errors(b)).toEqual(['NOT_HOST'])
+        expect(last(b, 'office')?.session?.phase).toBe('results')
+    })
+
+    test('does nothing outside the results screen', () => {
+        const { a, b } = lobbyOfThree()
+        send(a, { type: 'start', durationMin: 1, theme: 'random' })
+        advance(COUNTDOWN_MS + TICK_MS)
+
+        send(a, { type: 'backToLobby' })
+
+        expect(errors(a)).toEqual([])
+        expect(last(b, 'office')?.session?.phase).toBe('playing')
+    })
+
+    test('the timer still ends it when the host does not', () => {
+        const { b } = toResults()
+        expect(last(b, 'results')?.endsInMs).toBe(RESULTS_MS)
+        advance(RESULTS_MS)
+
+        expect(last(b, 'office')?.session?.phase).toBe('lobby')
+    })
+
+    test('parses', () => {
+        expect(parseClientMessage(JSON.stringify({ type: 'backToLobby' }))).toEqual({ type: 'backToLobby' })
+    })
+})
+
 describe('end-of-game emotes', () => {
-    /** Plays a one-minute game through to the results screen (two booms can end it early). */
-    function playToResults(conn: FakeConn) {
-        send(conn, { type: 'start', durationMin: 1, theme: 'random' })
-        for (let t = 0; t < COUNTDOWN_MS + 60_000 + TICK_MS; t += TICK_MS) {
-            if (last(conn, 'office')?.session?.phase === 'results') break
-            advance(TICK_MS)
-        }
-        expect(last(conn, 'office')?.session?.phase).toBe('results')
-    }
-
-    function toResults() {
-        const players = lobbyOfThree()
-        playToResults(players.a)
-
-        return players
-    }
-
     test('the countdown lasts six seconds and the results screen twelve', () => {
         expect(COUNTDOWN_MS).toBe(6000)
         expect(RESULTS_MS).toBe(12_000)

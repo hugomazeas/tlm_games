@@ -203,6 +203,13 @@
                         return;
                     }
 
+                    // The cropper draws on a canvas, which keeps only a GIF's
+                    // first frame: send GIFs as they are, the server centres them.
+                    if (file.type === 'image/gif') {
+                        this.upload(file, file.name).catch((e) => alert(e.message));
+                        return;
+                    }
+
                     this.error = '';
                     this.cropping = true;
                     objectUrl = URL.createObjectURL(file);
@@ -245,30 +252,34 @@
                     });
 
                     canvas.toBlob(async (blob) => {
-                        const body = new FormData();
-                        body.append('avatar', blob, 'avatar.jpg');
-
                         try {
-                            const response = await fetch(uploadUrl, {
-                                method: 'POST',
-                                headers: {
-                                    'Accept': 'application/json',
-                                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-                                },
-                                body,
-                            });
-
-                            if (!response.ok) {
-                                const data = await response.json().catch(() => ({}));
-                                throw new Error(data.errors?.avatar?.[0] || data.message || 'Upload failed.');
-                            }
-
-                            window.location.reload();
+                            await this.upload(blob, 'avatar.jpg');
                         } catch (e) {
                             this.error = e.message;
                             this.saving = false;
                         }
                     }, 'image/jpeg', 0.9);
+                },
+
+                async upload(blob, name) {
+                    const body = new FormData();
+                    body.append('avatar', blob, name);
+
+                    const response = await fetch(uploadUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                        },
+                        body,
+                    });
+
+                    if (!response.ok) {
+                        const data = await response.json().catch(() => ({}));
+                        throw new Error(data.errors?.avatar?.[0] || data.message || 'Upload failed.');
+                    }
+
+                    window.location.reload();
                 },
             };
         }

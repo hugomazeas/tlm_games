@@ -91,6 +91,8 @@ function hotPotatoApp(config: Config) {
         unavailable: false,
         /** The server runs a newer bundle than this tab: reload as soon as it won't interrupt a game. */
         stale: false,
+        /** The lobby and arena fill the screen (F, or the ⛶ button). */
+        fullscreen: false,
         emotes: EMOTES,
         /** Each player's latest emote on this results screen, shown beside their row. */
         lastEmotes: {} as Record<number, Emote>,
@@ -108,6 +110,9 @@ function hotPotatoApp(config: Config) {
             alpine.$watch('playerId', () => this.reconnect())
             window.addEventListener('keydown', event => this.onKey(event, true))
             window.addEventListener('keyup', event => this.onKey(event, false))
+            document.addEventListener('fullscreenchange', () => {
+                this.fullscreen = document.fullscreenElement !== null
+            })
             window.addEventListener('blur', () => {
                 pressed.clear()
                 this.sendDirection()
@@ -144,6 +149,13 @@ function hotPotatoApp(config: Config) {
                 this.gamePlayerIds.includes(this.me.id) &&
                 (phase === 'countdown' || phase === 'playing' || phase === 'results')
             )
+        },
+        /**
+         * Switching office or player reconnects as someone else, which drops your seat:
+         * the pickers stay put from a game's countdown to the end of its results.
+         */
+        get pickersLocked() {
+            return this.inGame
         },
         get canEmote() {
             return this.me !== null && this.gamePlayerIds.includes(this.me.id) && this.phase === 'results'
@@ -248,6 +260,19 @@ function hotPotatoApp(config: Config) {
         },
         emote(emote: Emote) {
             if (this.canEmote) this.send({ type: 'emote', emote })
+        },
+        backToLobby() {
+            if (this.isHost && this.phase === 'results') this.send({ type: 'backToLobby' })
+        },
+        toggleFullscreen() {
+            if (document.fullscreenElement) {
+                void document.exitFullscreen()
+                return
+            }
+            const stage = (this as unknown as Alpine).$refs.stage
+            stage?.requestFullscreen().catch(() => {
+                // Refused (an iframe, or no user gesture): the page just stays as it is.
+            })
         },
 
         /** Picks up a newer bundle, but never in the middle of a game you're playing. */
@@ -369,6 +394,7 @@ function hotPotatoApp(config: Config) {
                 case 'results':
                     this.remainingMs = 0
                     this.results = this.describeResults(message.results)
+                    this.startCountdown(message.endsInMs)
                     return
                 case 'error':
                     this.error = STRINGS.errors[message.code]
@@ -515,11 +541,17 @@ function hotPotatoApp(config: Config) {
 
         onKey(event: KeyboardEvent, down: boolean) {
             if (down) this.canPlay = true
-            const move = MOVE_KEYS[event.code]
-            if (!move) return
-
             const target = event.target as HTMLElement | null
-            if (target && ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName)) return
+            const typing = target !== null && ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName)
+
+            const plain = !event.ctrlKey && !event.metaKey && !event.altKey
+            if (down && event.code === 'KeyF' && plain && !event.repeat && !typing && this.session) {
+                this.toggleFullscreen()
+                return
+            }
+
+            const move = MOVE_KEYS[event.code]
+            if (!move || typing) return
             if (this.isPlaying) event.preventDefault()
 
             if (down) pressed.add(event.code)

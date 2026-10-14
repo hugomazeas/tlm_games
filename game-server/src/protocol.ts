@@ -78,6 +78,8 @@ export type ClientMessage =
     | { type: 'input'; dx: number; dy: number }
     | { type: 'close' }
     | { type: 'emote'; emote: Emote }
+    /** Host, results screen only: end it now for everyone instead of waiting out the timer. */
+    | { type: 'backToLobby' }
     /** Host, lobby only: seat one more AI, or take one out (`playerId` is the AI's negative id). */
     | { type: 'addBot' }
     | { type: 'removeBot'; playerId: number }
@@ -119,7 +121,8 @@ export type ServerMessage =
     /** `targetId`: who a swap traded places with. */
     | { type: 'pickup'; playerId: number; item: ItemKind; effect: Effect; targetId?: number }
     | { type: 'emote'; playerId: number; emote: Emote }
-    | { type: 'results'; results: Results }
+    /** `endsInMs`: until the lobby comes back on its own, unless the host brings it back sooner. */
+    | { type: 'results'; results: Results; endsInMs: number }
     | { type: 'error'; code: ErrorCode }
 
 /** Players in a game, AIs included: one player and two AIs is a solo game. Killer Potato needs one person. */
@@ -152,6 +155,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
         case 'leave':
         case 'close':
         case 'addBot':
+        case 'backToLobby':
             return { type: message.type }
         case 'removeBot':
             if (typeof message.playerId !== 'number' || !Number.isInteger(message.playerId) || message.playerId >= 0)
