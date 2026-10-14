@@ -63,3 +63,60 @@ Nothing is broken; HLS just cannot go much lower with 2 s segments.
 
 Cleaning up the 292 GB of leftover `storage/app/recordings/live/*` directories,
 Firefox DNS-over-HTTPS on office machines, audio in the live players, JS test tooling.
+
+## Addendum (2026-10-14): latency measured on the real remote path, recommendation revised
+
+Before committing to go2rtc we validated the latency assumptions by standing up
+both engines on the games hub and viewing them remotely through the actual
+Cloudflare → Caddy path, not just on the LAN.
+
+**Method.** A wall-clock (NTP-synced) was burned into the camera feed with
+ffmpeg `drawtext`. The feed was published through each engine and viewed from an
+off-site laptop at `https://streamtest.tlmhub.space` with the browser's own
+NTP clock overlaid on the page. Glass-to-glass latency = browser clock − the
+SERVER time visible in the video. Everything was torn down after.
+
+**Results.**
+
+| Path | go2rtc | MediaMTX |
+|---|---|---|
+| Remote, through Cloudflare | MSE-over-WS ≈ **2 s** | LL-HLS ≈ **2 s** |
+| Local HLS, no proxy (ffmpeg pull) | — | ≈ **1 s** |
+| Today (HLS, 2 s segments, hls.js 3 behind) | 5–7 s | 5–7 s |
+
+**Findings.**
+
+1. **The ~1 s remote figure for MSE did not materialize.** go2rtc (MSE) and
+   MediaMTX (LL-HLS) both land at ~2 s remotely. Remote latency is dominated by
+   the Cloudflare hop and player buffering, **not** by the streaming engine, so
+   latency does not distinguish the two. (The office LAN uses WebRTC for both and
+   is sub-second — not separately measured here, but it is the same transport for
+   either engine.)
+2. **Neither remote path reaches < 1 s.** ~2 s is the realistic remote number
+   through Cloudflare with either tool; the design's "~1 s for remote" is optimistic.
+3. **The camera is single-owner.** Only one process can hold `/dev/video0` (V4L2,
+   no concurrent readers), so both designs must funnel through one camera owner —
+   this is why go2rtc owns the camera in the current plan.
+4. **Recording is where the two genuinely differ.** MediaMTX records to disk
+   natively and **independently of any viewer** (verified: recording kept writing
+   valid 1280×720/30 H.264 with zero readers connected). go2rtc has no native
+   recording — which is exactly why this plan adds a second FFmpeg that pulls
+   `rtsp://go2rtc:8554/pingpong -c copy`. That couples the match recording — and
+   therefore the ball-detection training videos uploaded to the frame-labeler at
+   `192.168.1.141` — to go2rtc staying alive. A go2rtc crash *mid-match* truncates
+   that match's recording; the plan's fallbacks only cover failures at match start.
+
+**Revised recommendation.** Since latency is a wash on both the remote (~2 s each)
+and LAN (WebRTC, sub-second each) paths, the decision should turn on recording.
+Prefer **MediaMTX**: same latency as go2rtc, but recording is native and decoupled
+from the live path, removing the mid-match truncation risk to the training
+recordings. The per-match lifecycle is unchanged (the hub starts/stops the
+publisher; the camera is closed between matches). One open item: MediaMTX records
+in time-based segments, so produce one `{matchId}.mp4` per match — either a long
+`recordSegmentDuration` plus a rename on match end, or concatenation inside
+`FinalizeRecordingJob` (which already runs an ffmpeg mux step). `UploadRecordingJob`
+and the frame-labeler are unchanged either way.
+
+**Caveats.** Only the remote path was measured; the LAN WebRTC sub-second case is
+inferred from the shared transport, not measured. Timezone and clock sync were
+NTP-based; readings are ±~0.5 s.
