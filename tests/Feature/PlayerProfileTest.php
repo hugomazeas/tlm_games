@@ -222,6 +222,49 @@ class PlayerProfileTest extends TestCase
         $this->assertNull($player->fresh()->avatar_path);
     }
 
+    public function test_an_animated_gif_stays_animated_but_loses_its_extras(): void
+    {
+        $player = $this->claimedPlayer();
+        $this->post("/players/{$player->id}/unlock", ['pin' => '1234']);
+
+        $this->postJson("/players/{$player->id}/avatar", [
+            'avatar' => UploadedFile::fake()->createWithContent('party.gif', $this->gif(frames: 2).'<?php echo 1;'),
+        ])->assertOk();
+
+        $path = $player->fresh()->avatar_path;
+        $this->assertStringEndsWith('.gif', $path);
+
+        $stored = Storage::disk('public')->get($path);
+        $this->assertSame($this->gif(frames: 2, comment: false), $stored);
+        $this->assertStringNotContainsString('<?php', $stored);
+    }
+
+    public function test_a_still_gif_is_re_encoded_like_any_photo(): void
+    {
+        $player = $this->claimedPlayer();
+        $this->post("/players/{$player->id}/unlock", ['pin' => '1234']);
+
+        $this->postJson("/players/{$player->id}/avatar", [
+            'avatar' => UploadedFile::fake()->createWithContent('still.gif', $this->gif(frames: 1)),
+        ])->assertOk();
+
+        $path = $player->fresh()->avatar_path;
+        $this->assertStringEndsWith('.jpg', $path);
+        $this->assertSame(IMAGETYPE_JPEG, getimagesizefromstring(Storage::disk('public')->get($path))[2]);
+    }
+
+    public function test_an_animated_gif_over_2_mb_is_refused(): void
+    {
+        $player = $this->claimedPlayer();
+        $this->post("/players/{$player->id}/unlock", ['pin' => '1234']);
+
+        $this->postJson("/players/{$player->id}/avatar", [
+            'avatar' => UploadedFile::fake()->createWithContent('big.gif', $this->gif(frames: 2))->size(3000),
+        ])->assertUnprocessable()->assertJsonValidationErrors('avatar');
+
+        $this->assertNull($player->fresh()->avatar_path);
+    }
+
     public function test_the_photo_can_be_removed(): void
     {
         $player = $this->claimedPlayer();
@@ -286,5 +329,27 @@ class PlayerProfileTest extends TestCase
         $this->assertSame('GH', Player::initialsFor('  grace  brewster  hopper '));
         $this->assertSame('É', Player::initialsFor('émile'));
         $this->assertSame('?', Player::initialsFor(''));
+    }
+
+    /**
+     * A 1×1 GIF89a that loops forever, with a comment block to strip and one
+     * frame per `$frames`.
+     */
+    private function gif(int $frames, bool $comment = true): string
+    {
+        $gif = 'GIF89a'."\x01\x00\x01\x00\x80\x00\x00"."\xFF\x00\x00\xFF\xFF\xFF"
+            ."\x21\xFF\x0BNETSCAPE2.0\x03\x01\x00\x00\x00";
+
+        if ($comment) {
+            $gif .= "\x21\xFE\x05hello\x00";
+        }
+
+        for ($i = 0; $i < $frames; $i++) {
+            $gif .= "\x21\xF9\x04\x00\x0A\x00\x00\x00"
+                ."\x2C\x00\x00\x00\x00\x01\x00\x01\x00\x00"
+                ."\x02\x02\x44\x01\x00";
+        }
+
+        return $gif."\x3B";
     }
 }

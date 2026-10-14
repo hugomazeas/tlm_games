@@ -75,7 +75,7 @@ class PlayerProfileController extends Controller
         }
 
         $request->validate([
-            'avatar' => ['required', 'image', 'mimes:jpeg,jpg,png', 'max:5120', 'dimensions:max_width=4096,max_height=4096'],
+            'avatar' => ['required', 'image', 'mimes:jpeg,jpg,png,gif', 'max:5120', 'dimensions:max_width=4096,max_height=4096'],
         ]);
 
         try {
