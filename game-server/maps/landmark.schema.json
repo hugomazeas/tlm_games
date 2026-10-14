@@ -30,6 +30,10 @@
         "wall": {
             "$ref": "#/$defs/colour"
         },
+        "material": {
+            "enum": ["plain", "brick", "stone", "concrete", "siding"],
+            "description": "What the walls are made of, drawn faintly over their colour up close; plain by default."
+        },
         "windows": {
             "$ref": "#/$defs/windows"
         },
@@ -110,6 +114,10 @@
                     "wall": {
                         "$ref": "#/$defs/colour",
                         "description": "Its own wall colour; the building's by default."
+                    },
+                    "material": {
+                        "enum": ["plain", "brick", "stone", "concrete", "siding"],
+                        "description": "Its own material; the building's by default."
                     },
                     "windows": {
                         "description": "Its own windows, or false for none; the building's by default.",

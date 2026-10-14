@@ -305,6 +305,54 @@ describe('parseLandmark', () => {
         expect(() => parseLandmark({ ...VALID, fins: false }, 'hall.json')).toThrow(/fins: leave it out instead/)
     })
 
+    test('takes materials, glass, balconies, window styles and pitched roofs, and names what it doesn’t know', () => {
+        const landmark = parseLandmark(
+            {
+                ...VALID,
+                material: 'brick',
+                glass: '#4a6c8c',
+                windows: { floor: 3.2, spacing: 2.5, style: 'curtain' },
+                bands: { floor: 3, depth: 1.4, colour: '#eeeeee' },
+                roof: { shape: 'gable', height: 6, colour: '#555555' },
+                parts: [
+                    { along: 0, out: -5, width: 10, depth: 10, height: 30, bands: false, material: 'stone' },
+                    {
+                        along: 0,
+                        out: -5,
+                        width: 10,
+                        depth: 10,
+                        height: 30,
+                        roof: { shape: 'hip', height: 4, colour: '#555555' },
+                    },
+                ],
+            },
+            'hall.json'
+        )
+        expect(landmark.material).toBe('brick')
+        expect(landmark.parts?.[0]?.bands).toBe(false)
+        expect(() =>
+            parseLandmark(
+                {
+                    ...VALID,
+                    material: 'marble',
+                    windows: { floor: 3, spacing: 2, style: 'gothic' },
+                    bands: { floor: 3, depth: 0, height: 0 },
+                },
+                'hall.json'
+            )
+        ).toThrow(/material: must be[\s\S]*bands\.depth: must be at least[\s\S]*windows\.style: must be/)
+    })
+
+    test('balconies start a floor up unless they say, and take the wall’s colour', () => {
+        const built = applyLandmark(
+            SQUARE,
+            { ...VALID, bands: { floor: 3, depth: 1.2 }, parts: [] } as Landmark,
+            identity,
+            10
+        )
+        expect(built.detail?.bands).toEqual({ floor: 3, depth: 1.2, height: 0.25, first: 13 })
+    })
+
     test('the OSM element type is required: ways and relations share numbers', () => {
         expect(() => parseLandmark({ ...VALID, osm: 'node' }, 'hall.json')).toThrow(/osm: must be "way" or "relation"/)
     })

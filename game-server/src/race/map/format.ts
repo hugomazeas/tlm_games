@@ -94,6 +94,7 @@ export interface Building {
     /** Windows other than the usual ones for its height (false: none), and their glass. */
     windows?: WindowGrid | false
     glass?: string
+    material?: WallMaterial
     /** Detail from a landmark file or from OSM's building parts; without it the footprint is drawn as a plain box. */
     detail?: BuildingDetail
     /** Set when the detail comes from a landmark file. */
@@ -170,9 +171,16 @@ export interface Arcade {
     edges: number[]
 }
 
-/** How walls look: their colour, and windows (with their glass), fins, balconies or an arcade. */
+/**
+ * What walls are made of, drawn faintly over their colour up close: brick
+ * courses, stone blocks, concrete panels, or wooden siding. Plain by default.
+ */
+export type WallMaterial = 'plain' | 'brick' | 'stone' | 'concrete' | 'siding'
+
+/** How walls look: their colour and material, and windows (with their glass), fins, balconies or an arcade. */
 export interface Look {
     wall: string
+    material?: WallMaterial
     windows?: WindowGrid
     /** The windows' glass; a dark blue-grey by default. */
     glass?: string

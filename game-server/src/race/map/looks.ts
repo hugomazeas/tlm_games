@@ -1,5 +1,5 @@
-import type { Building, WindowGrid } from './format.ts'
-import { WINDOW_STYLES } from './landmarks.ts'
+import type { Building, WallMaterial, WindowGrid } from './format.ts'
+import { WALL_MATERIALS, WINDOW_STYLES } from './landmarks.ts'
 
 /**
  * How ordinary buildings really look: wall and roof colours (sampled from
@@ -11,6 +11,7 @@ import { WINDOW_STYLES } from './landmarks.ts'
 
 export interface Look {
     wall?: string
+    material?: WallMaterial
     roof?: string
     windows?: WindowGrid | false
     glass?: string
@@ -22,7 +23,7 @@ export interface LooksFile {
 }
 
 export const LOOKS_KEYS = ['$schema', 'notes', 'buildings']
-export const LOOK_KEYS = ['wall', 'roof', 'windows', 'glass']
+export const LOOK_KEYS = ['wall', 'material', 'roof', 'windows', 'glass']
 const COLOUR = /^#[0-9a-fA-F]{6}$/
 
 /** Checks a looks file and returns it typed, or throws listing every problem. */
@@ -51,6 +52,9 @@ export function parseLooks(value: unknown, file: string): LooksFile {
                         fail(`${key}.${field}`, 'must be a colour like #a1b2c3')
                     }
                 }
+                if (look.material !== undefined && !WALL_MATERIALS.includes(look.material as string)) {
+                    fail(`${key}.material`, `must be ${WALL_MATERIALS.join(', ')}`)
+                }
                 const windows = look.windows
                 if (windows !== undefined && windows !== false) {
                     if (!isRecord(windows)) fail(`${key}.windows`, 'must be a window grid or false')
@@ -78,9 +82,27 @@ export function parseLooks(value: unknown, file: string): LooksFile {
     return typed
 }
 
-/** A building in its looks: its colours, its windows, and a roof of that colour (flat unless the survey found a pitch). */
+/**
+ * A building in its looks: its colours, its windows, and a roof of that
+ * colour (flat unless the survey found a pitch). One drawn with OSM's parts
+ * takes them on its detail, which its parts share.
+ */
 export function applyLook(building: Building, look: Look | undefined): Building {
     if (!look || building.landmark) return building
+    if (building.detail) {
+        const { windows: _, ...detail } = building.detail
+        return {
+            ...building,
+            detail: {
+                ...(look.windows === false ? detail : building.detail),
+                ...(look.wall ? { wall: look.wall } : {}),
+                ...(look.material ? { material: look.material } : {}),
+                ...(look.windows ? { windows: look.windows } : {}),
+                ...(look.glass ? { glass: look.glass } : {}),
+                ...(look.roof && building.detail.roof ? { roof: { ...building.detail.roof, colour: look.roof } } : {}),
+            },
+        }
+    }
     const roof = look.roof
         ? building.roof
             ? { ...building.roof, colour: look.roof }
@@ -90,6 +112,7 @@ export function applyLook(building: Building, look: Look | undefined): Building 
     return {
         ...building,
         ...(look.wall ? { colour: look.wall } : {}),
+        ...(look.material ? { material: look.material } : {}),
         ...(roof ? { roof } : {}),
         ...(look.windows !== undefined ? { windows: look.windows } : {}),
         ...(look.glass ? { glass: look.glass } : {}),

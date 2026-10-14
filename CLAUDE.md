@@ -221,17 +221,44 @@ built from OpenStreetMap and federal elevation data, drawn with Three.js.
   `?player=` to Play; `RacingKart::lookOf()` gives the game their name and garage
   colours (`racing_karts`), or a guest's. The kart (`client/kart.ts`) is painted body
   (chassis, nose) + accent (wing, suit), with a name tag sprite over other drivers' karts (not your own).
-- **Standalone viewer:** `bun run race:viewer` on http://localhost:8091, free roam and
-  landmark work (click, WASD, I identifies the building under the crosshair).
+- **Standalone viewer:** `bun run race:viewer` on http://localhost:8091 (`RACE_POC_PORT`
+  to change it), free roam and landmark work (click, WASD, I identifies the building under
+  the crosshair). A view link `#lat,lon,altitude,heading,pitch[,fov]` takes an optional
+  vertical field of view, to line up with a photo's lens.
 
-- **Three layers, one direction.** `maps/<slug>/snapshot/` (raw OSM + elevation,
-  gzipped, committed) and `maps/<slug>/landmarks/*.json` (hand-made detail) build
-  `maps/<slug>/map.json`. **Never edit `map.json`**; `pipeline.test.ts` fails if
-  it differs from what the snapshot and landmarks build.
-- **`bun run race:map`** rebuilds offline in a second. `--refresh` downloads fresh
-  OSM into the snapshot, `--refresh-elevation` elevation too (~10 min, flaky
-  service, retries). Refreshes are deliberate: review the diff, commit snapshot
-  and map together. Area and grid live in `MAPS` (`map/pipeline.ts`).
+- **Layers, one direction.** `maps/<slug>/snapshot/` (raw data, gzipped, committed: OSM,
+  elevation, the city's trees, the lidar heights) plus hand-made `landmarks/*.json`,
+  `decor/*.json` and `looks.json` build `maps/<slug>/map.json`. **Never edit `map.json`**;
+  `pipeline.test.ts` fails if it differs from what they build.
+- **`bun run race:map`** rebuilds offline in seconds. `--refresh` downloads fresh OSM and
+  the city's trees into the snapshot, `--refresh-elevation` elevation too (~10 min, flaky
+  service, retries), `--refresh-trees` only the trees, `--refresh-lidar` only the lidar
+  (an hour: a slow server whose firewall refuses more than ~5 ranges a request).
+  Refreshes are deliberate: review the diff, commit snapshot and map together. Area,
+  grid and lidar sheets live in `MAPS` (`map/pipeline.ts`).
+- **Lidar** (`map/lidar.ts`, MRNF "Produits dérivés du lidar", CC BY 4.0): heights above
+  the ground every metre (roofs, crowns), kept as a 2 m byte grid (`snapshot/lidar.bin.gz`).
+  The build takes each building's height from it (median over the footprint, away from
+  the walls), fits gable and hip roofs where the heights pitch, and finds tree crowns.
+  Only sheet 21L14SE is fetched: the westmost 180 m (in 21L14SO) keep OSM's guesses.
+- **Trees** (`map/trees.ts`): the city's inventory (`Arbres répertoriés`, CC BY 4.0: species,
+  trunk diameter) sizes and shapes them (broadleaf, conifer, columnar, ornamental,
+  purple-leaved); lidar crowns take their measured size, and add the trees nobody
+  inventoried (yards, the Plains); OSM trees fill in outside the survey; woods outside it
+  are filled. `client/trees.ts` draws them instanced, in 500 m tiles, rougher far away.
+- **Decor** (`map/decor.ts`, `decor.schema.json`): fountains, statues (standing, horseback,
+  bust, seated), structures of boxes/cylinders/cones/spheres/pyramids, hedges, fences
+  and walls, lamps, trees (points, rows, groves), flowerbeds, paint (lawn, paving, gravel,
+  water, soil), benches, umbrellas, flags. OSM gives the basics city-wide (statue nodes,
+  fountains, hedges, flowerbeds, tree rows); a file in `decor/` places a spot's detail in
+  lat/lon and lists the OSM elements it `replaces`. All expand to plain shapes in
+  map.json; solid ones (pools, plinths, stone walls) collide.
+- **Looks** (`map/looks.ts`, `looks.schema.json`): ordinary buildings' wall and roof colours,
+  material, windows and glass, keyed `way/123`, sampled from aerial photos and checked by
+  eye. Every building is drawn by `client/landmarks.ts` in a few shared meshes: walls per
+  window style (`punched`, `square`, `arched`, `ribbon`, `curtain`) with wall and glass
+  colours per vertex and a faint material (`brick`, `stone`, `concrete`, `siding`; red-brown
+  walls default to brick), and one mesh for everything solid.
 - **OSM says where, landmarks say how it looks.** A landmark file is keyed by OSM
   element (`osm` + `id`: ways and relations share numbers), placed in lat/lon, and
   only changes looks; collision stays the OSM footprint. Schema:
@@ -258,11 +285,13 @@ built from OpenStreetMap and federal elevation data, drawn with Three.js.
   angles as the photos (`#lat,lon,altitude,heading,pitch`; heading 0 looks north,
   90 west). Iterate, `--accept`, and commit the landmark file with the rebuilt map.
   Reference photos are the user's own, kept in `maps/<slug>/reference/<id>/`.
-- **Walls** (`client/facades.ts`): `windows` paints a grid; `fins` are real ribs
-  (they run up past a flat roof's `parapet`); `arcade` sets arched openings into the
-  street-facing walls (`faces: front`, within 45° of the façade's way). Parts inherit
-  the building's look; a part's `wall`/`windows`/`fins`/`arcade` override it, `false`
-  removes one, and raised parts never get an arcade.
+- **Walls** (`client/facades.ts`): `windows` paints a grid in a style, behind `glass`;
+  `fins` are real ribs (they run up past a flat roof's `parapet`); `bands` are balconies
+  or floor slabs; `arcade` sets arched openings into the street-facing walls
+  (`faces: front`, within 45° of the façade's way). Roofs: `flat`, `mansard`, `hip`,
+  `gable` (ridge along the footprint's length, ends walled up), `pyramid`. Parts inherit
+  the building's look; a part's `wall`/`material`/`windows`/`glass`/`fins`/`bands`/`arcade`
+  override it, `false` removes one, and raised parts never get an arcade.
 - **Parts** are boxes, `shape: round` (cylinders, elliptical if width ≠ depth), or
   terraced with `steps` (sliced into boxes falling toward one side). A landmark with
   parts replaces OSM's `building:part`s for that building; one without keeps them.

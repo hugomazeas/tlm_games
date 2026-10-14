@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import type { Bands, Building, BuildingDetail, Look, Roof, WindowStyle } from '../map/format.ts'
+import type { Bands, Building, BuildingDetail, Look, Roof, WallMaterial, WindowStyle } from '../map/format.ts'
 import { orientedBox } from '../map/structures.ts'
 import { addArcade, addBox, addFins, addParapet, edgesOf, Geometry } from './facades.ts'
 import { identifyByRanges } from './identify.ts'
@@ -27,12 +27,21 @@ const GLASS = '#3c4852'
 type WallStyle = WindowStyle | 'plain'
 const WALL_STYLES: WallStyle[] = ['plain', 'punched', 'square', 'arched', 'ribbon', 'curtain']
 
-/** Triangles of many buildings, with a colour per vertex and, for walls, texture coordinates and a glass colour. */
+/** Materials as the wall shader numbers them. */
+const MATERIALS: WallMaterial[] = ['plain', 'brick', 'stone', 'concrete', 'siding']
+
+/**
+ * Triangles of many buildings, with a colour per vertex and, for walls,
+ * texture coordinates (in window bays), the glass colour, the place on the
+ * wall in metres and the wall's material.
+ */
 class Batch {
     readonly positions: number[] = []
     readonly colours: number[] = []
     readonly uvs: number[] = []
     readonly glass: number[] = []
+    readonly metres: number[] = []
+    readonly materials: number[] = []
     readonly owners: Building[] = []
     readonly firstVertices: number[] = []
 
@@ -43,14 +52,23 @@ class Batch {
         this.firstVertices.push(this.positions.length / 3)
     }
 
-    add(geometry: Geometry, colour: THREE.Color, glass?: THREE.Color, uvScale?: [number, number]): void {
+    add(
+        geometry: Geometry,
+        colour: THREE.Color,
+        wall?: { glass: THREE.Color; bay: [number, number]; material: WallMaterial }
+    ): void {
         this.positions.push(...geometry.positions)
         const count = geometry.positions.length / 3
+        const material = wall ? MATERIALS.indexOf(wall.material) : 0
         for (let i = 0; i < count; i++) {
             this.colours.push(colour.r, colour.g, colour.b)
-            if (glass && uvScale) {
-                this.glass.push(glass.r, glass.g, glass.b)
-                this.uvs.push(geometry.uvs[i * 2]! * uvScale[0], geometry.uvs[i * 2 + 1]! * uvScale[1])
+            if (wall) {
+                const u = geometry.uvs[i * 2]!
+                const v = geometry.uvs[i * 2 + 1]!
+                this.glass.push(wall.glass.r, wall.glass.g, wall.glass.b)
+                this.uvs.push(u * wall.bay[0], v * wall.bay[1])
+                this.metres.push(u, v)
+                this.materials.push(material)
             }
         }
     }
@@ -76,6 +94,8 @@ export function buildBuildings(buildings: Building[]): THREE.Group {
         const geometry = toGeometry(batch)
         geometry.setAttribute('uv', new THREE.Float32BufferAttribute(batch.uvs, 2))
         geometry.setAttribute('glass', new THREE.Float32BufferAttribute(batch.glass, 3))
+        geometry.setAttribute('metres', new THREE.Float32BufferAttribute(batch.metres, 2))
+        geometry.setAttribute('material', new THREE.Float32BufferAttribute(batch.materials, 1))
         group.add(identified(new THREE.Mesh(geometry, wallMaterial(style)), batch))
     }
     if (solids.positions.length > 0) {
@@ -116,8 +136,10 @@ function addPlain(building: Building, walls: Map<WallStyle, Batch>, solids: Batc
                           style: building.id % 4 === 0 ? 'punched' : 'square',
                       }
                     : { floor: 3.2, spacing: 3 + (building.id % 2) * 0.4, style: 'punched' }))
+    const wall = building.colour ?? WALL_COLOURS[building.id % WALL_COLOURS.length]!
     const detail: BuildingDetail = {
-        wall: building.colour ?? WALL_COLOURS[building.id % WALL_COLOURS.length]!,
+        wall,
+        material: building.material ?? guessMaterial(wall),
         ...(windows ? { windows: windows as BuildingDetail['windows'] } : {}),
         ...(building.glass ? { glass: building.glass } : {}),
         wallTop,
@@ -125,6 +147,12 @@ function addPlain(building: Building, walls: Map<WallStyle, Batch>, solids: Batc
         parts: [],
     }
     addLandmark(building, detail, walls, solids)
+}
+
+/** Red-brown walls are brick, unless a look says otherwise. */
+function guessMaterial(wall: string): WallMaterial {
+    const { h, s, l } = new THREE.Color(wall).getHSL({ h: 0, s: 0, l: 0 })
+    return (h < 0.08 || h > 0.95) && s > 0.2 && l < 0.6 ? 'brick' : 'plain'
 }
 
 function addLandmark(building: Building, detail: BuildingDetail, walls: Map<WallStyle, Batch>, solids: Batch): void {
@@ -154,12 +182,11 @@ function addLandmark(building: Building, detail: BuildingDetail, walls: Map<Wall
             const style: WallStyle = look.windows ? (look.windows.style ?? 'punched') : 'plain'
             const batch = walls.get(style)!
             batch.own(building)
-            batch.add(
-                geometry,
-                colour(look.wall),
-                colour(look.glass ?? GLASS),
-                look.windows ? [1 / look.windows.spacing, 1 / look.windows.floor] : [1 / 3, 1 / 3]
-            )
+            batch.add(geometry, colour(look.wall), {
+                glass: colour(look.glass ?? GLASS),
+                bay: look.windows ? [1 / look.windows.spacing, 1 / look.windows.floor] : [1 / 3, 1 / 3],
+                material: look.material ?? 'plain',
+            })
         }
         if (arcade) {
             const front = new Geometry()
@@ -482,14 +509,36 @@ function wallMaterial(style: WallStyle): THREE.MeshLambertMaterial {
     })
     material.onBeforeCompile = shader => {
         shader.vertexShader = shader.vertexShader
-            .replace('#include <common>', '#include <common>\nattribute vec3 glass;\nvarying vec3 vGlass;')
-            .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGlass = glass;')
+            .replace(
+                '#include <common>',
+                `#include <common>
+                attribute vec3 glass;
+                attribute vec2 metres;
+                attribute float material;
+                varying vec3 vGlass;
+                varying vec2 vMetres;
+                varying float vMaterial;`
+            )
+            .replace(
+                '#include <begin_vertex>',
+                `#include <begin_vertex>
+                vGlass = glass;
+                vMetres = metres;
+                vMaterial = material;`
+            )
         shader.fragmentShader = shader.fragmentShader
-            .replace('#include <common>', '#include <common>\nvarying vec3 vGlass;')
+            .replace(
+                '#include <common>',
+                `#include <common>
+                varying vec3 vGlass;
+                varying vec2 vMetres;
+                varying float vMaterial;
+                ${MATERIAL_GLSL}`
+            )
             .replace(
                 '#include <map_fragment>',
                 `vec4 bay = texture2D( map, vMapUv );
-                vec3 wallColour = vColor.rgb * ( 0.5 + 0.6 * bay.g );
+                vec3 wallColour = vColor.rgb * ( 0.5 + 0.6 * bay.g ) * wallPattern( vMetres, vMaterial );
                 vec3 glassColour = vGlass * ( 0.6 + 0.8 * bay.b );
                 diffuseColor.rgb = mix( wallColour, glassColour, bay.r );`
             )
@@ -498,6 +547,47 @@ function wallMaterial(style: WallStyle): THREE.MeshLambertMaterial {
 
     return material
 }
+
+/**
+ * The walls' materials, drawn in metres: brick courses with lighter mortar
+ * and a tone per brick, stone blocks with dark joints, concrete panels, wooden
+ * boards casting a line of shadow. Each fades out where it would be finer than
+ * a pixel, so distant walls don't shimmer.
+ */
+const MATERIAL_GLSL = `
+float wallHash( vec2 p ) {
+    return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 );
+}
+float wallPattern( vec2 m, float material ) {
+    if ( material < 0.5 ) return 1.0;
+    float pattern = 1.0;
+    vec2 cells;
+    if ( material < 1.5 ) {
+        cells = vec2( m.x / 0.24, m.y / 0.075 );
+        cells.x += mod( floor( cells.y ), 2.0 ) * 0.5;
+        vec2 f = fract( cells );
+        float mortar = max( step( f.y, 0.14 ), step( f.x, 0.05 ) );
+        pattern = mix( 0.9 + 0.16 * wallHash( floor( cells ) ), 1.18, mortar );
+    } else if ( material < 2.5 ) {
+        cells = vec2( m.x / 0.9, m.y / 0.42 );
+        cells.x += mod( floor( cells.y ), 2.0 ) * 0.5;
+        vec2 f = fract( cells );
+        float joint = max( step( f.y, 0.05 ), step( f.x, 0.025 ) );
+        pattern = mix( 0.93 + 0.1 * wallHash( floor( cells ) ), 0.8, joint );
+    } else if ( material < 3.5 ) {
+        cells = vec2( m.x / 1.5, m.y / 3.0 );
+        vec2 f = fract( cells );
+        float joint = max( step( f.y, 0.012 ), step( f.x, 0.01 ) );
+        pattern = mix( 0.95 + 0.07 * wallHash( floor( cells ) ), 0.82, joint );
+    } else {
+        cells = vec2( m.x / 4.0, m.y / 0.2 );
+        float f = fract( cells.y );
+        pattern = 0.88 + 0.16 * f;
+    }
+    float fineness = max( fwidth( cells.x ), fwidth( cells.y ) );
+    return mix( 1.0, pattern, clamp( 1.6 - fineness * 2.5, 0.0, 1.0 ) );
+}
+`
 
 /** Mask values for the bay textures, 0–1 per channel. */
 const WALL = { r: 0, g: 0.85, b: 0.5 }

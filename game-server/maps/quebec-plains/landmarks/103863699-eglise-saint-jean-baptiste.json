@@ -1,0 +1,75 @@
+{
+    "$schema": "../../landmark.schema.json",
+    "id": 103863699,
+    "osm": "way",
+    "name": "Église Saint-Jean-Baptiste",
+    "notes": "Église Saint-Jean-Baptiste (Joseph-Ferdinand Peachy, 1884), rue Saint-Jean: a grey stone basilica, its nave under a verdigris copper roof between lower aisles, and the tower and spire centred on the façade. Heights from the lidar survey: aisles about 14 m, the nave's eaves 24 m and ridge 32 m, the tower 45 m, the spire's tip 68 m (above the lowest ground; here above the highest). Façade frame across the front, the nave running back from it.",
+    "wall": "#b9b3a6",
+    "material": "stone",
+    "windows": {
+        "floor": 6,
+        "spacing": 4.5,
+        "style": "arched"
+    },
+    "height": 11,
+    "roof": {
+        "shape": "flat",
+        "height": 0,
+        "colour": "#8fb3a3",
+        "parapet": 0.6
+    },
+    "facade": {
+        "from": {
+            "lat": 46.8093596,
+            "lon": -71.222522
+        },
+        "to": {
+            "lat": 46.8091994,
+            "lon": -71.2223067
+        }
+    },
+    "parts": [
+        {
+            "along": 2.5,
+            "out": -31,
+            "width": 24,
+            "depth": 56,
+            "height": 21,
+            "roof": {
+                "shape": "gable",
+                "height": 8,
+                "colour": "#8fb3a3"
+            }
+        },
+        {
+            "along": 1,
+            "out": -1,
+            "width": 8.5,
+            "depth": 8.5,
+            "height": 42,
+            "roof": {
+                "shape": "pyramid",
+                "height": 23,
+                "colour": "#9aaca4"
+            }
+        },
+        {
+            "along": 1,
+            "out": -1,
+            "width": 10.5,
+            "depth": 10.5,
+            "height": 26,
+            "windows": false,
+            "roof": {
+                "shape": "flat",
+                "height": 0,
+                "colour": "#a9a399"
+            }
+        }
+    ],
+    "fingerprint": {
+        "lat": 46.8095652,
+        "lon": -71.2218484,
+        "area": 2151
+    }
+}

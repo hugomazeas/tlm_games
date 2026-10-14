@@ -7,22 +7,42 @@
     "additionalProperties": false,
     "required": ["buildings"],
     "properties": {
-        "$schema": { "type": "string" },
-        "notes": { "type": "string" },
+        "$schema": {
+            "type": "string"
+        },
+        "notes": {
+            "type": "string"
+        },
         "buildings": {
             "type": "object",
-            "propertyNames": { "pattern": "^(way|relation)/\\d+$" },
-            "additionalProperties": { "$ref": "#/$defs/look" }
+            "propertyNames": {
+                "pattern": "^(way|relation)/\\d+$"
+            },
+            "additionalProperties": {
+                "$ref": "#/$defs/look"
+            }
         }
     },
     "$defs": {
-        "colour": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+        "colour": {
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+        },
         "look": {
             "type": "object",
             "additionalProperties": false,
             "properties": {
-                "wall": { "$ref": "#/$defs/colour" },
-                "roof": { "$ref": "#/$defs/colour", "description": "Flat unless the survey found a pitched roof, which takes this colour." },
+                "wall": {
+                    "$ref": "#/$defs/colour"
+                },
+                "material": {
+                    "enum": ["plain", "brick", "stone", "concrete", "siding"],
+                    "description": "What the walls are made of; brick for red-brown walls, plain otherwise, by default."
+                },
+                "roof": {
+                    "$ref": "#/$defs/colour",
+                    "description": "Flat unless the survey found a pitched roof, which takes this colour."
+                },
                 "windows": {
                     "description": "Windows other than the usual for its height, or false for none.",
                     "oneOf": [
@@ -31,15 +51,27 @@
                             "additionalProperties": false,
                             "required": ["floor", "spacing"],
                             "properties": {
-                                "floor": { "type": "number", "minimum": 1 },
-                                "spacing": { "type": "number", "minimum": 0.5 },
-                                "style": { "enum": ["punched", "square", "arched", "ribbon", "curtain"] }
+                                "floor": {
+                                    "type": "number",
+                                    "minimum": 1
+                                },
+                                "spacing": {
+                                    "type": "number",
+                                    "minimum": 0.5
+                                },
+                                "style": {
+                                    "enum": ["punched", "square", "arched", "ribbon", "curtain"]
+                                }
                             }
                         },
-                        { "const": false }
+                        {
+                            "const": false
+                        }
                     ]
                 },
-                "glass": { "$ref": "#/$defs/colour" }
+                "glass": {
+                    "$ref": "#/$defs/colour"
+                }
             }
         }
     }

@@ -1,5 +1,16 @@
 import type { LatLon } from './convert.ts'
-import type { Arcade, Bands, Building, BuildingDetail, BuildingPart, Fins, Look, Roof, WindowGrid } from './format.ts'
+import type {
+    Arcade,
+    Bands,
+    Building,
+    BuildingDetail,
+    BuildingPart,
+    Fins,
+    Look,
+    Roof,
+    WallMaterial,
+    WindowGrid,
+} from './format.ts'
 
 /**
  * Hand-made detail for landmarks. OSM gives a footprint and maybe a height;
@@ -35,6 +46,7 @@ export type BandsSpec = Omit<Bands, 'first' | 'height'> & { height?: number; fro
  */
 export interface LookOverrides {
     wall?: string
+    material?: WallMaterial
     windows?: WindowGrid | false
     glass?: string
     fins?: FinsSpec | false
@@ -82,6 +94,7 @@ export interface Landmark {
     name: string
     notes?: string
     wall: string
+    material?: WallMaterial
     windows?: WindowGrid
     glass?: string
     fins?: FinsSpec
@@ -169,6 +182,8 @@ function resolveLook(
     const glass = overrides.glass ?? landmark.glass
 
     const look: Look = { wall: overrides.wall ?? landmark.wall }
+    const material = overrides.material ?? landmark.material
+    if (material && material !== 'plain') look.material = material
     if (windows) look.windows = windows
     if (glass) look.glass = glass
     if (bands) {
@@ -409,6 +424,7 @@ export const LANDMARK_KEYS = [
     'name',
     'notes',
     'wall',
+    'material',
     'windows',
     'glass',
     'fins',
@@ -429,6 +445,7 @@ export const PART_KEYS = [
     'height',
     'roof',
     'wall',
+    'material',
     'windows',
     'glass',
     'fins',
@@ -445,6 +462,7 @@ export const WINDOWS_KEYS = ['floor', 'spacing', 'style']
 export const BANDS_KEYS = ['floor', 'depth', 'height', 'from', 'colour']
 export const ROOF_SHAPES = ['mansard', 'pyramid', 'flat', 'gable', 'hip']
 export const WINDOW_STYLES = ['punched', 'square', 'arched', 'ribbon', 'curtain']
+export const WALL_MATERIALS = ['plain', 'brick', 'stone', 'concrete', 'siding']
 const COLOUR = /^#[0-9a-fA-F]{6}$/
 
 /**
@@ -498,6 +516,11 @@ export function parseLandmark(value: unknown, file: string): Landmark {
             fail(`${path}.style`, `must be ${WINDOW_STYLES.join(', ')}`)
         }
     }
+    const material = (path: string, input: unknown) => {
+        if (input !== undefined && !WALL_MATERIALS.includes(input as string)) {
+            fail(path, `must be ${WALL_MATERIALS.join(', ')}`)
+        }
+    }
     const bands = (path: string, input: unknown) => {
         if (input === undefined || input === false) return
         const b = record(path, input, BANDS_KEYS)
@@ -540,6 +563,7 @@ export function parseLandmark(value: unknown, file: string): Landmark {
         if (typeof landmark.name !== 'string' || landmark.name === '') fail('name', 'must be a name')
         if (landmark.notes !== undefined && typeof landmark.notes !== 'string') fail('notes', 'must be text')
         colour('wall', landmark.wall)
+        material('material', landmark.material)
         if (landmark.glass !== undefined) colour('glass', landmark.glass)
         number('height', landmark.height, { min: 1 })
         if (landmark.bands === false) fail('bands', 'leave it out instead')
@@ -598,6 +622,7 @@ export function parseLandmark(value: unknown, file: string): Landmark {
                         }
                     }
                     if (part.wall !== undefined) colour(`parts[${i}].wall`, part.wall)
+                    material(`parts[${i}].material`, part.material)
                     if (part.glass !== undefined) colour(`parts[${i}].glass`, part.glass)
                     bands(`parts[${i}].bands`, part.bands)
                     windows(`parts[${i}].windows`, part.windows)

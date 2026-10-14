@@ -577,12 +577,7 @@ export function convertMap(
                 if (tags.historic === 'city_gate') gates.push({ building, groundLevel: Math.max(...grounds) })
                 else {
                     const key = landmarkKey(element.type === 'relation' ? 'relation' : 'way', element.id)
-                    buildings.push(
-                        applyLook(
-                            applyLandmark(building, landmarksByKey.get(key), project, Math.max(...grounds)),
-                            looks[key]
-                        )
-                    )
+                    buildings.push(applyLandmark(building, landmarksByKey.get(key), project, Math.max(...grounds)))
                 }
             }
             continue
@@ -682,7 +677,8 @@ export function convertMap(
                   lidar,
                   width,
                   depth,
-                  buildings.map(building => building.outline)
+                  buildings.map(building => building.outline),
+                  (x, z) => ground(x, z) <= terrain.waterLevel + 0.5
               ),
               listed
           )
@@ -719,7 +715,10 @@ export function convertMap(
         width,
         depth,
         terrain,
-        buildings: attachParts(buildings, parts),
+        // Looks colour buildings once their OSM parts are on them.
+        buildings: attachParts(buildings, parts).map(building =>
+            applyLook(building, looks[landmarkKey(building.relation ? 'relation' : 'way', building.id)])
+        ),
         roads,
         areas,
         junctions,

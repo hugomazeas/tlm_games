@@ -8,5 +8,6 @@
     "cell": 16,
     "osmFetchedAt": "2026-10-14T17:53:26.633Z",
     "elevationFetchedAt": "2026-10-09T15:39:00.493Z",
-    "treesFetchedAt": "2026-10-14T17:53:26.633Z"
+    "treesFetchedAt": "2026-10-14T17:53:26.633Z",
+    "lidarFetchedAt": "2026-10-14T18:48:57.096Z"
 }

@@ -276,11 +276,17 @@ export function surveyedShape(
 }
 
 /**
- * Which cells of the grid are buildings: those whose middle falls inside a
- * footprint, and a cell round them, so the edge of a roof isn't taken for a
- * crown.
+ * Which cells of the grid are buildings (1): those whose middle falls inside
+ * a footprint, and a cell round them, so the edge of a roof isn't taken for a
+ * crown; and which are water (2), where the survey reads waves.
  */
-export function buildingMask(grid: LidarGrid, width: number, depth: number, footprints: number[][]): Uint8Array {
+export function buildingMask(
+    grid: LidarGrid,
+    width: number,
+    depth: number,
+    footprints: number[][],
+    isWater: (x: number, z: number) => boolean = () => false
+): Uint8Array {
     const mask = new Uint8Array(grid.cols * grid.rows)
     for (const ring of footprints) {
         for (const [col, row] of cellsInside(grid, width, depth, ring)) mask[row * grid.cols + col] = 1
@@ -298,6 +304,13 @@ export function buildingMask(grid: LidarGrid, width: number, depth: number, foot
             }
         }
     }
+    for (let row = 0; row < grid.rows; row++) {
+        for (let col = 0; col < grid.cols; col++) {
+            const x = -width / 2 + (col + 0.5) * grid.cell
+            const z = -depth / 2 + (row + 0.5) * grid.cell
+            if (!grown[row * grid.cols + col] && isWater(x, z)) grown[row * grid.cols + col] = 2
+        }
+    }
 
     return grown
 }
@@ -308,19 +321,23 @@ const CANOPY = 3
 const MAX_REACH = 10
 /** Cells round a top, itself included, that a crown covers at least. */
 const MIN_CROWN_CELLS = 4
+/** No tree here grows taller: anything higher is a mast, a spire or a roof the footprints missed. */
+const TALLEST_TREE = 32
+/** A crown spreading this many times further one way than another is a wall's edge, not a tree. */
+const MAX_STRETCH = 4
 
 /**
  * Tree crowns in the survey: tops (the highest point within a few metres,
- * further for taller trees) of canopy outside the buildings, each with its
- * height, and its crown as wide as the canopy around it stays over half its
- * height. Where a city tree stands under a top, it keeps its species and
- * place and takes the measured size.
+ * further for taller trees) of canopy where `notCanopy` doesn't rule it out
+ * (buildings, water), each with its height, and its crown as wide as the
+ * canopy around it stays over half its height. Where a city tree stands
+ * under a top, it keeps its species and place and takes the measured size.
  */
 export function surveyedTrees(
     grid: LidarGrid,
     width: number,
     depth: number,
-    buildings: Uint8Array,
+    notCanopy: Uint8Array,
     listed: Tree[]
 ): Tree[] {
     const { cols, rows, cell, heights } = grid
@@ -337,7 +354,18 @@ export function surveyedTrees(
     // Canopy cells: tall enough, and not a roof (or right against one).
     const canopy = new Uint8Array(cols * rows)
     for (let i = 0; i < canopy.length; i++) {
-        if (!buildings[i] && heights[i] !== NO_DATA && decodeHeight(heights[i]!) >= CANOPY) canopy[i] = 1
+        if (!notCanopy[i] && heights[i] !== NO_DATA && decodeHeight(heights[i]!) >= CANOPY) canopy[i] = 1
+    }
+
+    const nearBuilding = (col: number, row: number) => {
+        for (let dr = -2; dr <= 2; dr++) {
+            for (let dc = -2; dc <= 2; dc++) {
+                const r = row + dr
+                const c = col + dc
+                if (r >= 0 && c >= 0 && r < rows && c < cols && notCanopy[r * cols + c] === 1) return true
+            }
+        }
+        return false
     }
 
     const tops: Tree[] = []
@@ -345,6 +373,7 @@ export function surveyedTrees(
         for (let col = 0; col < cols; col++) {
             if (!canopy[row * cols + col]) continue
             const h = valueAt(col, row)
+            if (h > TALLEST_TREE) continue
             const reach = Math.max(1, Math.round((1.5 + h * 0.1) / cell))
             let isTop = true
             for (let dr = -reach; dr <= reach && isTop; dr++) {
@@ -370,7 +399,10 @@ export function surveyedTrees(
             if (crownCells < MIN_CROWN_CELLS) continue
 
             // How far the crown spreads: along eight directions until it falls under half the height.
+            // A strip along a wall runs on one way and stops at once the other: not a crown.
             let spread = 0
+            let longest = 0
+            let shortest = Infinity
             for (let k = 0; k < 8; k++) {
                 const angle = (k * Math.PI) / 4
                 let r = 1
@@ -381,7 +413,10 @@ export function surveyedTrees(
                     r++
                 }
                 spread += (r - 0.5) * cell
+                longest = Math.max(longest, r)
+                shortest = Math.min(shortest, r)
             }
+            if (longest >= shortest * MAX_STRETCH && h > 8 && nearBuilding(col, row)) continue
             const [x, z] = centre(col, row)
             const crown = round(Math.min(Math.max((spread / 8) * 2, 2.5), 20))
             const kind = crown < h * 0.3 ? 'conifer' : 'broadleaf'

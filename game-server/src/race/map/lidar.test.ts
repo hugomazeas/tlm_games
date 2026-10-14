@@ -152,6 +152,25 @@ describe('surveyedTrees', () => {
         expect(trees.every(tree => tree.x < 20)).toBe(true)
     })
 
+    test('a mast, or a wall’s edge the footprint missed, isn’t a tree; a row of crowns along a street is', () => {
+        const mast = grid((x, z) => (Math.hypot(x, z) < 3 ? 60 : 0))
+        expect(surveyedTrees(mast, SIZE, SIZE, new Uint8Array(50 * 50), [])).toEqual([])
+        // A 6 m strip at 20 m along the south wall of a building whose footprint stops 2 m short of it,
+        // and the same strip out in the open, as street trees' crowns merge into.
+        const strip = (z0: number) => (x: number, z: number) => Math.abs(x) < 20 && z > z0 && z < z0 + 6
+        const survey = grid((x, z) => (strip(0)(x, z) || strip(30)(x, z) ? 20 - Math.abs(x) * 0.05 : 0))
+        const mask = buildingMask(survey, SIZE, SIZE, [square(-20, -20, 20, -2)])
+        const trees = surveyedTrees(survey, SIZE, SIZE, mask, [])
+        expect(trees.some(tree => tree.z < 10)).toBe(false)
+        expect(trees.some(tree => tree.z > 25)).toBe(true)
+    })
+
+    test('water is no canopy', () => {
+        const waves = grid((x, z) => (Math.hypot(x, z) < 6 ? 5 : 0))
+        const water = buildingMask(waves, SIZE, SIZE, [], () => true)
+        expect(surveyedTrees(waves, SIZE, SIZE, water, [])).toEqual([])
+    })
+
     test('a pole (one cell standing up) isn’t a tree', () => {
         const pole = grid((x, z) => (Math.abs(x - 1) < 1 && Math.abs(z - 1) < 1 ? 8 : 0))
         expect(surveyedTrees(pole, SIZE, SIZE, new Uint8Array(50 * 50), [])).toEqual([])

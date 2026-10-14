@@ -43,8 +43,8 @@ const SHAPES: Record<TreeKind, Shape> = {
     purple: { crown: detail => blob(detail, 0.3, 1), trunk: 0.45, leaves: [0x5a2f3a, 0x6b3442, 0x4e2a33] },
 }
 
-/** A unit trunk: 1 m tall, tapering, about 7% of the crown's width across at the foot. */
-const TRUNK = new THREE.CylinderGeometry(0.025, 0.035, 1, 5).translate(0, 0.5, 0)
+/** A unit trunk: 1 m tall, tapering, about 6% of the crown's width across at the foot. */
+const TRUNK = new THREE.CylinderGeometry(0.02, 0.028, 1, 5).translate(0, 0.5, 0)
 
 export function buildTrees(trees: number[], heightAt: HeightAt): THREE.Group {
     const group = new THREE.Group()

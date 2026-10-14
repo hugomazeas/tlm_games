@@ -56,6 +56,22 @@ describe('applyLook', () => {
         expect(applyLook(house, { roof: '#3f4a52' }).roof).toEqual({ shape: 'gable', height: 4, colour: '#3f4a52' })
     })
 
+    test('a building drawn with OSM parts takes the look on its detail, which its parts share', () => {
+        const parted: Building = {
+            ...building,
+            detail: {
+                wall: '#cfc6b6',
+                windows: { floor: 3.4, spacing: 3 },
+                wallTop: 120,
+                roof: { shape: 'flat', height: 0, colour: '#8b9a96' },
+                parts: [],
+            },
+        }
+        const looked = applyLook(parted, { wall: '#a0522d', roof: '#444444', windows: false })
+        expect(looked.detail).toMatchObject({ wall: '#a0522d', roof: { colour: '#444444' } })
+        expect(looked.detail?.windows).toBeUndefined()
+    })
+
     test('windows can be taken away; a landmark ignores its look', () => {
         expect(applyLook(building, { windows: false }).windows).toBe(false)
         const landmark = { ...building, landmark: true as const }
