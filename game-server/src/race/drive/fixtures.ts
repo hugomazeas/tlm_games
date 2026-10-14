@@ -32,6 +32,7 @@ export function testMap(
         stops: [],
         walls: [],
         props: { trees: [], benches: [], signals: [], busStops: [] },
+        decor: { shapes: [], paint: [] },
         ...overrides,
     }
 }

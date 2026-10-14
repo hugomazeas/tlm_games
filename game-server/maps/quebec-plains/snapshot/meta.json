@@ -6,6 +6,7 @@
         "east": -71.199
     },
     "cell": 16,
-    "osmFetchedAt": "2026-10-09T15:29:03.278Z",
-    "elevationFetchedAt": "2026-10-09T15:39:00.493Z"
+    "osmFetchedAt": "2026-10-14T17:53:26.633Z",
+    "elevationFetchedAt": "2026-10-09T15:39:00.493Z",
+    "treesFetchedAt": "2026-10-14T17:53:26.633Z"
 }

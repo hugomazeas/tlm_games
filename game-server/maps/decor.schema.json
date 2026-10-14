@@ -1,0 +1,246 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "decor.schema.json",
+    "title": "Racing map decor",
+    "description": "Hand-made detail for a place that isn't a building: fountains, statues, structures built of shapes (kiosks, crosses, monuments), hedges, fences and walls, lamp posts, trees, flowerbeds, lawns and paving, benches, café umbrellas, flags. Positions are latitude/longitude; heights are metres above the ground. Checked by parseDecor in game-server/src/race/map/decor.ts, which is authoritative.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["name", "items"],
+    "properties": {
+        "$schema": { "type": "string" },
+        "name": { "type": "string", "minLength": 1 },
+        "notes": { "type": "string", "description": "What the place is, and what this file is going for." },
+        "replaces": {
+            "type": "array",
+            "description": "OSM elements this file draws itself, so their generic versions (a statue on a plinth, a round fountain, a hedge…) are left out.",
+            "items": { "type": "string", "pattern": "^(node|way|relation)/\\d+$" }
+        },
+        "items": {
+            "type": "array",
+            "items": {
+                "oneOf": [
+                    { "$ref": "#/$defs/fountain" },
+                    { "$ref": "#/$defs/statue" },
+                    { "$ref": "#/$defs/structure" },
+                    { "$ref": "#/$defs/hedge" },
+                    { "$ref": "#/$defs/fence" },
+                    { "$ref": "#/$defs/lamps" },
+                    { "$ref": "#/$defs/trees" },
+                    { "$ref": "#/$defs/flowerbed" },
+                    { "$ref": "#/$defs/paint" },
+                    { "$ref": "#/$defs/benches" },
+                    { "$ref": "#/$defs/umbrellas" },
+                    { "$ref": "#/$defs/flags" }
+                ]
+            }
+        }
+    },
+    "$defs": {
+        "colour": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+        "latLon": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["lat", "lon"],
+            "properties": { "lat": { "type": "number" }, "lon": { "type": "number" } }
+        },
+        "points": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/latLon" } },
+        "line": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/latLon" } },
+        "area": { "type": "array", "minItems": 3, "items": { "$ref": "#/$defs/latLon" } },
+        "facing": {
+            "type": "number",
+            "description": "Compass bearing it faces, in degrees: 0 north, 90 east."
+        },
+        "fountain": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "at", "basins"],
+            "properties": {
+                "kind": { "const": "fountain" },
+                "at": { "$ref": "#/$defs/latLon" },
+                "basins": {
+                    "type": "array",
+                    "minItems": 1,
+                    "description": "Bottom up: the pool on the ground first, then the bowls above it on a central stem.",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["diameter", "height"],
+                        "properties": {
+                            "diameter": { "type": "number", "minimum": 0.3 },
+                            "height": { "type": "number", "minimum": 0.1, "description": "Its rim above the ground." }
+                        }
+                    }
+                },
+                "jet": { "type": "number", "minimum": 0, "description": "A spout of water this many metres above the top." },
+                "falls": { "type": "boolean", "description": "Water falls from each bowl into the one below." },
+                "finial": { "type": "number", "minimum": 0, "description": "An ornament on the top bowl, this tall." },
+                "stone": { "$ref": "#/$defs/colour" },
+                "metal": { "$ref": "#/$defs/colour" },
+                "water": { "$ref": "#/$defs/colour" }
+            }
+        },
+        "statue": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "at", "facing", "figure", "height", "plinth"],
+            "properties": {
+                "kind": { "const": "statue" },
+                "at": { "$ref": "#/$defs/latLon" },
+                "facing": { "$ref": "#/$defs/facing" },
+                "figure": { "enum": ["standing", "equestrian", "bust", "seated"] },
+                "height": { "type": "number", "minimum": 0.3, "description": "Feet (or hooves) to the top of the head." },
+                "plinth": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["width", "depth", "height"],
+                    "properties": {
+                        "width": { "type": "number", "minimum": 0.2 },
+                        "depth": { "type": "number", "minimum": 0.2 },
+                        "height": { "type": "number", "minimum": 0 },
+                        "colour": { "$ref": "#/$defs/colour" }
+                    }
+                },
+                "colour": { "$ref": "#/$defs/colour", "description": "The figure's; bronze by default." }
+            }
+        },
+        "piece": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["shape", "width", "depth", "height", "colour"],
+            "properties": {
+                "shape": { "enum": ["box", "cylinder", "cone", "sphere", "pyramid"] },
+                "right": { "type": "number", "description": "Metres to the structure's right." },
+                "ahead": { "type": "number", "description": "Metres ahead of it, towards `facing`." },
+                "from": { "type": "number", "description": "Its base above the ground." },
+                "width": { "type": "number", "minimum": 0.02 },
+                "depth": { "type": "number", "minimum": 0.02 },
+                "height": { "type": "number", "minimum": 0.02 },
+                "colour": { "$ref": "#/$defs/colour" },
+                "taper": { "type": "number", "minimum": 0, "maximum": 5, "description": "A cylinder's top as a share of its bottom: 0 a cone, above 1 a bowl." },
+                "turn": { "type": "number", "description": "Extra turn in degrees, clockwise seen from above." },
+                "solid": { "type": "boolean", "description": "Karts bump into it." },
+                "water": { "type": "boolean", "description": "See-through, like water." }
+            }
+        },
+        "structure": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "at", "pieces"],
+            "properties": {
+                "kind": { "const": "structure" },
+                "at": { "$ref": "#/$defs/latLon" },
+                "facing": { "$ref": "#/$defs/facing" },
+                "pieces": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/piece" } }
+            }
+        },
+        "hedge": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "line"],
+            "properties": {
+                "kind": { "const": "hedge" },
+                "line": { "$ref": "#/$defs/line" },
+                "height": { "type": "number", "minimum": 0.2 },
+                "width": { "type": "number", "minimum": 0.2 },
+                "colour": { "$ref": "#/$defs/colour" }
+            }
+        },
+        "fence": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "line", "style"],
+            "properties": {
+                "kind": { "const": "fence" },
+                "line": { "$ref": "#/$defs/line" },
+                "style": { "enum": ["iron", "stone", "wood"], "description": "A stone wall is solid; railings and fences aren't." },
+                "height": { "type": "number", "minimum": 0.2 },
+                "colour": { "$ref": "#/$defs/colour" }
+            }
+        },
+        "lamps": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "style"],
+            "properties": {
+                "kind": { "const": "lamps" },
+                "style": { "enum": ["heritage", "globe", "modern"] },
+                "points": { "$ref": "#/$defs/points" },
+                "line": { "$ref": "#/$defs/line" },
+                "spacing": { "type": "number", "minimum": 0.5, "description": "Along a line, one every this many metres." },
+                "height": { "type": "number", "minimum": 1 }
+            }
+        },
+        "trees": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "tree", "height", "crown"],
+            "properties": {
+                "kind": { "const": "trees" },
+                "tree": { "enum": ["broadleaf", "conifer", "columnar", "ornamental", "purple"] },
+                "height": { "type": "number", "minimum": 1 },
+                "crown": { "type": "number", "minimum": 0.5, "description": "Width of the crown." },
+                "points": { "$ref": "#/$defs/points" },
+                "line": { "$ref": "#/$defs/line" },
+                "area": { "$ref": "#/$defs/area" },
+                "spacing": { "type": "number", "minimum": 1 }
+            }
+        },
+        "flowerbed": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "area"],
+            "properties": {
+                "kind": { "const": "flowerbed" },
+                "area": { "$ref": "#/$defs/area" },
+                "colour": { "$ref": "#/$defs/colour" },
+                "height": { "type": "number", "minimum": 0.05 }
+            }
+        },
+        "paint": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "surface", "area"],
+            "properties": {
+                "kind": { "const": "paint" },
+                "surface": { "enum": ["lawn", "paving", "gravel", "water", "soil"] },
+                "area": { "$ref": "#/$defs/area" },
+                "colour": { "$ref": "#/$defs/colour" }
+            }
+        },
+        "benches": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind"],
+            "properties": {
+                "kind": { "const": "benches" },
+                "points": { "$ref": "#/$defs/points" },
+                "line": { "$ref": "#/$defs/line" },
+                "spacing": { "type": "number", "minimum": 0.5 }
+            }
+        },
+        "umbrellas": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind"],
+            "properties": {
+                "kind": { "const": "umbrellas" },
+                "points": { "$ref": "#/$defs/points" },
+                "line": { "$ref": "#/$defs/line" },
+                "spacing": { "type": "number", "minimum": 0.5 },
+                "colour": { "$ref": "#/$defs/colour" },
+                "size": { "type": "number", "minimum": 0.5 }
+            }
+        },
+        "flags": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "points"],
+            "properties": {
+                "kind": { "const": "flags" },
+                "points": { "$ref": "#/$defs/points" },
+                "height": { "type": "number", "minimum": 1 },
+                "colours": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/colour" } }
+            }
+        }
+    }
+}

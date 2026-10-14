@@ -1,6 +1,7 @@
 import { readdir } from 'node:fs/promises'
 import { type CourseSpec, parseCourse } from './courses.ts'
 import { type Bounds, convertMap, type ElevationGrid, type LatLon, type OsmElement, projector } from './convert.ts'
+import { type DecorFile, parseDecor } from './decor.ts'
 import type { RaceMap } from './format.ts'
 import {
     type Fingerprint,
@@ -10,12 +11,14 @@ import {
     type Review,
     reviewLandmarks,
 } from './landmarks.ts'
+import type { CityTree } from './trees.ts'
 
 /**
  * How a map is made, as three layers:
  *
- *   maps/<slug>/snapshot/    raw OSM and elevation, gzipped, committed; only `--refresh` rewrites it
+ *   maps/<slug>/snapshot/    raw OSM, elevation and the city's trees, gzipped, committed; only `--refresh…` rewrites it
  *   maps/<slug>/landmarks/   hand-made detail, one JSON file per landmark
+ *   maps/<slug>/decor/       hand-made fountains, statues, gardens…, one JSON file per place
  *   maps/<slug>/courses/     default race tracks the Hub seeds its database with (not part of map.json)
  *   maps/<slug>/map.json     what the game loads, always generated from the two above
  *
@@ -53,6 +56,7 @@ export interface SnapshotMeta {
     /** ISO dates of the downloads. */
     osmFetchedAt: string
     elevationFetchedAt: string
+    treesFetchedAt: string
 }
 
 export interface Snapshot {
@@ -61,13 +65,16 @@ export interface Snapshot {
     nodes: OsmElement[]
     shore: LatLon[][]
     elevation: ElevationGrid
+    /** The city of Québec's inventory of the trees on the map. */
+    trees: CityTree[]
 }
 
 const MAPS_DIR = `${import.meta.dir}/../../../maps`
-const SNAPSHOT_PARTS = ['osm', 'nodes', 'shore', 'elevation'] as const
+const SNAPSHOT_PARTS = ['osm', 'nodes', 'shore', 'elevation', 'trees'] as const
 
-/** The JSON schemas landmark and course files point their editors at. */
+/** The JSON schemas landmark, decor and course files point their editors at. */
 export const LANDMARK_SCHEMA = `${MAPS_DIR}/landmark.schema.json`
+export const DECOR_SCHEMA = `${MAPS_DIR}/decor.schema.json`
 export const COURSE_SCHEMA = `${MAPS_DIR}/course.schema.json`
 
 export function mapDir(slug: string): string {
@@ -85,13 +92,22 @@ export async function readSnapshot(slug: string): Promise<Snapshot | null> {
 
     const parts = await Promise.all(
         SNAPSHOT_PARTS.map(async part => {
-            const zipped = await Bun.file(`${dir}/${part}.json.gz`).arrayBuffer()
+            const file = Bun.file(`${dir}/${part}.json.gz`)
+            // Snapshots from before the city's trees were added have none until `--refresh-trees`.
+            if (part === 'trees' && !(await file.exists())) return []
+            const zipped = await file.arrayBuffer()
             return JSON.parse(new TextDecoder().decode(Bun.gunzipSync(new Uint8Array(zipped))))
         })
     )
-    const [osm, nodes, shore, elevation] = parts as [OsmElement[], OsmElement[], LatLon[][], ElevationGrid]
+    const [osm, nodes, shore, elevation, trees] = parts as [
+        OsmElement[],
+        OsmElement[],
+        LatLon[][],
+        ElevationGrid,
+        CityTree[],
+    ]
 
-    return { meta: (await metaFile.json()) as SnapshotMeta, osm, nodes, shore, elevation }
+    return { meta: (await metaFile.json()) as SnapshotMeta, osm, nodes, shore, elevation, trees }
 }
 
 export async function writeSnapshot(slug: string, snapshot: Snapshot): Promise<void> {
@@ -143,6 +159,17 @@ export async function readLandmarks(slug: string): Promise<LandmarkFile[]> {
     return files
 }
 
+/** Every decor file of a map, checked; throws on the first invalid one, naming its problems. */
+export async function readDecor(slug: string): Promise<DecorFile[]> {
+    const dir = `${mapDir(slug)}/decor`
+    const names = (await readdir(dir).catch(() => [] as string[])).filter(name => name.endsWith('.json')).sort()
+
+    const files: DecorFile[] = []
+    for (const name of names) files.push(parseDecor(await Bun.file(`${dir}/${name}`).json(), `decor/${name}`))
+
+    return files
+}
+
 export interface CourseFile {
     path: string
     slug: string
@@ -169,11 +196,18 @@ export async function stampLandmark(path: string, fingerprint: Fingerprint): Pro
     await Bun.write(path, `${JSON.stringify({ ...contents, fingerprint }, null, 4)}\n`)
 }
 
-export function buildMap(config: MapConfig, snapshot: Snapshot, landmarks: Landmark[]): RaceMap {
+export function buildMap(
+    config: MapConfig,
+    snapshot: Snapshot,
+    landmarks: Landmark[],
+    decor: DecorFile[] = []
+): RaceMap {
     return convertMap(config.name, config.bounds, snapshot.osm, snapshot.elevation, config.cell, {
         river: { shore: snapshot.shore, sample: config.river.sample },
         nodes: snapshot.nodes,
+        cityTrees: snapshot.trees,
         landmarks,
+        decor,
     })
 }
 

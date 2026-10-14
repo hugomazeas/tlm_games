@@ -1,4 +1,5 @@
 import type { Props, Road, RoadKind, Sides } from './format.ts'
+import { flattenTrees, type Tree } from './trees.ts'
 
 /**
  * Street detail derived from OSM tags: how wide a road is and how many lanes
@@ -255,7 +256,7 @@ export function findCrossings(ways: Point[][], nodes: Point[], index: RoadIndex)
 }
 
 export interface FurnitureInput {
-    trees: Point[]
+    trees: Tree[]
     benches: Point[]
     signals: Point[]
     busStops: Point[]
@@ -267,7 +268,7 @@ export interface FurnitureInput {
  * junction: they move to the kerb, as do bus stops, both turned to face it.
  */
 export function placeFurniture(input: FurnitureInput, index: RoadIndex): Props {
-    const trees = input.trees.filter(([x, z]) => {
+    const trees = input.trees.filter(({ x, z }) => {
         const road = index.nearest(x, z, 20)
         return !road || road.distance > road.width / 2 + 0.5
     })
@@ -285,7 +286,7 @@ export function placeFurniture(input: FurnitureInput, index: RoadIndex): Props {
         })
 
     return {
-        trees: trees.flatMap(([x, z]) => [round(x), round(z)]),
+        trees: flattenTrees(trees),
         benches: input.benches.flatMap(([x, z]) => [round(x), round(z)]),
         // The mast arm reaches back over the road, towards its centre line.
         signals: atKerb(input.signals, KERB_SETBACK).flatMap(({ x, z, road, side, offset }) => [

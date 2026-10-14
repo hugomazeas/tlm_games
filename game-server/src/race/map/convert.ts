@@ -1,4 +1,5 @@
 import type { Area, AreaKind, Building, RaceMap, Road, RoadKind, Terrain, Wall } from './format.ts'
+import { type DecorFile, expandDecor, type OsmLine, type OsmPoint, osmDecor, sortPaint } from './decor.ts'
 import { applyLandmark, type Landmark, landmarkKey } from './landmarks.ts'
 import {
     findCrossings,
@@ -10,6 +11,7 @@ import {
     roadProfile,
 } from './streets.ts'
 import { attachParts, gateArch, type OsmPart, wallFrom } from './structures.ts'
+import { blockedGround, type CityTree, cityTree, fillWoods, mergeTrees, osmTree } from './trees.ts'
 
 /** A latitude/longitude box, as Overpass takes it. */
 export interface Bounds {
@@ -451,8 +453,12 @@ export interface MapExtras {
     river?: RiverInput
     /** Point features: trees, crossings, traffic lights, bus stops and benches. */
     nodes?: OsmElement[]
+    /** The city's tree inventory: species and trunk sizes (see trees.ts). */
+    cityTrees?: CityTree[]
     /** Hand-made detail for some buildings (see landmarks.ts). */
     landmarks?: Landmark[]
+    /** Hand-made fountains, statues, gardens and the like (see decor.ts). */
+    decor?: DecorFile[]
 }
 
 /** Assembles the map from raw OSM elements and an elevation grid sampled over the same bounds. */
@@ -462,7 +468,7 @@ export function convertMap(
     elements: OsmElement[],
     elevation: ElevationGrid,
     cell: number,
-    { river, nodes = [], landmarks = [] }: MapExtras = {}
+    { river, nodes = [], cityTrees = [], landmarks = [], decor = [] }: MapExtras = {}
 ): RaceMap {
     const landmarksByKey = new Map(landmarks.map(landmark => [landmarkKey(landmark.osm, landmark.id), landmark]))
     const { origin, project } = projector(bounds)
@@ -495,6 +501,8 @@ export function convertMap(
     const walls: Wall[] = []
     const gates: { building: Building; groundLevel: number }[] = []
     const parts: OsmPart[] = []
+    const replaced = new Set(decor.flatMap(file => file.replaces ?? []))
+    const decorLines: OsmLine[] = []
 
     for (const element of elements) {
         const tags = element.tags ?? {}
@@ -567,6 +575,19 @@ export function convertMap(
             continue
         }
 
+        if (
+            element.type === 'way' &&
+            (tags.barrier === 'hedge' ||
+                tags.natural === 'tree_row' ||
+                tags.landuse === 'flowerbed' ||
+                tags.amenity === 'fountain')
+        ) {
+            const key = `way/${element.id}`
+            const points = (element.geometry ?? []).map(project)
+            if (!replaced.has(key) && points.some(inside)) decorLines.push({ key, tags, points })
+            continue
+        }
+
         const kind = areaKind(tags)
         if (kind) {
             for (const polygon of polygonsOf(element)) {
@@ -596,10 +617,42 @@ export function convertMap(
         pointsTagged(tags => tags.highway === 'crossing'),
         index
     )
+    const listed = cityTrees.flatMap(tree => {
+        const [x, z] = project(tree)
+        return inside([x, z]) ? [cityTree(tree, x, z)] : []
+    })
+    const mapped = nodes.flatMap(node => {
+        if (node.lat === undefined || node.lon === undefined || node.tags?.natural !== 'tree') return []
+        const [x, z] = project({ lat: node.lat, lon: node.lon })
+        return inside([x, z]) ? [osmTree(node.tags, x, z)] : []
+    })
+    const decorPoints: OsmPoint[] = nodes.flatMap(node => {
+        const key = `node/${node.id}`
+        if (node.lat === undefined || node.lon === undefined || replaced.has(key)) return []
+        const at = project({ lat: node.lat, lon: node.lon })
+        return inside(at) ? [{ key, tags: node.tags ?? {}, at }] : []
+    })
+    const fromOsm = osmDecor(decorPoints, decorLines, ground, (x, z) => {
+        const road = index.nearest(x, z, 80)
+        return road ? (Math.atan2(road.x - x, -(road.z - z)) * 180) / Math.PI : null
+    })
+    const handMade = expandDecor(
+        decor.flatMap(file => file.items),
+        project,
+        ground
+    )
+    const standing = [...mergeTrees(listed, [...mapped, ...fromOsm.trees]), ...handMade.trees]
+    const blocked = blockedGround(
+        width,
+        depth,
+        roads,
+        [...buildings.map(building => building.outline), ...areas.filter(a => a.kind === 'water').map(a => a.outline)],
+        (x, z) => ground(x, z) <= terrain.waterLevel + 0.5
+    )
     const props = placeFurniture(
         {
-            trees: pointsTagged(tags => tags.natural === 'tree'),
-            benches: pointsTagged(tags => tags.amenity === 'bench'),
+            trees: [...standing, ...fillWoods(areas, blocked, standing)],
+            benches: [...pointsTagged(tags => tags.amenity === 'bench'), ...fromOsm.benches, ...handMade.benches],
             signals: pointsTagged(tags => tags.highway === 'traffic_signals'),
             busStops: pointsTagged(tags => tags.highway === 'bus_stop'),
         },
@@ -608,7 +661,8 @@ export function convertMap(
 
     return {
         name,
-        attribution: '© OpenStreetMap contributors, elevation © Natural Resources Canada (CDEM)',
+        attribution:
+            '© OpenStreetMap contributors, elevation © Natural Resources Canada (CDEM), trees © Ville de Québec (CC BY 4.0)',
         origin,
         width,
         depth,
@@ -625,6 +679,10 @@ export function convertMap(
         ),
         walls,
         props,
+        decor: {
+            shapes: [...fromOsm.shapes, ...handMade.shapes],
+            paint: sortPaint([...fromOsm.paint, ...handMade.paint]),
+        },
     }
 }
 

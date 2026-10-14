@@ -177,18 +177,10 @@ describe('placeFurniture', () => {
     const index = new RoadIndex([road([0, 0, 100, 0], 10)])
     const none = { trees: [], benches: [], signals: [], busStops: [] }
 
-    test('drops trees standing in the carriageway', () => {
-        const props = placeFurniture(
-            {
-                ...none,
-                trees: [
-                    [10, 1],
-                    [10, 9],
-                ],
-            },
-            index
-        )
-        expect(props.trees).toEqual([10, 9])
+    test('drops trees standing in the carriageway, keeping the others with their size and kind', () => {
+        const tree = (x: number, z: number) => ({ x, z, height: 12, crown: 8, kind: 'conifer' as const })
+        const props = placeFurniture({ ...none, trees: [tree(10, 1), tree(10, 9)] }, index)
+        expect(props.trees).toEqual([10, 9, 12, 8, 1])
     })
 
     test('moves a traffic light from the middle of the road to its right-hand kerb, its arm reaching back over the road', () => {

@@ -11,6 +11,7 @@ import { createMinimap } from './minimap.ts'
 import { createOthers } from './others.ts'
 import { createOverlay } from './overlay.ts'
 import { createRace } from './race.ts'
+import { buildDecor } from './decor.ts'
 import { buildFurniture } from './furniture.ts'
 import { identifyByRanges, setupIdentify } from './identify.ts'
 import { buildWalls } from './walls.ts'
@@ -118,6 +119,7 @@ scene.add(buildings)
 scene.add(landmarks)
 scene.add(buildStreets(map, ground))
 scene.add(buildFurniture(map, ground))
+scene.add(buildDecor(map.decor))
 scene.add(buildWalls(map.walls, ground))
 
 const controls = flyControls(camera, renderer.domElement)
@@ -341,6 +343,15 @@ function paintGround(map: RaceMap, sizeX: number, sizeZ: number): HTMLCanvasElem
         context.fillStyle = AREA_COLOURS[area.kind]
         context.beginPath()
         tracePath(context, area.outline)
+        context.closePath()
+        context.fill()
+    }
+
+    // Lawns, paving, gravel and flowerbed soil from the decor, over the parks.
+    for (const paint of map.decor.paint) {
+        context.fillStyle = paint.colour
+        context.beginPath()
+        tracePath(context, paint.outline)
         context.closePath()
         context.fill()
     }

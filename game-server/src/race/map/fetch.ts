@@ -1,11 +1,12 @@
 import { type ElevationGrid, type LatLon, type OsmElement, projector } from './convert.ts'
 import type { MapConfig } from './pipeline.ts'
+import type { CityTree } from './trees.ts'
 
 /**
- * Downloads a map's raw data: OpenStreetMap through Overpass, and elevation
- * from the federal CDEM profile service. Both are free and keyless. Only
- * `build.ts --refresh` calls this; every other build reads the committed
- * snapshot.
+ * Downloads a map's raw data: OpenStreetMap through Overpass, elevation from
+ * the federal CDEM profile service, and the city of Québec's tree inventory
+ * from Données Québec. All free and keyless. Only `build.ts --refresh…` calls
+ * this; every other build reads the committed snapshot.
  */
 
 const USER_AGENT = 'tlm-games-racing-map/0.1'
@@ -41,6 +42,10 @@ export async function fetchOsm(config: MapConfig): Promise<OsmElement[]> {
   way[amenity=parking](${area});
   way[barrier=city_wall](${area});
   way["building:part"](${area});
+  way[natural=tree_row](${area});
+  way[barrier=hedge](${area});
+  way[landuse=flowerbed](${area});
+  way[amenity=fountain](${area});
 );
 out geom;`
 
@@ -54,13 +59,102 @@ export async function fetchNodes(config: MapConfig): Promise<OsmElement[]> {
     const query = `[out:json][timeout:90];
 (
   node[natural=tree](${area});
-  node[highway~"^(crossing|traffic_signals|bus_stop|stop)$"](${area});
-  node[amenity=bench](${area});
+  node[highway~"^(crossing|traffic_signals|bus_stop|stop|street_lamp)$"](${area});
+  node[amenity~"^(bench|fountain)$"](${area});
+  node[historic~"^(memorial|monument)$"](${area});
+  node[tourism=artwork](${area});
 );
 out;`
 
-    console.log('Fetching trees, crossings, lights, stop signs and benches…')
+    console.log('Fetching trees, crossings, lights, stop signs, lamps, benches, fountains and monuments…')
     return overpass(query)
+}
+
+/**
+ * The city of Québec's inventory of the trees it looks after ("Arbres
+ * répertoriés", Données Québec, CC BY 4.0): species, trunk diameter, position.
+ * One CSV for the whole city, about 25 MB; only the trees on the map are kept.
+ */
+const CITY_TREES_URL =
+    'https://www.donneesquebec.ca/recherche/dataset/34103a43-3712-4a29-92e1-039e9188e915/resource/13a51853-a5b5-4add-8791-02ccba5c1be7/download/vdq-arbrerepertorie.csv'
+
+export async function fetchCityTrees(config: MapConfig): Promise<CityTree[]> {
+    console.log('Fetching the city of Québec’s tree inventory…')
+    const response = await fetch(CITY_TREES_URL, { headers: { 'User-Agent': USER_AGENT } })
+    if (!response.ok) throw new Error(`The tree inventory answered ${response.status}`)
+
+    return cityTreesFromCsv(await response.text(), config.bounds)
+}
+
+/** The inventory's rows inside the bounds, sorted by position so a refresh diffs cleanly. */
+export function cityTreesFromCsv(csv: string, bounds: MapConfig['bounds']): CityTree[] {
+    const [header, ...rows] = parseCsv(csv.replace(/^﻿/, ''))
+    const column = (name: string) => {
+        const index = header!.indexOf(name)
+        if (index < 0) throw new Error(`The tree inventory has no ${name} column`)
+        return index
+    }
+    const [lat, lon, taxon, type, diameter, measure] = [
+        'LATITUDE',
+        'LONGITUDE',
+        'NOM_LATIN',
+        'TYPE_ARBRE',
+        'DIAMETRE',
+        'POSITION_MESURE',
+    ].map(column) as [number, number, number, number, number, number]
+
+    const trees: CityTree[] = []
+    for (const row of rows) {
+        const point = { lat: parseFloat(row[lat] ?? ''), lon: parseFloat(row[lon] ?? '') }
+        if (!(point.lat >= bounds.south && point.lat <= bounds.north)) continue
+        if (!(point.lon >= bounds.west && point.lon <= bounds.east)) continue
+        const size = parseFloat(row[diameter] ?? '')
+        trees.push({
+            lat: Math.round(point.lat * 1e7) / 1e7,
+            lon: Math.round(point.lon * 1e7) / 1e7,
+            taxon: (row[taxon] ?? '').trim(),
+            ...(row[type] === 'Conifère' ? { conifer: true as const } : {}),
+            ...(size > 0 ? { diameter: size } : {}),
+            ...(row[measure] === 'DHS' ? { stump: true as const } : {}),
+        })
+    }
+
+    return trees.sort((a, b) => a.lat - b.lat || a.lon - b.lon)
+}
+
+/** Rows of a CSV file, quoted fields (with commas, quotes and line breaks in them) included. */
+export function parseCsv(text: string): string[][] {
+    const rows: string[][] = []
+    let row: string[] = []
+    let field = ''
+    let quoted = false
+
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i]!
+        if (quoted) {
+            if (char === '"' && text[i + 1] === '"') {
+                field += '"'
+                i++
+            } else if (char === '"') quoted = false
+            else field += char
+        } else if (char === '"') quoted = true
+        else if (char === ',') {
+            row.push(field)
+            field = ''
+        } else if (char === '\n' || char === '\r') {
+            if (char === '\r' && text[i + 1] === '\n') i++
+            row.push(field)
+            rows.push(row)
+            row = []
+            field = ''
+        } else field += char
+    }
+    if (field !== '' || row.length > 0) {
+        row.push(field)
+        rows.push(row)
+    }
+
+    return rows
 }
 
 /** Only the river relation's members that cross the map, not the hundreds of km of the rest. */

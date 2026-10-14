@@ -156,8 +156,9 @@ export function buildWorld(map: RaceMap): DriveWorld {
 }
 
 /**
- * Buildings' edges and the fortifications. A building only blocks between its
- * base and top, so a city gate's arch, which starts above the road, doesn't.
+ * Buildings' edges, the fortifications, and the solid decor (fountain pools,
+ * plinths, stone walls). A building only blocks between its base and top, so
+ * a city gate's arch, which starts above the road, doesn't.
  */
 export function buildColliders(map: RaceMap, ground: (x: number, z: number) => number): Collider[] {
     const colliders: Collider[] = []
@@ -177,6 +178,32 @@ export function buildColliders(map: RaceMap, ground: (x: number, z: number) => n
             const low = Math.min(ground(x1, z1), ground(x2, z2))
             const high = Math.max(ground(x1, z1), ground(x2, z2))
             colliders.push({ x1, z1, x2, z2, radius: wall.thickness / 2, bottom: low - 1, top: high + wall.height })
+        }
+    }
+    for (const shape of map.decor.shapes) {
+        if (!shape.solid) continue
+        const bottom = shape.y
+        const top = shape.y + shape.height
+        if (shape.shape === 'prism') {
+            ring(shape.outline ?? [], bottom, top)
+        } else if (shape.shape === 'box' || shape.shape === 'pyramid') {
+            // Three.js turns local x (1, 0) onto (cos t, −sin t) and local z (0, 1) onto (sin t, cos t).
+            const ux = Math.cos(shape.turn)
+            const uz = -Math.sin(shape.turn)
+            const corners = [
+                [-1, -1],
+                [1, -1],
+                [1, 1],
+                [-1, 1],
+            ].flatMap(([a, b]) => {
+                const along = (a! * shape.width) / 2
+                const across = (b! * shape.depth) / 2
+                return [shape.x + ux * along - uz * across, shape.z + uz * along + ux * across]
+            })
+            ring(corners, bottom, top)
+        } else {
+            const radius = Math.max(shape.width, shape.depth) / 2
+            colliders.push({ x1: shape.x, z1: shape.z, x2: shape.x, z2: shape.z, radius, bottom, top })
         }
     }
 

@@ -1,9 +1,10 @@
-import { fetchElevation, fetchNodes, fetchOsm, fetchShore } from './fetch.ts'
+import { fetchCityTrees, fetchElevation, fetchNodes, fetchOsm, fetchShore } from './fetch.ts'
 import type { Review } from './landmarks.ts'
 import {
     buildMap,
     MAPS,
     mapFile,
+    readDecor,
     readLandmarks,
     readSnapshot,
     reviewMap,
@@ -18,8 +19,9 @@ import {
  * Builds a racing map from its committed snapshot and landmark files:
  *
  *   bun run race:map                       rebuild map.json from the snapshot (offline, seconds)
- *   bun run race:map --refresh             download fresh OSM data into the snapshot first
+ *   bun run race:map --refresh             download fresh OSM data and the city's trees into the snapshot first
  *   bun run race:map --refresh-elevation   …and fresh elevation too (minutes)
+ *   bun run race:map --refresh-trees       only the city's trees
  *   bun run race:map --accept              trust the landmarks as they are now (stamps their fingerprints)
  *
  * After a refresh, landmarks whose OSM footprint vanished or changed are
@@ -37,6 +39,9 @@ const coversArea = snapshot !== null && snapshotMatches(snapshot.meta, config)
 
 if (flags.has('--refresh') || flags.has('--refresh-elevation')) {
     snapshot = await refresh(snapshot, coversArea && !flags.has('--refresh-elevation'))
+} else if (flags.has('--refresh-trees') && coversArea) {
+    snapshot = { ...snapshot!, trees: await fetchCityTrees(config), meta: { ...snapshot!.meta, treesFetchedAt: now() } }
+    await writeSnapshot(slug, snapshot)
 } else if (!coversArea) {
     console.error(
         snapshot
@@ -47,10 +52,12 @@ if (flags.has('--refresh') || flags.has('--refresh-elevation')) {
 }
 
 const landmarks = await readLandmarks(slug)
+const decor = await readDecor(slug)
 const map = buildMap(
     config,
     snapshot!,
-    landmarks.map(file => file.landmark)
+    landmarks.map(file => file.landmark),
+    decor
 )
 const reviews = reviewMap(
     config,
@@ -84,33 +91,41 @@ await Bun.write(mapFile(slug), serialise(map))
 console.log(
     `\n${slug}: ${map.width} × ${map.depth} m, ${map.buildings.length} buildings ` +
         `(${map.buildings.filter(b => b.detail).length} detailed), ${map.roads.length} roads, ` +
-        `${map.walls.length} walls, ${map.props.signals.length / 5} traffic lights, ${map.stops.length / 5} stop signs`
+        `${map.walls.length} walls, ${map.props.trees.length / 5} trees, ${map.decor.shapes.length} decor shapes, ` +
+        `${map.props.signals.length / 5} traffic lights, ${map.stops.length / 5} stop signs`
 )
 
-/** Downloads fresh OSM data, and elevation unless `keepElevation`, into the snapshot. */
+function now(): string {
+    return new Date().toISOString()
+}
+
+/** Downloads fresh OSM data and the city's trees, and elevation unless `keepElevation`, into the snapshot. */
 async function refresh(previous: Snapshot | null, keepElevation: boolean): Promise<Snapshot> {
-    const now = new Date().toISOString()
+    const fetchedAt = now()
     const [osm, nodes, shore] = [await fetchOsm(config!), await fetchNodes(config!), await fetchShore(config!)]
+    const trees = await fetchCityTrees(config!)
     const elevation = keepElevation ? previous!.elevation : await fetchElevation(config!)
 
     const next: Snapshot = {
         meta: {
             bounds: config!.bounds,
             cell: config!.cell,
-            osmFetchedAt: now,
-            elevationFetchedAt: keepElevation ? previous!.meta.elevationFetchedAt : now,
+            osmFetchedAt: fetchedAt,
+            elevationFetchedAt: keepElevation ? previous!.meta.elevationFetchedAt : fetchedAt,
+            treesFetchedAt: fetchedAt,
         },
         osm,
         nodes,
         shore,
         elevation,
+        trees,
     }
 
     await writeSnapshot(slug, next)
     if (previous) {
         console.log(
             `Snapshot refreshed: ${previous.osm.length} → ${osm.length} OSM elements, ` +
-                `${previous.nodes.length} → ${nodes.length} points`
+                `${previous.nodes.length} → ${nodes.length} points, ${previous.trees?.length ?? 0} → ${trees.length} city trees`
         )
     }
 

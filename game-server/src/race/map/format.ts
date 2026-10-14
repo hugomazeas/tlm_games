@@ -30,6 +30,8 @@ export interface RaceMap {
     /** Fortifications and other free-standing walls. */
     walls: Wall[]
     props: Props
+    /** Fountains, statues, hedges, fences, lamps, flowerbeds and the like (decor.ts). */
+    decor: Decor
 }
 
 /**
@@ -184,13 +186,52 @@ export interface Road {
 
 /** Street furniture, each kind a flat list. */
 export interface Props {
-    /** [x, z, …] */
+    /** [x, z, height, crown, kind, …]: ground to treetop and crown width in metres, kind an index into TREE_KINDS (trees.ts). */
     trees: number[]
     benches: number[]
     /** [x, z, dx, dz, reach, …]: the pole at the kerb, and its mast arm reaching `reach` metres over the road along (dx, dz). */
     signals: number[]
     /** [x, z, angle, …]: beside the road, the angle being the road's direction there. */
     busStops: number[]
+}
+
+/** Things on the ground that aren't buildings, as plain shapes, and the ground painted under them. */
+export interface Decor {
+    shapes: Shape[]
+    /** Lawns, paving, gravel, soil: painted on the ground over the parks, under the roads. */
+    paint: Paint[]
+}
+
+export type ShapeKind = 'box' | 'cylinder' | 'cone' | 'sphere' | 'pyramid' | 'prism'
+
+/**
+ * One block of decor standing at x, z with its base at map height `y`:
+ * `width` along its own x, `depth` along its z, turned `turn` radians about
+ * the vertical (as Three.js turns things). A prism follows its own outline
+ * instead, in map metres, and ignores x, z, width, depth and turn.
+ */
+export interface Shape {
+    shape: ShapeKind
+    x: number
+    y: number
+    z: number
+    width: number
+    depth: number
+    height: number
+    turn: number
+    colour: string
+    /** A cylinder's top as a share of its bottom: 0 a cone, above 1 a bowl. */
+    taper?: number
+    /** Karts bump into it. */
+    solid?: true
+    /** See-through: water falling, a jet. */
+    water?: true
+    outline?: number[]
+}
+
+export interface Paint {
+    colour: string
+    outline: number[]
 }
 
 export type AreaKind = 'park' | 'wood' | 'water' | 'parking'
