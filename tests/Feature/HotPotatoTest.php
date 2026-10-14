@@ -249,9 +249,13 @@ class HotPotatoTest extends TestCase
         $this->postJson('/internal/hot-potato/results', $results(['mode' => 'king']), $this->internal())->assertCreated();
         // A sidecar from before modes existed sends none: that was always the classic game.
         $this->postJson('/internal/hot-potato/results', $results([]), $this->internal())->assertCreated();
+        $this->postJson('/internal/hot-potato/results', $results(['mode' => 'killer']), $this->internal())->assertCreated();
         $this->postJson('/internal/hot-potato/results', $results(['mode' => 'tag']), $this->internal())->assertUnprocessable();
 
-        $this->assertSame([HotPotatoGame::MODE_KING, HotPotatoGame::MODE_SURVIVAL], HotPotatoGame::orderBy('id')->pluck('mode')->all());
+        $this->assertSame(
+            [HotPotatoGame::MODE_KING, HotPotatoGame::MODE_SURVIVAL, HotPotatoGame::MODE_KILLER],
+            HotPotatoGame::orderBy('id')->pluck('mode')->all()
+        );
     }
 
     public function test_the_king_leaderboard_ranks_by_crowns_then_time_held(): void

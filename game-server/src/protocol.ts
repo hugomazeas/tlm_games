@@ -11,6 +11,8 @@ export interface PlayerInfo {
     avatarUrl: string | null
     /** An AI seat added by the host: negative id, never a Hub player, never in results. */
     bot?: boolean
+    /** Killer Potato: the AI hunter, seated only for that mode's games. */
+    hunter?: boolean
 }
 
 export type Phase = 'lobby' | 'countdown' | 'playing' | 'results'
@@ -120,11 +122,11 @@ export type ServerMessage =
     | { type: 'results'; results: Results }
     | { type: 'error'; code: ErrorCode }
 
-/** Players in a game, AIs included: one player and two AIs is a solo game. */
+/** Players in a game, AIs included: one player and two AIs is a solo game. Killer Potato needs one person. */
 export const MIN_PLAYERS = 3
 export const MAX_PLAYERS = 12
 export const DURATIONS_MIN = [1, 2, 3, 4, 5] as const
-export const GAME_MODES: readonly GameMode[] = ['survival', 'king']
+export const GAME_MODES: readonly GameMode[] = ['survival', 'king', 'killer']
 
 /** Validates one inbound frame. Anything unexpected is null, never a throw. */
 export function parseClientMessage(raw: unknown): ClientMessage | null {

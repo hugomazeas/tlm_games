@@ -45,6 +45,13 @@ export const SHAKE_WINDOW_MS = 5000
 export const KING_SLOWDOWN = 0.9
 /** A new king can't be robbed for this long, so the potato doesn't flip back every frame. */
 export const STEAL_SAFETY_MS = 2000
+/** Killer Potato: the hunter stands frozen this long at the start, a head start for everyone else. */
+export const HUNTER_HEAD_START_MS = 3000
+/**
+ * Killer Potato: the hunter's fuse. It never burns; it is what an AI hunter's policy
+ * reads as "time left", and a short fuse keeps a holder chasing.
+ */
+export const KILLER_FUSE_MS = 6000
 /** A boost pad fires you at this speed, past the usual top speed, with no steering for LAUNCH_MS. */
 export const LAUNCH_SPEED = 24
 export const LAUNCH_MS = 350
@@ -65,7 +72,11 @@ const EJECT_ANGLES = 24
  * `survival`: pass the potato before it blows; the last ones standing win.
  * `king`: everyone wants the potato; the longest held wins, nobody blows up.
  */
-export type GameMode = 'survival' | 'king'
+/**
+ * `survival`: pass the potato before it blows. `king`: hold it as long as you can.
+ * `killer` (Killer Potato): one AI hunter holds it all game and its touch knocks you out.
+ */
+export type GameMode = 'survival' | 'king' | 'killer'
 
 export interface Input {
     dx: number
@@ -108,6 +119,8 @@ export interface GameState {
     holderId: number | null
     /** Remaining fuse on the current potato. Never sent to clients. */
     fuseMs: number
+    /** Killer Potato: the seat that holds the potato all game; null in the other modes. */
+    hunterId: number | null
     /** Countdown to the next potato after a boom; 0 while a potato is in play. */
     respawnMs: number
     items: Item[]
@@ -131,8 +144,12 @@ export function createGame(
     playerIds: number[],
     durationMs: number,
     rng: Rng,
-    mode: GameMode = 'survival'
+    mode: GameMode = 'survival',
+    /** Killer Potato only: the hunter's seat, one of `playerIds`. */
+    hunterId: number | null = null
 ): GameState {
+    if (mode === 'killer' && (hunterId === null || !playerIds.includes(hunterId)))
+        throw new Error('Killer Potato needs a hunter among the players')
     const players = playerIds.map((id, i): SimPlayer => {
         const spawn = arena.spawns[i % arena.spawns.length] ?? { x: arena.width / 2, y: arena.height / 2 }
 
@@ -159,9 +176,10 @@ export function createGame(
             safeMs: 0,
         }
     })
-    const holderId = pickOne(rng, playerIds)
+    const holderId = mode === 'killer' ? hunterId : pickOne(rng, playerIds)
     const firstKing = players.find(p => p.id === holderId)
     if (mode === 'king' && firstKing) firstKing.safeMs = STEAL_SAFETY_MS
+    if (mode === 'killer' && firstKing) firstKing.frozenMs = HUNTER_HEAD_START_MS
 
     return {
         mode,
@@ -170,7 +188,8 @@ export function createGame(
         elapsedMs: 0,
         players,
         holderId,
-        fuseMs: newFuse(rng),
+        fuseMs: mode === 'killer' ? KILLER_FUSE_MS : newFuse(rng),
+        hunterId: mode === 'killer' ? hunterId : null,
         respawnMs: 0,
         items: [],
         nextItemAtMs: FIRST_ITEM_MS,
@@ -203,6 +222,8 @@ export function step(game: GameState, inputs: ReadonlyMap<number, Input>, dtMs: 
         if (game.mode === 'king') {
             stealPotato(game, events)
             countReign(game, slice, rng, events)
+        } else if (game.mode === 'killer') {
+            catchPrey(game, slice, events)
         } else {
             passPotato(game, events)
             burnFuse(game, slice, rng, events)
@@ -221,9 +242,10 @@ export function removePlayer(game: GameState, playerId: number, rng: Rng): GameE
 
     eliminate(game, leaving)
 
+    // Killer Potato has one hunter: if it goes, nobody else takes the potato and the round ends.
     if (game.holderId === playerId) {
         game.holderId = null
-        handOutPotato(game, rng, events)
+        if (game.mode !== 'killer') handOutPotato(game, rng, events)
     }
 
     checkEnd(game, events)
@@ -233,7 +255,7 @@ export function removePlayer(game: GameState, playerId: number, rng: Rng): GameE
 
 /** 0 until the last few seconds of the fuse, then rising to 1. The only fuse hint clients get. */
 export function shakeLevel(game: GameState): number {
-    if (game.mode === 'king' || game.holderId === null) return 0
+    if (game.mode !== 'survival' || game.holderId === null) return 0
 
     return Math.min(1, Math.max(0, 1 - game.fuseMs / SHAKE_WINDOW_MS))
 }
@@ -619,16 +641,50 @@ function checkEnd(game: GameState, events: GameEvent[]) {
     if (game.ended) return
 
     const alive = alivePlayers(game)
-    if (alive.length > 1 && game.elapsedMs < game.durationMs) return
+    if (game.mode === 'killer') {
+        if (!killerOver(game)) return
+    } else if (alive.length > 1 && game.elapsedMs < game.durationMs) return
 
     game.ended = true
     game.holderId = null
     events.push({ kind: 'ended', survivorIds: winnerIds(game) })
 }
 
-/** Who won: everyone still standing, or in King of the Potato whoever held it longest. */
+/**
+ * Killer Potato ends when the hunter is gone, when the timer runs out, or when the
+ * hunter has caught everyone but one (everyone, in a game that started with one prey).
+ */
+function killerOver(game: GameState): boolean {
+    const hunter = game.players.find(p => p.id === game.hunterId)
+    if (!hunter || hunter.out || game.elapsedMs >= game.durationMs) return true
+    const prey = alivePlayers(game).filter(p => p.id !== game.hunterId)
+    const startedWith = game.players.length - 1
+
+    return prey.length <= (startedWith > 1 ? 1 : 0)
+}
+
+/** Killer Potato: the hunter's touch knocks out every unshielded player it reaches. */
+function catchPrey(game: GameState, sliceMs: number, events: GameEvent[]) {
+    const hunter = game.players.find(p => p.id === game.hunterId)
+    if (!hunter || hunter.out) return
+    hunter.holdMs += sliceMs
+    if (hunter.frozenMs > 0) return
+
+    for (const prey of alivePlayers(game)) {
+        if (prey.id === hunter.id || prey.shieldMs > 0 || !touching(prey, hunter)) continue
+        eliminate(game, prey)
+        hunter.passes++
+        events.push({ kind: 'boom', playerId: prey.id })
+    }
+}
+
+/**
+ * Who won: everyone still standing, in Killer Potato everyone but the hunter, or in
+ * King of the Potato whoever held it longest.
+ */
 export function winnerIds(game: GameState): number[] {
     const alive = alivePlayers(game)
+    if (game.mode === 'killer') return alive.filter(p => p.id !== game.hunterId).map(p => p.id)
     if (game.mode !== 'king') return alive.map(p => p.id)
 
     const best = Math.max(0, ...alive.map(p => p.holdMs))

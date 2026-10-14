@@ -159,7 +159,10 @@ function hotPotatoApp(config: Config) {
             return this.session?.players.filter(p => !p.away).length ?? 0
         },
         get canStart() {
-            return this.isHost && this.phase === 'lobby' && this.presentCount >= MIN_PLAYERS
+            if (!this.isHost || this.phase !== 'lobby') return false
+            // Killer Potato is people against the AI hunter: one person is enough, AIs sit out.
+            if (this.mode === 'killer') return Boolean(this.session?.players.some(p => !p.away && !p.bot))
+            return this.presentCount >= MIN_PLAYERS
         },
         get canAddBot() {
             return this.isHost && this.phase === 'lobby' && (this.session?.players.length ?? 0) < MAX_PLAYERS
@@ -329,9 +332,13 @@ function hotPotatoApp(config: Config) {
                 case 'boom':
                     renderer?.boom(message.playerId)
                     this.showBanner(
-                        message.playerId === this.me?.id
-                            ? STRINGS.youAreOut
-                            : STRINGS.boom(this.nameOf(message.playerId)),
+                        this.gameMode === 'killer'
+                            ? message.playerId === this.me?.id
+                                ? STRINGS.youWereCaught
+                                : STRINGS.caught(this.nameOf(message.playerId))
+                            : message.playerId === this.me?.id
+                              ? STRINGS.youAreOut
+                              : STRINGS.boom(this.nameOf(message.playerId)),
                         false
                     )
                     return
@@ -425,14 +432,30 @@ function hotPotatoApp(config: Config) {
                 ...results.survivorIds.map(id => ({ id, survived: true })),
                 ...results.eliminated.map(e => ({ id: e.id, survived: false })),
             ]
+            // Killer Potato: the hunter is neither a survivor nor out; it comes last, or first if it caught everyone.
+            if (results.mode === 'killer') {
+                const hunter = results.stats.find(s => !ordered.some(row => row.id === s.id))
+                if (hunter) {
+                    const row = { id: hunter.id, survived: false }
+                    if (survivors.length > 0) ordered.push(row)
+                    else ordered.unshift(row)
+                }
+            }
+            const place = (row: { id: number; survived: boolean }, index: number) =>
+                row.survived ? '🏆' : results.mode === 'killer' && this.isHunter(row.id) ? '🔪' : `#${index + 1}`
 
             return {
                 mode: results.mode,
-                headline: survivors.length > 0 ? STRINGS.survivors(survivors) : STRINGS.nobody,
+                headline:
+                    survivors.length > 0
+                        ? STRINGS.survivors(survivors)
+                        : results.mode === 'killer'
+                          ? STRINGS.hunterWins
+                          : STRINGS.nobody,
                 rows: ordered.map((row, index) => ({
                     id: row.id,
                     name: this.nameOf(row.id),
-                    place: row.survived ? '🏆' : `#${index + 1}`,
+                    place: place(row, index),
                     survived: row.survived,
                     holdSeconds: Math.round((stats.get(row.id)?.holdMs ?? 0) / 1000),
                     passes: stats.get(row.id)?.passes ?? 0,
@@ -475,6 +498,10 @@ function hotPotatoApp(config: Config) {
                 this.allPlayers.find(p => p.id === id)?.name ??
                 STRINGS.someone
             )
+        },
+
+        isHunter(id: number): boolean {
+            return Boolean(this.session?.players.find(p => p.id === id)?.hunter)
         },
 
         avatarOf(id: number): string | null {

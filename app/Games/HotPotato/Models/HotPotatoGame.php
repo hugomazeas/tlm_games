@@ -15,7 +15,10 @@ class HotPotatoGame extends Model
     /** King of the Potato: hold it as long as you can; the longest reign wins. */
     public const MODE_KING = 'king';
 
-    public const MODES = [self::MODE_SURVIVAL, self::MODE_KING];
+    /** Killer Potato: an AI hunter holds it all game and its touch knocks you out; the last one standing wins. */
+    public const MODE_KILLER = 'killer';
+
+    public const MODES = [self::MODE_SURVIVAL, self::MODE_KING, self::MODE_KILLER];
 
     protected $table = 'hot_potato_games';
 

@@ -178,6 +178,12 @@ that is played live, in real time, rather than scored afterwards.
   `NO_BOTS`). The policy only knows the rules it trained on: changing the sim
   (items, physics, arenas) or the observation means retraining. How to train and
   ship a new policy: `game-server/src/ai/README.md`.
+- **Killer Potato** (`mode: 'killer'`): the session adds its own AI hunter seat
+  (`HUNTER_NAME`, not a lobby member, `hunter: true` in the view during its games)
+  that holds the potato all game, has no fuse and knocks out whoever it touches;
+  added AIs sit out, one person can start, the game ends at one person left (zero
+  when it started with one) or at the timer. Needs the policy (`NO_BOTS` otherwise).
+  A leaver during its countdown calls the game off rather than hand someone a win.
 - Tests: `cd game-server && bun test` (sim, arenas, sessions);
   `bun run typecheck`; `bun run format`. Laravel side: `tests/Feature/HotPotatoTest.php`.
 

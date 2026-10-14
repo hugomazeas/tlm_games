@@ -11,9 +11,16 @@ export const STRINGS = {
     youAreOut: '🥧 You’re out — enjoy the show',
     survivors: (names: string[]) => (names.length === 1 ? `🏆 ${names[0]} wins!` : `🏆 ${names.join(', ')} survived!`),
     nobody: 'Nobody survived 🥧',
+    caught: (name: string) => `🔪 ${name} got caught!`,
+    youWereCaught: '🔪 The Killer Potato got you — enjoy the show',
+    hunterWins: '🔪 The Killer Potato caught everyone',
     modes: {
         survival: { label: '🥔 Hot potato', hint: 'Pass it before it blows. Last ones standing win.' },
         king: { label: '👑 King of the Potato', hint: 'Grab the potato and keep it. Longest reign wins.' },
+        killer: {
+            label: '🔪 Killer Potato',
+            hint: 'An AI holds the potato all game: if it touches you, you’re out. Last one standing wins.',
+        },
     } satisfies Record<GameMode, { label: string; hint: string }>,
     youAreKing: '👑 YOU’RE THE KING',
     crownStolen: (name: string) => `😤 ${name} stole your crown`,

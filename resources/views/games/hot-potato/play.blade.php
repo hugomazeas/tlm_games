@@ -194,7 +194,8 @@
                                             class="bg-emerald-500 hover:bg-emerald-400 disabled:bg-white/10 disabled:text-white/30 text-white font-bold rounded-lg px-6 py-2 transition">
                                         Start
                                     </button>
-                                    <p x-show="!canStart" class="text-xs text-white/40 mt-1">Needs at least 3 players. Alone? Add 2 AIs or more.</p>
+                                    <p x-show="!canStart && mode !== 'killer'" class="text-xs text-white/40 mt-1">Needs at least 3 players. Alone? Add 2 AIs or more.</p>
+                                    <p x-show="mode === 'killer'" class="text-xs text-white/40 mt-1">You against the AI hunter: one person is enough, added AIs sit out.</p>
                                 </div>
                             </div>
                         </template>
@@ -249,7 +250,7 @@
                                     <h2 class="text-xl font-extrabold mb-3 text-center" x-text="results.headline"></h2>
                                     <table class="w-full text-sm">
                                         <thead class="text-white/40 text-xs">
-                                            <tr><th class="text-left py-1"></th><th class="text-left">Player</th><th class="text-right">Held</th><th class="text-right" x-text="results.mode === 'king' ? 'Steals' : 'Passes'"></th></tr>
+                                            <tr><th class="text-left py-1"></th><th class="text-left">Player</th><th class="text-right">Held</th><th class="text-right" x-text="results.mode === 'king' ? 'Steals' : results.mode === 'killer' ? 'Catches' : 'Passes'"></th></tr>
                                         </thead>
                                         <tbody>
                                             <template x-for="row in results.rows" :key="row.id">

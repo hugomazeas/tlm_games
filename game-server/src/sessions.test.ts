@@ -5,6 +5,7 @@ import {
     COUNTDOWN_MS,
     EMOTE_COOLDOWN_MS,
     type GameResult,
+    HUNTER_NAME,
     RECONNECT_GRACE_MS,
     RESULTS_MS,
     SessionManager,
@@ -627,6 +628,95 @@ describe('AI players', () => {
         send(a, { type: 'leave' })
 
         expect(last(b, 'office')?.session?.hostId).toBe(2)
+    })
+})
+
+describe('Killer Potato', () => {
+    beforeEach(() => {
+        manager = new SessionManager({
+            build: 'build-1',
+            now: () => now,
+            rng: createRng(42),
+            nextSeed: () => 1234,
+            onOpened: (officeId, hostPlayerId) => opened.push({ officeId, hostPlayerId }),
+            onResults: result => results.push(result),
+            botPolicy: policy,
+        })
+    })
+
+    const killer = { type: 'start', durationMin: 1, theme: 'open_space', mode: 'killer' }
+
+    test('one person is enough: you against the AI hunter, shown in the view', () => {
+        const a = connect(alice)
+        send(a, { type: 'open' })
+        send(a, killer)
+
+        expect(errors(a)).toEqual([])
+        const hunter = last(a, 'office')?.session?.players.find(p => p.hunter)
+        expect(hunter).toMatchObject({ name: HUNTER_NAME, bot: true, hunter: true, avatarUrl: null })
+        expect(last(a, 'countdown')?.playerIds).toEqual([1, hunter?.id ?? 0])
+    })
+
+    test('AIs added in the lobby sit the game out', () => {
+        const a = connect(alice)
+        send(a, { type: 'open' })
+        send(a, { type: 'addBot' })
+        send(a, { type: 'addBot' })
+        send(a, killer)
+
+        const ids = last(a, 'countdown')?.playerIds ?? []
+        expect(ids).toHaveLength(2)
+        expect(ids).not.toContain(-1)
+        expect(ids).not.toContain(-2)
+    })
+
+    test('a server without a policy refuses the mode', () => {
+        manager = new SessionManager({
+            build: 'build-1',
+            now: () => now,
+            rng: createRng(42),
+            nextSeed: () => 1234,
+            onOpened: () => {},
+            onResults: () => {},
+        })
+        const a = connect(alice)
+        send(a, { type: 'open' })
+        send(a, killer)
+
+        expect(errors(a)).toEqual(['NO_BOTS'])
+    })
+
+    test('the hunter hunts, and only people reach the Hub', () => {
+        const { a } = lobbyOfThree()
+        send(a, killer)
+        for (let t = 0; t < COUNTDOWN_MS + 61_000 && !last(a, 'results'); t += TICK_MS) advance(TICK_MS)
+
+        const final = last(a, 'results')?.results
+        expect(final?.mode).toBe('killer')
+        expect(results).toHaveLength(1)
+        expect(results[0]?.players.map(p => p.playerId).sort((x, y) => x - y)).toEqual([1, 2, 3])
+        const hunterStats = final?.stats.find(row => row.id < 0)
+        // The round ends at one person left or at the timer; never with the hunter as a survivor.
+        expect(final?.survivorIds.every(id => id > 0)).toBe(true)
+        expect(final?.survivorIds.length).toBeLessThanOrEqual(3 - (hunterStats?.passes ?? 0))
+        expect(last(a, 'office')?.session?.players.some(p => p.hunter)).toBe(true)
+
+        advance(RESULTS_MS)
+        expect(last(a, 'office')?.session?.players.some(p => p.hunter)).toBe(false)
+    })
+
+    test('two people: one leaving during the countdown calls the game off', () => {
+        const a = connect(alice)
+        const b = connect(bob)
+        send(a, { type: 'open' })
+        send(b, { type: 'join' })
+        send(a, killer)
+        send(b, { type: 'leave' })
+        advance(COUNTDOWN_MS + TICK_MS)
+
+        expect(last(a, 'office')?.session?.phase).toBe('lobby')
+        expect(last(a, 'results')).toBeUndefined()
+        expect(results).toHaveLength(0)
     })
 })
 

@@ -35,6 +35,8 @@ export const RESULTS_MS = 12_000
 /** One emote per player this often, so a results screen doesn't turn into a wall of emoji. */
 export const EMOTE_COOLDOWN_MS = 700
 export const RECONNECT_GRACE_MS = 10_000
+/** Killer Potato's AI hunter, as the room sees it. */
+export const HUNTER_NAME = 'Killer Potato'
 /** A stalled event loop never makes the simulation jump further than this. */
 const MAX_STEP_MS = 100
 
@@ -101,6 +103,11 @@ interface Session {
     nextBotId: number
     /** One per AI seat of the current game. */
     pilots: Map<number, TrainedPilot>
+    /**
+     * Killer Potato's AI hunter: an AI seat that plays only in that mode's games and is
+     * never a lobby member. Made on the first such game, then kept.
+     */
+    hunter: PlayerInfo | null
 }
 
 interface Client {
@@ -154,9 +161,7 @@ export class SessionManager {
         member.connId = null
         member.awayUntil = this.hooks.now() + RECONNECT_GRACE_MS
 
-        if (session.game && inGame(session)) {
-            this.applyEvents(session, removePlayer(session.game, member.player.id, this.hooks.rng))
-        }
+        this.dropFromGame(session, member.player.id)
 
         this.broadcastOffice(session)
     }
@@ -190,6 +195,7 @@ export class SessionManager {
                     emotedAt: new Map(),
                     nextBotId: -1,
                     pilots: new Map(),
+                    hunter: null,
                 }
                 this.sessions.set(client.officeId, created)
                 this.broadcastOffice(created)
@@ -222,12 +228,18 @@ export class SessionManager {
                 if (session.hostId !== player.id) return fail('NOT_HOST')
                 if (session.phase !== 'lobby') return fail('NOT_IN_LOBBY')
                 const present = session.members.filter(m => m.awayUntil === null)
-                if (present.length < MIN_PLAYERS) return fail('NOT_ENOUGH_PLAYERS')
+                // Killer Potato is people against the AI hunter: one person is enough, and AIs sit out.
+                const killer = message.mode === 'killer'
+                if (killer && !this.hooks.botPolicy) return fail('NO_BOTS')
+                const people = present.filter(m => !m.player.bot)
+                if (killer ? people.length === 0 : present.length < MIN_PLAYERS) return fail('NOT_ENOUGH_PLAYERS')
 
                 session.settings = { durationMin: message.durationMin, theme: message.theme, mode: message.mode }
                 this.startCountdown(
                     session,
-                    present.map(m => m.player.id)
+                    killer
+                        ? [...people.map(m => m.player.id), this.hunterOf(session).id]
+                        : present.map(m => m.player.id)
                 )
                 return
             }
@@ -330,16 +342,18 @@ export class SessionManager {
             playerIds,
             session.settings.durationMin * 60_000,
             this.hooks.rng,
-            session.settings.mode
+            session.settings.mode,
+            session.settings.mode === 'killer' ? this.hunterOf(session).id : null
         )
         session.gameMeta = { seed, theme, startedAt: this.hooks.now() }
         session.inputs.clear()
         session.pilots.clear()
         const policy = this.hooks.botPolicy
         if (policy) {
-            for (const member of session.members) {
-                if (member.player.bot && playerIds.includes(member.player.id)) {
-                    session.pilots.set(member.player.id, new TrainedPilot(policy, session.game, member.player.id))
+            const seats = [...session.members.map(m => m.player), ...(session.hunter ? [session.hunter] : [])]
+            for (const seat of seats) {
+                if (seat.bot && playerIds.includes(seat.id)) {
+                    session.pilots.set(seat.id, new TrainedPilot(policy, session.game, seat.id))
                 }
             }
         }
@@ -348,6 +362,12 @@ export class SessionManager {
 
         this.broadcastOffice(session)
         this.broadcast(session.officeId, this.countdownMessage(session, arena))
+    }
+
+    /** Killer Potato's hunter, made once per session. */
+    private hunterOf(session: Session): PlayerInfo {
+        session.hunter ??= { id: session.nextBotId--, name: HUNTER_NAME, avatarUrl: null, bot: true, hunter: true }
+        return session.hunter
     }
 
     private countdownMessage(session: Session, arena: Arena): ServerMessage {
@@ -426,12 +446,34 @@ export class SessionManager {
         })
     }
 
+    /**
+     * A player leaves the game. Mid-play the sim decides what that means. In Killer Potato's
+     * countdown nobody has played yet: a lone remaining person would win a round they never
+     * played, so with too few left the game is called off and the lobby comes back.
+     */
+    private dropFromGame(session: Session, playerId: number) {
+        const game = session.game
+        if (!game || !inGame(session)) return
+
+        if (session.phase === 'countdown' && game.mode === 'killer') {
+            const prey = game.players.filter(p => p.id !== game.hunterId)
+            const remaining = prey.filter(p => !p.out && p.id !== playerId).length
+            if (remaining < (prey.length > 1 ? 2 : 1)) {
+                session.phase = 'lobby'
+                session.game = null
+                session.gameMeta = null
+                session.inputs.clear()
+                session.pilots.clear()
+                return
+            }
+        }
+        this.applyEvents(session, removePlayer(game, playerId, this.hooks.rng))
+    }
+
     private removeMember(session: Session, playerId: number) {
         session.members = session.members.filter(m => m.player.id !== playerId)
 
-        if (session.game && inGame(session)) {
-            this.applyEvents(session, removePlayer(session.game, playerId, this.hooks.rng))
-        }
+        this.dropFromGame(session, playerId)
 
         // AIs can't host: once the last person leaves, the game closes.
         const first = session.members.find(m => !m.player.bot)
@@ -497,17 +539,23 @@ export class SessionManager {
 }
 
 function view(session: Session): SessionView {
+    // The hunter shows from a Killer Potato game's countdown to the end of its results.
+    const hunter = session.game?.mode === 'killer' && session.phase !== 'lobby' ? session.hunter : null
     return {
         hostId: session.hostId,
         phase: session.phase,
         settings: session.settings,
-        players: session.members.map(m => ({ ...m.player, away: m.awayUntil !== null })),
+        players: [
+            ...session.members.map(m => ({ ...m.player, away: m.awayUntil !== null })),
+            ...(hunter ? [{ ...hunter, away: false }] : []),
+        ],
     }
 }
 
 /** Survivors share first place; the rest rank by how late they went out, ties shared. */
 function rankPlayers(game: GameState): GameResult['players'] {
     if (game.mode === 'king') return rankByReign(game)
+    if (game.mode === 'killer') return rankAgainstHunter(game)
 
     const outlasting = (atMs: number | null) =>
         game.players.filter(other => !other.out || (atMs !== null && (other.eliminatedAtMs ?? 0) > atMs)).length
@@ -517,6 +565,33 @@ function rankPlayers(game: GameState): GameResult['players'] {
         position: p.out ? outlasting(p.eliminatedAtMs) + 1 : 1,
         survived: !p.out,
         eliminatedAtMs: p.eliminatedAtMs,
+        holdMs: p.holdMs,
+        passes: p.passes,
+    }))
+}
+
+/**
+ * Killer Potato: the players rank as in survival, among themselves. The hunter is first
+ * when it caught everyone, last otherwise; it never counts as a survivor (and never reaches the Hub).
+ */
+function rankAgainstHunter(game: GameState): GameResult['players'] {
+    const prey = game.players.filter(p => p.id !== game.hunterId)
+    const caughtEveryone = winnerIds(game).length === 0
+    const outlasting = (atMs: number | null) =>
+        prey.filter(other => !other.out || (atMs !== null && (other.eliminatedAtMs ?? 0) > atMs)).length
+
+    return game.players.map(p => ({
+        playerId: p.id,
+        position:
+            p.id === game.hunterId
+                ? caughtEveryone
+                    ? 1
+                    : prey.length + 1
+                : p.out
+                  ? outlasting(p.eliminatedAtMs) + 1
+                  : 1,
+        survived: p.id !== game.hunterId && !p.out,
+        eliminatedAtMs: p.id === game.hunterId ? null : p.eliminatedAtMs,
         holdMs: p.holdMs,
         passes: p.passes,
     }))
