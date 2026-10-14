@@ -12,7 +12,7 @@ import {
     radiusOf,
     step,
 } from './game.ts'
-import { CORNER_RADIUS, contactWith } from './geometry.ts'
+import { contactWith } from './geometry.ts'
 import {
     findItemSpot,
     FREEZE_BOMB_MS,
@@ -448,39 +448,5 @@ describe('boost pads', () => {
                 }
             }
         }
-    })
-})
-
-describe('furniture corners', () => {
-    const desk = { kind: 'rect' as const, x: 30, y: 20, w: 6, h: 4 }
-    const corner = { x: desk.x + desk.w / 2, y: desk.y + desk.h / 2 }
-
-    test('are round, like they are drawn: the collision follows the rounded edge', () => {
-        const diagonal = { x: corner.x + 0.5, y: corner.y + 0.5 }
-        const inner = { x: corner.x - CORNER_RADIUS, y: corner.y - CORNER_RADIUS }
-
-        expect(contactWith(diagonal, desk, 0).distance).toBeCloseTo(
-            Math.hypot(diagonal.x - inner.x, diagonal.y - inner.y) - CORNER_RADIUS,
-            9
-        )
-        expect(contactWith({ x: corner.x + 1, y: desk.y }, desk, 0).distance).toBeCloseTo(1, 9)
-    })
-
-    test('an avatar rolling into a corner stops on the drawn edge, not on an invisible square tip', () => {
-        const game = setup(2, { obstacles: [desk] })
-        const p = player(game, 2)
-        p.x = corner.x + 3
-        p.y = corner.y + 3
-
-        run(game, 1500, new Map([[2, { dx: -1, dy: -1 }]]))
-
-        const inner = { x: corner.x - CORNER_RADIUS, y: corner.y - CORNER_RADIUS }
-        expect(Math.hypot(p.x - inner.x, p.y - inner.y)).toBeCloseTo(CORNER_RADIUS + AVATAR_RADIUS, 2)
-    })
-
-    test("a wall's blocks keep square corners so they join up", () => {
-        const block = { ...desk, group: 1 }
-
-        expect(contactWith({ x: corner.x + 0.5, y: corner.y + 0.5 }, block, 0).distance).toBeCloseTo(Math.SQRT1_2, 9)
     })
 })

@@ -1,7 +1,7 @@
 import type { SnapshotItem, SnapshotPlayer } from '../protocol.ts'
 import { type Arena, AVATAR_RADIUS, PAD_RADIUS } from '../sim/arena.ts'
 import { FREEZE_MS, type GameMode, STEAL_SAFETY_MS } from '../sim/game.ts'
-import { cornerRadiusOf, obstacleAt } from '../sim/geometry.ts'
+import { obstacleAt } from '../sim/geometry.ts'
 import { FREEZE_RADIUS, ITEM_RADIUS, type ItemKind, MAGNET_RADIUS, SHIELD_MS, TINY_RADIUS } from '../sim/items.ts'
 import { THEMES } from '../sim/themes.ts'
 
@@ -231,7 +231,8 @@ export class Renderer {
         const trace = (o: (typeof shapes)[number]) => {
             context.beginPath()
             if (o.kind === 'circle') context.arc(o.x, o.y, o.r, 0, Math.PI * 2)
-            else context.roundRect(o.x - o.w / 2, o.y - o.h / 2, o.w, o.h, cornerRadiusOf(o))
+            // Square, like the furniture's hitbox: a rounded corner drawn here would bump you before it seems to.
+            else context.rect(o.x - o.w / 2, o.y - o.h / 2, o.w, o.h)
         }
 
         context.strokeStyle = edge
