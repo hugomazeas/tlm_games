@@ -22,6 +22,8 @@ const EMOTE_MS = 1800
 /** A freeze bomb or swap flashes a ring for this long. */
 const BURST_MS = 600
 const PAD_COLOUR = '#22d3ee'
+/** Full screen: room kept under the arena for the controls hint. */
+const FULLSCREEN_MARGIN_PX = 40
 
 export const ITEM_ICONS: Record<ItemKind, string> = {
     shield: '🛡️',
@@ -670,9 +672,17 @@ export class Renderer {
         })
     }
 
-    /** Sizes the canvas to its container at the arena's aspect ratio; returns CSS pixels per unit. */
+    /**
+     * Sizes the canvas to its container at the arena's aspect ratio; returns CSS pixels per unit.
+     * Full screen, it also fits the height left below the canvas's top, so nothing scrolls.
+     */
     private fit(arena: Arena): number {
-        const width = this.canvas.parentElement?.clientWidth ?? this.canvas.clientWidth
+        const parent = this.canvas.parentElement
+        let width = parent?.clientWidth ?? this.canvas.clientWidth
+        if (document.fullscreenElement && parent) {
+            const room = window.innerHeight - parent.getBoundingClientRect().top - FULLSCREEN_MARGIN_PX
+            width = Math.min(width, Math.max(0, (room * arena.width) / arena.height))
+        }
         const height = (width * arena.height) / arena.width
         const pixelWidth = Math.round(width * devicePixelRatio)
         const pixelHeight = Math.round(height * devicePixelRatio)

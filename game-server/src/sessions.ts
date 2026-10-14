@@ -270,6 +270,14 @@ export class SessionManager {
                 return
             }
 
+            // A tap racing the timer finds the lobby already back: nothing to do, nothing to report.
+            case 'backToLobby': {
+                if (!session) return fail('NO_SESSION')
+                if (session.hostId !== player.id) return fail('NOT_HOST')
+                if (session.phase === 'results') this.endResults(session)
+                return
+            }
+
             case 'addBot': {
                 if (!session) return fail('NO_SESSION')
                 if (session.hostId !== player.id) return fail('NOT_HOST')
@@ -322,13 +330,18 @@ export class SessionManager {
                 }
                 if (session.phase === 'playing') this.broadcastSnapshot(session)
             } else if (session.phase === 'results' && now >= session.phaseEndsAt) {
-                session.phase = 'lobby'
-                session.game = null
-                session.gameMeta = null
-                session.emotedAt.clear()
-                this.broadcastOffice(session)
+                this.endResults(session)
             }
         }
+    }
+
+    /** The results screen is over, by its timer or the host: everyone is back in the lobby. */
+    private endResults(session: Session) {
+        session.phase = 'lobby'
+        session.game = null
+        session.gameMeta = null
+        session.emotedAt.clear()
+        this.broadcastOffice(session)
     }
 
     private startCountdown(session: Session, playerIds: number[]) {
@@ -428,7 +441,7 @@ export class SessionManager {
 
         session.phase = 'results'
         session.phaseEndsAt = this.hooks.now() + RESULTS_MS
-        this.broadcast(session.officeId, { type: 'results', results })
+        this.broadcast(session.officeId, { type: 'results', results, endsInMs: RESULTS_MS })
         this.broadcastOffice(session)
 
         // AI seats never reach the Hub: their places stay in the humans' positions, their rows don't.

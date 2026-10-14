@@ -59,6 +59,17 @@ class HotPotatoTest extends TestCase
             ->assertSee('data-item-legend', false);
     }
 
+    public function test_the_page_has_full_screen_back_to_lobby_and_pickers_locked_mid_game(): void
+    {
+        $this->get('/games/hot-potato')
+            ->assertOk()
+            ->assertSee('x-ref="stage"', false)
+            ->assertSee('@click="toggleFullscreen()"', false)
+            ->assertSee('@click="backToLobby()"', false)
+            ->assertSee(':disabled="pickersLocked"', false)
+            ->assertSee(':disabled="!officeId || pickersLocked"', false);
+    }
+
     public function test_internal_endpoints_refuse_a_missing_or_wrong_secret(): void
     {
         $player = Player::create(['name' => 'Alice']);
