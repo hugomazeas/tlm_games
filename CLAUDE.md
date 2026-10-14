@@ -297,6 +297,17 @@ built from OpenStreetMap and federal elevation data, drawn with Three.js.
   parts replaces OSM's `building:part`s for that building; one without keeps them.
 - **Orienting a photo:** match the road labels in it to the streets around the
   footprint before deciding which end is which; a wrong guess mirrors the building.
+- **Aerial screenshots** (Google Earth 3D views and the like; `game-server/tools/aerial/`,
+  python3 with numpy, pillow and scipy): drop them in `maps/<map>/aerial/` (git-ignored: the
+  imagery isn't ours to commit). Fit each one's camera once (`aerial.py fit IMAGE` from an
+  `IMAGE.points.json` of 6+ pixel ↔ world pairs: street intersections, tower tops), then
+  `overlay` shows the map through it (which OSM building is which), `ground` turns pixels
+  into lat/lon (decor), `building`/`heights`/`facade-heights` give a building's views and
+  lidar volumes in a landmark's frame, `looks` + `merge-looks` sample colours into
+  `looks.json`. `view` gives the viewer link that sees what the camera saw (a field of view
+  included); `shot.mjs` renders it in a private headless Chrome (software WebGL, ~20 s a
+  view) and `compare` stacks render and screenshot. Check renders this way, not in the
+  shared Playwright browser.
 - **Driving** (`src/race/drive/`, pure like `sim/`): `world.ts` turns the map into
   what a kart needs (ground height, a 2 m road/offroad/water raster, building and
   wall colliders in a grid, nearest road, generated boost pads on long straights);

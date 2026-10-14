@@ -15,8 +15,8 @@ import type { HeightAt } from './strips.ts'
  */
 
 const TILE = 500
-/** Tiles further than this from the camera switch to rough crowns. */
-const ROUGH_FROM = 700
+/** Tiles further than this from the camera switch to rough crowns: a quarter of the triangles. */
+const ROUGH_FROM = 450
 
 interface Shape {
     /** The crown in a unit tree: 1 m tall overall, 1 m wide. */

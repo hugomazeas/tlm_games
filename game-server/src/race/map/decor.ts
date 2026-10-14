@@ -197,7 +197,7 @@ const BRONZE = '#4f5b4a'
 const IRON = '#2b2d2f'
 const WATER = '#6fb3d6'
 const HEDGE = '#3f6e35'
-const FLOWERS = ['#d2453f', '#e07aa4', '#f0c544', '#f4f1ea', '#9a6fc6', '#ef8a3a']
+const FLOWERS = ['#c4473f', '#cf7d9c', '#d9b64a', '#e6e1d6', '#8f6db5', '#d98a45']
 const PAINT: Record<PaintKind, string> = {
     lawn: '#9cc97c',
     paving: '#d6cfc0',
