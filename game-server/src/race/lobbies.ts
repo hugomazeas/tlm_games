@@ -106,21 +106,25 @@ export class LobbyManager {
     constructor(private readonly hooks: LobbyHooks) {}
 
     /**
-     * Seats a driver: in lobby `lobbyId` when it's open on this track, or in a
-     * new one they host (the lobby they were sent to may have closed meanwhile).
+     * Seats a driver: in lobby `lobbyId` when it's open on this track; else in
+     * a lobby already on the track (one getting ready or done racing first,
+     * else one racing, to watch), so everyone pressing Play on a track ends
+     * up together; else in a new one they host.
      */
     join(conn: Connection, driver: Omit<DriverInfo, 'id'>, track: LoadedTrack, lobbyId: string | null): void {
         this.leave(conn.id)
         let lobby = lobbyId ? this.lobbies.get(lobbyId) : undefined
         if (lobby && lobby.track.id !== track.id) lobby = undefined
+        lobby ??= this.openLobbyOn(track.id, driver.playerId)
 
         if (lobby && driver.playerId !== null) {
             // The same player in a second tab takes over from the first.
             const previous = lobby.members.find(member => member.driver.playerId === driver.playerId)
             if (previous) {
+                const id = lobby.id
                 previous.conn.send({ type: 'error', code: 'REPLACED' })
                 this.leave(previous.conn.id)
-                lobby = this.lobbies.get(lobbyId!)
+                lobby = this.lobbies.get(id)
             }
         }
         if (lobby && lobby.members.length >= MAX_RACERS) return this.refuse(conn, 'LOBBY_FULL')
@@ -144,6 +148,34 @@ export class LobbyManager {
         this.memberships.set(conn.id, lobby.id)
         conn.send({ type: 'welcome', you: conn.id, lobby: view(lobby) })
         this.broadcastLobby(lobby, conn.id)
+    }
+
+    /** The host closes their lobby, for everyone in it. */
+    close(connId: string): void {
+        const lobby = this.lobbyOf(connId)
+        if (!lobby) return
+        if (lobby.hostId !== connId) {
+            return lobby.members.find(m => m.conn.id === connId)!.conn.send({ type: 'error', code: 'NOT_HOST' })
+        }
+        const host = lobby.members.find(m => m.conn.id === connId)!.driver.name
+        this.closeLobby(lobby.id, host)
+    }
+
+    /**
+     * Ends a lobby: everyone in it is told and dropped. From the host, or from
+     * the Hub's lobby list (`by` null), so a forgotten lobby can be cleared.
+     * False when there's no such lobby.
+     */
+    closeLobby(lobbyId: string, by: string | null = null): boolean {
+        const lobby = this.lobbies.get(lobbyId)
+        if (!lobby) return false
+        this.lobbies.delete(lobbyId)
+        for (const member of lobby.members) {
+            this.memberships.delete(member.conn.id)
+            member.conn.send({ type: 'closed', by })
+        }
+
+        return true
     }
 
     leave(connId: string): void {
@@ -247,6 +279,19 @@ export class LobbyManager {
             max: MAX_RACERS,
             phase: lobby.phase,
         }))
+    }
+
+    /** The lobby on this track a Play should land in: one with room, or one this player is already in (another tab). */
+    private openLobbyOn(trackId: number, playerId: number | null): Lobby | undefined {
+        const candidates = [...this.lobbies.values()].filter(
+            lobby =>
+                lobby.track.id === trackId &&
+                (lobby.members.length < MAX_RACERS ||
+                    (playerId !== null && lobby.members.some(m => m.driver.playerId === playerId)))
+        )
+        const ready = (lobby: Lobby) => lobby.phase === 'waiting' || lobby.phase === 'finished'
+
+        return candidates.find(ready) ?? candidates[0]
     }
 
     private checkFinish(lobby: Lobby): void {

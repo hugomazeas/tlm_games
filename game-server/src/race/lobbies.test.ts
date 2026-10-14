@@ -121,6 +121,69 @@ describe('lobbies', () => {
         expect(manager.summaries().map(s => s.id)).toEqual(['lobby1', 'lobby2'])
     })
 
+    test('pressing Play on a track joins the lobby already on it', () => {
+        join('a', 1)
+        join('b', 2)
+        join('c', null, 'gone')
+
+        expect(manager.summaries()).toHaveLength(1)
+        expect(lobbyOf('a').members.map(m => m.id)).toEqual(['a', 'b', 'c'])
+    })
+
+    test('Play watches a race when that is the only lobby on the track', () => {
+        join('a', 1)
+        startRace('a')
+        join('b', 2)
+
+        expect(lobbyOf('b').id).toBe('lobby1')
+        expect(lobbyOf('b').members.find(m => m.id === 'b')!.racing).toBe(false)
+    })
+
+    test('Play prefers a lobby getting ready to one racing', () => {
+        for (let i = 0; i < MAX_RACERS; i++) join(`p${i}`, null)
+        join('second', null)
+        manager.leave('p7')
+        startRace('p0')
+
+        join('new', null)
+        expect(lobbyOf('new').id).toBe('lobby2')
+    })
+
+    test('Play opens a new lobby when the one on the track is full', () => {
+        join('p0', null)
+        for (let i = 1; i < MAX_RACERS; i++) join(`p${i}`, null)
+        join('late', null)
+
+        expect(manager.summaries().map(s => s.players)).toEqual([MAX_RACERS, 1])
+    })
+
+    test('the host closes the lobby for everyone; nobody else can', () => {
+        join('a', 1)
+        join('b', 2)
+        manager.close('b')
+        expect(last('b', 'error')).toEqual({ type: 'error', code: 'NOT_HOST' })
+
+        manager.close('a')
+        expect(last('a', 'closed')).toEqual({ type: 'closed', by: 'a' })
+        expect(last('b', 'closed')).toEqual({ type: 'closed', by: 'a' })
+        expect(manager.summaries()).toEqual([])
+
+        // They're out: their karts no longer go anywhere.
+        manager.pose('b', POSE)
+        manager.tick()
+        expect(inboxes.get('a')!.filter(m => m.type === 'karts')).toEqual([])
+    })
+
+    test("a lobby can be closed from the Hub's list, even mid-race", () => {
+        join('a', 1)
+        startRace('a')
+
+        expect(manager.closeLobby('lobby1')).toBe(true)
+        expect(last('a', 'closed')).toEqual({ type: 'closed', by: null })
+        expect(manager.closeLobby('lobby1')).toBe(false)
+        expect(results).toEqual([])
+    })
+
     test('a full lobby turns you away', () => {
         join('p0', null)
         for (let i = 1; i < MAX_RACERS; i++) join(`p${i}`, null, 'lobby1')

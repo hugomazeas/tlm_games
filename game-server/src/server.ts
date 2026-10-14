@@ -86,6 +86,12 @@ const server = Bun.serve<SocketData>({
             const upgraded = server.upgrade(request, { data: { id: `race${++nextId}`, game: 'racing', ready: null } })
             return upgraded ? undefined : new Response('Expected a WebSocket', { status: 426 })
         }
+        // Anyone on the Hub can clear a lobby from the list (like deleting a track): POST …/lobbies/{id}/close.
+        const closing = pathname.match(new RegExp(`^${RACING_PREFIX}/lobbies/([a-z0-9]{1,16})/close$`))
+        if (closing) {
+            if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 })
+            return new Response(null, { status: racing?.manager.closeLobby(closing[1]!) ? 204 : 404 })
+        }
         if (pathname === `${RACING_PREFIX}/lobbies`) {
             return Response.json(racing?.manager.summaries() ?? [], { headers: { 'Cache-Control': 'no-store' } })
         }
@@ -182,6 +188,7 @@ async function raceMessage(ws: ServerWebSocket<SocketData>, raw: string): Promis
     if (!ws.data.ready) return reply({ type: 'error', code: 'HELLO_FIRST' })
     if (!(await ws.data.ready)) return
     if (message.type === 'start') racing.manager.start(ws.data.id)
+    else if (message.type === 'close') racing.manager.close(ws.data.id)
     else racing.manager.pose(ws.data.id, message.pose, message.samples)
 }
 

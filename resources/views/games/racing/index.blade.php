@@ -16,6 +16,11 @@
                 const url = '{{ url('/games/racing/tracks') }}/' + lobby.trackId + '/play?lobby=' + lobby.id
                 return this.playerId ? url + '&player=' + this.playerId : url
             },
+            async close(lobby) {
+                if (!confirm('Close ' + lobby.host + '’s lobby on ' + lobby.trackName + '? Everyone in it is sent out.')) return
+                await fetch('{{ url('/games/racing/live/lobbies') }}/' + lobby.id + '/close', { method: 'POST' }).catch(() => {})
+                this.refresh()
+            },
             async refresh() {
                 try {
                     const response = await fetch('{{ url('/games/racing/live/lobbies') }}', { cache: 'no-store' })
@@ -28,7 +33,7 @@
     <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
             <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight mb-1">🏎️ Racing</h1>
-            <p class="text-white/50 text-sm">Kart races through Québec, from the Plains of Abraham to Old Québec. Join a lobby, or press Play on a track to open one.</p>
+            <p class="text-white/50 text-sm">Kart races through Québec, from the Plains of Abraham to Old Québec. Press Play on a track to race it: you join whoever's already on it.</p>
         </div>
         <div class="flex gap-2">
             <a href="{{ url('/games/racing/roam') }}"
@@ -79,11 +84,15 @@
                        class="bg-orange-600 hover:bg-orange-500 px-4 py-2 rounded-lg font-semibold text-sm transition"
                        x-text="lobby.phase === 'racing' || lobby.phase === 'countdown' ? 'Watch' : 'Join'"></a>
                     <span x-show="lobby.players >= lobby.max" class="text-sm text-white/40 px-4 py-2">Full</span>
+                    <button type="button" @click="close(lobby)" title="Close this lobby"
+                            class="bg-red-500/20 hover:bg-red-500/30 text-red-400 px-3 py-2 rounded-lg text-sm transition">
+                        Close
+                    </button>
                 </div>
             </template>
         </div>
         <p x-show="lobbiesLoaded && lobbies.length === 0" x-cloak class="text-white/50 text-sm">
-            No lobby open. Press Play on a track to open one; others can join from here.
+            No lobby open. Press Play on a track to open one; anyone pressing Play on the same track joins it.
         </p>
     </section>
 

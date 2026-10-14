@@ -81,10 +81,12 @@ export interface Standing {
 }
 
 export type ClientMessage =
-    /** Join the lobby (`lobby`), or open a new one on the track when it's null or gone. */
+    /** Join the lobby (`lobby`); when it's null or gone, one already on the track, or a new one. */
     | { type: 'hello'; trackId: number; lobby: string | null; playerId: number | null }
     /** The host starts the race (or the next one). */
     | { type: 'start' }
+    /** The host closes the lobby for everyone. */
+    | { type: 'close' }
     /**
      * The kart now, and, while racing, every physics step since the last
      * message as flat [x, z, t, …] (t: the tab's race clock, seconds).
@@ -110,6 +112,8 @@ export type ServerMessage =
     | { type: 'countdown'; slots: Record<string, number>; seconds: number }
     /** Every other kart, and while racing the standings, leader first. */
     | { type: 'karts'; karts: Array<{ id: string; pose: Pose }>; standings: Standing[] | null }
+    /** The lobby was closed: by its host (their name), or from the Hub's lobby list (null). */
+    | { type: 'closed'; by: string | null }
     | { type: 'error'; code: ErrorCode }
 
 const POSE_KEYS = ['x', 'y', 'z', 'heading', 'speed', 'drift', 'charge'] as const
@@ -134,6 +138,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
         return { type: 'hello', trackId: trackId as number, lobby, playerId: playerId as number | null }
     }
     if (message.type === 'start') return { type: 'start' }
+    if (message.type === 'close') return { type: 'close' }
     if (message.type === 'pose') {
         const pose = parsePose(message.pose)
         if (!pose) return null

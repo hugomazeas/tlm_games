@@ -27,7 +27,12 @@ export interface LobbyPanel {
     fail(text: string): void
 }
 
-export function createLobbyPanel(element: HTMLElement, laps: number, onStart: () => void): LobbyPanel {
+export function createLobbyPanel(
+    element: HTMLElement,
+    laps: number,
+    onStart: () => void,
+    onClose: () => void
+): LobbyPanel {
     let lobby: LobbyView | null = null
     let you = ''
     let records: TrackRecords | null = null
@@ -100,6 +105,18 @@ export function createLobbyPanel(element: HTMLElement, laps: number, onStart: ()
             })
         )
         if (showRecords) children.push(recordsTable())
+
+        if (lobby.hostId === you) {
+            children.push(
+                button(
+                    'Close lobby',
+                    () => {
+                        if (confirm('Close this lobby for everyone in it?')) onClose()
+                    },
+                    'danger'
+                )
+            )
+        }
 
         element.replaceChildren(...children)
         element.hidden = false

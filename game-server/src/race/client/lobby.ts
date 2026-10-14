@@ -17,6 +17,9 @@ import type { Race } from './race.ts'
 const SEND_MS = 50
 /** …with at most this many race steps each (the server takes up to 30). */
 const SAMPLES_PER_MESSAGE = 20
+/** A dropped socket is reopened this many times, waiting this long more each time. */
+const RECONNECT_TRIES = 5
+const RECONNECT_MS = 1000
 /** Results reach the Hub a moment after the race ends; records are fetched again after this. */
 const RECORDS_DELAY_MS = 1500
 
@@ -54,11 +57,17 @@ export interface Lobby {
 export function joinLobby(options: LobbyOptions): Lobby {
     const { driver, race, others } = options
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws'
-    const socket = new WebSocket(`${scheme}://${location.host}/games/racing/live/ws`)
+    let socket: WebSocket
+    let attempts = 0
     const send = (message: ClientMessage) => {
         if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message))
     }
-    const panel = createLobbyPanel(options.panel, options.laps, () => send({ type: 'start' }))
+    const panel = createLobbyPanel(
+        options.panel,
+        options.laps,
+        () => send({ type: 'start' }),
+        () => send({ type: 'close' })
+    )
 
     let you = ''
     let current: LobbyView | null = null
@@ -118,53 +127,77 @@ export function joinLobby(options: LobbyOptions): Lobby {
         }
     }
 
-    socket.addEventListener('open', () => {
-        send({ type: 'hello', trackId: options.trackId, lobby: options.lobby, playerId: options.playerId })
-    })
+    const connect = () => {
+        socket = new WebSocket(`${scheme}://${location.host}/games/racing/live/ws`)
 
-    socket.addEventListener('message', event => {
-        const message = JSON.parse(String(event.data)) as ServerMessage
-        switch (message.type) {
-            case 'welcome':
-                you = message.you
-                // Keep the lobby in the URL: a refresh comes back to it, and it can be shared.
-                history.replaceState(null, '', withLobby(message.lobby.id))
-                onLobby(message.lobby)
-                break
-            case 'lobby':
-                onLobby(message.lobby)
-                break
-            case 'countdown': {
-                const slot = message.slots[you]
-                if (slot === undefined) break
-                if (watching) {
-                    watching = false
-                    options.setWatching(false)
+        socket.addEventListener('open', () => {
+            // Back into the same lobby after a drop: the one we were in, else the one the page asked for.
+            send({
+                type: 'hello',
+                trackId: options.trackId,
+                lobby: current?.id ?? options.lobby,
+                playerId: options.playerId,
+            })
+        })
+
+        socket.addEventListener('message', event => {
+            const message = JSON.parse(String(event.data)) as ServerMessage
+            switch (message.type) {
+                case 'welcome':
+                    attempts = 0
+                    you = message.you
+                    // Keep the lobby in the URL: a refresh comes back to it, and it can be shared.
+                    history.replaceState(null, '', withLobby(message.lobby.id))
+                    onLobby(message.lobby)
+                    break
+                case 'lobby':
+                    onLobby(message.lobby)
+                    break
+                case 'countdown': {
+                    const slot = message.slots[you]
+                    if (slot === undefined) break
+                    if (watching) {
+                        watching = false
+                        options.setWatching(false)
+                    }
+                    samples = []
+                    race.countdown(slot)
+                    break
                 }
-                samples = []
-                race.countdown(slot)
-                break
+                case 'karts': {
+                    others.receive(message.karts)
+                    const names = new Map(current?.members.map(m => [m.id, m.name]))
+                    leader = message.standings?.[0]?.id ?? null
+                    race.setStandings(
+                        message.standings?.map(s => ({ name: names.get(s.id) ?? '?', isYou: s.id === you })) ?? null
+                    )
+                    break
+                }
+                case 'closed':
+                    fail(message.by ? `${message.by} closed the lobby.` : 'This lobby was closed.')
+                    socket.close()
+                    break
+                case 'error':
+                    if (message.code === 'NOT_HOST') break
+                    fail(ERRORS[message.code])
+                    socket.close()
+                    break
             }
-            case 'karts': {
-                others.receive(message.karts)
-                const names = new Map(current?.members.map(m => [m.id, m.name]))
-                leader = message.standings?.[0]?.id ?? null
-                race.setStandings(
-                    message.standings?.map(s => ({ name: names.get(s.id) ?? '?', isYou: s.id === you })) ?? null
-                )
-                break
-            }
-            case 'error':
-                if (message.code === 'NOT_HOST') break
-                fail(ERRORS[message.code])
-                socket.close()
-                break
-        }
-    })
+        })
 
-    socket.addEventListener('close', () => {
-        if (!failed) fail('Disconnected from the lobby. Reload to join again.')
-    })
+        socket.addEventListener('close', event => {
+            console.warn('racing: lobby socket closed', event.code, event.reason || '(no reason)')
+            if (failed) return
+            // Dropped (a long first frame, the Wi-Fi, a server restart): try again a few times.
+            if (attempts < RECONNECT_TRIES) {
+                attempts += 1
+                setTimeout(connect, RECONNECT_MS * attempts)
+                return
+            }
+            fail('Disconnected from the lobby. Reload to join again.')
+        })
+    }
+    connect()
 
     setInterval(() => {
         if (!current || watching || failed) return
