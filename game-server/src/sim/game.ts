@@ -284,14 +284,14 @@ function launchFromPads(game: GameState) {
     }
 }
 
-/** A magnet tugs everyone in range toward its owner, harder the closer they are. Shields and statues hold. */
+/** A magnet tugs everyone in range toward its owner, harder the closer they are. Shields, ghosts and statues hold. */
 function pullTowardMagnets(game: GameState, sliceMs: number) {
     const dt = sliceMs / 1000
     const alive = alivePlayers(game)
 
     for (const magnet of alive.filter(p => p.magnetMs > 0)) {
         for (const p of alive) {
-            if (p.id === magnet.id || p.frozenMs > 0 || p.shieldMs > 0) continue
+            if (p.id === magnet.id || p.frozenMs > 0 || p.shieldMs > 0 || p.ghostMs > 0) continue
 
             const dx = magnet.x - p.x
             const dy = magnet.y - p.y
@@ -348,9 +348,11 @@ function move(game: GameState, inputs: ReadonlyMap<number, Input>, sliceMs: numb
 function collide(game: GameState, theme: Theme) {
     const alive = alivePlayers(game)
 
-    // Avatars against each other. A frozen avatar is a statue: it doesn't budge.
+    // Avatars against each other. A frozen avatar is a statue: it doesn't budge. A ghost touches nobody.
     for (const [i, a] of alive.entries()) {
         for (const b of alive.slice(i + 1)) {
+            if (a.ghostMs > 0 || b.ghostMs > 0) continue
+
             const dx = b.x - a.x
             const dy = b.y - a.y
             const distance = Math.hypot(dx, dy)
@@ -455,7 +457,10 @@ function bounce(p: SimPlayer, nx: number, ny: number, restitution: number) {
     p.vy -= (1 + restitution) * into * ny
 }
 
+/** Two avatars in contact. A ghost is untouchable: it can't tag, be tagged, pass or steal. */
 function touching(a: SimPlayer, b: SimPlayer): boolean {
+    if (a.ghostMs > 0 || b.ghostMs > 0) return false
+
     return Math.hypot(a.x - b.x, a.y - b.y) <= radiusOf(a) + radiusOf(b) + TOUCH_SLACK
 }
 
@@ -506,8 +511,8 @@ function handOutPotato(game: GameState, rng: Rng, events: GameEvent[]) {
         return
     }
 
-    // Shields hold against a fresh potato too, unless everyone left is behind one.
-    const unshielded = alive.filter(p => p.shieldMs <= 0)
+    // Shields and ghosts hold against a fresh potato too, unless that's everyone left.
+    const unshielded = alive.filter(p => p.shieldMs <= 0 && p.ghostMs <= 0)
     const next = pickOne(rng, unshielded.length > 0 ? unshielded : alive)
     game.holderId = next.id
     game.fuseMs = newFuse(rng)
@@ -612,12 +617,12 @@ function pickUpItems(game: GameState, rng: Rng, events: GameEvent[]) {
                 break
             case 'freeze':
                 for (const p of alivePlayers(game)) {
-                    if (p.id === taker.id || p.shieldMs > 0) continue
+                    if (p.id === taker.id || p.shieldMs > 0 || p.ghostMs > 0) continue
                     if (Math.hypot(p.x - taker.x, p.y - taker.y) <= FREEZE_RADIUS) freeze(p, FREEZE_BOMB_MS)
                 }
                 break
             case 'swap': {
-                const targets = alivePlayers(game).filter(p => p.id !== taker.id && p.shieldMs <= 0)
+                const targets = alivePlayers(game).filter(p => p.id !== taker.id && p.shieldMs <= 0 && p.ghostMs <= 0)
                 if (targets.length === 0) break
 
                 const target = pickOne(rng, targets)
@@ -694,7 +699,7 @@ export function winnerIds(game: GameState): number[] {
 
 /**
  * King of the Potato: touching the king takes the crown, unless the king is
- * still in their head start or behind a shield. The old king isn't frozen.
+ * still in their head start, behind a shield or a ghost. The old king isn't frozen.
  */
 function stealPotato(game: GameState, events: GameEvent[]) {
     const king = game.players.find(p => p.id === game.holderId)

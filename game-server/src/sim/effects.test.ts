@@ -12,7 +12,7 @@ import {
     radiusOf,
     step,
 } from './game.ts'
-import { contactWith } from './geometry.ts'
+import { CORNER_RADIUS, contactWith } from './geometry.ts'
 import {
     findItemSpot,
     FREEZE_BOMB_MS,
@@ -117,6 +117,74 @@ describe('ghost', () => {
         expect(contactWith(p, wall, game.elapsedMs).distance).toBeGreaterThanOrEqual(AVATAR_RADIUS - 1e-9)
         expect(Math.abs(p.x - wall.x)).toBeLessThan(wall.w / 2 + AVATAR_RADIUS + 0.6)
     })
+
+    test('nobody can hand the potato to a ghost, not even pressed right against it', () => {
+        const game = setup()
+        const ghost = player(game, 2)
+        ghost.ghostMs = GHOST_MS
+        player(game, 1).x = ghost.x - 1.9
+
+        expect(run(game, 1000, right(1)).some(e => e.kind === 'pass')).toBe(false)
+        expect(game.holderId).toBe(1)
+    })
+
+    test('a ghost holding the potato cannot pass it either', () => {
+        const game = setup()
+        const holder = player(game, 1)
+        holder.ghostMs = GHOST_MS
+        holder.x = player(game, 2).x - 1.9
+
+        expect(run(game, 1000, right(1)).some(e => e.kind === 'pass')).toBe(false)
+        expect(game.holderId).toBe(1)
+    })
+
+    test('a ghost hiding inside furniture is as untouchable as one in the open', () => {
+        const box = { kind: 'rect' as const, x: 30, y: 20, w: 4, h: 4 }
+        const game = setup(2, { obstacles: [box] })
+        const ghost = player(game, 2)
+        ghost.x = box.x
+        ghost.y = box.y
+        ghost.ghostMs = GHOST_MS
+
+        expect(run(game, GHOST_MS - TICK, right(1)).some(e => e.kind === 'pass')).toBe(false)
+    })
+
+    test('avatars pass straight through a ghost instead of bumping it', () => {
+        const game = setup()
+        const ghost = player(game, 2)
+        ghost.ghostMs = GHOST_MS
+        const holder = player(game, 1)
+        holder.x = ghost.x - 3
+
+        run(game, 1500, right(1))
+
+        expect(holder.x).toBeGreaterThan(ghost.x + 2)
+        expect(ghost.vx).toBe(0)
+    })
+
+    test('a fresh potato skips ghosts', () => {
+        for (let seed = 1; seed <= 30; seed++) {
+            const game = setup(4)
+            player(game, 2).ghostMs = GHOST_MS
+            player(game, 3).ghostMs = GHOST_MS
+            game.holderId = null
+            game.respawnMs = TICK
+
+            step(game, still, TICK, createRng(seed))
+
+            expect([1, 4]).toContain(game.holderId ?? -1)
+        }
+    })
+
+    test('the potato only becomes passable again once the ghost wears off', () => {
+        const game = setup()
+        const ghost = player(game, 2)
+        ghost.ghostMs = 2 * TICK
+        player(game, 1).x = ghost.x - 1.9
+
+        expect(run(game, TICK).some(e => e.kind === 'pass')).toBe(false)
+        expect(run(game, 1000, right(1)).some(e => e.kind === 'pass')).toBe(true)
+    })
 })
 
 describe('swap', () => {
@@ -203,6 +271,18 @@ describe('freeze bomb', () => {
         expect(far.frozenMs).toBe(0)
     })
 
+    test('a ghost right next to the bomb is not frozen', () => {
+        const game = setup()
+        const ghost = player(game, 3)
+        ghost.x = player(game, 2).x + 2.5
+        ghost.ghostMs = GHOST_MS
+        dropOn(game, 2, 'freeze')
+
+        run(game, TICK)
+
+        expect(ghost.frozenMs).toBe(0)
+    })
+
     test('a frozen holder cannot pass the potato until the freeze ends', () => {
         const game = setup()
         const holder = player(game, 1)
@@ -241,6 +321,21 @@ describe('magnet', () => {
         expect(shielded.x).toBeCloseTo(start.shielded, 5)
         expect(distant.y).toBeCloseTo(start.distant, 5)
         expect(magnet.magnetMs).toBeLessThanOrEqual(MAGNET_MS)
+    })
+
+    test('does not pull a ghost', () => {
+        const game = setup(2)
+        const ghost = player(game, 2)
+        ghost.x = player(game, 1).x + MAGNET_RADIUS - 3
+        ghost.ghostMs = GHOST_MS
+        dropOn(game, 1, 'magnet')
+        game.holderId = null
+        game.respawnMs = 100_000
+        const start = ghost.x
+
+        run(game, 600)
+
+        expect(ghost.x).toBeCloseTo(start, 5)
     })
 })
 
@@ -353,5 +448,39 @@ describe('boost pads', () => {
                 }
             }
         }
+    })
+})
+
+describe('furniture corners', () => {
+    const desk = { kind: 'rect' as const, x: 30, y: 20, w: 6, h: 4 }
+    const corner = { x: desk.x + desk.w / 2, y: desk.y + desk.h / 2 }
+
+    test('are round, like they are drawn: the collision follows the rounded edge', () => {
+        const diagonal = { x: corner.x + 0.5, y: corner.y + 0.5 }
+        const inner = { x: corner.x - CORNER_RADIUS, y: corner.y - CORNER_RADIUS }
+
+        expect(contactWith(diagonal, desk, 0).distance).toBeCloseTo(
+            Math.hypot(diagonal.x - inner.x, diagonal.y - inner.y) - CORNER_RADIUS,
+            9
+        )
+        expect(contactWith({ x: corner.x + 1, y: desk.y }, desk, 0).distance).toBeCloseTo(1, 9)
+    })
+
+    test('an avatar rolling into a corner stops on the drawn edge, not on an invisible square tip', () => {
+        const game = setup(2, { obstacles: [desk] })
+        const p = player(game, 2)
+        p.x = corner.x + 3
+        p.y = corner.y + 3
+
+        run(game, 1500, new Map([[2, { dx: -1, dy: -1 }]]))
+
+        const inner = { x: corner.x - CORNER_RADIUS, y: corner.y - CORNER_RADIUS }
+        expect(Math.hypot(p.x - inner.x, p.y - inner.y)).toBeCloseTo(CORNER_RADIUS + AVATAR_RADIUS, 2)
+    })
+
+    test("a wall's blocks keep square corners so they join up", () => {
+        const block = { ...desk, group: 1 }
+
+        expect(contactWith({ x: corner.x + 0.5, y: corner.y + 0.5 }, block, 0).distance).toBeCloseTo(Math.SQRT1_2, 9)
     })
 })

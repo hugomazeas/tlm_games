@@ -29,6 +29,13 @@ export function obstacleAt(obstacle: Obstacle, timeMs: number): Obstacle {
     return mover.axis === 'x' ? { ...obstacle, x: obstacle.x + offset } : { ...obstacle, y: obstacle.y + offset }
 }
 
+/** Free-standing furniture has rounded corners, drawn and collided alike. A wall's blocks stay square so they join up. */
+export const CORNER_RADIUS = 0.4
+
+export function cornerRadiusOf(o: Obstacle): number {
+    return o.kind === 'rect' && o.group === undefined ? Math.min(CORNER_RADIUS, o.w / 2, o.h / 2) : 0
+}
+
 export interface Contact {
     /** Unit vector from the obstacle towards the point. */
     nx: number
@@ -51,8 +58,10 @@ export function contactWith(point: Vec, obstacle: Obstacle, timeMs: number): Con
         return { nx: dx / length, ny: dy / length, distance: length - o.r }
     }
 
-    const hw = o.w / 2
-    const hh = o.h / 2
+    // A rounded rectangle is the inner, corner-less one grown by the corner radius.
+    const corner = cornerRadiusOf(o)
+    const hw = o.w / 2 - corner
+    const hh = o.h / 2 - corner
     const dx = point.x - o.x
     const dy = point.y - o.y
     const outsideX = Math.abs(dx) - hw
@@ -61,15 +70,15 @@ export function contactWith(point: Vec, obstacle: Obstacle, timeMs: number): Con
     if (outsideX <= 0 && outsideY <= 0) {
         // Inside: push out through the nearest side.
         return outsideX > outsideY
-            ? { nx: Math.sign(dx) || 1, ny: 0, distance: outsideX }
-            : { nx: 0, ny: Math.sign(dy) || 1, distance: outsideY }
+            ? { nx: Math.sign(dx) || 1, ny: 0, distance: outsideX - corner }
+            : { nx: 0, ny: Math.sign(dy) || 1, distance: outsideY - corner }
     }
 
     const cx = Math.max(0, outsideX) * (Math.sign(dx) || 1)
     const cy = Math.max(0, outsideY) * (Math.sign(dy) || 1)
     const length = Math.hypot(cx, cy)
 
-    return { nx: cx / length, ny: cy / length, distance: length }
+    return { nx: cx / length, ny: cy / length, distance: length - corner }
 }
 
 export function distanceToObstacle(point: Vec, obstacle: Obstacle, timeMs: number): number {

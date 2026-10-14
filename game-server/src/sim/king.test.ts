@@ -11,7 +11,7 @@ import {
     step,
     winnerIds,
 } from './game.ts'
-import { SHIELD_MS } from './items.ts'
+import { GHOST_MS, SHIELD_MS } from './items.ts'
 import { createRng } from './rng.ts'
 
 const TICK = 50
@@ -195,5 +195,25 @@ describe('King of the Potato', () => {
         const game = createGame(arena, [1, 2, 3], 60_000, createRng(5))
 
         expect(game.mode).toBe('survival')
+    })
+})
+
+describe('King of the Potato ghosts', () => {
+    test('a ghost king cannot be robbed', () => {
+        const game = setup()
+        player(game, 1).ghostMs = GHOST_MS
+        touchKing(game, 2)
+
+        expect(run(game, TICK).some(e => e.kind === 'pass')).toBe(false)
+        expect(game.holderId).toBe(1)
+    })
+
+    test('a ghost cannot steal the crown', () => {
+        const game = setup()
+        player(game, 2).ghostMs = GHOST_MS
+        touchKing(game, 2)
+
+        expect(run(game, TICK).some(e => e.kind === 'pass')).toBe(false)
+        expect(game.holderId).toBe(1)
     })
 })

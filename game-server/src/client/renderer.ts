@@ -1,12 +1,15 @@
 import type { SnapshotItem, SnapshotPlayer } from '../protocol.ts'
 import { type Arena, AVATAR_RADIUS, PAD_RADIUS } from '../sim/arena.ts'
 import { FREEZE_MS, type GameMode, STEAL_SAFETY_MS } from '../sim/game.ts'
-import { obstacleAt } from '../sim/geometry.ts'
+import { cornerRadiusOf, obstacleAt } from '../sim/geometry.ts'
 import { FREEZE_RADIUS, ITEM_RADIUS, type ItemKind, MAGNET_RADIUS, SHIELD_MS, TINY_RADIUS } from '../sim/items.ts'
 import { THEMES } from '../sim/themes.ts'
 
-/** Remote avatars are drawn this far in the past, so there are always two snapshots to blend. */
-const INTERPOLATION_DELAY_MS = 100
+/**
+ * Moving furniture is carried forward from the newest snapshot by at most one
+ * server tick, so it glides between snapshots instead of stepping.
+ */
+const SNAPSHOT_GAP_MS = 50
 const SPLAT_MS = 1200
 /** Items blink for their last few seconds before they vanish. */
 const ITEM_BLINK_MS = 3000
@@ -95,7 +98,8 @@ export class Renderer {
     private bursts: Burst[] = []
     /** Recent positions of boosted players, for the speed trail. */
     private trails = new Map<number, Array<{ x: number; y: number }>>()
-    private own: { x: number; y: number } | null = null
+    /** Where each avatar is drawn, easing toward its newest position. */
+    private drawn = new Map<number, { x: number; y: number }>()
     /** Profile photos by URL, loaded once and reused every frame. */
     private photos = new Map<string, HTMLImageElement>()
     private frame = 0
@@ -114,7 +118,7 @@ export class Renderer {
         this.emotes = []
         this.bursts = []
         this.trails.clear()
-        this.own = null
+        this.drawn.clear()
         this.start()
     }
 
@@ -179,8 +183,8 @@ export class Renderer {
         this.lastFrameAt = time
         const scale = this.fit(arena)
         const theme = THEMES[arena.theme]
-        const state = this.stateAt(time - INTERPOLATION_DELAY_MS)
-        const players = this.withOwnAvatar(state.players, dt)
+        const state = this.stateAt(time)
+        const players = this.eased(state.players, dt)
 
         context.setTransform(scale * devicePixelRatio, 0, 0, scale * devicePixelRatio, 0, 0)
         context.clearRect(0, 0, arena.width, arena.height)
@@ -227,8 +231,7 @@ export class Renderer {
         const trace = (o: (typeof shapes)[number]) => {
             context.beginPath()
             if (o.kind === 'circle') context.arc(o.x, o.y, o.r, 0, Math.PI * 2)
-            else if (o.group !== undefined) context.rect(o.x - o.w / 2, o.y - o.h / 2, o.w, o.h)
-            else context.roundRect(o.x - o.w / 2, o.y - o.h / 2, o.w, o.h, 0.4)
+            else context.roundRect(o.x - o.w / 2, o.y - o.h / 2, o.w, o.h, cornerRadiusOf(o))
         }
 
         context.strokeStyle = edge
@@ -601,7 +604,7 @@ export class Renderer {
         }
     }
 
-    /** Blends the two snapshots around `renderAt`; before the first one, everyone stands on a spawn. */
+    /** The newest snapshot as of `renderAt`; before the first one, everyone stands on a spawn. */
     private stateAt(renderAt: number): Snapshot {
         const snapshots = this.snapshots
         const first = snapshots[0]
@@ -636,46 +639,34 @@ export class Renderer {
             }
         }
 
-        let before = first
-        let after = first
-        for (const snapshot of snapshots) {
-            if (snapshot.receivedAt <= renderAt) before = snapshot
-            if (snapshot.receivedAt >= renderAt) {
-                after = snapshot
-                break
-            }
-            after = snapshot
-        }
-
-        const span = after.receivedAt - before.receivedAt
-        const t = span > 0 ? Math.min(1, Math.max(0, (renderAt - before.receivedAt) / span)) : 1
+        // Everyone, you included, is drawn on the newest snapshot: a remote avatar
+        // drawn in the past looks out of reach at the very moment it tags you.
+        const latest = snapshots.at(-1) ?? first
 
         return {
-            ...after,
-            elapsedMs: before.elapsedMs + (after.elapsedMs - before.elapsedMs) * t,
-            players: after.players.map(p => {
-                const from = before.players.find(candidate => candidate.id === p.id) ?? p
-                return { ...p, x: from.x + (p.x - from.x) * t, y: from.y + (p.y - from.y) * t }
-            }),
+            ...latest,
+            elapsedMs: latest.elapsedMs + Math.min(SNAPSHOT_GAP_MS, Math.max(0, renderAt - latest.receivedAt)),
         }
     }
 
-    /**
-     * Your own avatar skips the interpolation delay and eases toward the newest
-     * snapshot instead, so your keys feel immediate.
-     */
-    private withOwnAvatar(players: SnapshotPlayer[], dt: number): SnapshotPlayer[] {
-        const myId = this.options.myId()
-        const latest = this.snapshots.at(-1)?.players.find(p => p.id === myId)
-        if (myId === null || !latest) return players
+    /** Every avatar eases toward its newest position, so 20 snapshots a second still move smoothly. */
+    private eased(players: SnapshotPlayer[], dt: number): SnapshotPlayer[] {
+        if (this.snapshots.length === 0) return players
 
-        if (!this.own) this.own = { x: latest.x, y: latest.y }
         const ease = Math.min(1, dt * 25)
-        this.own.x += (latest.x - this.own.x) * ease
-        this.own.y += (latest.y - this.own.y) * ease
-        const own = this.own
 
-        return players.map(p => (p.id === myId ? { ...p, x: own.x, y: own.y } : p))
+        return players.map(p => {
+            const drawn = this.drawn.get(p.id)
+            if (!drawn) {
+                this.drawn.set(p.id, { x: p.x, y: p.y })
+                return p
+            }
+
+            drawn.x += (p.x - drawn.x) * ease
+            drawn.y += (p.y - drawn.y) * ease
+
+            return { ...p, x: drawn.x, y: drawn.y }
+        })
     }
 
     /** Sizes the canvas to its container at the arena's aspect ratio; returns CSS pixels per unit. */
