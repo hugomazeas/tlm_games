@@ -628,7 +628,8 @@ class PingPongApiController extends Controller
             $stats = Arr::only($job, ['state', 'stage', 'done', 'total']);
 
             if ($job['state'] === 'done') {
-                $stats['stats'] = Http::timeout(5)->get("{$api}/runs/{$run}")->throw()->json('stats');
+                // The bare video name ({match id}.mp4) aliases its highest-version run, so a re-run with a newer model shows up here
+                $stats['stats'] = Http::timeout(5)->get("{$api}/runs/{$match->id}")->throw()->json('stats');
             }
         } catch (ConnectionException|RequestException) {
             return response()->json(['state' => 'unavailable']);
