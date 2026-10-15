@@ -75,12 +75,15 @@ class PingPongMatchStatsTest extends TestCase
         $stats = [['Bounce pairs measured', 3], ['Average speed (km/h)', 30.0], ['Left player average speed (km/h)', '35.0 (2 shots)']];
         Http::fake([
             self::DEBUG_URL => Http::response(['state' => 'done', 'stage' => 'encode', 'done' => 0, 'total' => 0, 'log' => '/srv/secret/path']),
-            self::RUNS_URL => Http::response(['name' => 'v7_1999', 'modes' => [], 'files' => [], 'stats' => $stats, 'bounces' => [], 'table_m' => [2.8, 1.3]]),
+            self::RUNS_URL => Http::response(['name' => 'v7_1999', 'modes' => [], 'files' => ['speeds.csv'], 'stats' => $stats, 'bounces' => [[0.5, 0.25], [2.0, 1.0]], 'table_m' => [2.8, 1.3]]),
         ]);
 
         $this->getJson('/games/ping-pong/api/matches/'.$match->id.'/stats')
             ->assertOk()
-            ->assertExactJson(['state' => 'done', 'stage' => 'encode', 'done' => 0, 'total' => 0, 'stats' => $stats]);
+            ->assertExactJson([
+                'state' => 'done', 'stage' => 'encode', 'done' => 0, 'total' => 0,
+                'stats' => $stats, 'bounces' => [[0.5, 0.25], [2.0, 1.0]], 'table_m' => [2.8, 1.3],
+            ]);
 
         // By match id, not by run name: the archive answers with its newest run for that video
         Http::assertSent(fn (Request $request) => $request->url() === 'http://videos.test/api/runs/'.$match->id);

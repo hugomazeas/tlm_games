@@ -513,9 +513,20 @@
     }
     .md .clip-card .delete-btn:hover { color: #f87171; background: rgba(239,68,68,0.12); }
 
+    /* Ball stats: bounce heatmap beside the headline numbers */
+    .md .ball-stats {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 16px;
+        align-items: center;
+    }
+    .md .ball-stats canvas { display: block; width: 100%; }
+    .md .ball-stats .ball-stat-list { display: grid; gap: 12px; }
+
     @media (max-width: 900px) {
         .md .recording-layout { grid-template-columns: 1fr; }
         .md .timeline-panel { max-height: 300px; }
+        .md .ball-stats { grid-template-columns: 1fr; }
     }
     @media (max-width: 640px) {
         .md .stats-grid { grid-template-columns: repeat(2, 1fr); }
@@ -896,17 +907,23 @@
             <template x-if="ballStats.state !== 'none'">
                 <div class="section">
                     <h2>Ball Stats</h2>
-                    <template x-if="ballStats.state === 'done' && ballStats.stats?.length">
-                        <div class="stats-grid">
-                            <template x-for="[label, value] in ballStats.stats" :key="label">
-                                <div class="stat-card">
-                                    <div class="label" x-text="label"></div>
-                                    <div class="value" x-text="value"></div>
-                                </div>
+                    <template x-if="hasBallStats()">
+                        <div class="ball-stats">
+                            <template x-if="ballStats.bounces?.length">
+                                <canvas role="img" aria-label="Bounce heatmap: where the ball landed on the table, seen from above"
+                                        x-init="$nextTick(() => drawBounceHeatmap($el))"></canvas>
                             </template>
+                            <div class="ball-stat-list">
+                                <template x-for="card in ballStatCards()" :key="card.label">
+                                    <div class="stat-card">
+                                        <div class="label" x-text="card.label"></div>
+                                        <div class="value" x-text="card.value"></div>
+                                    </div>
+                                </template>
+                            </div>
                         </div>
                     </template>
-                    <template x-if="!(ballStats.state === 'done' && ballStats.stats?.length)">
+                    <template x-if="!hasBallStats()">
                         <div class="loading" x-text="ballStatsMessage()"></div>
                     </template>
                 </div>
@@ -1050,6 +1067,51 @@ function matchDetail() {
             if (['pending', 'running', 'cancelling'].includes(this.ballStats.state)) {
                 setTimeout(() => this.loadBallStats(), 3000);
             }
+        },
+
+        // Only these for now; the archive sends more rows than the page shows
+        ballStatCards() {
+            const rows = Object.fromEntries(this.ballStats.stats || []);
+            const longest = rows['Longest rally (bounce pairs)'];
+            return [
+                { label: 'Average speed', value: rows['Average speed (km/h)'], unit: ' km/h' },
+                { label: 'Top speed', value: rows['Max speed (km/h)'], unit: ' km/h' },
+                { label: 'Longest rally', value: longest, unit: longest === 1 ? ' shot' : ' shots' },
+            ].filter(card => card.value !== undefined)
+                .map(card => ({ label: card.label, value: card.value + card.unit }));
+        },
+
+        hasBallStats() {
+            return this.ballStats.state === 'done' && (this.ballStatCards().length > 0 || this.ballStats.bounces?.length > 0);
+        },
+
+        // Same picture as the archive's run page (labeler/index.html drawHeatmap): a Gaussian blob per bounce on the
+        // table seen from above, left/right as in the video, camera side at the bottom.
+        drawBounceHeatmap(c) {
+            const pts = this.ballStats.bounces, [L, W] = this.ballStats.table_m;
+            const g = c.getContext('2d'), s = 200, pad = 12;  // s: px per metre
+            const w = Math.round(L * s), h = Math.round(W * s), sig = 0.08 * s, R = Math.ceil(3 * sig);
+            c.width = w + 2 * pad; c.height = h + 2 * pad;
+            const dens = new Float32Array(w * h);
+            for (const [X, Y] of pts) {  // only within 3 sigma
+                const cx = X * s, cy = Y * s;
+                for (let y = Math.max(0, Math.floor(cy - R)); y < Math.min(h, cy + R); y++)
+                    for (let x = Math.max(0, Math.floor(cx - R)); x < Math.min(w, cx + R); x++)
+                        dens[y * w + x] += Math.exp(-((x - cx) ** 2 + (y - cy) ** 2) / (2 * sig * sig));
+            }
+            let max = 0; for (const v of dens) if (v > max) max = v;
+            const img = g.createImageData(w, h), table = [27, 79, 138];
+            for (let n = 0; n < dens.length; n++) {  // table blue -> yellow -> red with density
+                const v = dens[n] / max, a = Math.min(1, v * 2), heat = [255, 255 * (1 - v), 0];
+                for (let k = 0; k < 3; k++) img.data[4 * n + k] = table[k] * (1 - a) + heat[k] * a;
+                img.data[4 * n + 3] = 255;
+            }
+            g.putImageData(img, pad, pad);
+            g.strokeStyle = 'white'; g.lineWidth = 2; g.strokeRect(pad + 1, pad + 1, w - 2, h - 2);
+            g.beginPath(); g.moveTo(pad + w / 2, pad); g.lineTo(pad + w / 2, pad + h); g.lineWidth = 3; g.stroke();  // net
+            g.beginPath(); g.moveTo(pad, pad + h / 2); g.lineTo(pad + w, pad + h / 2); g.lineWidth = 1; g.stroke();  // centre line
+            g.fillStyle = 'rgba(255,255,255,0.6)';
+            for (const [X, Y] of pts) { g.beginPath(); g.arc(pad + X * s, pad + Y * s, 2, 0, 2 * Math.PI); g.fill(); }
         },
 
         ballStatsMessage() {

@@ -604,7 +604,7 @@ class PingPongApiController extends Controller
 
     /**
      * Where the video archive is with this match's ball stats: the debug run's
-     * progress, plus the run's stats once it is done. Proxied so the browser
+     * progress, plus the newest run's stats and bounces once it is done. Proxied so the browser
      * never has to reach the archive's LAN address.
      */
     public function matchStats(int $id): JsonResponse
@@ -629,7 +629,8 @@ class PingPongApiController extends Controller
 
             if ($job['state'] === 'done') {
                 // The bare video name ({match id}.mp4) aliases its highest-version run, so a re-run with a newer model shows up here
-                $stats['stats'] = Http::timeout(5)->get("{$api}/runs/{$match->id}")->throw()->json('stats');
+                $latest = Http::timeout(5)->get("{$api}/runs/{$match->id}")->throw()->json();
+                $stats += Arr::only($latest, ['stats', 'bounces', 'table_m']);
             }
         } catch (ConnectionException|RequestException) {
             return response()->json(['state' => 'unavailable']);
