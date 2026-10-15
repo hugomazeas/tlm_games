@@ -678,6 +678,9 @@ describe('AI players', () => {
     })
 })
 
+/** The session table and pilots, which the manager keeps private. */
+type Internals = { sessions: Map<number, { pilots: Map<number, { policy: TrainedPolicy }> }> }
+
 describe('Killer Potato', () => {
     beforeEach(() => {
         manager = new SessionManager({
@@ -731,6 +734,42 @@ describe('Killer Potato', () => {
         send(a, killer)
 
         expect(errors(a)).toEqual(['NO_BOTS'])
+    })
+
+    test('the hunter plays the hunter policy, other AI seats the default one', () => {
+        const hunterPolicy = { ...policy, config: { ...policy.config, stickiness: 123 } }
+        manager = new SessionManager({
+            build: 'build-1',
+            now: () => now,
+            rng: createRng(42),
+            nextSeed: () => 1234,
+            onOpened: () => {},
+            onResults: () => {},
+            botPolicy: policy,
+            hunterPolicy,
+        })
+        const a = connect(alice)
+        send(a, { type: 'open' })
+        send(a, killer)
+        const pilotsOf = () => (manager as unknown as Internals).sessions.values().next().value?.pilots
+        const pilots = [...(pilotsOf()?.entries() ?? [])]
+        expect(pilots).toHaveLength(1)
+        expect(pilots[0]?.[1].policy).toBe(hunterPolicy)
+
+        // Without a hunter policy the hunter plays the default one.
+        manager = new SessionManager({
+            build: 'build-1',
+            now: () => now,
+            rng: createRng(42),
+            nextSeed: () => 1234,
+            onOpened: () => {},
+            onResults: () => {},
+            botPolicy: policy,
+        })
+        const b = connect(bob)
+        send(b, { type: 'open' })
+        send(b, killer)
+        expect([...(pilotsOf()?.values() ?? [])].map(p => p.policy)).toEqual([policy])
     })
 
     test('the hunter hunts, and only people reach the Hub', () => {

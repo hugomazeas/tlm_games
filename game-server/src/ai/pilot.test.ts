@@ -5,7 +5,16 @@ import { createRng } from '../sim/rng.ts'
 import type { ThemeId } from '../sim/themes.ts'
 import { OBS_SIZE } from './observation.ts'
 import { TrainedPilot } from './pilot.ts'
-import { ACTION_COUNT, actionInput, bestAction, checkPolicy, policyLogits, type TrainedPolicy } from './policy.ts'
+import {
+    ACTION_COUNT,
+    actionInput,
+    bestAction,
+    checkPolicy,
+    OBS_SPEC_VERSION,
+    policyLogits,
+    stickyAction,
+    type TrainedPolicy,
+} from './policy.ts'
 
 const TICK_MS = 50
 
@@ -29,13 +38,14 @@ const reference = await fixture<{ obs: number[][]; logits: number[][]; actions: 
     'trained-policy-logits.json'
 )
 const policy = (await Bun.file(new URL('./trained-policy.json', import.meta.url)).json()) as TrainedPolicy
+const hunterPolicy = (await Bun.file(new URL('./hunter-policy.json', import.meta.url)).json()) as TrainedPolicy
 
 /** A policy with the right shape and all-zero weights: enough to drive a pilot's observations. */
 function zeroPolicy(actionRepeat: number): TrainedPolicy {
     return {
         format: 'hot-potato-policy',
         version: 1,
-        obs_spec_version: 2,
+        obs_spec_version: OBS_SPEC_VERSION,
         action_spec_version: 1,
         obs_size: OBS_SIZE,
         action_count: ACTION_COUNT,
@@ -69,7 +79,16 @@ describe('trained pilot', () => {
                 rng,
                 recording.mode
             )
-            const pilot = new TrainedPilot(zeroPolicy(recording.action_repeat), game, recording.seat)
+            // The pilot makes the recorded seat's moves, so its action memory matches the recording's.
+            let decision = 0
+            const recordedAction = () => {
+                const tick = decision++ * recording.action_repeat
+                const own = recording.inputs[tick]?.find(([seat]) => seat === recording.seat)
+                if (!own || (own[1] === 0 && own[2] === 0)) return 0
+                const turn = Math.atan2(own[2], own[1]) / (Math.PI * 2)
+                return (((Math.round(turn * 16) % 16) + 16) % 16) + 1
+            }
+            const pilot = new TrainedPilot(zeroPolicy(recording.action_repeat), game, recording.seat, recordedAction)
             const ticks = (recording.obs.length - 1) * recording.action_repeat
             for (let tick = 0; tick <= ticks; tick++) {
                 pilot.steer(game)
@@ -112,6 +131,29 @@ describe('trained pilot', () => {
         expect(decisionTimes([47, 53, 61, 39, 50, 70, 30, 50, 50, 50])).toEqual([0, 200, 400])
     })
 
+    test('sticky argmax in the pilot: a near-tie keeps the previous heading, a clear winner replaces it', () => {
+        const seed = 11
+        const rng = createRng(seed)
+        const game = createGame(generateArena(seed, 'open_space', 2), [0, 1], 90_000, rng)
+        const policy = zeroPolicy(1)
+        policy.config.stickiness = 0.5
+        const biases = (policy.layers[0] as { biases: number[] }).biases
+        const pilot = new TrainedPilot(policy, game, 0)
+        const decideNow = () => {
+            pilot.steer(game)
+            step(game, new Map(), TICK_MS, rng)
+            return pilot.lastAction
+        }
+        biases[9] = 1
+        expect(decideNow()).toBe(9)
+        // Action 1 now leads by 0.3, inside the margin: keep 9.
+        biases[1] = 1.3
+        expect(decideNow()).toBe(9)
+        // By 0.7, outside it: switch.
+        biases[1] = 1.7
+        expect(decideNow()).toBe(1)
+    })
+
     test('works with any player ids, negative ones included', () => {
         const rng = createRng(5)
         const game = createGame(generateArena(5, 'open_space', 3), [12, -1, -2], 90_000, rng)
@@ -142,12 +184,21 @@ describe('bundled policy', () => {
         })
     })
 
+    test('the Killer Potato hunter policy fits the layout too', () => {
+        expect(() => checkPolicy(hunterPolicy)).not.toThrow()
+        expect(hunterPolicy.config.action_repeat).toBe(4)
+    })
+
     test('action table and layout check', () => {
         expect(actionInput(0)).toEqual({ dx: 0, dy: 0 })
         expect(actionInput(1).dx).toBeCloseTo(1)
         expect(actionInput(5).dy).toBeCloseTo(1)
         expect(actionInput(13).dy).toBeCloseTo(-1)
         expect(bestAction([0, 2, 2, 1])).toBe(1)
+        expect(stickyAction([0, 2, 1.6], 2, 0.5)).toBe(2)
+        expect(stickyAction([0, 2, 1.4], 2, 0.5)).toBe(1)
+        expect(stickyAction([0, 2, 1.9], 2, 0)).toBe(1)
+        expect(stickyAction([0, 2, 1.9], null, 0.5)).toBe(1)
         expect(() => checkPolicy({ ...zeroPolicy(4), obs_size: 123 })).toThrow('does not match')
     })
 })

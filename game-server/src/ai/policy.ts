@@ -1,5 +1,5 @@
 /**
- * A policy trained by self-play (PPO) on this same simulation, exported to JSON (format "hot-potato-policy"):
+ * A trained policy exported by the training tools (`trainer/export.py`, format "hot-potato-policy"):
  * observation normalisation and the actor's dense layers. The decision is
  *
  *   action = argmax( W_n · tanh( … tanh( W_1 · clip((obs − mean) / sqrt(var + eps), ±clip) + b_1 ) … ) + b_n )
@@ -11,7 +11,7 @@ import { OBS_SIZE } from './observation.ts'
 
 export const ACTION_COUNT = 17
 /** Observation layout and action table this code implements; a policy for another layout is refused. */
-export const OBS_SPEC_VERSION = 2
+export const OBS_SPEC_VERSION = 5
 export const ACTION_SPEC_VERSION = 1
 
 export interface PolicyLayer {
@@ -33,6 +33,11 @@ export interface TrainedPolicy {
     config: {
         action_repeat?: number
         num_players?: number
+        /**
+         * Play-time smoothing, not learned: a new action must beat the previous one's logit by this much
+         * to replace it (see `stickyAction`). 0 or absent: plain argmax, as in training evaluations.
+         */
+        stickiness?: number
         [key: string]: unknown
     }
 }
@@ -86,6 +91,16 @@ export function bestAction(logits: readonly number[]): number {
     let best = 0
     for (let i = 1; i < logits.length; i++) if ((logits[i] as number) > (logits[best] as number)) best = i
     return best
+}
+
+/**
+ * The argmax, unless the previous action's logit is within `margin` of it: then the previous action
+ * stays. Near-ties between two headings otherwise flip the steering every decision.
+ */
+export function stickyAction(logits: readonly number[], previous: number | null, margin: number): number {
+    const best = bestAction(logits)
+    if (previous === null || margin <= 0 || previous === best) return best
+    return (logits[previous] as number) >= (logits[best] as number) - margin ? previous : best
 }
 
 /** Action 0 stops; actions 1..16 are unit headings, 1 = right, 5 = down, 9 = left, 13 = up. */

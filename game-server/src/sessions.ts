@@ -76,6 +76,8 @@ export interface SessionHooks {
     onResults(result: GameResult): void
     /** The policy AI seats play with; without one, `addBot` is refused. */
     botPolicy?: TrainedPolicy | null
+    /** The policy a Killer Potato hunter plays; without one the hunter plays `botPolicy`. */
+    hunterPolicy?: TrainedPolicy | null
 }
 
 interface Member {
@@ -366,7 +368,14 @@ export class SessionManager {
             const seats = [...session.members.map(m => m.player), ...(session.hunter ? [session.hunter] : [])]
             for (const seat of seats) {
                 if (seat.bot && playerIds.includes(seat.id)) {
-                    session.pilots.set(seat.id, new TrainedPilot(policy, session.game, seat.id))
+                    session.pilots.set(
+                        seat.id,
+                        new TrainedPilot(
+                            seat.hunter ? (this.hooks.hunterPolicy ?? policy) : policy,
+                            session.game,
+                            seat.id
+                        )
+                    )
                 }
             }
         }

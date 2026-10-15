@@ -8,12 +8,15 @@
  * longer step), and the policy was trained on a fixed 50 ms tick. With 50 ms steps this is
  * exactly the training environment's schedule.
  *
+ * It also keeps every player's positions at the same 50 ms cadence and its own past actions (the
+ * short-term memory features of obs spec 4).
+ *
  * Call `steer` once per server tick, before the simulation steps. One pilot per seat and per game.
  */
 import type { GameState, Input } from '../sim/game.ts'
 import { computeSeatNav, MotionHistory, NavGrid } from './nav.ts'
 import { observe } from './observation.ts'
-import { actionInput, bestAction, policyLogits, type TrainedPolicy } from './policy.ts'
+import { actionInput, policyLogits, stickyAction, type TrainedPolicy } from './policy.ts'
 
 /** Ticks per decision when the policy does not say (the training runs used 4: one decision per 200 ms). */
 export const DEFAULT_ACTION_REPEAT = 4
@@ -26,6 +29,8 @@ export class TrainedPilot {
     readonly actionRepeat: number
     private readonly nav: NavGrid
     private motion: MotionHistory | null = null
+    private readonly trails = new Map<number, MotionHistory>()
+    private readonly actions: number[] = []
     /** Game time of the last motion sample and of the next decision. */
     private sampledAtMs = 0
     private nextDecisionMs = 0
@@ -35,9 +40,11 @@ export class TrainedPilot {
     lastAction = 0
 
     constructor(
-        private readonly policy: TrainedPolicy,
+        readonly policy: TrainedPolicy,
         readonly game: GameState,
-        readonly seat: number
+        readonly seat: number,
+        /** Picks the action from an observation; the policy's (sticky) argmax unless a test replays recorded actions. */
+        private readonly choose?: (obs: number[]) => number
     ) {
         this.actionRepeat = policy.config.action_repeat ?? DEFAULT_ACTION_REPEAT
         this.nav = new NavGrid(game.arena)
@@ -51,12 +58,14 @@ export class TrainedPilot {
         const t = game.elapsedMs
         if (!this.motion) {
             this.motion = new MotionHistory(me.x, me.y)
+            for (const p of game.players) this.trails.set(p.id, new MotionHistory(p.x, p.y))
             this.sampledAtMs = t
             this.nextDecisionMs = t
         }
         // One sample per 50 ms of game time since the last one; a longer step repeats the position.
         while (this.sampledAtMs + PILOT_TICK_MS <= t + EPS_MS) {
             this.motion.push(me.x, me.y)
+            for (const p of game.players) this.trails.get(p.id)?.push(p.x, p.y)
             this.sampledAtMs += PILOT_TICK_MS
         }
         if (t + EPS_MS >= this.nextDecisionMs) {
@@ -68,9 +77,20 @@ export class TrainedPilot {
             const obs = observe(game, this.seat, {
                 nav: computeSeatNav(this.nav, game, this.seat),
                 motion: this.motion,
+                trails: this.trails,
+                actions: this.actions,
             })
             this.lastObservation = obs
-            this.lastAction = bestAction(policyLogits(this.policy, obs))
+            this.lastAction = this.choose
+                ? this.choose(obs)
+                : stickyAction(
+                      policyLogits(this.policy, obs),
+                      this.actions.length > 0 ? this.lastAction : null,
+                      this.policy.config.stickiness ?? 0
+                  )
+            this.actions.push(this.lastAction)
+            // Only the last few are observed.
+            if (this.actions.length > 8) this.actions.splice(0, this.actions.length - 8)
             this.input = actionInput(this.lastAction)
         }
         return this.input
