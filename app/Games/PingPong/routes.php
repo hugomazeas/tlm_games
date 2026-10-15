@@ -48,6 +48,7 @@ Route::get('/games/ping-pong/api/players/{id}/weekly-stats', [PingPongApiControl
 Route::get('/games/ping-pong/api/matches/live', [PingPongApiController::class, 'liveMatches']);
 Route::get('/games/ping-pong/api/matches/recent', [PingPongApiController::class, 'recentMatches']);
 Route::get('/games/ping-pong/api/matches/{id}/elo-preview', [PingPongApiController::class, 'eloPreview']);
+Route::get('/games/ping-pong/api/matches/{id}/stats', [PingPongApiController::class, 'matchStats']);
 Route::get('/games/ping-pong/api/matches/{id}', [PingPongApiController::class, 'getMatch']);
 Route::get('/games/ping-pong/matches/{id}/scoreboard', [PingPongController::class, 'scoreboard']);
 Route::get('/games/ping-pong/matches/{id}', [PingPongController::class, 'matchDetail']);

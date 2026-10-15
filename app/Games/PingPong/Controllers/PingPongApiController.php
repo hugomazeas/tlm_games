@@ -28,9 +28,14 @@ use App\Jobs\SendMatchStartedNotificationJob;
 use App\Models\Office;
 use App\Models\Player;
 use Carbon\CarbonPeriod;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 class PingPongApiController extends Controller
 {
@@ -595,6 +600,41 @@ class PingPongApiController extends Controller
             });
 
         return response()->json($matches);
+    }
+
+    /**
+     * Where the video archive is with this match's ball stats: the debug run's
+     * progress, plus the run's stats once it is done. Proxied so the browser
+     * never has to reach the archive's LAN address.
+     */
+    public function matchStats(int $id): JsonResponse
+    {
+        $match = PingPongMatch::includingTournaments()->with('recording')->findOrFail($id);
+        $run = $match->recording?->stats_run;
+
+        if (! $run) {
+            // ponytail: a fresh finished match with no run yet is still uploading; an upload slower than 20 min shows nothing until a reload
+            $uploading = $match->recording && $match->recording->status !== 'failed'
+                && $match->ended_at?->gt(now()->subMinutes(20));
+
+            return response()->json(['state' => $uploading ? 'pending' : 'none']);
+        }
+
+        // ponytail: the stats live on the server the videos are uploaded to, so its API base comes from the upload URL
+        $api = Str::beforeLast(config('pingpong.video_upload_url'), '/videos');
+
+        try {
+            $job = Http::timeout(5)->get("{$api}/debug/{$run}")->throw()->json();
+            $stats = Arr::only($job, ['state', 'stage', 'done', 'total']);
+
+            if ($job['state'] === 'done') {
+                $stats['stats'] = Http::timeout(5)->get("{$api}/runs/{$run}")->throw()->json('stats');
+            }
+        } catch (ConnectionException|RequestException) {
+            return response()->json(['state' => 'unavailable']);
+        }
+
+        return response()->json($stats);
     }
 
     public function getMatch(int $id): JsonResponse

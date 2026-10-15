@@ -892,6 +892,26 @@
                 </div>
             </div>
 
+            <!-- Ball Stats, worked out from the match video by the video archive -->
+            <template x-if="ballStats.state !== 'none'">
+                <div class="section">
+                    <h2>Ball Stats</h2>
+                    <template x-if="ballStats.state === 'done' && ballStats.stats?.length">
+                        <div class="stats-grid">
+                            <template x-for="[label, value] in ballStats.stats" :key="label">
+                                <div class="stat-card">
+                                    <div class="label" x-text="label"></div>
+                                    <div class="value" x-text="value"></div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                    <template x-if="!(ballStats.state === 'done' && ballStats.stats?.length)">
+                        <div class="loading" x-text="ballStatsMessage()"></div>
+                    </template>
+                </div>
+            </template>
+
             <!-- Score Difference Over Time Chart -->
             <div class="section">
                 <h2>Score Difference Over Time</h2>
@@ -930,6 +950,8 @@ function matchDetail() {
         savingClip: false,
         clips: [],
 
+        ballStats: { state: 'none' },
+
         async init() {
             try {
                 const res = await fetch(`${this.API}/matches/${this.matchId}`);
@@ -938,6 +960,10 @@ function matchDetail() {
                 console.error('Error loading match:', err);
             }
             this.loading = false;
+
+            if (this.match) {
+                this.loadBallStats();
+            }
 
             if (this.match?.recording?.status === 'completed') {
                 this.loadClips();
@@ -1011,6 +1037,29 @@ function matchDetail() {
             const m = Math.floor(s / 60);
             const sec = Math.floor(s % 60);
             return m + ':' + String(sec).padStart(2, '0');
+        },
+
+        // Polls until the video archive's run on this match's video is over (or there is none).
+        async loadBallStats() {
+            try {
+                const res = await fetch(`${this.API}/matches/${this.matchId}/stats`);
+                this.ballStats = await res.json();
+            } catch (err) {
+                this.ballStats = { state: 'unavailable' };
+            }
+            if (['pending', 'running', 'cancelling'].includes(this.ballStats.state)) {
+                setTimeout(() => this.loadBallStats(), 3000);
+            }
+        },
+
+        ballStatsMessage() {
+            const s = this.ballStats;
+            if (s.state === 'pending') return 'Uploading the match video…';
+            if (s.state === 'running') return 'Processing the match video: ' + s.stage + (s.total ? ' ' + Math.round(100 * s.done / s.total) + '%' : '') + '…';
+            if (s.state === 'cancelling' || s.state === 'cancelled') return 'Stats processing was cancelled.';
+            if (s.state === 'error') return 'Stats processing failed.';
+            if (s.state === 'done') return 'No ball stats came out of this video.';
+            return 'Ball stats are unavailable right now.';
         },
 
         async loadClips() {
