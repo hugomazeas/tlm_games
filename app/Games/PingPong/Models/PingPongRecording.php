@@ -15,6 +15,7 @@ class PingPongRecording extends Model
         'ffmpeg_pid',
         'hls_path',
         'video_path',
+        'stats_run',
         'file_size',
         'duration_seconds',
         'error_message',
@@ -36,20 +37,19 @@ class PingPongRecording extends Model
 
     public function getVideoUrlAttribute(): ?string
     {
-        if ($this->status !== 'completed' || !$this->video_path) {
+        if ($this->status !== 'completed' || ! $this->video_path) {
             return null;
         }
 
-        return '/storage/' . $this->video_path;
+        return '/storage/'.$this->video_path;
     }
 
     public function getHlsUrlAttribute(): ?string
     {
-        if ($this->status !== 'recording' || !$this->hls_path) {
+        if ($this->status !== 'recording' || ! $this->hls_path) {
             return null;
         }
 
-        return '/recordings/live/' . $this->match_id . '/stream.m3u8';
+        return '/recordings/live/'.$this->match_id.'/stream.m3u8';
     }
-
 }
