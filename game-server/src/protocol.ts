@@ -54,6 +54,18 @@ export interface SnapshotPlayer {
     holdMs: number
     /** A fresh king's head start; can't be robbed while it lasts. */
     safeMs: number
+    /** Infection: caught it. */
+    infected: boolean
+}
+
+/** An open pair of linked portals. */
+export interface SnapshotPortal {
+    id: number
+    ax: number
+    ay: number
+    bx: number
+    by: number
+    expiresInMs: number
 }
 
 export interface SnapshotItem {
@@ -79,6 +91,8 @@ export type ClientMessage =
     | { type: 'join' }
     | { type: 'leave' }
     | { type: 'start'; durationMin: number; theme: ThemeId | 'random'; mode: GameMode }
+    /** Host, lobby only: the next game's picks, shown to the lobby before it starts. */
+    | { type: 'settings'; durationMin: number; theme: ThemeId | 'random'; mode: GameMode }
     | { type: 'input'; dx: number; dy: number }
     | { type: 'close' }
     | { type: 'emote'; emote: Emote }
@@ -121,12 +135,17 @@ export type ServerMessage =
           elapsedMs: number
           players: SnapshotPlayer[]
           items: SnapshotItem[]
+          portals: SnapshotPortal[]
           holderId: number | null
           shake: number
       }
     | { type: 'pass'; from: number; to: number }
     | { type: 'boom'; playerId: number }
     | { type: 'newPotato'; playerId: number }
+    /** Infection: `by` caught `playerId`. */
+    | { type: 'infected'; playerId: number; by: number }
+    /** Someone went through a portal (`portalId`). */
+    | { type: 'teleport'; playerId: number; portalId: number }
     /** `targetId`: who a swap traded places with. */
     | { type: 'pickup'; playerId: number; item: ItemKind; effect: Effect; targetId?: number }
     | { type: 'emote'; playerId: number; emote: Emote }
@@ -145,7 +164,7 @@ export type ServerMessage =
 export const MIN_PLAYERS = 3
 export const MAX_PLAYERS = 12
 export const DURATIONS_MIN = [1, 2, 3, 4, 5] as const
-export const GAME_MODES: readonly GameMode[] = ['survival', 'king', 'killer']
+export const GAME_MODES: readonly GameMode[] = ['survival', 'king', 'killer', 'infection']
 
 /** Validates one inbound frame. Anything unexpected is null, never a throw. */
 export function parseClientMessage(raw: unknown): ClientMessage | null {
@@ -179,12 +198,13 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
                 return null
             return { type: 'removeBot', playerId: message.playerId }
         case 'start':
+        case 'settings':
             if (!(DURATIONS_MIN as readonly unknown[]).includes(message.durationMin)) return null
             if (message.theme !== 'random' && !isThemeId(message.theme)) return null
             // A page loaded before modes existed sends none: that's the classic game.
             if (message.mode !== undefined && !GAME_MODES.includes(message.mode as GameMode)) return null
             return {
-                type: 'start',
+                type: message.type,
                 durationMin: message.durationMin as number,
                 theme: message.theme,
                 mode: (message.mode as GameMode | undefined) ?? 'survival',

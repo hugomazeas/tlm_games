@@ -46,7 +46,9 @@ export function describeResults(results: Results, names: Names): ResultsView {
                 ? STRINGS.survivors(survivors)
                 : results.mode === 'killer'
                   ? STRINGS.hunterWins
-                  : STRINGS.nobody,
+                  : results.mode === 'infection'
+                    ? STRINGS.everyoneInfected
+                    : STRINGS.nobody,
         rows: ordered.map((row, index) => ({
             id: row.id,
             name: names.nameOf(row.id),
@@ -101,7 +103,10 @@ export function chatText(event: ChatEvent): string {
             )
         }
         case 'results':
-            if (event.winners.length === 0) return event.mode === 'killer' ? STRINGS.hunterWins : STRINGS.nobody
+            if (event.winners.length === 0) {
+                if (event.mode === 'killer') return STRINGS.hunterWins
+                return event.mode === 'infection' ? STRINGS.everyoneInfected : STRINGS.nobody
+            }
             return event.mode === 'king' ? STRINGS.chat.reign(event.winners) : STRINGS.survivors(event.winners)
         case 'replay':
             return STRINGS.chat.replay

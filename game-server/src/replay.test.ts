@@ -17,6 +17,7 @@ const snapshot = (elapsedMs: number): Extract<ServerMessage, { type: 'snapshot' 
     elapsedMs,
     players: [],
     items: [],
+    portals: [],
     holderId: 1,
     shake: 0,
 })

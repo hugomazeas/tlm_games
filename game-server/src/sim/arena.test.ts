@@ -33,6 +33,29 @@ describe('generateArena', () => {
         expect(large.width * large.height).toBeGreaterThan(small.width * small.height)
     })
 
+    test('a big arena (Infection) is 80 × 50 whatever the count, and furnished to match', () => {
+        for (const theme of THEME_IDS) {
+            const big = generateArena(11, theme, 4, { big: true })
+            const largest = generateArena(11, theme, 12)
+
+            expect([big.width, big.height]).toEqual([80, 50])
+            expect(big.spawns).toHaveLength(4)
+            expect(big.obstacles.length).toBeGreaterThanOrEqual(largest.obstacles.length)
+        }
+    })
+
+    test('the boardroom has its big table in the middle', () => {
+        let centred = 0
+        for (let seed = 0; seed < 20; seed++) {
+            const arena = generateArena(seed, 'boardroom', 6)
+            const table = arena.obstacles.find(
+                o => o.kind === 'rect' && o.w >= 12 && o.x === arena.width / 2 && o.y === arena.height / 2
+            )
+            if (table) centred++
+        }
+        expect(centred).toBeGreaterThan(15)
+    })
+
     test('there is one spawn per player', () => {
         expect(generateArena(9, 'cafeteria', 8).spawns).toHaveLength(8)
     })

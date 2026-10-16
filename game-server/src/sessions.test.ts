@@ -518,6 +518,43 @@ describe('looks', () => {
     })
 })
 
+describe('the host’s picks', () => {
+    const picks = { durationMin: 4, theme: 'gym', mode: 'king' } as const
+
+    test('reach the lobby as they change, and survive AIs, joins and leaves', () => {
+        manager = new SessionManager({
+            build: 'build-1',
+            now: () => now,
+            rng: createRng(42),
+            nextSeed: () => 1234,
+            onOpened: () => {},
+            onResults: () => {},
+            botPolicy: policy,
+        })
+        const a = connect(alice)
+        const b = connect(bob)
+        send(a, { type: 'open' })
+        send(a, { type: 'settings', ...picks })
+        expect(last(b, 'office')?.session?.settings).toEqual(picks)
+
+        send(a, { type: 'addBot' })
+        send(b, { type: 'join' })
+        send(b, { type: 'leave' })
+        expect(last(a, 'office')?.session?.settings).toEqual(picks)
+    })
+
+    test('are the host’s alone, and only in the lobby', () => {
+        const { a, b } = lobbyOfThree()
+        send(b, { type: 'settings', ...picks })
+        expect(errors(b)).toEqual(['NOT_HOST'])
+
+        send(a, { type: 'start', durationMin: 1, theme: 'random' })
+        send(a, { type: 'settings', ...picks })
+        expect(errors(a)).toEqual(['NOT_IN_LOBBY'])
+        expect(last(a, 'office')?.session?.settings.mode).toBe('survival')
+    })
+})
+
 describe('watchers', () => {
     const watchers = (conn: FakeConn) => last(conn, 'watchers')
 
@@ -661,6 +698,55 @@ describe('chat', () => {
         expect(manager.takeUnsavedChat()).toEqual([])
         manager.requeueChat(batch)
         expect(manager.takeUnsavedChat()).toHaveLength(1)
+    })
+})
+
+describe('Infection', () => {
+    beforeEach(() => {
+        manager = new SessionManager({
+            build: 'build-1',
+            now: () => now,
+            rng: createRng(42),
+            nextSeed: () => 1234,
+            onOpened: () => {},
+            onResults: result => results.push(result),
+            botPolicy: policy,
+            botNameRng: createRng(7),
+        })
+    })
+
+    test('needs three people: AIs sit out and never count', () => {
+        const a = connect(alice)
+        const b = connect(bob)
+        send(a, { type: 'open' })
+        send(b, { type: 'join' })
+        send(a, { type: 'addBot' })
+        send(a, { type: 'start', durationMin: 1, theme: 'random', mode: 'infection' })
+        expect(errors(a)).toEqual(['NOT_ENOUGH_PLAYERS'])
+
+        const c = connect(carol)
+        send(c, { type: 'join' })
+        send(a, { type: 'start', durationMin: 1, theme: 'gym', mode: 'infection' })
+        const countdown = last(a, 'countdown')
+        expect(countdown?.playerIds.sort()).toEqual([1, 2, 3])
+        // Always the big arena, whatever the count.
+        expect([countdown?.arena.width, countdown?.arena.height]).toEqual([80, 50])
+    })
+
+    test('snapshots say who is infected; the game is ranked clean first, patient zero last', () => {
+        const { a } = lobbyOfThree()
+        send(a, { type: 'start', durationMin: 1, theme: 'random', mode: 'infection' })
+        advance(COUNTDOWN_MS + TICK_MS)
+        expect(last(a, 'snapshot')?.players.filter(p => p.infected)).toHaveLength(1)
+        expect(last(a, 'snapshot')?.portals).toEqual([])
+
+        playToResults(a)
+        const result = results[0]
+        expect(result?.mode).toBe('infection')
+        const zero = result?.players.find(p => p.eliminatedAtMs === 0)
+        expect(zero?.survived).toBe(false)
+        expect(zero?.position).toBe(Math.max(...(result?.players.map(p => p.position) ?? [])))
+        expect(result?.players.some(p => p.survived && p.position === 1)).toBe(true)
     })
 })
 

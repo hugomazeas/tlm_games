@@ -19,13 +19,17 @@ class HotPotatoGame extends Model
     /** Killer Potato: an AI hunter holds it all game and its touch knocks you out; the last one standing wins. */
     public const MODE_KILLER = 'killer';
 
-    public const MODES = [self::MODE_SURVIVAL, self::MODE_KING, self::MODE_KILLER];
+    /** Infection: a touch spreads it; whoever stays clean wins. People only. */
+    public const MODE_INFECTION = 'infection';
+
+    public const MODES = [self::MODE_SURVIVAL, self::MODE_KING, self::MODE_KILLER, self::MODE_INFECTION];
 
     /** As the game names them (game-server/src/client/strings.ts). */
     public const MODE_LABELS = [
         self::MODE_SURVIVAL => '🥔 Hot potato',
         self::MODE_KING => '👑 King of the Potato',
         self::MODE_KILLER => '🔪 Killer Potato',
+        self::MODE_INFECTION => '🦠 Infection',
     ];
 
     protected $table = 'hot_potato_games';

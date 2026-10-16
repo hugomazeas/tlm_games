@@ -14,7 +14,17 @@ export const REPLAY_VERSION = 1
 /** Serialised size past which a recording is dropped: a 5-minute, 12-player game is ~15 MB. */
 export const MAX_REPLAY_CHARS = 40_000_000
 
-const RECORDED = ['countdown', 'snapshot', 'pass', 'boom', 'newPotato', 'pickup', 'results'] as const
+const RECORDED = [
+    'countdown',
+    'snapshot',
+    'pass',
+    'boom',
+    'newPotato',
+    'pickup',
+    'infected',
+    'teleport',
+    'results',
+] as const
 
 export type ReplayMessage = Extract<ServerMessage, { type: (typeof RECORDED)[number] }>
 export type ReplayFrame = [atMs: number, message: ReplayMessage]

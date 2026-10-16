@@ -21,8 +21,17 @@ export const STRINGS = {
             label: '🔪 Killer Potato',
             hint: 'An AI holds the potato all game: if it touches you, you’re out. Last one standing wins.',
         },
+        infection: {
+            label: '🦠 Infection',
+            hint: 'One of you starts infected. A touch spreads it, and the infected hunt together. Stay clean to win.',
+        },
     } satisfies Record<GameMode, { label: string; hint: string }>,
     youAreKing: '👑 YOU’RE THE KING',
+    youAreInfected: '🦠 You’re infected — go get them!',
+    patientZero: '🦠 You’re patient zero — infect them all!',
+    gotInfected: (name: string) => `🦠 ${name} got infected`,
+    isPatientZero: (name: string) => `🦠 ${name} is patient zero — run!`,
+    everyoneInfected: '🦠 Everyone got infected',
     crownStolen: (name: string) => `😤 ${name} stole your crown`,
     kings: (names: string[], seconds: number) =>
         names.length === 1

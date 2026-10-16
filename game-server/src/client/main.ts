@@ -55,6 +55,8 @@ function hotPotatoApp(config: Config) {
     let countdownTimer: ReturnType<typeof setInterval> | null = null
     let lastHudAt = 0
     let lastSent = { dx: 0, dy: 0 }
+    /** Infection: who patient zero is gets said once, on the game's first snapshot. */
+    let patientZeroTold = false
     const pressed = new Set<string>()
 
     return {
@@ -116,6 +118,7 @@ function hotPotatoApp(config: Config) {
             const alpine = this as unknown as Alpine
             alpine.$watch('officeId', () => this.reconnect())
             alpine.$watch('playerId', () => this.reconnect())
+            for (const pick of ['mode', 'duration', 'theme']) alpine.$watch(pick, () => this.shareSettings())
             window.addEventListener('keydown', event => this.onKey(event, true))
             window.addEventListener('keyup', event => this.onKey(event, false))
             document.addEventListener('fullscreenchange', () => {
@@ -186,6 +189,10 @@ function hotPotatoApp(config: Config) {
             if (!this.isHost || this.phase !== 'lobby') return false
             // Killer Potato is people against the AI hunter: one person is enough, AIs sit out.
             if (this.mode === 'killer') return Boolean(this.session?.players.some(p => !p.away && !p.bot))
+            // Infection is people only: three of them; AIs sit out.
+            if (this.mode === 'infection') {
+                return (this.session?.players.filter(p => !p.away && !p.bot).length ?? 0) >= MIN_PLAYERS
+            }
             return this.presentCount >= MIN_PLAYERS
         },
         get canAddBot() {
@@ -277,6 +284,11 @@ function hotPotatoApp(config: Config) {
         close() {
             this.send({ type: 'close' })
         },
+        /** The host changed a pick: tell the lobby. */
+        shareSettings() {
+            if (!this.isHost || this.phase !== 'lobby') return
+            this.send({ type: 'settings', durationMin: Number(this.duration), theme: this.theme, mode: this.mode })
+        },
         addBot() {
             if (this.canAddBot) this.send({ type: 'addBot' })
         },
@@ -326,9 +338,12 @@ function hotPotatoApp(config: Config) {
                         this.results = null
                         renderer?.clear()
                     }
-                    if (message.session) {
+                    // The host's own picks are the truth in the lobby (an echo could undo a newer click);
+                    // everyone else follows them.
+                    if (message.session && !(this.isHost && message.session.phase === 'lobby')) {
                         this.duration = message.session.settings.durationMin
                         this.mode = message.session.settings.mode
+                        this.theme = message.session.settings.theme
                     }
                     this.reloadIfStale()
                     return
@@ -348,6 +363,7 @@ function hotPotatoApp(config: Config) {
                     this.remainingMs = message.durationMs
                     this.aliveCount = message.playerIds.length
                     this.kingBoard = []
+                    patientZeroTold = false
                     ;(this as unknown as Alpine).$nextTick(() =>
                         this.ensureRenderer()?.setArena(message.arena, message.playerIds)
                     )
@@ -356,11 +372,20 @@ function hotPotatoApp(config: Config) {
                 }
                 case 'snapshot': {
                     renderer?.pushSnapshot(message)
+                    if (this.gameMode === 'infection' && !patientZeroTold) {
+                        patientZeroTold = true
+                        const zero = message.players.find(p => p.infected)
+                        if (zero?.id === this.me?.id) this.showBanner(STRINGS.patientZero, true)
+                        else if (zero) this.showBanner(STRINGS.isPatientZero(this.nameOf(zero.id)), false)
+                    }
                     const now = performance.now()
                     if (now - lastHudAt > 250) {
                         lastHudAt = now
                         this.remainingMs = Math.max(0, this.durationOf() - message.elapsedMs)
-                        this.aliveCount = message.players.filter(p => !p.out).length
+                        // Infection counts the clean: those are the ones still in it.
+                        this.aliveCount = message.players.filter(
+                            p => !p.out && !(this.gameMode === 'infection' && p.infected)
+                        ).length
                         if (this.gameMode === 'king') {
                             this.kingBoard = [...message.players]
                                 .filter(p => p.holdMs > 0)
@@ -376,6 +401,14 @@ function hotPotatoApp(config: Config) {
                     else if (this.gameMode === 'king' && message.from === this.me?.id) {
                         this.showBanner(STRINGS.crownStolen(this.nameOf(message.to)), false)
                     }
+                    return
+                case 'infected':
+                    renderer?.infectionBlast(message.playerId)
+                    if (message.playerId === this.me?.id) this.showBanner(STRINGS.youAreInfected, true)
+                    else this.showBanner(STRINGS.gotInfected(this.nameOf(message.playerId)), false)
+                    return
+                case 'teleport':
+                    renderer?.portalFlash(message.portalId)
                     return
                 case 'newPotato':
                     if (message.playerId === this.me?.id) this.showBanner(this.gotItText(), true)

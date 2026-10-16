@@ -40,7 +40,7 @@
             <div>
                 <div class="flex items-center justify-between mb-2 text-sm">
                     <span class="font-mono text-lg font-bold" x-text="timerText"></span>
-                    <span x-show="meta?.mode !== 'king'" class="text-white/60"><span x-text="aliveCount"></span> left</span>
+                    <span x-show="meta?.mode !== 'king'" class="text-white/60"><span x-text="aliveCount"></span><span x-text="meta?.mode === 'infection' ? ' clean' : ' left'"></span></span>
                 </div>
 
                 <div class="relative rounded-xl overflow-hidden border border-white/10 bg-black/30">
@@ -62,7 +62,7 @@
                                 <h2 class="text-xl font-extrabold mb-3 text-center" x-text="results.headline"></h2>
                                 <table class="w-full text-sm">
                                     <thead class="text-white/40 text-xs">
-                                        <tr><th class="text-left py-1"></th><th class="text-left">Player</th><th class="text-right">Held</th><th class="text-right" x-text="results.mode === 'king' ? 'Steals' : results.mode === 'killer' ? 'Catches' : 'Passes'"></th></tr>
+                                        <tr><th class="text-left py-1"></th><th class="text-left">Player</th><th class="text-right" x-text="results.mode === 'infection' ? 'Clean' : 'Held'"></th><th class="text-right" x-text="results.mode === 'king' ? 'Steals' : results.mode === 'killer' ? 'Catches' : results.mode === 'infection' ? 'Infected' : 'Passes'"></th></tr>
                                     </thead>
                                     <tbody>
                                         <template x-for="row in results.rows" :key="row.id">

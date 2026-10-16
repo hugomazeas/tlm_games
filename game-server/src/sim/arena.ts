@@ -18,6 +18,8 @@ export const PAD_SPACING = 8
 /** Pads keep this much floor around them, clear of obstacles and the arena walls. */
 export const PAD_CLEARANCE = 2.5
 const PAD_COUNT: [number, number] = [2, 4]
+/** Infection's arena: wider than any regular one, so a crowd of infected has to hunt. */
+export const BIG_WIDTH = 80
 
 const ATTEMPTS_PER_OBSTACLE = 50
 const GRID_STEP = 0.5
@@ -58,19 +60,34 @@ interface Field {
  * placed after ATTEMPTS_PER_OBSTACLE tries is dropped, which is how
  * generation always returns.
  */
-export function generateArena(seed: number, themeId: ThemeId, playerCount: number): Arena {
+export function generateArena(
+    seed: number,
+    themeId: ThemeId,
+    playerCount: number,
+    /** `big`: Infection's 80 × 50 field, furnished for 12 players times the extra floor. */
+    { big = false }: { big?: boolean } = {}
+): Arena {
     const theme = THEMES[themeId]
     const rng = createRng(seed)
-    const scale = Math.min(1, Math.max(0, (playerCount - 3) / 9))
-    const width = 40 + 24 * scale
+    const scale = big ? 1 : Math.min(1, Math.max(0, (playerCount - 3) / 9))
+    const width = big ? BIG_WIDTH : 40 + 24 * scale
     const height = Math.round(((width * 10) / 16) * 2) / 2
     const field = { width, height }
+    // How many times the largest regular arena's floor this one has: its furniture scales with it.
+    const extra = big ? (width * height) / (64 * 40) : 1
+    const more = (count: number) => Math.round(count * extra)
     const spawns = placeSpawns(rng, width, height, playerCount)
     const obstacles: Obstacle[] = []
 
+    if (theme.centerpiece) {
+        const piece = sized(rng, theme.centerpiece)
+        const centred = tryPlace(() => [{ ...piece, x: width / 2, y: height / 2 }], obstacles, spawns, field)
+        if (centred) obstacles.push(...centred)
+    }
+
     // Walls and movers take turns, so a big arena never spends all its room on one kind.
-    const walls = scaled(theme.walls.count, scale)
-    const movers = scaled(theme.movers.count, scale)
+    const walls = more(scaled(theme.walls.count, scale))
+    const movers = more(scaled(theme.movers.count, scale))
     for (let i = 0; i < Math.max(walls, movers); i++) {
         const mover = i < movers ? tryPlace(() => randomMover(rng, theme, field), obstacles, spawns, field) : null
         if (mover) obstacles.push(...mover)
@@ -79,14 +96,14 @@ export function generateArena(seed: number, themeId: ThemeId, playerCount: numbe
         if (wall) obstacles.push(...wall)
     }
 
-    const furniture = Math.round((4 + 6 * scale) * theme.density)
+    const furniture = more(Math.round((4 + 6 * scale) * theme.density))
     for (let i = 0; i < furniture; i++) {
         const placed = tryPlace(() => randomObstacle(rng, theme.shapes, field), obstacles, spawns)
         if (!placed) break
         obstacles.push(...placed)
     }
 
-    const pads = placePads(rng, field, obstacles, spawns, scaled(PAD_COUNT, scale))
+    const pads = placePads(rng, field, obstacles, spawns, more(scaled(PAD_COUNT, scale)))
 
     return { seed, theme: themeId, width, height, obstacles, pads, spawns }
 }
