@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import type { TrainedPolicy } from './ai/policy.ts'
+import { BOT_NAMES, botAvatarUrl } from './bots.ts'
 import { MAX_PLAYERS, parseClientMessage, type PlayerInfo, type ServerMessage } from './protocol.ts'
 import {
     COUNTDOWN_MS,
@@ -551,6 +552,7 @@ describe('AI players', () => {
             onOpened: (officeId, hostPlayerId) => opened.push({ officeId, hostPlayerId }),
             onResults: result => results.push(result),
             botPolicy: policy,
+            botNameRng: createRng(7),
         })
     })
 
@@ -563,27 +565,38 @@ describe('AI players', () => {
         return a
     }
 
-    test('the host seats AIs; they show in the lobby with negative ids', () => {
+    test('the host seats AIs; they show in the lobby with negative ids, a Québécois name and a robot', () => {
         const a = soloWith(2)
 
-        expect(last(a, 'office')?.session?.players).toEqual([
-            { ...alice, away: false },
-            { id: -1, name: 'AI 1', avatarUrl: null, bot: true, away: false },
-            { id: -2, name: 'AI 2', avatarUrl: null, bot: true, away: false },
+        const players = last(a, 'office')?.session?.players ?? []
+        expect(players[0]).toEqual({ ...alice, away: false })
+        const bots = players.slice(1)
+        expect(bots.map(p => [p.id, p.bot, p.away])).toEqual([
+            [-1, true, false],
+            [-2, true, false],
         ])
+        for (const bot of bots) {
+            expect(BOT_NAMES as readonly string[]).toContain(bot.name)
+            expect(bot.avatarUrl).toBe(botAvatarUrl(bot.name))
+        }
+        expect(bots[0]!.name).not.toBe(bots[1]!.name)
         expect(errors(a)).toEqual([])
     })
 
-    test('the host takes an AI out; the next one gets the free name', () => {
+    test('a full lobby of AIs never repeats a name', () => {
+        const a = soloWith(11)
+
+        const names = (last(a, 'office')?.session?.players ?? []).map(p => p.name)
+        expect(names).toHaveLength(12)
+        expect(new Set(names).size).toBe(12)
+    })
+
+    test('the host takes an AI out; the next one comes in under a new id', () => {
         const a = soloWith(2)
         send(a, { type: 'removeBot', playerId: -1 })
         send(a, { type: 'addBot' })
 
-        expect(last(a, 'office')?.session?.players.map(p => [p.id, p.name])).toEqual([
-            [1, 'Alice'],
-            [-2, 'AI 2'],
-            [-3, 'AI 1'],
-        ])
+        expect(last(a, 'office')?.session?.players.map(p => p.id)).toEqual([1, -2, -3])
     })
 
     test('only the host, only in the lobby, never a person', () => {
@@ -703,7 +716,8 @@ describe('Killer Potato', () => {
 
         expect(errors(a)).toEqual([])
         const hunter = last(a, 'office')?.session?.players.find(p => p.hunter)
-        expect(hunter).toMatchObject({ name: HUNTER_NAME, bot: true, hunter: true, avatarUrl: null })
+        expect(hunter).toMatchObject({ name: HUNTER_NAME, bot: true, hunter: true })
+        expect(hunter?.avatarUrl).toStartWith('data:image/svg+xml,')
         expect(last(a, 'countdown')?.playerIds).toEqual([1, hunter?.id ?? 0])
     })
 
