@@ -7,14 +7,17 @@ the same policy as its « IA entraînée » bot difficulty.
 
 ## Files
 
-- `observation.ts`, `nav.ts`: the 137 features the policy sees (its own state, the seven nearest
-  players, the nearest item of each kind, wall feelers, geodesic navigation, recent motion). Copied
+- `observation.ts`, `nav.ts`: the 225 features the policy sees (obs spec 5: its own state, the seven nearest
+  players and their effects, the nearest item of each kind, wall feelers, geodesic navigation, recent motion,
+  the Killer Potato flag, its last three actions, where the others stood 0.5 s and 1 s ago, the two nearest boost pads). Copied
   from the training environment; they must not change unless the policy is retrained.
 - `policy.ts`: the exported policy format (`hot-potato-policy`), `checkPolicy`, the forward pass and
   the 17-action steering table.
 - `pilot.ts`: `TrainedPilot`, one per AI seat and game. It decides every `action_repeat` × 50 ms of game
   time (200 ms), holds its steering in between and samples its position every 50 ms, as in training.
 - `trained-policy.json`: the policy, loaded by `server.ts` and handed to `SessionManager` as `botPolicy`.
+- `hunter-policy.json`: the Killer Potato hunter's policy, handed over as `hunterPolicy` (the hunter plays
+  `botPolicy` when it is absent).
 - `fixtures/`: games recorded in the training environment (`training-observations.json`) and the
   policy's reference logits (`trained-policy-logits.json`), used by `pilot.test.ts`.
 

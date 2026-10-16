@@ -32,6 +32,7 @@ const laravel = new LaravelClient(laravelUrl, secret)
 const clientBundle = await buildClient()
 // The AI seats' policy. A missing or mismatched file only turns AIs off.
 const botPolicy = await loadBotPolicy()
+const hunterPolicy = await loadBotPolicy('hunter-policy.json')
 // The racing game's pages load their bundles and the map from here too (see race/serve.ts).
 // A failed build (missing packages, say) closes racing, not the whole server.
 const racingAssets = await buildRacingAssets().catch(error => {
@@ -51,6 +52,7 @@ const manager = new SessionManager({
         laravel.postResults(result).catch(error => console.error('Results not saved:', error.message))
     },
     botPolicy,
+    hunterPolicy,
 })
 
 setInterval(() => manager.tick(), TICK_MS)
@@ -224,9 +226,9 @@ async function buildClient(): Promise<{ code: string; etag: string; build: strin
     return { code, etag: `"${build}"`, build }
 }
 
-async function loadBotPolicy(): Promise<TrainedPolicy | null> {
+async function loadBotPolicy(file = 'trained-policy.json'): Promise<TrainedPolicy | null> {
     try {
-        const policy = (await Bun.file(new URL('./ai/trained-policy.json', import.meta.url)).json()) as TrainedPolicy
+        const policy = (await Bun.file(new URL(`./ai/${file}`, import.meta.url)).json()) as TrainedPolicy
         checkPolicy(policy)
         return policy
     } catch (error) {
