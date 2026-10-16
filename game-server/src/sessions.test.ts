@@ -664,6 +664,55 @@ describe('chat', () => {
     })
 })
 
+describe('Infection', () => {
+    beforeEach(() => {
+        manager = new SessionManager({
+            build: 'build-1',
+            now: () => now,
+            rng: createRng(42),
+            nextSeed: () => 1234,
+            onOpened: () => {},
+            onResults: result => results.push(result),
+            botPolicy: policy,
+            botNameRng: createRng(7),
+        })
+    })
+
+    test('needs three people: AIs sit out and never count', () => {
+        const a = connect(alice)
+        const b = connect(bob)
+        send(a, { type: 'open' })
+        send(b, { type: 'join' })
+        send(a, { type: 'addBot' })
+        send(a, { type: 'start', durationMin: 1, theme: 'random', mode: 'infection' })
+        expect(errors(a)).toEqual(['NOT_ENOUGH_PLAYERS'])
+
+        const c = connect(carol)
+        send(c, { type: 'join' })
+        send(a, { type: 'start', durationMin: 1, theme: 'gym', mode: 'infection' })
+        const countdown = last(a, 'countdown')
+        expect(countdown?.playerIds.sort()).toEqual([1, 2, 3])
+        // Always the big arena, whatever the count.
+        expect([countdown?.arena.width, countdown?.arena.height]).toEqual([80, 50])
+    })
+
+    test('snapshots say who is infected; the game is ranked clean first, patient zero last', () => {
+        const { a } = lobbyOfThree()
+        send(a, { type: 'start', durationMin: 1, theme: 'random', mode: 'infection' })
+        advance(COUNTDOWN_MS + TICK_MS)
+        expect(last(a, 'snapshot')?.players.filter(p => p.infected)).toHaveLength(1)
+        expect(last(a, 'snapshot')?.portals).toEqual([])
+
+        playToResults(a)
+        const result = results[0]
+        expect(result?.mode).toBe('infection')
+        const zero = result?.players.find(p => p.eliminatedAtMs === 0)
+        expect(zero?.survived).toBe(false)
+        expect(zero?.position).toBe(Math.max(...(result?.players.map(p => p.position) ?? [])))
+        expect(result?.players.some(p => p.survived && p.position === 1)).toBe(true)
+    })
+})
+
 /** Plays a one-minute game through to the results screen (two booms can end it early). */
 function playToResults(conn: FakeConn) {
     send(conn, { type: 'start', durationMin: 1, theme: 'random' })

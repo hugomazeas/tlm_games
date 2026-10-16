@@ -26,6 +26,7 @@ import {
     TINY_MS,
     TINY_RADIUS,
 } from './items.ts'
+import type { Vec } from './geometry.ts'
 import { pickOne, randomBetween, type Rng } from './rng.ts'
 import { THEMES, type Theme } from './themes.ts'
 
@@ -52,6 +53,21 @@ export const HUNTER_HEAD_START_MS = 3000
  * reads as "time left", and a short fuse keeps a holder chasing.
  */
 export const KILLER_FUSE_MS = 6000
+/** Infection: the infected hunt a bit faster than the clean, so a game never stalls. */
+export const INFECTED_BOOST = 1.1
+/** Infection: someone just infected stands still this long, so it can't spread through a crowd at once. */
+export const INFECTED_FREEZE_MS = 1000
+/** Portals: how close to an end takes you through, and how long they then ignore you. */
+export const PORTAL_RADIUS = 1.1
+export const PORTAL_COOLDOWN_MS = 1000
+export const FIRST_PORTAL_MS = 20_000
+export const PORTAL_INTERVAL_MIN_MS = 25_000
+export const PORTAL_INTERVAL_MAX_MS = 40_000
+export const PORTAL_LIFETIME_MS = 12_000
+/** A pair's two ends are at least this share of the arena's width apart. */
+export const PORTAL_SPREAD = 0.4
+/** Tries at a far enough pair before giving up until the next one is due. */
+const PORTAL_ATTEMPTS = 12
 /** A boost pad fires you at this speed, past the usual top speed, with no steering for LAUNCH_MS. */
 export const LAUNCH_SPEED = 24
 export const LAUNCH_MS = 350
@@ -75,8 +91,9 @@ const EJECT_ANGLES = 24
 /**
  * `survival`: pass the potato before it blows. `king`: hold it as long as you can.
  * `killer` (Killer Potato): one AI hunter holds it all game and its touch knocks you out.
+ * `infection`: no potato; patient zero's touch infects, and the infected hunt with them.
  */
-export type GameMode = 'survival' | 'king' | 'killer'
+export type GameMode = 'survival' | 'king' | 'killer' | 'infection'
 
 export interface Input {
     dx: number
@@ -108,6 +125,18 @@ export interface SimPlayer {
     padCooldownMs: number
     /** King of the Potato: a fresh king can't be robbed until this runs out. */
     safeMs: number
+    /** Infection: when they caught it; null while clean. */
+    infectedAtMs: number | null
+    /** Portals ignore you until this runs out. */
+    portalCooldownMs: number
+}
+
+/** Two linked ends: step into one, come out of the other. */
+export interface Portal {
+    id: number
+    a: Vec
+    b: Vec
+    expiresAtMs: number
 }
 
 export interface GameState {
@@ -127,6 +156,11 @@ export interface GameState {
     /** When the next item drops; never, to play without items. */
     nextItemAtMs: number
     nextItemId: number
+    /** At most one pair open at a time. */
+    portals: Portal[]
+    /** When the next pair opens; never, to play without portals. */
+    nextPortalAtMs: number
+    nextPortalId: number
     ended: boolean
 }
 
@@ -136,6 +170,9 @@ export type GameEvent =
     | { kind: 'newPotato'; playerId: number }
     /** `targetId`: who a swap traded places with; absent when nobody could be swapped. */
     | { kind: 'pickup'; playerId: number; item: ItemKind; effect: Effect; targetId?: number }
+    /** Infection: `by` caught `playerId`. */
+    | { kind: 'infected'; playerId: number; by: number }
+    | { kind: 'teleport'; playerId: number; portalId: number }
     /** Survivors, or in King of the Potato the longest holders (ties share). */
     | { kind: 'ended'; survivorIds: number[] }
 
@@ -174,9 +211,17 @@ export function createGame(
             launchMs: 0,
             padCooldownMs: 0,
             safeMs: 0,
+            infectedAtMs: null,
+            portalCooldownMs: 0,
         }
     })
-    const holderId = mode === 'killer' ? hunterId : pickOne(rng, playerIds)
+    // Infection has no potato: patient zero carries it instead, after the same head start as a hunter.
+    if (mode === 'infection') {
+        const patientZero = pickOne(rng, players)
+        patientZero.infectedAtMs = 0
+        patientZero.frozenMs = HUNTER_HEAD_START_MS
+    }
+    const holderId = mode === 'killer' ? hunterId : mode === 'infection' ? null : pickOne(rng, playerIds)
     const firstKing = players.find(p => p.id === holderId)
     if (mode === 'king' && firstKing) firstKing.safeMs = STEAL_SAFETY_MS
     if (mode === 'killer' && firstKing) firstKing.frozenMs = HUNTER_HEAD_START_MS
@@ -188,12 +233,15 @@ export function createGame(
         elapsedMs: 0,
         players,
         holderId,
-        fuseMs: mode === 'killer' ? KILLER_FUSE_MS : newFuse(rng),
+        fuseMs: mode === 'killer' ? KILLER_FUSE_MS : mode === 'infection' ? 0 : newFuse(rng),
         hunterId: mode === 'killer' ? hunterId : null,
         respawnMs: 0,
         items: [],
         nextItemAtMs: FIRST_ITEM_MS,
         nextItemId: 1,
+        portals: [],
+        nextPortalAtMs: FIRST_PORTAL_MS,
+        nextPortalId: 1,
         ended: false,
     }
 }
@@ -214,16 +262,20 @@ export function step(game: GameState, inputs: ReadonlyMap<number, Input>, dtMs: 
 
         tickEffects(game, slice)
         spawnItems(game, rng)
+        spawnPortals(game, rng)
         launchFromPads(game)
         pullTowardMagnets(game, slice)
         move(game, inputs, slice, theme)
         collide(game, theme)
+        travelThroughPortals(game, events)
         pickUpItems(game, rng, events)
         if (game.mode === 'king') {
             stealPotato(game, events)
             countReign(game, slice, rng, events)
         } else if (game.mode === 'killer') {
             catchPrey(game, slice, events)
+        } else if (game.mode === 'infection') {
+            spread(game, slice, events)
         } else {
             passPotato(game, events)
             burnFuse(game, slice, rng, events)
@@ -324,7 +376,14 @@ function move(game: GameState, inputs: ReadonlyMap<number, Input>, sliceMs: numb
             continue
         }
 
-        const holding = p.id === game.holderId ? (game.mode === 'king' ? KING_SLOWDOWN : HOLDER_BOOST) : 1
+        const holding =
+            p.id === game.holderId
+                ? game.mode === 'king'
+                    ? KING_SLOWDOWN
+                    : HOLDER_BOOST
+                : p.infectedAtMs !== null
+                  ? INFECTED_BOOST
+                  : 1
         const boost = holding * (p.speedMs > 0 ? SPEED_BOOST : 1)
         const input = normalise(inputs.get(p.id))
         const direction = p.reverseMs > 0 ? -1 : 1
@@ -559,6 +618,7 @@ function tickEffects(game: GameState, sliceMs: number) {
         p.launchMs = tick(p.launchMs)
         p.padCooldownMs = tick(p.padCooldownMs)
         p.safeMs = tick(p.safeMs)
+        p.portalCooldownMs = tick(p.portalCooldownMs)
     }
 }
 
@@ -580,6 +640,80 @@ function spawnItems(game: GameState, rng: Rng) {
         y: spot.y,
         expiresAtMs: game.elapsedMs + ITEM_LIFETIME_MS,
     })
+}
+
+/** Closes a pair that ran out, and opens the next one when it's due: two far-apart spots of open floor. */
+function spawnPortals(game: GameState, rng: Rng) {
+    game.portals = game.portals.filter(portal => portal.expiresAtMs > game.elapsedMs)
+    if (game.elapsedMs < game.nextPortalAtMs) return
+
+    game.nextPortalAtMs =
+        game.elapsedMs + Math.round(randomBetween(rng, PORTAL_INTERVAL_MIN_MS, PORTAL_INTERVAL_MAX_MS))
+    if (game.portals.length > 0) return
+
+    const players = alivePlayers(game)
+    for (let attempt = 0; attempt < PORTAL_ATTEMPTS; attempt++) {
+        const a = findItemSpot(game.arena, players, game.items, rng)
+        const b = a && findItemSpot(game.arena, players, [...game.items, a], rng)
+        if (!a || !b || Math.hypot(a.x - b.x, a.y - b.y) < game.arena.width * PORTAL_SPREAD) continue
+
+        game.portals.push({ id: game.nextPortalId++, a, b, expiresAtMs: game.elapsedMs + PORTAL_LIFETIME_MS })
+        return
+    }
+}
+
+/** Stepping into one end puts you at the other, same speed, potato and all. */
+function travelThroughPortals(game: GameState, events: GameEvent[]) {
+    for (const portal of game.portals) {
+        for (const p of alivePlayers(game)) {
+            if (p.frozenMs > 0 || p.portalCooldownMs > 0) continue
+
+            const atA = Math.hypot(p.x - portal.a.x, p.y - portal.a.y) <= PORTAL_RADIUS
+            const atB = !atA && Math.hypot(p.x - portal.b.x, p.y - portal.b.y) <= PORTAL_RADIUS
+            if (!atA && !atB) continue
+
+            const exit = atA ? portal.b : portal.a
+            p.x = exit.x
+            p.y = exit.y
+            p.portalCooldownMs = PORTAL_COOLDOWN_MS
+            events.push({ kind: 'teleport', playerId: p.id, portalId: portal.id })
+        }
+    }
+}
+
+/**
+ * Infection: every infected player who can move infects the clean, unshielded players
+ * they touch; those stand still a moment. Time spent clean is each player's `holdMs`.
+ */
+function spread(game: GameState, sliceMs: number, events: GameEvent[]) {
+    const alive = alivePlayers(game)
+    for (const p of alive) if (p.infectedAtMs === null) p.holdMs += sliceMs
+
+    const carriers = alive.filter(p => p.infectedAtMs !== null && p.frozenMs <= 0)
+    for (const carrier of carriers) {
+        for (const prey of alive) {
+            if (prey.infectedAtMs !== null || prey.shieldMs > 0 || !touching(prey, carrier)) continue
+
+            prey.infectedAtMs = game.elapsedMs
+            freeze(prey, INFECTED_FREEZE_MS)
+            carrier.passes++
+            events.push({ kind: 'infected', playerId: prey.id, by: carrier.id })
+        }
+    }
+}
+
+/**
+ * Infection ends at the timer, when nobody infected is left (they all left), or when
+ * one clean player is left (none, for a game that started with a single clean player).
+ */
+function infectionOver(game: GameState): boolean {
+    if (game.elapsedMs >= game.durationMs) return true
+    const alive = alivePlayers(game)
+    if (!alive.some(p => p.infectedAtMs !== null)) return true
+    const clean = alive.filter(p => p.infectedAtMs === null).length
+    const startedClean = game.players.length - 1
+
+    return clean <= (startedClean > 1 ? 1 : 0)
 }
 
 /** Whoever touches an item takes it, and its effect starts at once (a repeat restarts the timer). */
@@ -648,6 +782,8 @@ function checkEnd(game: GameState, events: GameEvent[]) {
     const alive = alivePlayers(game)
     if (game.mode === 'killer') {
         if (!killerOver(game)) return
+    } else if (game.mode === 'infection') {
+        if (!infectionOver(game)) return
     } else if (alive.length > 1 && game.elapsedMs < game.durationMs) return
 
     game.ended = true
@@ -684,12 +820,19 @@ function catchPrey(game: GameState, sliceMs: number, events: GameEvent[]) {
 }
 
 /**
- * Who won: everyone still standing, in Killer Potato everyone but the hunter, or in
- * King of the Potato whoever held it longest.
+ * Who won: everyone still standing, in Killer Potato everyone but the hunter, in
+ * Infection the clean (or the last caught), or in King of the Potato whoever held it longest.
  */
 export function winnerIds(game: GameState): number[] {
     const alive = alivePlayers(game)
     if (game.mode === 'killer') return alive.filter(p => p.id !== game.hunterId).map(p => p.id)
+    if (game.mode === 'infection') {
+        const clean = alive.filter(p => p.infectedAtMs === null)
+        if (clean.length > 0) return clean.map(p => p.id)
+        // Everyone caught: the last ones caught held out longest.
+        const last = Math.max(...alive.map(p => p.infectedAtMs ?? 0))
+        return alive.filter(p => p.infectedAtMs === last && last > 0).map(p => p.id)
+    }
     if (game.mode !== 'king') return alive.map(p => p.id)
 
     const best = Math.max(0, ...alive.map(p => p.holdMs))

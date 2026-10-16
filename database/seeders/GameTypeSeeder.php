@@ -147,6 +147,22 @@ class GameTypeSeeder extends Seeder
         );
 
         GameMode::updateOrCreate(
+            ['game_type_id' => $hotPotato->id, 'slug' => 'infection'],
+            [
+                'name' => 'Infection',
+                'description' => 'Games you stayed clean in, then how often.',
+                'is_active' => true,
+                'sort_order' => 2,
+                'leaderboard_columns' => [
+                    ['key' => 'survivals', 'label' => 'Stayed clean', 'sortable' => true],
+                    ['key' => 'survival_pct', 'label' => 'Clean %', 'sortable' => true],
+                    ['key' => 'games_played', 'label' => 'Games', 'sortable' => true],
+                    ['key' => 'infections', 'label' => 'Infected others', 'sortable' => true],
+                ],
+            ]
+        );
+
+        GameMode::updateOrCreate(
             ['game_type_id' => $pingPong->id, 'slug' => 'doubles-elo-ranking'],
             [
                 'name' => '2v2 ELO Ranking',

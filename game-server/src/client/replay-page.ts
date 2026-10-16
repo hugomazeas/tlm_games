@@ -150,7 +150,7 @@ function hotPotatoReplay(config: Config) {
                 case 'snapshot':
                     renderer?.pushSnapshot(message)
                     this.remainingMs = Math.max(0, (this.meta?.durationMs ?? 0) - message.elapsedMs)
-                    this.aliveCount = message.players.filter(p => !p.out).length
+                    this.aliveCount = message.players.filter(p => !p.out && !p.infected).length
                     return
                 case 'boom':
                     renderer?.boom(message.playerId)
@@ -176,6 +176,12 @@ function hotPotatoReplay(config: Config) {
                 }
                 case 'results':
                     this.results = describeResults(message.results, this)
+                    return
+                case 'infected':
+                    this.showBanner(STRINGS.gotInfected(this.nameOf(message.playerId)))
+                    return
+                case 'teleport':
+                    renderer?.portalFlash(message.portalId)
                     return
                 // The countdown set the arena up front; passes show on the canvas.
                 case 'countdown':
@@ -224,7 +230,7 @@ function hotPotatoReplay(config: Config) {
             this.results = state.results ? describeResults(state.results.results, this) : null
             this.remainingMs = Math.max(0, (this.meta?.durationMs ?? 0) - (state.snapshot?.elapsedMs ?? 0))
             this.aliveCount = state.snapshot
-                ? state.snapshot.players.filter(p => !p.out).length
+                ? state.snapshot.players.filter(p => !p.out && !p.infected).length
                 : (player?.countdown?.playerIds.length ?? 0)
         },
 

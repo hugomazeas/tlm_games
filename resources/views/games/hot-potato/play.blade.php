@@ -241,7 +241,8 @@
                                             class="bg-emerald-500 hover:bg-emerald-400 disabled:bg-white/10 disabled:text-white/30 text-white font-bold rounded-lg px-6 py-2 transition">
                                         Start
                                     </button>
-                                    <p x-show="!canStart && mode !== 'killer'" class="text-xs text-white/40 mt-1">Needs at least 3 players. Alone? Add 2 AIs or more.</p>
+                                    <p x-show="!canStart && mode !== 'killer' && mode !== 'infection'" class="text-xs text-white/40 mt-1">Needs at least 3 players. Alone? Add 2 AIs or more.</p>
+                                    <p x-show="mode === 'infection'" class="text-xs text-white/40 mt-1">People only: 3 or more. Added AIs sit out, and the arena is extra big.</p>
                                     <p x-show="mode === 'killer'" class="text-xs text-white/40 mt-1">You against the AI hunter: one person is enough, added AIs sit out.</p>
                                 </div>
                             </div>
@@ -255,7 +256,7 @@
                     <div class="flex items-center justify-between mb-2 text-sm">
                         <span class="font-mono text-lg font-bold" x-text="timerText"></span>
                         <span class="flex items-center gap-3">
-                            <span x-show="gameMode !== 'king'" class="text-white/60"><span x-text="aliveCount"></span> left</span>
+                            <span x-show="gameMode !== 'king'" class="text-white/60"><span x-text="aliveCount"></span><span x-text="gameMode === 'infection' ? ' clean' : ' left'"></span></span>
                             <span x-show="watcherCount > 0" class="text-white/60" :title="watcherCount + ' watching'">👀 <span x-text="watcherCount"></span></span>
                             <button @click="toggleFullscreen()" data-fullscreen
                                     :title="fullscreen ? 'Exit full screen (F)' : 'Full screen (F)'"
@@ -304,7 +305,7 @@
                                     <h2 class="text-xl font-extrabold mb-3 text-center" x-text="results.headline"></h2>
                                     <table class="w-full text-sm">
                                         <thead class="text-white/40 text-xs">
-                                            <tr><th class="text-left py-1"></th><th class="text-left">Player</th><th class="text-right">Held</th><th class="text-right" x-text="results.mode === 'king' ? 'Steals' : results.mode === 'killer' ? 'Catches' : 'Passes'"></th></tr>
+                                            <tr><th class="text-left py-1"></th><th class="text-left">Player</th><th class="text-right" x-text="results.mode === 'infection' ? 'Clean' : 'Held'"></th><th class="text-right" x-text="results.mode === 'king' ? 'Steals' : results.mode === 'killer' ? 'Catches' : results.mode === 'infection' ? 'Infected' : 'Passes'"></th></tr>
                                         </thead>
                                         <tbody>
                                             <template x-for="row in results.rows" :key="row.id">

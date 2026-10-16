@@ -8,6 +8,7 @@ const snapshot = (elapsedMs: number): ServerMessage & { type: 'snapshot' } => ({
     elapsedMs,
     players: [],
     items: [],
+    portals: [],
     holderId: 1,
     shake: 0,
 })

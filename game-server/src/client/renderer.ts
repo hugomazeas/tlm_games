@@ -1,7 +1,7 @@
 import { cosmeticValue, type Look } from '../cosmetics.ts'
-import type { SnapshotItem, SnapshotPlayer } from '../protocol.ts'
+import type { SnapshotItem, SnapshotPlayer, SnapshotPortal } from '../protocol.ts'
 import { type Arena, AVATAR_RADIUS, PAD_RADIUS } from '../sim/arena.ts'
-import { FREEZE_MS, type GameMode, STEAL_SAFETY_MS } from '../sim/game.ts'
+import { FREEZE_MS, type GameMode, PORTAL_RADIUS, STEAL_SAFETY_MS } from '../sim/game.ts'
 import { obstacleAt } from '../sim/geometry.ts'
 import { FREEZE_RADIUS, ITEM_RADIUS, type ItemKind, MAGNET_RADIUS, SHIELD_MS, TINY_RADIUS } from '../sim/items.ts'
 import { THEMES } from '../sim/themes.ts'
@@ -23,6 +23,10 @@ const EMOTE_MS = 1800
 /** A freeze bomb or swap flashes a ring for this long. */
 const BURST_MS = 600
 const PAD_COLOUR = '#22d3ee'
+const PORTAL_COLOUR = '#c084fc'
+/** A portal pair blinks for its last few seconds before it closes. */
+const PORTAL_BLINK_MS = 3000
+const INFECTED_COLOUR = '#84cc16'
 /** Full screen: room kept under the arena for the controls hint. */
 const FULLSCREEN_MARGIN_PX = 40
 
@@ -56,6 +60,7 @@ interface Snapshot {
     elapsedMs: number
     players: SnapshotPlayer[]
     items: SnapshotItem[]
+    portals: SnapshotPortal[]
     holderId: number | null
     shake: number
 }
@@ -171,6 +176,20 @@ export class Renderer {
         if (this.emotes.length > 40) this.emotes.shift()
     }
 
+    /** Someone went through a portal: both ends flash. */
+    portalFlash(portalId: number) {
+        const portal = this.snapshots.at(-1)?.portals.find(candidate => candidate.id === portalId)
+        if (!portal) return
+
+        const at = performance.now()
+        for (const [x, y] of [
+            [portal.ax, portal.ay],
+            [portal.bx, portal.by],
+        ] as const) {
+            this.bursts.push({ x, y, radius: 2.2, colour: PORTAL_COLOUR, at })
+        }
+    }
+
     /** A freeze bomb going off around a player, or a swap landing. */
     burst(playerId: number, kind: 'freeze' | 'swap') {
         const p = this.snapshots.at(-1)?.players.find(candidate => candidate.id === playerId)
@@ -226,6 +245,7 @@ export class Renderer {
         this.drawPads(context, arena, time)
         this.drawObstacles(context, arena, state.elapsedMs, theme.palette.obstacle, theme.palette.obstacleEdge)
         this.drawSplats(context, time)
+        this.drawPortals(context, state.portals, time)
         this.drawItems(context, state.items, time)
 
         // Ghosts underneath, the living on top, the holder last.
@@ -425,11 +445,29 @@ export class Renderer {
             context.shadowBlur = (10 + 20 * pulse) * devicePixelRatio
         }
 
+        if (active && p.infected) {
+            context.shadowColor = INFECTED_COLOUR
+            context.shadowBlur = 16 * devicePixelRatio
+        }
         context.fillStyle = playerColour(p.id, look)
         context.beginPath()
         context.arc(p.x, p.y, r, 0, Math.PI * 2)
         context.fill()
         context.shadowBlur = 0
+        // Infection: a green ring and a germ, so the clean know whom to run from.
+        if (active && p.infected) {
+            context.save()
+            context.strokeStyle = INFECTED_COLOUR
+            context.lineWidth = 0.25
+            context.beginPath()
+            context.arc(p.x, p.y, r + 0.2, 0, Math.PI * 2)
+            context.stroke()
+            context.font = `${0.8}px sans-serif`
+            context.textAlign = 'center'
+            context.textBaseline = 'middle'
+            context.fillText('🦠', p.x + r * 0.8, p.y - r * 0.8)
+            context.restore()
+        }
 
         if (isMe) {
             context.strokeStyle = '#ffffff'
@@ -550,6 +588,37 @@ export class Renderer {
         }
 
         context.restore()
+    }
+
+    /** Each open pair: two rings in one colour, spinning, blinking before they close. */
+    private drawPortals(context: CanvasRenderingContext2D, portals: SnapshotPortal[], time: number) {
+        for (const portal of portals) {
+            const closing = portal.expiresInMs < PORTAL_BLINK_MS
+            if (closing && !this.options.reducedMotion && Math.floor(time / 150) % 2 === 0) continue
+
+            const spin = this.options.reducedMotion ? 0 : time / 300
+            for (const [x, y, turn] of [
+                [portal.ax, portal.ay, spin],
+                [portal.bx, portal.by, -spin],
+            ] as const) {
+                context.save()
+                context.shadowColor = PORTAL_COLOUR
+                context.shadowBlur = 14 * devicePixelRatio
+                context.fillStyle = 'rgba(88, 28, 135, 0.55)'
+                context.beginPath()
+                context.arc(x, y, PORTAL_RADIUS, 0, Math.PI * 2)
+                context.fill()
+                context.strokeStyle = PORTAL_COLOUR
+                context.lineWidth = 0.18
+                for (let arm = 0; arm < 3; arm++) {
+                    const start = turn + (arm * Math.PI * 2) / 3
+                    context.beginPath()
+                    context.arc(x, y, PORTAL_RADIUS * 0.75, start, start + Math.PI / 2)
+                    context.stroke()
+                }
+                context.restore()
+            }
+        }
     }
 
     private drawItems(context: CanvasRenderingContext2D, items: SnapshotItem[], time: number) {
@@ -673,6 +742,7 @@ export class Renderer {
                 holderId: null,
                 shake: 0,
                 items: [],
+                portals: [],
                 players: this.spawnOrder.map((id, i) => {
                     const spawn = this.arena?.spawns[i] ?? { x: 0, y: 0 }
                     return {
@@ -691,6 +761,7 @@ export class Renderer {
                         launchMs: 0,
                         holdMs: 0,
                         safeMs: 0,
+                        infected: false,
                     }
                 }),
             }

@@ -265,17 +265,26 @@ export class SessionManager {
                 if (session.phase !== 'lobby') return fail('NOT_IN_LOBBY')
                 const present = session.members.filter(m => m.awayUntil === null)
                 // Killer Potato is people against the AI hunter: one person is enough, and AIs sit out.
+                // Infection is people only (no AI was trained for it): three of them, AIs sit out.
                 const killer = message.mode === 'killer'
+                const infection = message.mode === 'infection'
                 if (killer && !this.hooks.botPolicy) return fail('NO_BOTS')
                 const people = present.filter(m => !m.player.bot)
-                if (killer ? people.length === 0 : present.length < MIN_PLAYERS) return fail('NOT_ENOUGH_PLAYERS')
+                const enough = killer
+                    ? people.length > 0
+                    : infection
+                      ? people.length >= MIN_PLAYERS
+                      : present.length >= MIN_PLAYERS
+                if (!enough) return fail('NOT_ENOUGH_PLAYERS')
 
                 session.settings = { durationMin: message.durationMin, theme: message.theme, mode: message.mode }
                 this.startCountdown(
                     session,
                     killer
                         ? [...people.map(m => m.player.id), this.hunterOf(session).id]
-                        : present.map(m => m.player.id)
+                        : infection
+                          ? people.map(m => m.player.id)
+                          : present.map(m => m.player.id)
                 )
                 return
             }
@@ -442,7 +451,7 @@ export class SessionManager {
         const seed = this.hooks.nextSeed()
         const themeRng = createRng(seed ^ 0x5bd1e995)
         const theme = session.settings.theme === 'random' ? pickOne(themeRng, THEME_IDS) : session.settings.theme
-        const arena = generateArena(seed, theme, playerIds.length)
+        const arena = generateArena(seed, theme, playerIds.length, { big: session.settings.mode === 'infection' })
 
         session.game = createGame(
             arena,
@@ -531,6 +540,14 @@ export class SessionManager {
                 this.broadcast(session.officeId, { type: 'pass', from: event.from, to: event.to })
             } else if (event.kind === 'boom') {
                 this.broadcast(session.officeId, { type: 'boom', playerId: event.playerId })
+            } else if (event.kind === 'infected') {
+                this.broadcast(session.officeId, { type: 'infected', playerId: event.playerId, by: event.by })
+            } else if (event.kind === 'teleport') {
+                this.broadcast(session.officeId, {
+                    type: 'teleport',
+                    playerId: event.playerId,
+                    portalId: event.portalId,
+                })
             } else if (event.kind === 'pickup') {
                 this.broadcast(session.officeId, {
                     type: 'pickup',
@@ -555,10 +572,16 @@ export class SessionManager {
         const results: Results = {
             mode: game.mode,
             survivorIds: winnerIds(game),
-            eliminated: game.players
-                .filter(p => p.out && p.eliminatedAtMs !== null)
-                .sort((a, b) => (b.eliminatedAtMs ?? 0) - (a.eliminatedAtMs ?? 0))
-                .map(p => ({ id: p.id, atMs: p.eliminatedAtMs ?? 0 })),
+            eliminated:
+                game.mode === 'infection'
+                    ? caughtInOrder(game, players).map(p => ({
+                          id: p.id,
+                          atMs: p.infectedAtMs ?? p.eliminatedAtMs ?? 0,
+                      }))
+                    : game.players
+                          .filter(p => p.out && p.eliminatedAtMs !== null)
+                          .sort((a, b) => (b.eliminatedAtMs ?? 0) - (a.eliminatedAtMs ?? 0))
+                          .map(p => ({ id: p.id, atMs: p.eliminatedAtMs ?? 0 })),
             stats: game.players.map(p => ({ id: p.id, holdMs: p.holdMs, passes: p.passes })),
         }
 
@@ -663,6 +686,7 @@ export class SessionManager {
                 launchMs: p.launchMs,
                 holdMs: p.holdMs,
                 safeMs: p.safeMs,
+                infected: p.infectedAtMs !== null,
             })),
             items: game.items.map(item => ({
                 id: item.id,
@@ -670,6 +694,14 @@ export class SessionManager {
                 x: round(item.x),
                 y: round(item.y),
                 expiresInMs: Math.max(0, item.expiresAtMs - game.elapsedMs),
+            })),
+            portals: game.portals.map(portal => ({
+                id: portal.id,
+                ax: round(portal.a.x),
+                ay: round(portal.a.y),
+                bx: round(portal.b.x),
+                by: round(portal.b.y),
+                expiresInMs: Math.max(0, portal.expiresAtMs - game.elapsedMs),
             })),
             holderId: game.holderId,
             shake: round(shakeLevel(game)),
@@ -740,6 +772,7 @@ function view(session: Session): SessionView {
 function rankPlayers(game: GameState): GameResult['players'] {
     if (game.mode === 'king') return rankByReign(game)
     if (game.mode === 'killer') return rankAgainstHunter(game)
+    if (game.mode === 'infection') return rankInfection(game)
 
     const outlasting = (atMs: number | null) =>
         game.players.filter(other => !other.out || (atMs !== null && (other.eliminatedAtMs ?? 0) > atMs)).length
@@ -779,6 +812,39 @@ function rankAgainstHunter(game: GameState): GameResult['players'] {
         holdMs: p.holdMs,
         passes: p.passes,
     }))
+}
+
+/**
+ * Infection: the clean (the winners) share first; then the infected, the later caught the
+ * better, patient zero last; whoever left ranks after everyone who stayed. `survived`: clean.
+ */
+function rankInfection(game: GameState): GameResult['players'] {
+    const winners = new Set(winnerIds(game))
+    // Later is better: a leaver counts as caught before the game began.
+    const lasted = (p: GameState['players'][number]) =>
+        winners.has(p.id)
+            ? Number.POSITIVE_INFINITY
+            : p.out
+              ? -1 - (game.durationMs - (p.eliminatedAtMs ?? 0))
+              : (p.infectedAtMs ?? 0)
+
+    return game.players.map(p => ({
+        playerId: p.id,
+        position: game.players.filter(other => lasted(other) > lasted(p)).length + 1,
+        survived: winners.has(p.id),
+        eliminatedAtMs: winners.has(p.id) ? null : (p.infectedAtMs ?? p.eliminatedAtMs),
+        holdMs: p.holdMs,
+        passes: p.passes,
+    }))
+}
+
+/** Infection's results card: everyone who didn't win, latest caught first (leavers last). */
+function caughtInOrder(game: GameState, ranked: GameResult['players']): GameState['players'] {
+    const position = new Map(ranked.map(r => [r.playerId, r.position]))
+    const winners = new Set(winnerIds(game))
+    return game.players
+        .filter(p => !winners.has(p.id))
+        .sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0))
 }
 
 /**

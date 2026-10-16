@@ -169,7 +169,8 @@ that is played live, in real time, rather than scored afterwards.
 - `game-server/src/sim/` is pure (seeded RNG, no clock, no I/O) and shared by
   server and browser. Arena themes are data in `sim/themes.ts`: furniture,
   L/T/U walls (blocks sharing a `group`), movers and physics. Boost pads are
-  generated per arena; items and their effects live in `sim/items.ts` + `sim/game.ts`.
+  generated per arena; items and their effects live in `sim/items.ts` + `sim/game.ts`. A theme can
+  set a `centerpiece` (the boardroom's table), placed in the middle before anything else.
 - **Open tabs pick up a deploy on their own.** The bundle is stamped with a
   build id (`client/build.ts`); `welcome` carries the server's, and a tab on an
   older one reloads once it isn't mid-game. `client.js` is `no-cache` + ETag.
@@ -182,6 +183,14 @@ that is played live, in real time, rather than scored afterwards.
   `NO_BOTS`). The policy only knows the rules it trained on: changing the sim
   (items, physics, arenas) or the observation means retraining. How to train and
   ship a new policy: `game-server/src/ai/README.md`.
+- **Infection** (`mode: 'infection'`): people only (3+, added AIs sit out: no policy was
+  trained for it). A random patient zero (`infectedAtMs`) starts frozen; a touch infects, the
+  infected move 10% faster, nobody is knocked out. Ends at the timer, at one clean player left,
+  or with no infected left; the clean win. Always the big 80 × 50 arena (`generateArena(…, { big })`).
+  Results: `passes` = people infected, `holdMs` = time clean; its own leaderboard (`InfectionProvider`).
+- **Portals** (every mode): a linked pair opens on open floor every 25–40 s (first at 20 s),
+  lasts 12 s; stepping in one end puts you out of the other. AIs don't observe them (the
+  observation's item list is fixed) until the policy is retrained.
 - **Killer Potato** (`mode: 'killer'`): the session adds its own AI hunter seat
   (`HUNTER_NAME`, not a lobby member, `hunter: true` in the view during its games)
   that holds the potato all game, has no fuse and knocks out whoever it touches;
