@@ -91,6 +91,8 @@ export type ClientMessage =
     | { type: 'join' }
     | { type: 'leave' }
     | { type: 'start'; durationMin: number; theme: ThemeId | 'random'; mode: GameMode }
+    /** Host, lobby only: the next game's picks, shown to the lobby before it starts. */
+    | { type: 'settings'; durationMin: number; theme: ThemeId | 'random'; mode: GameMode }
     | { type: 'input'; dx: number; dy: number }
     | { type: 'close' }
     | { type: 'emote'; emote: Emote }
@@ -196,12 +198,13 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
                 return null
             return { type: 'removeBot', playerId: message.playerId }
         case 'start':
+        case 'settings':
             if (!(DURATIONS_MIN as readonly unknown[]).includes(message.durationMin)) return null
             if (message.theme !== 'random' && !isThemeId(message.theme)) return null
             // A page loaded before modes existed sends none: that's the classic game.
             if (message.mode !== undefined && !GAME_MODES.includes(message.mode as GameMode)) return null
             return {
-                type: 'start',
+                type: message.type,
                 durationMin: message.durationMin as number,
                 theme: message.theme,
                 mode: (message.mode as GameMode | undefined) ?? 'survival',

@@ -518,6 +518,43 @@ describe('looks', () => {
     })
 })
 
+describe('the host’s picks', () => {
+    const picks = { durationMin: 4, theme: 'gym', mode: 'king' } as const
+
+    test('reach the lobby as they change, and survive AIs, joins and leaves', () => {
+        manager = new SessionManager({
+            build: 'build-1',
+            now: () => now,
+            rng: createRng(42),
+            nextSeed: () => 1234,
+            onOpened: () => {},
+            onResults: () => {},
+            botPolicy: policy,
+        })
+        const a = connect(alice)
+        const b = connect(bob)
+        send(a, { type: 'open' })
+        send(a, { type: 'settings', ...picks })
+        expect(last(b, 'office')?.session?.settings).toEqual(picks)
+
+        send(a, { type: 'addBot' })
+        send(b, { type: 'join' })
+        send(b, { type: 'leave' })
+        expect(last(a, 'office')?.session?.settings).toEqual(picks)
+    })
+
+    test('are the host’s alone, and only in the lobby', () => {
+        const { a, b } = lobbyOfThree()
+        send(b, { type: 'settings', ...picks })
+        expect(errors(b)).toEqual(['NOT_HOST'])
+
+        send(a, { type: 'start', durationMin: 1, theme: 'random' })
+        send(a, { type: 'settings', ...picks })
+        expect(errors(a)).toEqual(['NOT_IN_LOBBY'])
+        expect(last(a, 'office')?.session?.settings.mode).toBe('survival')
+    })
+})
+
 describe('watchers', () => {
     const watchers = (conn: FakeConn) => last(conn, 'watchers')
 

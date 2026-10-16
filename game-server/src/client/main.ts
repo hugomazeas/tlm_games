@@ -118,6 +118,7 @@ function hotPotatoApp(config: Config) {
             const alpine = this as unknown as Alpine
             alpine.$watch('officeId', () => this.reconnect())
             alpine.$watch('playerId', () => this.reconnect())
+            for (const pick of ['mode', 'duration', 'theme']) alpine.$watch(pick, () => this.shareSettings())
             window.addEventListener('keydown', event => this.onKey(event, true))
             window.addEventListener('keyup', event => this.onKey(event, false))
             document.addEventListener('fullscreenchange', () => {
@@ -283,6 +284,11 @@ function hotPotatoApp(config: Config) {
         close() {
             this.send({ type: 'close' })
         },
+        /** The host changed a pick: tell the lobby. */
+        shareSettings() {
+            if (!this.isHost || this.phase !== 'lobby') return
+            this.send({ type: 'settings', durationMin: Number(this.duration), theme: this.theme, mode: this.mode })
+        },
         addBot() {
             if (this.canAddBot) this.send({ type: 'addBot' })
         },
@@ -332,9 +338,12 @@ function hotPotatoApp(config: Config) {
                         this.results = null
                         renderer?.clear()
                     }
-                    if (message.session) {
+                    // The host's own picks are the truth in the lobby (an echo could undo a newer click);
+                    // everyone else follows them.
+                    if (message.session && !(this.isHost && message.session.phase === 'lobby')) {
                         this.duration = message.session.settings.durationMin
                         this.mode = message.session.settings.mode
+                        this.theme = message.session.settings.theme
                     }
                     this.reloadIfStale()
                     return

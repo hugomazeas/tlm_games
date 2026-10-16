@@ -289,6 +289,16 @@ export class SessionManager {
                 return
             }
 
+            // The host's picks, as they change: the lobby sees what's coming, and nothing resets them.
+            case 'settings': {
+                if (!session) return fail('NO_SESSION')
+                if (session.hostId !== player.id) return fail('NOT_HOST')
+                if (session.phase !== 'lobby') return fail('NOT_IN_LOBBY')
+                session.settings = { durationMin: message.durationMin, theme: message.theme, mode: message.mode }
+                this.broadcastOffice(session)
+                return
+            }
+
             case 'input': {
                 if (session?.phase === 'playing' && session.game?.players.some(p => p.id === player.id && !p.out)) {
                     session.inputs.set(player.id, { dx: message.dx, dy: message.dy })
