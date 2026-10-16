@@ -6,6 +6,7 @@ use App\Models\Office;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 class HotPotatoGame extends Model
 {
@@ -20,6 +21,13 @@ class HotPotatoGame extends Model
 
     public const MODES = [self::MODE_SURVIVAL, self::MODE_KING, self::MODE_KILLER];
 
+    /** As the game names them (game-server/src/client/strings.ts). */
+    public const MODE_LABELS = [
+        self::MODE_SURVIVAL => '🥔 Hot potato',
+        self::MODE_KING => '👑 King of the Potato',
+        self::MODE_KILLER => '🔪 Killer Potato',
+    ];
+
     protected $table = 'hot_potato_games';
 
     protected $fillable = [
@@ -30,6 +38,7 @@ class HotPotatoGame extends Model
         'duration_seconds',
         'started_at',
         'ended_at',
+        'replay_path',
     ];
 
     protected function casts(): array
@@ -38,6 +47,28 @@ class HotPotatoGame extends Model
             'started_at' => 'datetime',
             'ended_at' => 'datetime',
         ];
+    }
+
+    /** Where a game's replay is stored on the local disk. */
+    public static function replayPathFor(int $gameId): string
+    {
+        return "hot-potato/replays/{$gameId}.json.gz";
+    }
+
+    public function modeLabel(): string
+    {
+        return self::MODE_LABELS[$this->mode] ?? Str::headline($this->mode);
+    }
+
+    /** "open_space" → "Open Space". */
+    public function arenaLabel(): string
+    {
+        return Str::headline($this->theme);
+    }
+
+    public function hasReplay(): bool
+    {
+        return $this->replay_path !== null;
     }
 
     public function office(): BelongsTo

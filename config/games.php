@@ -31,10 +31,14 @@ return [
     | calls Laravel's /internal/hot-potato endpoints with this shared secret.
     | Both read it from the same .env. Unset closes those endpoints.
     |
+    | Each game's replay is kept for the newest `replays_per_office` games
+    | of its office; older games keep their results, not their replay.
+    |
     */
 
     'hot_potato' => [
         'internal_secret' => env('HOT_POTATO_INTERNAL_SECRET'),
+        'replays_per_office' => (int) env('HOT_POTATO_REPLAYS_PER_OFFICE', 100),
     ],
 
     /*

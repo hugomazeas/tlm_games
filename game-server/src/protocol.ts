@@ -123,6 +123,8 @@ export type ServerMessage =
     | { type: 'emote'; playerId: number; emote: Emote }
     /** `endsInMs`: until the lobby comes back on its own, unless the host brings it back sooner. */
     | { type: 'results'; results: Results; endsInMs: number }
+    /** The game just played was saved with its replay, watchable at /games/hot-potato/replays/{gameId}. */
+    | { type: 'replayReady'; gameId: number }
     | { type: 'error'; code: ErrorCode }
 
 /** Players in a game, AIs included: one player and two AIs is a solo game. Killer Potato needs one person. */

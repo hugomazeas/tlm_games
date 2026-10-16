@@ -4,6 +4,7 @@ import type { GameMode } from '../sim/game.ts'
 import type { ItemKind } from '../sim/items.ts'
 import { THEMES, THEME_IDS, type ThemeId } from '../sim/themes.ts'
 import { BUILD } from './build.ts'
+import { describeResults, type ResultsView } from './describe.ts'
 import { colourFor, ITEM_ICONS, Renderer } from './renderer.ts'
 import { STRINGS } from './strings.ts'
 
@@ -22,12 +23,6 @@ interface Config {
     players: Array<{ id: number; name: string; office_id: number | null; avatar_url: string | null }>
     csrf: string
     urls: { pushConfig: string; pushSubscribe: string; pushUnsubscribe: string }
-}
-
-interface ResultsView {
-    mode: GameMode
-    headline: string
-    rows: Array<{ id: number; name: string; place: string; survived: boolean; holdSeconds: number; passes: number }>
 }
 
 type Alpine = {
@@ -74,6 +69,8 @@ function hotPotatoApp(config: Config) {
         remainingMs: 0,
         aliveCount: 0,
         results: null as ResultsView | null,
+        /** The game on the results screen was saved with its replay: its page. */
+        replayUrl: null as string | null,
         banner: '',
         bannerFlash: false,
         error: '',
@@ -318,6 +315,7 @@ function hotPotatoApp(config: Config) {
                     }
                     this.lastEmotes = {}
                     this.results = null
+                    this.replayUrl = null
                     this.gamePlayerIds = message.playerIds
                     this.remainingMs = message.durationMs
                     this.aliveCount = message.playerIds.length
@@ -393,8 +391,12 @@ function hotPotatoApp(config: Config) {
                     return
                 case 'results':
                     this.remainingMs = 0
-                    this.results = this.describeResults(message.results)
+                    this.results = describeResults(message.results, this)
                     this.startCountdown(message.endsInMs)
+                    return
+                // Saving can outlast the results screen: the link only matters while it shows.
+                case 'replayReady':
+                    if (this.phase === 'results') this.replayUrl = `/games/hot-potato/replays/${message.gameId}`
                     return
                 case 'error':
                     this.error = STRINGS.errors[message.code]
@@ -447,75 +449,6 @@ function hotPotatoApp(config: Config) {
 
         gotItText(): string {
             return this.gameMode === 'king' ? STRINGS.youAreKing : STRINGS.youHaveIt
-        },
-
-        describeResults(results: Results): ResultsView {
-            if (results.mode === 'king') return this.describeReign(results)
-
-            const survivors = results.survivorIds.map(id => this.nameOf(id))
-            const stats = new Map(results.stats.map(s => [s.id, s]))
-            const ordered = [
-                ...results.survivorIds.map(id => ({ id, survived: true })),
-                ...results.eliminated.map(e => ({ id: e.id, survived: false })),
-            ]
-            // Killer Potato: the hunter is neither a survivor nor out; it comes last, or first if it caught everyone.
-            if (results.mode === 'killer') {
-                const hunter = results.stats.find(s => !ordered.some(row => row.id === s.id))
-                if (hunter) {
-                    const row = { id: hunter.id, survived: false }
-                    if (survivors.length > 0) ordered.push(row)
-                    else ordered.unshift(row)
-                }
-            }
-            const place = (row: { id: number; survived: boolean }, index: number) =>
-                row.survived ? '🏆' : results.mode === 'killer' && this.isHunter(row.id) ? '🔪' : `#${index + 1}`
-
-            return {
-                mode: results.mode,
-                headline:
-                    survivors.length > 0
-                        ? STRINGS.survivors(survivors)
-                        : results.mode === 'killer'
-                          ? STRINGS.hunterWins
-                          : STRINGS.nobody,
-                rows: ordered.map((row, index) => ({
-                    id: row.id,
-                    name: this.nameOf(row.id),
-                    place: place(row, index),
-                    survived: row.survived,
-                    holdSeconds: Math.round((stats.get(row.id)?.holdMs ?? 0) / 1000),
-                    passes: stats.get(row.id)?.passes ?? 0,
-                })),
-            }
-        },
-
-        /** King of the Potato: longest reign first, ties sharing a place. */
-        describeReign(results: Results): ResultsView {
-            const kings = new Set(results.survivorIds)
-            const ranked = [...results.stats].sort((a, b) => b.holdMs - a.holdMs)
-            const seconds = (ms: number) => Math.round(ms / 1000)
-            const best = seconds(ranked[0]?.holdMs ?? 0)
-
-            return {
-                mode: results.mode,
-                headline:
-                    kings.size > 0
-                        ? STRINGS.kings(
-                              [...kings].map(id => this.nameOf(id)),
-                              best
-                          )
-                        : STRINGS.noKing,
-                rows: ranked.map(row => ({
-                    id: row.id,
-                    name: this.nameOf(row.id),
-                    place: kings.has(row.id)
-                        ? '👑'
-                        : `#${ranked.filter(other => other.holdMs > row.holdMs).length + 1}`,
-                    survived: kings.has(row.id),
-                    holdSeconds: seconds(row.holdMs),
-                    passes: row.passes,
-                })),
-            }
         },
 
         nameOf(id: number): string {
