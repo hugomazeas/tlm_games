@@ -4,7 +4,9 @@ import type { GameMode } from '../sim/game.ts'
 import type { ItemKind } from '../sim/items.ts'
 import { THEMES, THEME_IDS, type ThemeId } from '../sim/themes.ts'
 import { BUILD } from './build.ts'
-import { describeResults, type ResultsView } from './describe.ts'
+import type { ChatLine } from '../chat.ts'
+import { CHAT_KEEP, CHAT_MAX_BODY } from '../chat.ts'
+import { chatText, describeResults, type ResultsView } from './describe.ts'
 import { COSMETICS, cosmeticValue, DEFAULT_LOOK, type Look } from '../cosmetics.ts'
 import { ITEM_ICONS, playerColour, Renderer } from './renderer.ts'
 import { STRINGS } from './strings.ts'
@@ -72,6 +74,12 @@ function hotPotatoApp(config: Config) {
         results: null as ResultsView | null,
         /** The game on the results screen was saved with its replay: its page. */
         replayUrl: null as string | null,
+        /** Who's on this office's page without a seat. */
+        watchers: { named: [] as PlayerInfo[], guests: 0 },
+        chatLines: [] as ChatLine[],
+        chatDraft: '',
+        chatMaxLength: CHAT_MAX_BODY,
+        chatStrings: STRINGS.chat,
         banner: '',
         bannerFlash: false,
         error: '',
@@ -190,6 +198,10 @@ function hotPotatoApp(config: Config) {
         get modeHint() {
             return STRINGS.modes[this.gameMode].hint
         },
+        get watcherCount() {
+            return this.watchers.named.length + this.watchers.guests
+        },
+
         /** Your look as the lobby has it. */
         get myLook(): Look {
             return this.session?.players.find(p => p.id === this.me?.id)?.look ?? this.me?.look ?? DEFAULT_LOOK
@@ -240,6 +252,8 @@ function hotPotatoApp(config: Config) {
             this.me = null
             this.session = null
             this.results = null
+            this.chatLines = []
+            this.watchers = { named: [], guests: 0 }
             renderer?.clear()
             this.connect()
         },
@@ -408,6 +422,17 @@ function hotPotatoApp(config: Config) {
                     this.results = describeResults(message.results, this)
                     this.startCountdown(message.endsInMs)
                     return
+                case 'watchers':
+                    this.watchers = { named: message.named, guests: message.guests }
+                    return
+                case 'chatHistory':
+                    this.chatLines = message.lines
+                    this.scrollChat()
+                    return
+                case 'chat':
+                    this.chatLines = [...this.chatLines, message.line].slice(-CHAT_KEEP)
+                    this.scrollChat()
+                    return
                 // Saving can outlast the results screen: the link only matters while it shows.
                 case 'replayReady':
                     if (this.phase === 'results') this.replayUrl = `/games/hot-potato/replays/${message.gameId}`
@@ -472,6 +497,34 @@ function hotPotatoApp(config: Config) {
                 this.allPlayers.find(p => p.id === id)?.name ??
                 STRINGS.someone
             )
+        },
+
+        sendChat() {
+            const body = this.chatDraft.trim()
+            if (!this.me || body === '') return
+            this.send({ type: 'chat', body })
+            this.chatDraft = ''
+        },
+
+        chatText(line: ChatLine): string {
+            return line.event ? chatText(line.event) : (line.body ?? '')
+        },
+
+        chatTime(line: ChatLine): string {
+            return new Date(line.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        },
+
+        replayLink(line: ChatLine): string | null {
+            return line.event?.type === 'replay' ? `/games/hot-potato/replays/${line.event.gameId}` : null
+        },
+
+        /** Newest at the bottom: follow it, unless you scrolled up to read. */
+        scrollChat() {
+            const box = (this as unknown as Alpine).$refs.chat
+            const following = !box || box.scrollHeight - box.scrollTop - box.clientHeight < 60
+            ;(this as unknown as Alpine).$nextTick(() => {
+                if (box && following) box.scrollTop = box.scrollHeight
+            })
         },
 
         colourOf(player: PlayerInfo): string {

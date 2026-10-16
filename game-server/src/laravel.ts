@@ -1,3 +1,4 @@
+import type { ChatEvent, ChatLine, UnsavedLine } from './chat.ts'
 import { lookFrom } from './cosmetics.ts'
 import type { PlayerInfo } from './protocol.ts'
 import type { GateSpec } from './race/map/courses.ts'
@@ -75,6 +76,51 @@ export class LaravelClient {
             signal: AbortSignal.timeout(30_000),
         })
         if (!response.ok) throw new Error(`Saving the replay failed with ${response.status}`)
+    }
+
+    /** An office's saved chat, oldest first, as lines without this server's ids. */
+    async loadChat(officeId: number): Promise<Array<Omit<ChatLine, 'id'>>> {
+        const response = await this.request('GET', `/internal/hot-potato/offices/${officeId}/chat`)
+        if (!response.ok) throw new Error(`Loading the chat failed with ${response.status}`)
+
+        const rows = (await response.json()) as Array<{
+            kind: ChatLine['kind']
+            at: string
+            body: string | null
+            event: ChatEvent | null
+            author: { id: number; name: string; avatar_url: string | null; look?: unknown } | null
+        }>
+
+        return rows.map(row => ({
+            at: Date.parse(row.at),
+            kind: row.kind,
+            ...(row.body === null ? {} : { body: row.body }),
+            ...(row.event === null ? {} : { event: row.event }),
+            ...(row.author
+                ? {
+                      author: {
+                          id: row.author.id,
+                          name: row.author.name,
+                          avatarUrl: row.author.avatar_url,
+                          look: lookFrom(row.author.look),
+                      },
+                  }
+                : {}),
+        }))
+    }
+
+    async postChat(lines: UnsavedLine[]): Promise<void> {
+        const response = await this.request('POST', '/internal/hot-potato/chat', {
+            lines: lines.map(line => ({
+                office_id: line.officeId,
+                player_id: line.playerId,
+                kind: line.kind,
+                body: line.body,
+                event: line.event,
+                at: new Date(line.at).toISOString(),
+            })),
+        })
+        if (!response.ok) throw new Error(`Saving the chat failed with ${response.status}`)
     }
 
     /** A racing driver's name and garage colours; null when Laravel says the player doesn't exist. */

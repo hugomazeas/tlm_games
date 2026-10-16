@@ -18,6 +18,8 @@ import { type GameResult, SessionManager, TICK_MS } from './sessions.ts'
  */
 
 const PREFIX = '/games/hot-potato/live'
+/** Chat lines per save; Laravel takes up to 200. */
+const CHAT_BATCH = 200
 const hostname = process.env.HOT_POTATO_HOST ?? '127.0.0.1'
 const port = Number(process.env.HOT_POTATO_PORT ?? 8090)
 const laravelUrl = process.env.HOT_POTATO_LARAVEL_URL ?? 'http://127.0.0.1'
@@ -55,6 +57,12 @@ const manager = new SessionManager({
     },
     botPolicy,
     hunterPolicy,
+    loadChat: officeId => {
+        laravel
+            .loadChat(officeId)
+            .then(history => manager.chatHistoryLoaded(officeId, history))
+            .catch(error => console.warn('Chat history not loaded:', error.message))
+    },
     refreshPlayer: playerId => {
         laravel
             .findPlayer(playerId)
@@ -64,6 +72,25 @@ const manager = new SessionManager({
 })
 
 setInterval(() => manager.tick(), TICK_MS)
+
+// Chat lines reach the Hub in batches; one save at a time, and a failed one tries again next round.
+let savingChat = false
+setInterval(() => {
+    if (savingChat) return
+    const lines = manager.takeUnsavedChat()
+    if (lines.length === 0) return
+    savingChat = true
+    laravel
+        .postChat(lines.slice(0, CHAT_BATCH))
+        .then(() => manager.requeueChat(lines.slice(CHAT_BATCH)))
+        .catch(error => {
+            manager.requeueChat(lines)
+            console.warn('Chat not saved yet:', error.message)
+        })
+        .finally(() => {
+            savingChat = false
+        })
+}, 2000)
 
 /** Results first, then the replay under the game's id; the room hears about the replay once both are in. */
 async function saveResults(result: GameResult): Promise<void> {

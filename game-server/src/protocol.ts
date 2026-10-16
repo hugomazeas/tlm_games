@@ -1,3 +1,4 @@
+import type { ChatLine } from './chat.ts'
 import type { Look } from './cosmetics.ts'
 import type { Arena } from './sim/arena.ts'
 import type { GameMode } from './sim/game.ts'
@@ -88,6 +89,8 @@ export type ClientMessage =
     | { type: 'removeBot'; playerId: number }
     /** Lobby only: "I just changed my look in the Hub", so the server fetches it again. */
     | { type: 'refreshLook' }
+    /** A chat message: named people only, any phase, rate-limited. */
+    | { type: 'chat'; body: string }
 
 /** End-of-game reactions: tap one on the results screen and it pops over your avatar. */
 export const EMOTES = ['😂', '🔥', '👏', '😭', '🤬', '🥔', '💀', '🫡'] as const
@@ -106,6 +109,7 @@ export type ErrorCode =
     | 'NOT_IN_LOBBY'
     | 'UNAVAILABLE'
     | 'NO_BOTS'
+    | 'SLOW_DOWN'
 
 export type ServerMessage =
     /** `build` identifies the browser bundle this server serves; a tab running another one reloads. */
@@ -130,6 +134,11 @@ export type ServerMessage =
     | { type: 'results'; results: Results; endsInMs: number }
     /** The game just played was saved with its replay, watchable at /games/hot-potato/replays/{gameId}. */
     | { type: 'replayReady'; gameId: number }
+    /** Who watches without a seat: named once each, guests counted. */
+    | { type: 'watchers'; named: PlayerInfo[]; guests: number }
+    /** One new chat line, or every line kept (on connect, and once the saved history is in). */
+    | { type: 'chat'; line: ChatLine }
+    | { type: 'chatHistory'; lines: ChatLine[] }
     | { type: 'error'; code: ErrorCode }
 
 /** Players in a game, AIs included: one player and two AIs is a solo game. Killer Potato needs one person. */
@@ -180,6 +189,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
                 theme: message.theme,
                 mode: (message.mode as GameMode | undefined) ?? 'survival',
             }
+        case 'chat':
+            // Trimmed and capped to 200 by the chat room; this only keeps junk out.
+            if (typeof message.body !== 'string' || message.body.length > 1000) return null
+            return { type: 'chat', body: message.body }
         case 'emote':
             if (!(EMOTES as readonly unknown[]).includes(message.emote)) return null
             return { type: 'emote', emote: message.emote as Emote }

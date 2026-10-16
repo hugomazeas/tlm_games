@@ -518,6 +518,134 @@ describe('looks', () => {
     })
 })
 
+describe('watchers', () => {
+    const watchers = (conn: FakeConn) => last(conn, 'watchers')
+
+    test('whoever has no seat watches: named once each, guests counted', () => {
+        const a = connect(alice)
+        send(a, { type: 'open' })
+        const guest1 = connect(null)
+        connect(null)
+        connect(bob)
+        connect(bob)
+
+        expect(watchers(guest1)).toEqual({ type: 'watchers', named: [bob], guests: 2 })
+    })
+
+    test('joining takes you off the list, leaving puts you back', () => {
+        const a = connect(alice)
+        send(a, { type: 'open' })
+        const b = connect(bob)
+        expect(watchers(a)?.named.map(p => p.id)).toEqual([2])
+
+        send(b, { type: 'join' })
+        expect(watchers(a)?.named).toEqual([])
+        send(b, { type: 'leave' })
+        expect(watchers(a)?.named.map(p => p.id)).toEqual([2])
+    })
+
+    test('a closed tab leaves the list, and each office has its own', () => {
+        const a = connect(alice)
+        const guest = connect(null)
+        connect(null, OTHER_OFFICE)
+        expect(watchers(a)?.guests).toBe(1)
+
+        manager.disconnect(guest.id)
+        // No lobby open: Alice has no seat, so she's watching too.
+        expect(watchers(a)).toEqual({ type: 'watchers', named: [alice], guests: 0 })
+    })
+})
+
+describe('chat', () => {
+    const lines = (conn: FakeConn) => conn.inbox.flatMap(m => (m.type === 'chat' ? [m.line] : []))
+    const events = (conn: FakeConn) => lines(conn).flatMap(l => (l.event ? [l.event] : []))
+
+    test('named people talk to the whole office; guests are asked to pick a name', () => {
+        const a = connect(alice)
+        const guest = connect(null)
+        const elsewhere = connect(carol, OTHER_OFFICE)
+        send(a, { type: 'chat', body: '  gg everyone ' })
+
+        expect(lines(guest).at(-1)).toMatchObject({
+            kind: 'message',
+            author: { id: 1, name: 'Alice' },
+            body: 'gg everyone',
+        })
+        expect(lines(elsewhere)).toEqual([])
+
+        send(guest, { type: 'chat', body: 'hi' })
+        expect(errors(guest)).toEqual(['PICK_A_PLAYER'])
+    })
+
+    test('too many messages at once are refused', () => {
+        const a = connect(alice)
+        for (let i = 0; i < 6; i++) send(a, { type: 'chat', body: `spam ${i}` })
+
+        expect(lines(a).filter(l => l.kind === 'message')).toHaveLength(5)
+        expect(errors(a)).toEqual(['SLOW_DOWN'])
+    })
+
+    test('the lobby narrates itself', () => {
+        const a = connect(alice)
+        const b = connect(bob)
+        send(a, { type: 'open' })
+        send(b, { type: 'join' })
+        send(b, { type: 'leave' })
+
+        expect(events(a)).toEqual([
+            { type: 'opened', name: 'Alice' },
+            { type: 'joined', name: 'Bob' },
+            { type: 'left', name: 'Bob' },
+        ])
+    })
+
+    test('a game narrates its start, its booms and its results, then the replay', () => {
+        const { a } = lobbyOfThree()
+        playToResults(a)
+        manager.replayReady(OFFICE, 12)
+
+        const told = events(a)
+        expect(told).toContainEqual({ type: 'started', mode: 'survival', theme: expect.any(String), players: 3 })
+        expect(told.some(e => e.type === 'boom')).toBe(true)
+        expect(told.find(e => e.type === 'results')).toMatchObject({ type: 'results', mode: 'survival' })
+        expect(told.at(-1)).toEqual({ type: 'replay', gameId: 12 })
+    })
+
+    test('a newcomer gets the lines so far, and the saved history once it loads', () => {
+        const loads: number[] = []
+        manager = new SessionManager({
+            build: 'build-1',
+            now: () => now,
+            rng: createRng(42),
+            nextSeed: () => 1234,
+            onOpened: () => {},
+            onResults: () => {},
+            loadChat: officeId => loads.push(officeId),
+        })
+        const a = connect(alice)
+        connect(bob)
+        send(a, { type: 'chat', body: 'first!' })
+        expect(loads).toEqual([OFFICE])
+
+        const late = connect(carol)
+        expect(last(late, 'chatHistory')?.lines.map(l => l.body)).toEqual(['first!'])
+
+        manager.chatHistoryLoaded(OFFICE, [{ at: 1, kind: 'event', event: { type: 'opened', name: 'Dave' } }])
+        expect(last(late, 'chatHistory')?.lines.map(l => l.body ?? l.event?.type)).toEqual(['opened', 'first!'])
+    })
+
+    test('lines wait to be saved; a failed save puts them back', () => {
+        const a = connect(alice)
+        send(a, { type: 'chat', body: 'saved?' })
+
+        const batch = manager.takeUnsavedChat()
+        expect(batch).toMatchObject([{ officeId: OFFICE, kind: 'message', playerId: 1, body: 'saved?' }])
+        expect(manager.takeUnsavedChat()).toEqual([])
+        manager.requeueChat(batch)
+        expect(manager.takeUnsavedChat()).toHaveLength(1)
+    })
+})
+
 /** Plays a one-minute game through to the results screen (two booms can end it early). */
 function playToResults(conn: FakeConn) {
     send(conn, { type: 'start', durationMin: 1, theme: 'random' })

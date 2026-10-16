@@ -11,4 +11,6 @@ Route::middleware([RequireInternalSecret::class, SubstituteBindings::class])->pr
     Route::post('/sessions/opened', [HotPotatoInternalController::class, 'sessionOpened']);
     Route::post('/results', [HotPotatoInternalController::class, 'results']);
     Route::post('/games/{game}/replay', [HotPotatoInternalController::class, 'replay']);
+    Route::get('/offices/{office}/chat', [HotPotatoInternalController::class, 'chatHistory']);
+    Route::post('/chat', [HotPotatoInternalController::class, 'storeChat']);
 });

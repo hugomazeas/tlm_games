@@ -87,6 +87,11 @@
                     <x-empty-state icon="🏢" title="Pick your office" message="Each office has its own game." />
                 </template>
 
+                {{-- Lobby and arena: what goes full screen (F, or ⛶) --}}
+                <div x-ref="stage" data-stage
+                     :class="fullscreen && 'gradient-bg overflow-y-auto p-4 sm:p-6'">
+                <div class="grid lg:grid-cols-[minmax(0,1fr)_19rem] gap-6 items-start">
+                <div class="min-w-0">
                 {{-- Nobody is hosting --}}
                 <template x-if="officeId && status === 'online' && !session">
                     <div class="bg-white/5 border border-white/10 rounded-xl p-6 text-center">
@@ -103,9 +108,6 @@
                     </div>
                 </template>
 
-                {{-- Lobby and arena: what goes full screen (F, or ⛶) --}}
-                <div x-ref="stage" data-stage
-                     :class="fullscreen && 'gradient-bg overflow-y-auto p-4 sm:p-6'">
                 {{-- Lobby --}}
                 <template x-if="session && phase === 'lobby'">
                     <div class="bg-white/5 border border-white/10 rounded-xl p-6 mb-6">
@@ -245,6 +247,7 @@
                         <span class="font-mono text-lg font-bold" x-text="timerText"></span>
                         <span class="flex items-center gap-3">
                             <span x-show="gameMode !== 'king'" class="text-white/60"><span x-text="aliveCount"></span> left</span>
+                            <span x-show="watcherCount > 0" class="text-white/60" :title="watcherCount + ' watching'">👀 <span x-text="watcherCount"></span></span>
                             <button @click="toggleFullscreen()" data-fullscreen
                                     :title="fullscreen ? 'Exit full screen (F)' : 'Full screen (F)'"
                                     class="bg-white/10 hover:bg-white/20 rounded-lg px-2.5 py-1 text-sm transition"
@@ -345,6 +348,60 @@
                         </template>
                         <li><span class="mr-1 text-cyan-300">»</span><span x-text="padLegend"></span></li>
                     </ul>
+                </div>
+                </div>
+
+                {{-- Who's watching, and the office's chat: messages and what the game narrates --}}
+                <aside x-show="officeId && status === 'online'" class="space-y-4 lg:sticky lg:top-4" data-chat-column>
+                    <section class="bg-white/5 border border-white/10 rounded-xl p-4" data-watchers>
+                        <h2 class="text-xs font-semibold uppercase tracking-wider text-white/50 mb-2">
+                            👀 Watching <span class="text-white/40 normal-case font-normal" x-text="'· ' + watcherCount"></span>
+                        </h2>
+                        <ul class="flex flex-wrap gap-1.5 text-sm">
+                            <template x-for="watcher in watchers.named" :key="watcher.id">
+                                <li class="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-0.5">
+                                    <span class="w-2 h-2 rounded-full" :style="'background:' + colourOf(watcher)"></span>
+                                    <span x-show="hatOf(watcher)" x-text="hatOf(watcher)"></span>
+                                    <span x-text="watcher.name"></span>
+                                </li>
+                            </template>
+                            <li x-show="watchers.guests > 0" class="rounded-full border border-white/15 px-2.5 py-0.5 text-white/60"
+                                x-text="(watchers.named.length ? '+ ' : '') + watchers.guests + (watchers.guests === 1 ? ' guest' : ' guests')"></li>
+                            <li x-show="watcherCount === 0" class="text-white/40 text-xs">Nobody else for now.</li>
+                        </ul>
+                    </section>
+
+                    <section class="bg-white/5 border border-white/10 rounded-xl flex flex-col h-[28rem]" data-chat>
+                        <h2 class="text-xs font-semibold uppercase tracking-wider text-white/50 px-4 pt-3 pb-2">💬 Chat</h2>
+                        <ol x-ref="chat" class="flex-1 overflow-y-auto px-4 space-y-1.5 text-sm" aria-live="polite">
+                            <template x-for="line in chatLines" :key="line.id">
+                                <li :class="line.kind === 'event' ? 'text-white/55 text-xs' : ''">
+                                    <span class="text-[10px] text-white/30 font-mono mr-1" x-text="chatTime(line)"></span>
+                                    <template x-if="line.kind === 'message'">
+                                        <span>
+                                            <span class="font-semibold" :style="'color:' + colourOf(line.author)" x-text="line.author.name"></span>
+                                            <span class="text-white/90 break-words" x-text="line.body"></span>
+                                        </span>
+                                    </template>
+                                    <template x-if="line.kind === 'event'">
+                                        <span>
+                                            <span x-text="chatText(line)"></span>
+                                            <a x-show="replayLink(line)" :href="replayLink(line)" target="_blank" rel="noopener"
+                                               class="ml-1 font-semibold text-indigo-300 hover:text-indigo-200" x-text="chatStrings.watchReplay"></a>
+                                        </span>
+                                    </template>
+                                </li>
+                            </template>
+                        </ol>
+                        <form @submit.prevent="sendChat()" class="p-3 border-t border-white/10" data-chat-form>
+                            <template x-if="me">
+                                <input x-model="chatDraft" :maxlength="chatMaxLength" :placeholder="chatStrings.placeholder"
+                                       class="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-orange-400">
+                            </template>
+                            <p x-show="!me" class="text-xs text-white/50" x-text="chatStrings.pickName"></p>
+                        </form>
+                    </section>
+                </aside>
                 </div>
                 </div>
 

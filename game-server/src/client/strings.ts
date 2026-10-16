@@ -75,6 +75,21 @@ export const STRINGS = {
         go: 'GO!',
     },
     emoteHint: 'React!',
+    /** The chat's event lines; boom, pickup and results reuse the banners above. */
+    chat: {
+        opened: (name: string) => `🥔 ${name} opened a game`,
+        joined: (name: string) => `👋 ${name} joined`,
+        left: (name: string) => `🚪 ${name} left`,
+        botAdded: (name: string) => `🤖 ${name} (AI) sat down`,
+        botRemoved: (name: string) => `🤖 ${name} (AI) got up`,
+        started: (mode: string, arena: string, players: number) => `▶️ ${mode} · ${arena} · ${players} players`,
+        steal: (from: string, to: string) => `👑 ${to} stole the crown from ${from}`,
+        reign: (names: string[]) => `👑 ${names.join(', ')} kept the crown longest`,
+        replay: '🎬 The replay is ready',
+        watchReplay: '▶ Watch',
+        pickName: 'Pick your name above to chat.',
+        placeholder: 'Say something…',
+    },
     someone: 'Someone',
     errors: {
         BAD_MESSAGE: 'Something went wrong. Reload the page.',
@@ -89,5 +104,6 @@ export const STRINGS = {
         NOT_IN_LOBBY: 'Wait for the current game to finish.',
         UNAVAILABLE: 'The game server can’t reach the Hub right now.',
         NO_BOTS: 'AI players aren’t available on this server.',
+        SLOW_DOWN: 'Easy — a few messages at a time.',
     } satisfies Record<ErrorCode, string>,
 }
