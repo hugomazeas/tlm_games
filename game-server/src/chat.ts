@@ -1,7 +1,6 @@
 import type { Look } from './cosmetics.ts'
 import type { PlayerInfo } from './protocol.ts'
 import type { GameMode } from './sim/game.ts'
-import type { Effect, ItemKind } from './sim/items.ts'
 import type { ThemeId } from './sim/themes.ts'
 
 /**
@@ -19,17 +18,15 @@ export const CHAT_WINDOW_MS = 10_000
 /** Lines waiting to be saved; past this the oldest go (Laravel has been down a long while). */
 export const UNSAVED_CAP = 1000
 
-/** What happened, with the names as they were then. */
+/**
+ * What happened, with the names as they were then. Only the big moments: people coming and
+ * going, a game starting and ending, its replay. Booms, steals and pickups would drown the talk.
+ */
 export type ChatEvent =
     | { type: 'opened'; name: string }
     | { type: 'joined'; name: string }
     | { type: 'left'; name: string }
-    | { type: 'botAdded'; name: string }
-    | { type: 'botRemoved'; name: string }
     | { type: 'started'; mode: GameMode; theme: ThemeId; players: number }
-    | { type: 'boom'; mode: GameMode; name: string }
-    | { type: 'steal'; from: string; to: string }
-    | { type: 'pickup'; name: string; item: ItemKind; effect: Effect; target?: string }
     | { type: 'results'; mode: GameMode; winners: string[] }
     | { type: 'replay'; gameId: number }
 

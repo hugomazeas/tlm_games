@@ -28,6 +28,15 @@
         ];
     @endphp
 
+    <style>
+        /* The chat's scrollbar: thin and quiet, brighter under the pointer. */
+        .chat-scroll { scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / 0.18) transparent; }
+        .chat-scroll::-webkit-scrollbar { width: 6px; }
+        .chat-scroll::-webkit-scrollbar-track { background: transparent; }
+        .chat-scroll::-webkit-scrollbar-thumb { background: rgb(255 255 255 / 0.18); border-radius: 9999px; }
+        .chat-scroll::-webkit-scrollbar-thumb:hover { background: rgb(251 146 60 / 0.6); }
+    </style>
+
     <div x-data="hotPotatoApp(@js($config))" x-cloak>
         <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
             <div>
@@ -352,7 +361,9 @@
                 </div>
 
                 {{-- Who's watching, and the office's chat: messages and what the game narrates --}}
-                <aside x-show="officeId && status === 'online'" class="space-y-4 lg:sticky lg:top-4" data-chat-column>
+                {{-- Full screen: the column runs the screen's height and the chat takes all of it under Watching --}}
+                <aside x-show="officeId && status === 'online'" class="space-y-4 lg:sticky lg:top-4" data-chat-column
+                       :class="fullscreen && 'lg:h-[calc(100vh-3rem)] lg:flex lg:flex-col'">
                     <section class="bg-white/5 border border-white/10 rounded-xl p-4" data-watchers>
                         <h2 class="text-xs font-semibold uppercase tracking-wider text-white/50 mb-2">
                             👀 Watching <span class="text-white/40 normal-case font-normal" x-text="'· ' + watcherCount"></span>
@@ -371,11 +382,12 @@
                         </ul>
                     </section>
 
-                    <section class="bg-white/5 border border-white/10 rounded-xl flex flex-col h-[28rem]" data-chat>
+                    <section class="bg-white/5 border border-white/10 rounded-xl flex flex-col" data-chat
+                             :class="fullscreen ? 'h-[28rem] lg:h-auto lg:flex-1 lg:min-h-0' : 'h-[28rem]'">
                         <h2 class="text-xs font-semibold uppercase tracking-wider text-white/50 px-4 pt-3 pb-2">💬 Chat</h2>
-                        <ol x-ref="chat" class="flex-1 overflow-y-auto px-4 space-y-1.5 text-sm" aria-live="polite">
+                        <ol x-ref="chat" class="chat-scroll flex-1 overflow-y-auto px-4 space-y-1.5 text-sm" aria-live="polite">
                             <template x-for="line in chatLines" :key="line.id">
-                                <li :class="line.kind === 'event' ? 'text-white/55 text-xs' : ''">
+                                <li x-show="line.kind === 'message' || chatText(line)" :class="line.kind === 'event' ? 'text-white/55 text-xs' : ''">
                                     <span class="text-[10px] text-white/30 font-mono mr-1" x-text="chatTime(line)"></span>
                                     <template x-if="line.kind === 'message'">
                                         <span>

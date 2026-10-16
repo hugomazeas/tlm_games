@@ -328,7 +328,6 @@ export class SessionManager {
                     connId: null,
                     awayUntil: null,
                 })
-                this.narrate(session.officeId, { type: 'botAdded', name })
                 this.broadcastOffice(session)
                 return
             }
@@ -530,29 +529,9 @@ export class SessionManager {
                 this.finishGame(session)
             } else if (event.kind === 'pass') {
                 this.broadcast(session.officeId, { type: 'pass', from: event.from, to: event.to })
-                // In King of the Potato a pass is a crown stolen; elsewhere passes are too many to tell.
-                if (session.game?.mode === 'king') {
-                    this.narrate(session.officeId, {
-                        type: 'steal',
-                        from: nameIn(session, event.from),
-                        to: nameIn(session, event.to),
-                    })
-                }
             } else if (event.kind === 'boom') {
                 this.broadcast(session.officeId, { type: 'boom', playerId: event.playerId })
-                this.narrate(session.officeId, {
-                    type: 'boom',
-                    mode: session.game?.mode ?? 'survival',
-                    name: nameIn(session, event.playerId),
-                })
             } else if (event.kind === 'pickup') {
-                this.narrate(session.officeId, {
-                    type: 'pickup',
-                    name: nameIn(session, event.playerId),
-                    item: event.item,
-                    effect: event.effect,
-                    ...(event.targetId === undefined ? {} : { target: nameIn(session, event.targetId) }),
-                })
                 this.broadcast(session.officeId, {
                     type: 'pickup',
                     playerId: event.playerId,
@@ -639,12 +618,8 @@ export class SessionManager {
     private removeMember(session: Session, playerId: number) {
         const leaving = session.members.find(m => m.player.id === playerId)
         session.members = session.members.filter(m => m.player.id !== playerId)
-        if (leaving) {
-            this.narrate(session.officeId, {
-                type: leaving.player.bot ? 'botRemoved' : 'left',
-                name: leaving.player.name,
-            })
-        }
+        // People only: AIs coming and going would only add noise.
+        if (leaving && !leaving.player.bot) this.narrate(session.officeId, { type: 'left', name: leaving.player.name })
 
         this.dropFromGame(session, playerId)
 

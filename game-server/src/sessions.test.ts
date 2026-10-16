@@ -599,16 +599,34 @@ describe('chat', () => {
         ])
     })
 
-    test('a game narrates its start, its booms and its results, then the replay', () => {
+    test('a game narrates its start and its results, then the replay, and nothing in between', () => {
         const { a } = lobbyOfThree()
         playToResults(a)
         manager.replayReady(OFFICE, 12)
 
-        const told = events(a)
-        expect(told).toContainEqual({ type: 'started', mode: 'survival', theme: expect.any(String), players: 3 })
-        expect(told.some(e => e.type === 'boom')).toBe(true)
-        expect(told.find(e => e.type === 'results')).toMatchObject({ type: 'results', mode: 'survival' })
-        expect(told.at(-1)).toEqual({ type: 'replay', gameId: 12 })
+        expect(events(a).slice(-3)).toEqual([
+            { type: 'started', mode: 'survival', theme: expect.any(String), players: 3 },
+            { type: 'results', mode: 'survival', winners: expect.any(Array) },
+            { type: 'replay', gameId: 12 },
+        ])
+    })
+
+    test('AIs sit down and get up without a word', () => {
+        manager = new SessionManager({
+            build: 'build-1',
+            now: () => now,
+            rng: createRng(42),
+            nextSeed: () => 1234,
+            onOpened: () => {},
+            onResults: () => {},
+            botPolicy: policy,
+        })
+        const a = connect(alice)
+        send(a, { type: 'open' })
+        send(a, { type: 'addBot' })
+        send(a, { type: 'removeBot', playerId: -1 })
+
+        expect(events(a)).toEqual([{ type: 'opened', name: 'Alice' }])
     })
 
     test('a newcomer gets the lines so far, and the saved history once it loads', () => {

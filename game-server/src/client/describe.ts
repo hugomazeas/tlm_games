@@ -91,8 +91,6 @@ export function chatText(event: ChatEvent): string {
         case 'opened':
         case 'joined':
         case 'left':
-        case 'botAdded':
-        case 'botRemoved':
             return STRINGS.chat[event.type](event.name)
         case 'started': {
             const theme = THEMES[event.theme]
@@ -102,16 +100,13 @@ export function chatText(event: ChatEvent): string {
                 event.players
             )
         }
-        case 'boom':
-            return event.mode === 'killer' ? STRINGS.caught(event.name) : STRINGS.boom(event.name)
-        case 'steal':
-            return STRINGS.chat.steal(event.from, event.to)
-        case 'pickup':
-            return STRINGS.pickup(event.name, event.item, event.effect, event.target)
         case 'results':
             if (event.winners.length === 0) return event.mode === 'killer' ? STRINGS.hunterWins : STRINGS.nobody
             return event.mode === 'king' ? STRINGS.chat.reign(event.winners) : STRINGS.survivors(event.winners)
         case 'replay':
             return STRINGS.chat.replay
+        // A kind this page doesn't know (saved by an older or newer server): not shown.
+        default:
+            return ''
     }
 }
