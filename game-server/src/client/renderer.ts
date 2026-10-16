@@ -2,9 +2,10 @@ import { cosmeticValue, type Look } from '../cosmetics.ts'
 import type { SnapshotItem, SnapshotPlayer, SnapshotPortal } from '../protocol.ts'
 import { type Arena, AVATAR_RADIUS, PAD_RADIUS } from '../sim/arena.ts'
 import { FREEZE_MS, type GameMode, INFECTION_BLAST_RADIUS, PORTAL_RADIUS, STEAL_SAFETY_MS } from '../sim/game.ts'
-import { obstacleAt } from '../sim/geometry.ts'
+import { type Obstacle, obstacleAt } from '../sim/geometry.ts'
 import { FREEZE_RADIUS, ITEM_RADIUS, type ItemKind, MAGNET_RADIUS, SHIELD_MS, TINY_RADIUS } from '../sim/items.ts'
-import { THEMES } from '../sim/themes.ts'
+import { THEMES, type Theme } from '../sim/themes.ts'
+import { drawObstacle } from './obstacles.ts'
 
 /**
  * Moving furniture is carried forward from the newest snapshot by at most one
@@ -253,7 +254,7 @@ export class Renderer {
 
         this.drawMoverTracks(context, arena, theme.palette.floorLine)
         this.drawPads(context, arena, time)
-        this.drawObstacles(context, arena, state.elapsedMs, theme.palette.obstacle, theme.palette.obstacleEdge)
+        this.drawObstacles(context, arena, state.elapsedMs, theme, time)
         this.drawSplats(context, time)
         this.drawPortals(context, state.portals, time)
         this.drawItems(context, state.items, time)
@@ -270,14 +271,24 @@ export class Renderer {
      * Edges first, fills on top: a wall's blocks touch, and drawing it this way
      * hides the seams between them so an L reads as one piece.
      */
+    /**
+     * Each obstacle as what it is (`client/obstacles.ts`). Anything without a drawing (an arena
+     * recorded before obstacles had looks) falls back to flat shapes in the theme's colours.
+     */
     private drawObstacles(
         context: CanvasRenderingContext2D,
         arena: Arena,
         elapsedMs: number,
-        fill: string,
-        edge: string
+        theme: Theme,
+        time: number
     ) {
-        const shapes = arena.obstacles.map(obstacle => obstacleAt(obstacle, elapsedMs))
+        const shapes: Obstacle[] = []
+        for (const resting of arena.obstacles) {
+            const now = obstacleAt(resting, elapsedMs)
+            if (!drawObstacle(context, now, resting, theme, time, this.options.reducedMotion)) shapes.push(now)
+        }
+        const fill = theme.palette.obstacle
+        const edge = theme.palette.obstacleEdge
         const trace = (o: (typeof shapes)[number]) => {
             context.beginPath()
             if (o.kind === 'circle') context.arc(o.x, o.y, o.r, 0, Math.PI * 2)

@@ -171,6 +171,9 @@ that is played live, in real time, rather than scored afterwards.
   L/T/U walls (blocks sharing a `group`), movers and physics. Boost pads are
   generated per arena; items and their effects live in `sim/items.ts` + `sim/game.ts`. A theme can
   set a `centerpiece` (the boardroom's table), placed in the middle before anything else.
+  Each obstacle carries its `look` (its theme's name for it) and is drawn as that by
+  `client/obstacles.ts` (a desk with its monitor, a car, a rack with LEDs), inside its hitbox:
+  a new name in a theme needs a drawing there (`obstacles.test.ts` checks).
 - **Open tabs pick up a deploy on their own.** The bundle is stamped with a
   build id (`client/build.ts`); `welcome` carries the server's, and a tab on an
   older one reloads once it isn't mid-game. `client.js` is `no-cache` + ETag.

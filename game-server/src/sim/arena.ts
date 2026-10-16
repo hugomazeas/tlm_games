@@ -170,13 +170,15 @@ function randomObstacle(rng: Rng, shapes: ObstacleShape[], field: Field): Obstac
 
 /** An obstacle of the given shape at a random size, positioned at the origin. */
 function sized(rng: Rng, shape: ObstacleShape): Obstacle {
-    if (shape.kind === 'circle') return { kind: 'circle', x: 0, y: 0, r: randomBetween(rng, shape.r[0], shape.r[1]) }
+    if (shape.kind === 'circle') {
+        return { kind: 'circle', x: 0, y: 0, r: randomBetween(rng, shape.r[0], shape.r[1]), look: shape.name }
+    }
 
     let w = randomBetween(rng, shape.w[0], shape.w[1])
     let h = randomBetween(rng, shape.h[0], shape.h[1])
     if (shape.rotatable && rng() < 0.5) [w, h] = [h, w]
 
-    return { kind: 'rect', x: 0, y: 0, w, h }
+    return { kind: 'rect', x: 0, y: 0, w, h, look: shape.name }
 }
 
 /** Moves an obstacle to a random spot whose whole sweep keeps EDGE_GAP from the arena walls. */
@@ -219,7 +221,7 @@ function randomWall(rng: Rng, theme: Theme, field: Field, group: number): Obstac
     const x = randomBetween(rng, minX, maxX)
     const y = randomBetween(rng, minY, maxY)
 
-    return blocks.map(b => ({ kind: 'rect', x: b.x + x, y: b.y + y, w: b.w, h: b.h, group }))
+    return blocks.map(b => ({ kind: 'rect', x: b.x + x, y: b.y + y, w: b.w, h: b.h, group, look: theme.walls.name }))
 }
 
 /** A wall's blocks around its own origin, before turning. A U is always at least MIN_GAP wide inside. */
