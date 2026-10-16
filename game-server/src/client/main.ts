@@ -4,6 +4,7 @@ import type { GameMode } from '../sim/game.ts'
 import type { ItemKind } from '../sim/items.ts'
 import { THEMES, THEME_IDS, type ThemeId } from '../sim/themes.ts'
 import { BUILD } from './build.ts'
+import { freshness, reloadedFor, reloadFresh } from './freshness.ts'
 import type { ChatLine } from '../chat.ts'
 import { CHAT_KEEP, CHAT_MAX_BODY } from '../chat.ts'
 import { chatText, describeResults, type ResultsView } from './describe.ts'
@@ -99,6 +100,10 @@ function hotPotatoApp(config: Config) {
         unavailable: false,
         /** The server runs a newer bundle than this tab: reload as soon as it won't interrupt a game. */
         stale: false,
+        /** The server's build, once `welcome` says it. */
+        serverBuild: '',
+        /** Reloaded once for this build and still old: a cache holds the old bundle. Ask for a hard refresh. */
+        staleStuck: false,
         /** The lobby and arena fill the screen (F, or the ⛶ button). */
         fullscreen: false,
         emotes: EMOTES,
@@ -314,7 +319,10 @@ function hotPotatoApp(config: Config) {
 
         /** Picks up a newer bundle, but never in the middle of a game you're playing. */
         reloadIfStale() {
-            if (this.stale && !this.inGame) location.reload()
+            if (this.stale && !this.staleStuck && !this.inGame) {
+                this.stale = false
+                void reloadFresh('/games/hot-potato/live/client.js', this.serverBuild)
+            }
         },
 
         // ── Messages ─────────────────────────────────────────────────────
@@ -323,7 +331,12 @@ function hotPotatoApp(config: Config) {
             switch (message.type) {
                 case 'welcome':
                     this.me = message.player
-                    if (message.build !== BUILD) this.stale = true
+                    this.serverBuild = message.build
+                    {
+                        const state = freshness(message.build, BUILD, reloadedFor())
+                        this.stale = state !== 'fresh'
+                        this.staleStuck = state === 'stuck'
+                    }
                     this.reloadIfStale()
                     return
                 case 'office': {

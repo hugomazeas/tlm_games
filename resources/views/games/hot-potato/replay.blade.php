@@ -8,7 +8,7 @@
         from game-server/src/client at its startup: a blocking classic script, so
         hotPotatoReplay exists before Alpine starts. The stub covers a sidecar that's down.
     --}}
-    <script src="{{ url('/games/hot-potato/live/replay.js') }}"></script>
+    <script src="{{ url('/games/hot-potato/live/replay.js') }}?v={{ $bundleVersion }}"></script>
     <script>
         window.hotPotatoReplay = window.hotPotatoReplay || (() => ({ status: 'missing' }));
     </script>
