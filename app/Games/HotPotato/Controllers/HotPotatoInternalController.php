@@ -3,10 +3,12 @@
 namespace App\Games\HotPotato\Controllers;
 
 use App\Games\HotPotato\Jobs\SendHotPotatoInviteJob;
+use App\Games\HotPotato\Models\HotPotatoChatLine;
 use App\Games\HotPotato\Models\HotPotatoGame;
 use App\Games\HotPotato\Models\HotPotatoLook;
 use App\Games\HotPotato\Services\ReplayPruner;
 use App\Http\Controllers\Controller;
+use App\Models\Office;
 use App\Models\Player;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -96,6 +98,91 @@ class HotPotatoInternalController extends Controller
         });
 
         return response()->json(['id' => $game->id], 201);
+    }
+
+    /**
+     * An office's last chat lines, oldest first, for the game server's memory after a restart.
+     * Authors come with their name, photo and look, as they are now.
+     */
+    public function chatHistory(Office $office): JsonResponse
+    {
+        $lines = HotPotatoChatLine::query()
+            ->where('office_id', $office->id)
+            ->with('player')
+            ->latest('id')
+            ->limit(HotPotatoChatLine::HISTORY)
+            ->get()
+            ->reverse()
+            ->values();
+
+        $looks = $lines->pluck('player')->filter()->unique('id')
+            ->mapWithKeys(fn (Player $player) => [$player->id => HotPotatoLook::of($player)]);
+
+        return response()->json($lines->map(fn (HotPotatoChatLine $line) => [
+            'kind' => $line->kind,
+            'at' => $line->posted_at->toIso8601ZuluString('millisecond'),
+            'body' => $line->body,
+            'event' => $line->event,
+            'author' => $line->player ? [
+                'id' => $line->player->id,
+                'name' => $line->player->name,
+                'avatar_url' => $line->player->avatarUrl(),
+                'look' => $looks[$line->player->id],
+            ] : null,
+        ]));
+    }
+
+    /**
+     * A batch of chat lines from the game server (it posts every few seconds). Each office
+     * keeps its newest lines only.
+     */
+    public function storeChat(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'lines' => 'required|array|min:1|max:200',
+            'lines.*.office_id' => 'required|integer|exists:offices,id',
+            // Not `exists`: a player deleted since is just a line without its author.
+            'lines.*.player_id' => 'nullable|integer',
+            'lines.*.kind' => ['required', Rule::in([HotPotatoChatLine::KIND_MESSAGE, HotPotatoChatLine::KIND_EVENT])],
+            'lines.*.body' => 'nullable|required_if:lines.*.kind,message|string|max:200',
+            'lines.*.event' => 'nullable|required_if:lines.*.kind,event|array',
+            'lines.*.event.type' => 'required_with:lines.*.event|string|max:20',
+            'lines.*.at' => 'required|date',
+        ]);
+
+        $players = Player::whereIn('id', collect($validated['lines'])->pluck('player_id')->filter())->pluck('id')->flip();
+
+        DB::transaction(function () use ($request, $validated, $players) {
+            foreach ($validated['lines'] as $index => $line) {
+                HotPotatoChatLine::create([
+                    'office_id' => $line['office_id'],
+                    'player_id' => isset($line['player_id']) && $players->has($line['player_id']) ? $line['player_id'] : null,
+                    'kind' => $line['kind'],
+                    'body' => $line['body'] ?? null,
+                    // The whole event: validation only keeps the keys it names (its type).
+                    'event' => $request->input("lines.{$index}.event"),
+                    'posted_at' => Carbon::parse($line['at']),
+                ]);
+            }
+        });
+
+        foreach (collect($validated['lines'])->pluck('office_id')->unique() as $officeId) {
+            $this->pruneChat((int) $officeId);
+        }
+
+        return response()->json(['stored' => count($validated['lines'])], 201);
+    }
+
+    private function pruneChat(int $officeId): void
+    {
+        $oldestKept = HotPotatoChatLine::where('office_id', $officeId)
+            ->latest('id')
+            ->skip(HotPotatoChatLine::KEEP_PER_OFFICE - 1)
+            ->value('id');
+
+        if ($oldestKept !== null) {
+            HotPotatoChatLine::where('office_id', $officeId)->where('id', '<', $oldestKept)->delete();
+        }
     }
 
     /**

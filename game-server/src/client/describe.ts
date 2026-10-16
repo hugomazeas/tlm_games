@@ -1,4 +1,6 @@
+import type { ChatEvent } from '../chat.ts'
 import type { Results } from '../protocol.ts'
+import { THEMES } from '../sim/themes.ts'
 import type { GameMode } from '../sim/game.ts'
 import { STRINGS } from './strings.ts'
 
@@ -80,5 +82,31 @@ function describeReign(results: Results, names: Names): ResultsView {
             holdSeconds: seconds(row.holdMs),
             passes: row.passes,
         })),
+    }
+}
+
+/** A chat event line, in words. */
+export function chatText(event: ChatEvent): string {
+    switch (event.type) {
+        case 'opened':
+        case 'joined':
+        case 'left':
+            return STRINGS.chat[event.type](event.name)
+        case 'started': {
+            const theme = THEMES[event.theme]
+            return STRINGS.chat.started(
+                STRINGS.modes[event.mode].label,
+                theme ? STRINGS.intro.arena(theme.emoji, theme.name) : event.theme,
+                event.players
+            )
+        }
+        case 'results':
+            if (event.winners.length === 0) return event.mode === 'killer' ? STRINGS.hunterWins : STRINGS.nobody
+            return event.mode === 'king' ? STRINGS.chat.reign(event.winners) : STRINGS.survivors(event.winners)
+        case 'replay':
+            return STRINGS.chat.replay
+        // A kind this page doesn't know (saved by an older or newer server): not shown.
+        default:
+            return ''
     }
 }

@@ -28,6 +28,7 @@ import { randomLook } from './cosmetics.ts'
 import { THEME_IDS, type ThemeId } from './sim/themes.ts'
 import { TrainedPilot } from './ai/pilot.ts'
 import type { TrainedPolicy } from './ai/policy.ts'
+import { type ChatEvent, type ChatLine, ChatRooms, type UnsavedLine } from './chat.ts'
 import { ReplayRecorder } from './replay.ts'
 
 export const TICK_MS = 50
@@ -89,6 +90,8 @@ export interface SessionHooks {
     botNameRng?: Rng
     /** A lobby member changed their look in the Hub: fetch them again and hand them to `updatePlayer`. */
     refreshPlayer?(playerId: number): void
+    /** An office's chat is used for the first time: fetch its saved lines and hand them to `chatHistoryLoaded`. */
+    loadChat?(officeId: number): void
 }
 
 interface Member {
@@ -140,6 +143,9 @@ interface Client {
 export class SessionManager {
     private readonly clients = new Map<string, Client>()
     private readonly sessions = new Map<number, Session>()
+    private readonly chat = new ChatRooms()
+    /** The watchers list each office last heard, so an unchanged one isn't sent again. */
+    private readonly lastWatchers = new Map<number, string>()
 
     constructor(private readonly hooks: SessionHooks) {}
 
@@ -162,12 +168,24 @@ export class SessionManager {
         if (session?.game && session.gameMeta && (session.phase === 'countdown' || session.phase === 'playing')) {
             conn.send(this.countdownMessage(session, session.game.arena))
         }
+
+        if (this.chat.open(officeId)) this.hooks.loadChat?.(officeId)
+        conn.send({ type: 'chatHistory', lines: this.chat.lines(officeId) })
+        conn.send(this.watchersMessage(officeId))
+        this.broadcastWatchers(officeId)
     }
 
     disconnect(connId: string) {
         const client = this.clients.get(connId)
         this.clients.delete(connId)
-        if (!client?.player) return
+        if (!client) return
+        this.leaveSeat(client, connId)
+        this.broadcastWatchers(client.officeId)
+    }
+
+    /** A closed tab gives its seat a few seconds to come back. */
+    private leaveSeat(client: Client, connId: string) {
+        if (!client.player) return
 
         const session = this.sessions.get(client.officeId)
         const member = session?.members.find(m => m.connId === connId)
@@ -214,6 +232,7 @@ export class SessionManager {
                     recorder: null,
                 }
                 this.sessions.set(client.officeId, created)
+                this.narrate(client.officeId, { type: 'opened', name: player.name })
                 this.broadcastOffice(created)
                 this.hooks.onOpened(client.officeId, player.id)
                 return
@@ -228,6 +247,7 @@ export class SessionManager {
                 } else {
                     if (session.members.length >= MAX_PLAYERS) return fail('LOBBY_FULL')
                     session.members.push({ player, connId, awayUntil: null })
+                    this.narrate(session.officeId, { type: 'joined', name: player.name })
                 }
                 this.broadcastOffice(session)
                 return
@@ -312,6 +332,14 @@ export class SessionManager {
                 return
             }
 
+            case 'chat': {
+                const said = this.chat.say(client.officeId, player, message.body, this.hooks.now())
+                if (said === 'SLOW_DOWN') return fail('SLOW_DOWN')
+                if (said === 'EMPTY') return
+                this.broadcast(client.officeId, { type: 'chat', line: said })
+                return
+            }
+
             case 'refreshLook': {
                 if (session?.phase === 'lobby' && session.members.some(m => m.player.id === player.id)) {
                     this.hooks.refreshPlayer?.(player.id)
@@ -336,9 +364,13 @@ export class SessionManager {
      * they sit in shows it. A game already under way keeps the look it started with.
      */
     updatePlayer(player: PlayerInfo) {
+        const offices = new Set<number>()
         for (const client of this.clients.values()) {
-            if (client.player?.id === player.id) client.player = player
+            if (client.player?.id !== player.id) continue
+            client.player = player
+            offices.add(client.officeId)
         }
+        for (const officeId of offices) this.broadcastWatchers(officeId)
         for (const session of this.sessions.values()) {
             const member = session.members.find(m => m.player.id === player.id)
             if (!member || session.phase !== 'lobby') continue
@@ -350,6 +382,21 @@ export class SessionManager {
     /** The game just played was saved with its replay: the office's results screen can offer it. */
     replayReady(officeId: number, gameId: number) {
         this.broadcast(officeId, { type: 'replayReady', gameId })
+        this.narrate(officeId, { type: 'replay', gameId })
+    }
+
+    /** An office's saved chat came back from the Hub: it goes before what was said since. */
+    chatHistoryLoaded(officeId: number, history: Array<Omit<ChatLine, 'id'>>) {
+        this.broadcast(officeId, { type: 'chatHistory', lines: this.chat.loaded(officeId, history) })
+    }
+
+    /** Chat lines not yet in the Hub; `requeueChat` them when saving fails. */
+    takeUnsavedChat(): UnsavedLine[] {
+        return this.chat.takeUnsaved()
+    }
+
+    requeueChat(lines: UnsavedLine[]) {
+        this.chat.requeue(lines)
     }
 
     /** Called every TICK_MS by the server; advances every session. */
@@ -437,6 +484,12 @@ export class SessionManager {
             this.hooks.now()
         )
 
+        this.narrate(session.officeId, {
+            type: 'started',
+            mode: session.settings.mode,
+            theme,
+            players: playerIds.length,
+        })
         this.broadcastOffice(session)
         this.broadcast(session.officeId, this.countdownMessage(session, arena))
     }
@@ -512,6 +565,11 @@ export class SessionManager {
         session.phase = 'results'
         session.phaseEndsAt = this.hooks.now() + RESULTS_MS
         this.broadcast(session.officeId, { type: 'results', results, endsInMs: RESULTS_MS })
+        this.narrate(session.officeId, {
+            type: 'results',
+            mode: game.mode,
+            winners: results.survivorIds.map(id => nameIn(session, id)),
+        })
         this.broadcastOffice(session)
         const replay = session.recorder?.finish() ?? null
         session.recorder = null
@@ -558,7 +616,10 @@ export class SessionManager {
     }
 
     private removeMember(session: Session, playerId: number) {
+        const leaving = session.members.find(m => m.player.id === playerId)
         session.members = session.members.filter(m => m.player.id !== playerId)
+        // People only: AIs coming and going would only add noise.
+        if (leaving && !leaving.player.bot) this.narrate(session.officeId, { type: 'left', name: leaving.player.name })
 
         this.dropFromGame(session, playerId)
 
@@ -576,6 +637,7 @@ export class SessionManager {
     private closeSession(session: Session) {
         this.sessions.delete(session.officeId)
         this.broadcast(session.officeId, { type: 'office', session: null })
+        this.broadcastWatchers(session.officeId)
     }
 
     private broadcastSnapshot(session: Session) {
@@ -616,6 +678,40 @@ export class SessionManager {
 
     private broadcastOffice(session: Session) {
         this.broadcast(session.officeId, { type: 'office', session: view(session) })
+        this.broadcastWatchers(session.officeId)
+    }
+
+    private narrate(officeId: number, event: ChatEvent) {
+        this.broadcast(officeId, { type: 'chat', line: this.chat.narrate(officeId, event, this.hooks.now()) })
+    }
+
+    /**
+     * Everyone on the office's page without a seat in its lobby or game: each named
+     * player once however many tabs, "Just watching" tabs counted as guests.
+     */
+    private watchersMessage(officeId: number): ServerMessage {
+        const session = this.sessions.get(officeId)
+        const seated = new Set([
+            ...(session?.members.map(m => m.player.id) ?? []),
+            ...(session?.game && session.phase !== 'lobby' ? session.game.players.map(p => p.id) : []),
+        ])
+        const named = new Map<number, PlayerInfo>()
+        let guests = 0
+        for (const client of this.clients.values()) {
+            if (client.officeId !== officeId) continue
+            if (!client.player) guests++
+            else if (!seated.has(client.player.id)) named.set(client.player.id, client.player)
+        }
+        return { type: 'watchers', named: [...named.values()], guests }
+    }
+
+    /** Tells the office who's watching, when that changed. */
+    private broadcastWatchers(officeId: number) {
+        const message = this.watchersMessage(officeId)
+        const key = JSON.stringify(message)
+        if (this.lastWatchers.get(officeId) === key) return
+        this.lastWatchers.set(officeId, key)
+        this.broadcast(officeId, message)
     }
 
     private broadcast(officeId: number, message: ServerMessage) {
@@ -702,6 +798,14 @@ function rankByReign(game: GameState): GameResult['players'] {
         holdMs: p.holdMs,
         passes: p.passes,
     }))
+}
+
+/** A seat's name as the room knows it: members, then the hunter. */
+function nameIn(session: Session, playerId: number): string {
+    return (
+        session.members.find(m => m.player.id === playerId)?.player.name ??
+        (session.hunter?.id === playerId ? session.hunter.name : 'Someone')
+    )
 }
 
 /** A random Québécois name no one in the lobby (person or AI) already has. */
