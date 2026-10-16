@@ -88,7 +88,7 @@ class HotPotatoChatTest extends TestCase
     {
         $office = Office::create(['name' => 'Québec']);
         $alice = Player::create(['name' => 'Alice']);
-        HotPotatoLook::create(['player_id' => $alice->id, 'colour' => 'grape', 'skin' => 'pumpkin', 'hat' => 'top', 'trail' => 'fire', 'boom' => 'confetti']);
+        HotPotatoLook::create(['player_id' => $alice->id, 'colour' => 'grape', 'hat' => 'top', 'trail' => 'fire', 'boom' => 'confetti']);
         foreach (range(1, HotPotatoChatLine::HISTORY + 5) as $i) {
             HotPotatoChatLine::create(['office_id' => $office->id, 'kind' => 'event', 'event' => ['type' => 'joined', 'name' => "P{$i}"], 'posted_at' => now()]);
         }
@@ -109,7 +109,7 @@ class HotPotatoChatTest extends TestCase
                 'id' => $alice->id,
                 'name' => 'Alice',
                 'avatar_url' => null,
-                'look' => ['colour' => 'grape', 'skin' => 'pumpkin', 'hat' => 'top', 'trail' => 'fire', 'boom' => 'confetti'],
+                'look' => ['colour' => 'grape', 'hat' => 'top', 'trail' => 'fire', 'boom' => 'confetti'],
             ],
         ], $history[HotPotatoChatLine::HISTORY - 1]);
     }

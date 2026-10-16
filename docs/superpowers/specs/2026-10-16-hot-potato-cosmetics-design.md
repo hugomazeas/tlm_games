@@ -1,5 +1,8 @@
 # Hot potato cosmetics
 
+> **Update (2026-10-16):** potato skins were removed: the potato is always 🥔. Four slots
+> remain (colour, hat, trail, boom); the lobby's skin picker and the `skin` column are gone.
+
 Players dress up their avatar and their potato. Second of four hot potato sub-projects
 (replays → **cosmetics** → challenges → sim content).
 

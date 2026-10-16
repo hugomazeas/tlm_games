@@ -8,7 +8,7 @@ import { freshness, reloadedFor, reloadFresh } from './freshness.ts'
 import type { ChatLine } from '../chat.ts'
 import { CHAT_KEEP, CHAT_MAX_BODY } from '../chat.ts'
 import { chatText, describeResults, type ResultsView } from './describe.ts'
-import { COSMETICS, cosmeticValue, DEFAULT_LOOK, type Look } from '../cosmetics.ts'
+import { cosmeticValue } from '../cosmetics.ts'
 import { ITEM_ICONS, playerColour, Renderer } from './renderer.ts'
 import { STRINGS } from './strings.ts'
 
@@ -26,7 +26,7 @@ interface Config {
     offices: Array<{ id: number; name: string }>
     players: Array<{ id: number; name: string; office_id: number | null; avatar_url: string | null }>
     csrf: string
-    urls: { pushConfig: string; pushSubscribe: string; pushUnsubscribe: string; locker: string }
+    urls: { pushConfig: string; pushSubscribe: string; pushUnsubscribe: string }
 }
 
 type Alpine = {
@@ -115,9 +115,6 @@ function hotPotatoApp(config: Config) {
             label: STRINGS.items[kind],
         })),
         padLegend: STRINGS.pads,
-        skins: COSMETICS.skin,
-        /** The lobby's skin picker: saving, or why it couldn't ('locked': claim or unlock the profile first). */
-        look: { busy: false, error: '' as '' | 'locked' | 'failed' },
 
         init() {
             const alpine = this as unknown as Alpine
@@ -214,13 +211,6 @@ function hotPotatoApp(config: Config) {
             return this.watchers.named.length + this.watchers.guests
         },
 
-        /** Your look as the lobby has it. */
-        get myLook(): Look {
-            return this.session?.players.find(p => p.id === this.me?.id)?.look ?? this.me?.look ?? DEFAULT_LOOK
-        },
-        get lockerUrl() {
-            return this.me ? `${config.urls.locker}/${this.me.id}` : config.urls.locker
-        },
         get timerText() {
             const seconds = Math.ceil(this.remainingMs / 1000)
             return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
@@ -583,37 +573,6 @@ function hotPotatoApp(config: Config) {
 
         hatOf(player: PlayerInfo): string | null {
             return cosmeticValue('hat', player.look?.hat)
-        },
-
-        /**
-         * Saves a potato skin in the Hub (it needs your profile claimed and unlocked
-         * there), then asks the game server to fetch your look again.
-         */
-        async pickSkin(skin: string) {
-            if (!this.me || this.look.busy || skin === this.myLook.skin) return
-            this.look.busy = true
-            this.look.error = ''
-            try {
-                const response = await fetch(this.lockerUrl, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Accept: 'application/json',
-                        'X-CSRF-TOKEN': config.csrf,
-                    },
-                    body: JSON.stringify({ ...this.myLook, skin }),
-                })
-                if (response.status === 403) {
-                    this.look.error = 'locked'
-                    return
-                }
-                if (!response.ok) throw new Error(`HTTP ${response.status}`)
-                this.send({ type: 'refreshLook' })
-            } catch {
-                this.look.error = 'failed'
-            } finally {
-                this.look.busy = false
-            }
         },
 
         isHunter(id: number): boolean {

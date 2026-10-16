@@ -15,7 +15,7 @@ export interface PlayerInfo {
     bot?: boolean
     /** Killer Potato: the AI hunter, seated only for that mode's games. */
     hunter?: boolean
-    /** Their colour, potato skin, hat, trail and boom; the defaults when absent (the hunter). */
+    /** Their colour, hat, trail and boom; the defaults when absent (the hunter). */
     look?: Look
 }
 

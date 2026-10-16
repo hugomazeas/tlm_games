@@ -50,7 +50,7 @@ GET  /leaderboards                  All game types
 GET  /leaderboards/{gameType:slug}  Per-game leaderboard (dynamic columns)
 GET  /notifications                 Web push opt-in (pick your player, enable)
 GET  /games/hot-potato              Hot potato: pick office + player, lobby, live game, the office's recent games
-GET  /games/hot-potato/locker/{player}      Locker: a player's hot potato look (colour, potato skin, hat, trail, boom)
+GET  /games/hot-potato/locker/{player}      Locker: a player's hot potato look (colour, hat, trail, boom; the potato is always a potato)
 PUT  /games/hot-potato/locker/{player}      Save it (needs the profile claimed with a PIN and unlocked)
 GET  /games/hot-potato/replays/{game}       Watch a finished game again (404 once its replay is pruned)
 GET  /games/hot-potato/replays/{game}/data  The recording, gzipped JSON
@@ -210,7 +210,7 @@ that is played live, in real time, rather than scored afterwards.
 - **Looks** (`src/cosmetics.json`, the one catalogue: TS imports it, Laravel's `Cosmetics`
   reads it to validate): stored in `hot_potato_looks`, sent with the player by
   `/internal/hot-potato/players/{id}` (`PlayerInfo.look`), drawn by the renderer, kept in
-  replays' rosters. AIs get a random one. The lobby's skin picker saves to the locker, then
+  replays' rosters. AIs get a random one. Back on the hot potato tab after the locker, the page
   sends `refreshLook` (lobby only) so the sidecar fetches the player again.
 - **Watchers and chat** (`src/chat.ts`, pure): the sidecar sends each office who's on its page
   without a seat (`watchers`: named once each, guests counted) and runs one chat room per

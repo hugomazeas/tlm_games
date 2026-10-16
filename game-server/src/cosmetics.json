@@ -14,18 +14,6 @@
         { "id": "bubblegum", "label": "Bubblegum", "value": "#ec4899" },
         { "id": "slate", "label": "Slate", "value": "#64748b" }
     ],
-    "skin": [
-        { "id": "classic", "label": "Classic", "value": "🥔", "default": true },
-        { "id": "gold", "label": "Golden", "value": "🥔" },
-        { "id": "sweet", "label": "Sweet potato", "value": "🍠" },
-        { "id": "pumpkin", "label": "Pumpkin", "value": "🎃" },
-        { "id": "egg", "label": "Egg", "value": "🥚" },
-        { "id": "avocado", "label": "Avocado", "value": "🥑" },
-        { "id": "cheese", "label": "Cheese", "value": "🧀" },
-        { "id": "bomb", "label": "Bomb", "value": "💣" },
-        { "id": "donut", "label": "Donut", "value": "🍩" },
-        { "id": "pepper", "label": "Hot pepper", "value": "🌶️" }
-    ],
     "hat": [
         { "id": "none", "label": "None", "value": null, "default": true },
         { "id": "top", "label": "Top hat", "value": "🎩" },

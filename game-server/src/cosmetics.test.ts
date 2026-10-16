@@ -9,12 +9,12 @@ describe('the cosmetics catalogue', () => {
             expect(new Set(ids).size).toBe(ids.length)
             expect(COSMETICS[slot].filter(c => c.default)).toHaveLength(1)
         }
-        expect(DEFAULT_LOOK).toEqual({ colour: 'auto', skin: 'classic', hat: 'none', trail: 'ghosts', boom: 'pie' })
+        expect(DEFAULT_LOOK).toEqual({ colour: 'auto', hat: 'none', trail: 'ghosts', boom: 'pie' })
     })
 
     test('colours are hex, the rest emoji or nothing', () => {
         for (const c of COSMETICS.colour) expect(c.value === null || /^#[0-9a-f]{6}$/.test(c.value)).toBe(true)
-        expect(cosmeticValue('skin', 'pumpkin')).toBe('🎃')
+        expect(cosmeticValue('hat', 'top')).toBe('🎩')
         expect(cosmeticValue('hat', 'none')).toBeNull()
         expect(cosmeticValue('hat', undefined)).toBeNull()
     })
@@ -28,7 +28,8 @@ describe('the cosmetics catalogue', () => {
 
     test('a look from Laravel falls back to the defaults for anything unknown', () => {
         expect(lookFrom(undefined)).toEqual(DEFAULT_LOOK)
-        expect(lookFrom({ skin: 'pumpkin', hat: 'crown' })).toEqual({ ...DEFAULT_LOOK, skin: 'pumpkin' })
+        // A look saved with a skin (they're gone) just loses it.
+        expect(lookFrom({ skin: 'pumpkin', hat: 'crown', trail: 'fire' })).toEqual({ ...DEFAULT_LOOK, trail: 'fire' })
     })
 
     test('AI seats get valid looks', () => {

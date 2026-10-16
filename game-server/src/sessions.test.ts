@@ -480,7 +480,7 @@ describe('looks', () => {
         })
     })
 
-    const pumpkin = { ...DEFAULT_LOOK, skin: 'pumpkin', hat: 'top' }
+    const pumpkin = { ...DEFAULT_LOOK, trail: 'fire', hat: 'top' }
 
     test('a lobby member who changed their look gets fetched again, and the lobby shows it', () => {
         const { a, b } = lobbyOfThree()

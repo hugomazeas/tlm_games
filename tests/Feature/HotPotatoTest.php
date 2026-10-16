@@ -98,7 +98,7 @@ class HotPotatoTest extends TestCase
             ->assertExactJson([
                 'id' => $player->id, 'name' => 'Alice', 'avatar_url' => null, 'office_id' => $office->id,
                 // Never visited the locker: the default look.
-                'look' => ['colour' => 'auto', 'skin' => 'classic', 'hat' => 'none', 'trail' => 'ghosts', 'boom' => 'pie'],
+                'look' => ['colour' => 'auto', 'hat' => 'none', 'trail' => 'ghosts', 'boom' => 'pie'],
             ]);
 
         $this->getJson('/internal/hot-potato/players/999', $this->internal())->assertNotFound();

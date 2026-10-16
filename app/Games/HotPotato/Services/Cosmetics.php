@@ -8,7 +8,7 @@ namespace App\Games\HotPotato\Services;
  */
 class Cosmetics
 {
-    public const SLOTS = ['colour', 'skin', 'hat', 'trail', 'boom'];
+    public const SLOTS = ['colour', 'hat', 'trail', 'boom'];
 
     /** @var array<string, array<int, array{id: string, label: string, value: ?string, default?: bool}>>|null */
     private ?array $catalogue = null;

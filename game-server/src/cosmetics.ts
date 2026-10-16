@@ -2,14 +2,14 @@ import catalogue from './cosmetics.json'
 import { pickOne, type Rng } from './sim/rng.ts'
 
 /**
- * How a player dresses up: their colour, potato skin, hat, trail and boom.
+ * How a player dresses up: their colour, hat, trail and boom. The potato is always a potato.
  * Cosmetic only: the simulation never sees it.
  *
  * The catalogue is `cosmetics.json`, which Laravel reads too (App\Games\HotPotato\Services\Cosmetics)
  * to validate what players pick, so the two never drift.
  */
 
-export const SLOTS = ['colour', 'skin', 'hat', 'trail', 'boom'] as const
+export const SLOTS = ['colour', 'hat', 'trail', 'boom'] as const
 export type Slot = (typeof SLOTS)[number]
 
 export interface Cosmetic {

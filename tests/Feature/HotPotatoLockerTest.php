@@ -9,16 +9,16 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * The hot potato locker: a player's colour, potato skin, hat, trail and boom,
+ * The hot potato locker: a player's colour, hat, trail and boom,
  * changeable only with the profile claimed and unlocked.
  */
 class HotPotatoLockerTest extends TestCase
 {
     use RefreshDatabase;
 
-    private const DEFAULTS = ['colour' => 'auto', 'skin' => 'classic', 'hat' => 'none', 'trail' => 'ghosts', 'boom' => 'pie'];
+    private const DEFAULTS = ['colour' => 'auto', 'hat' => 'none', 'trail' => 'ghosts', 'boom' => 'pie'];
 
-    private const PUMPKIN = ['colour' => 'grape', 'skin' => 'pumpkin', 'hat' => 'top', 'trail' => 'fire', 'boom' => 'confetti'];
+    private const PUMPKIN = ['colour' => 'grape', 'hat' => 'top', 'trail' => 'fire', 'boom' => 'confetti'];
 
     protected function setUp(): void
     {
@@ -62,8 +62,8 @@ class HotPotatoLockerTest extends TestCase
         $this->putJson("/games/hot-potato/locker/{$player->id}", [...self::PUMPKIN, 'hat' => 'crown'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('hat');
-        $this->putJson("/games/hot-potato/locker/{$player->id}", ['skin' => 'pumpkin'])
-            ->assertJsonValidationErrors(['colour', 'hat', 'trail', 'boom']);
+        $this->putJson("/games/hot-potato/locker/{$player->id}", ['hat' => 'top'])
+            ->assertJsonValidationErrors(['colour', 'trail', 'boom']);
     }
 
     public function test_a_choice_dropped_from_the_catalogue_falls_back_to_its_default(): void
@@ -103,7 +103,8 @@ class HotPotatoLockerTest extends TestCase
             ->assertOk()
             ->assertDontSee('data-locker-unlock', false)
             ->assertDontSee('data-locker-unclaimed', false)
-            ->assertSee('Pumpkin')
+            ->assertSee('Top hat')
+            ->assertDontSee('Potato (while you hold it)')
             ->assertViewHas('canEdit', true);
     }
 
@@ -123,7 +124,7 @@ class HotPotatoLockerTest extends TestCase
     {
         $player = Player::create(['name' => 'Alice']);
 
-        $this->get('/games/hot-potato')->assertOk()->assertSee('data-locker-link', false)->assertSee('data-skin-picker', false);
+        $this->get('/games/hot-potato')->assertOk()->assertSee('data-locker-link', false)->assertDontSee('data-skin-picker', false);
         $this->get("/players/{$player->id}")->assertOk()->assertSee("/games/hot-potato/locker/{$player->id}", false);
     }
 

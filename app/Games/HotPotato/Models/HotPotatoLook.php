@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * A player's hot potato look from the locker: colour, potato skin, hat, trail
+ * A player's hot potato look from the locker: colour, hat, trail
  * and boom, as catalogue ids. A player who never visited the locker has the defaults.
  */
 class HotPotatoLook extends Model
@@ -18,7 +18,6 @@ class HotPotatoLook extends Model
     protected $fillable = [
         'player_id',
         'colour',
-        'skin',
         'hat',
         'trail',
         'boom',
@@ -32,7 +31,7 @@ class HotPotatoLook extends Model
     /**
      * The look the game draws for this player. A choice the catalogue dropped since falls back to its default.
      *
-     * @return array{colour: string, skin: string, hat: string, trail: string, boom: string}
+     * @return array{colour: string, hat: string, trail: string, boom: string}
      */
     public static function of(Player $player): array
     {

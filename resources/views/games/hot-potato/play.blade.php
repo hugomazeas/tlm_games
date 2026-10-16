@@ -23,7 +23,6 @@
                 'pushConfig' => url('/push/config'),
                 'pushSubscribe' => url('/push/hot-potato/subscribe'),
                 'pushUnsubscribe' => url('/push/hot-potato/unsubscribe'),
-                'locker' => url('/games/hot-potato/locker'),
             ],
         ];
     @endphp
@@ -179,27 +178,6 @@
                                 </span>
                             </template>
                         </div>
-
-                        {{-- Your potato, quick: the rest of your look is in the locker --}}
-                        <template x-if="isMember">
-                            <div class="mb-4" data-skin-picker>
-                                <span class="block text-xs font-medium text-white/60 mb-1">Your potato</span>
-                                <div class="flex flex-wrap items-center gap-1.5">
-                                    <template x-for="option in skins" :key="option.id">
-                                        <button type="button" @click="pickSkin(option.id)" :disabled="look.busy" :title="option.label"
-                                                :class="myLook.skin === option.id ? 'bg-orange-500/30 border-orange-400' : 'bg-white/5 border-white/15 hover:bg-white/10'"
-                                                class="w-10 h-10 rounded-lg border text-xl transition disabled:opacity-50"
-                                                :style="option.id === 'gold' ? 'text-shadow: 0 0 8px #facc15' : ''"
-                                                x-text="option.value"></button>
-                                    </template>
-                                    <a :href="lockerUrl" class="ml-1 text-xs text-indigo-300 hover:text-indigo-200">Colour, hat & more →</a>
-                                </div>
-                                <p x-show="look.error === 'locked'" class="mt-1 text-xs text-amber-300">
-                                    Claim or unlock your profile to change your look: <a :href="lockerUrl" class="underline">open your locker</a>.
-                                </p>
-                                <p x-show="look.error === 'failed'" class="mt-1 text-xs text-red-300">Couldn’t save that. Try again.</p>
-                            </div>
-                        </template>
 
                         <template x-if="isHost">
                             <div class="mb-4" data-mode-picker>
