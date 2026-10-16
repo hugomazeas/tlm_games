@@ -26,7 +26,7 @@ interface Config {
     offices: Array<{ id: number; name: string }>
     players: Array<{ id: number; name: string; office_id: number | null; avatar_url: string | null }>
     csrf: string
-    urls: { pushConfig: string; pushSubscribe: string; pushUnsubscribe: string }
+    urls: { pushConfig: string; pushSubscribe: string; pushUnsubscribe: string; recentGames: string }
 }
 
 type Alpine = {
@@ -484,6 +484,7 @@ function hotPotatoApp(config: Config) {
                 // Saving can outlast the results screen: the link only matters while it shows.
                 case 'replayReady':
                     if (this.phase === 'results') this.replayUrl = `/games/hot-potato/replays/${message.gameId}`
+                    void this.refreshRecentGames()
                     return
                 case 'error':
                     this.error = STRINGS.errors[message.code]
@@ -491,6 +492,24 @@ function hotPotatoApp(config: Config) {
                         if (this.error === STRINGS.errors[message.code]) this.error = ''
                     }, 4000)
                     return
+            }
+        },
+
+        /** The game is saved by now: swap in the office's list from the Hub. A failure keeps the old one. */
+        async refreshRecentGames(): Promise<void> {
+            const office = this.officeId
+            const section = document.querySelector<HTMLElement>(`[data-recent-games-office="${office}"]`)
+            const list = section?.querySelector<HTMLElement>('[data-recent-games-list]')
+            if (!section || !list) return
+            try {
+                const response = await fetch(`${config.urls.recentGames}/${office}`, {
+                    headers: { Accept: 'text/html' },
+                })
+                if (response.status !== 200) return
+                list.innerHTML = await response.text()
+                section.hidden = false
+            } catch {
+                // The list stays as it was.
             }
         },
 

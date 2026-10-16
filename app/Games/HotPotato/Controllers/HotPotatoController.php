@@ -9,6 +9,7 @@ use App\Models\Player;
 use App\Models\PushSubscription;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\View\View;
 
 /**
@@ -25,6 +26,21 @@ class HotPotatoController extends Controller
             // avatar_path is hidden; the serialized players carry avatar_url instead.
             'players' => Player::orderBy('name')->get(['id', 'name', 'office_id', 'avatar_path']),
         ]);
+    }
+
+    /**
+     * The office's recent games list, as the page renders it: the page swaps
+     * it in when a game is saved. Empty (204) while the office has none.
+     */
+    public function recent(Office $office, RecentGames $recentGames): Response|View
+    {
+        $games = $recentGames->forOffice($office);
+
+        if ($games->isEmpty()) {
+            return response()->noContent();
+        }
+
+        return view('games.hot-potato.partials.game-list', ['games' => $games]);
     }
 
     /**

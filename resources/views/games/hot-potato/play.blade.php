@@ -23,6 +23,7 @@
                 'pushConfig' => url('/push/config'),
                 'pushSubscribe' => url('/push/hot-potato/subscribe'),
                 'pushUnsubscribe' => url('/push/hot-potato/unsubscribe'),
+                'recentGames' => url('/games/hot-potato/recent'),
             ],
         ];
     @endphp
@@ -402,11 +403,18 @@
                 </div>
                 </div>
 
-                {{-- The office's recent games, each with its replay while it lasts --}}
-                @foreach($recentGames as $officeId => $games)
-                    <section x-show="officeId === '{{ $officeId }}'" class="mt-8">
+                {{-- The office's recent games, each with its replay while it lasts. Every office
+                     has its section (hidden while empty) so the page can refresh it after a game. --}}
+                @foreach($offices as $office)
+                    @php($games = $recentGames->get($office->id))
+                    <section x-show="officeId === '{{ $office->id }}'" class="mt-8"
+                             data-recent-games-office="{{ $office->id }}" @if(! $games) hidden @endif>
                         <h2 class="text-base font-bold mb-3">Recent games</h2>
-                        @include('games.hot-potato.partials.game-list', ['games' => $games])
+                        <div data-recent-games-list>
+                            @if($games)
+                                @include('games.hot-potato.partials.game-list', ['games' => $games])
+                            @endif
+                        </div>
                     </section>
                 @endforeach
 
