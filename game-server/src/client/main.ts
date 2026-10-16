@@ -420,6 +420,10 @@ function hotPotatoApp(config: Config) {
                     if (message.playerId === this.me?.id) this.showBanner(STRINGS.youAreInfected, true)
                     else this.showBanner(STRINGS.gotInfected(this.nameOf(message.playerId)), false)
                     return
+                case 'patientZero':
+                    if (message.playerId === this.me?.id) this.showBanner(STRINGS.youAreNewPatientZero, true)
+                    else this.showBanner(STRINGS.newPatientZero(this.nameOf(message.playerId)), false)
+                    return
                 case 'teleport':
                     renderer?.portalFlash(message.portalId)
                     return

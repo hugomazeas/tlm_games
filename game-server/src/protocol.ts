@@ -144,6 +144,8 @@ export type ServerMessage =
     | { type: 'newPotato'; playerId: number }
     /** Infection: `by` caught `playerId`. */
     | { type: 'infected'; playerId: number; by: number }
+    /** Infection: the last infected left; `playerId` is patient zero now. */
+    | { type: 'patientZero'; playerId: number }
     /** Someone went through a portal (`portalId`). */
     | { type: 'teleport'; playerId: number; portalId: number }
     /** `targetId`: who a swap traded places with. */

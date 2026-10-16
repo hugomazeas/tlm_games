@@ -552,6 +552,8 @@ export class SessionManager {
                 this.broadcast(session.officeId, { type: 'boom', playerId: event.playerId })
             } else if (event.kind === 'infected') {
                 this.broadcast(session.officeId, { type: 'infected', playerId: event.playerId, by: event.by })
+            } else if (event.kind === 'patientZero') {
+                this.broadcast(session.officeId, { type: 'patientZero', playerId: event.playerId })
             } else if (event.kind === 'teleport') {
                 this.broadcast(session.officeId, {
                     type: 'teleport',

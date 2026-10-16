@@ -188,12 +188,29 @@ describe('Infection', () => {
         expect(winnerIds(game).sort()).toEqual([2, 3])
     })
 
-    test('when every infected player leaves, the clean win', () => {
+    test('when the only infected player leaves, a clean player becomes patient zero and the game goes on', () => {
         const game = setup(4)
+        patientZero(game, 1)
+        run(game, 5000)
+        const events = removePlayer(game, 1, createRng(1))
+
+        expect(game.ended).toBe(false)
+        const [zero, ...others] = infected(game).filter(id => id !== 1)
+        expect(others).toEqual([])
+        expect([2, 3, 4]).toContain(zero!)
+        expect(events).toEqual([{ kind: 'patientZero', playerId: zero! }])
+        // The same head start as at the start, from now.
+        expect(player(game, zero!).frozenMs).toBe(HUNTER_HEAD_START_MS)
+        expect(player(game, zero!).infectedAtMs).toBe(game.elapsedMs)
+    })
+
+    test('it ends instead when a handover would leave a single clean player', () => {
+        const game = setup(3)
         patientZero(game, 1)
         const events = removePlayer(game, 1, createRng(1))
 
         expect(game.ended).toBe(true)
-        expect(events.at(-1)).toEqual({ kind: 'ended', survivorIds: [2, 3, 4] })
+        expect(events.at(-1)).toMatchObject({ kind: 'ended' })
+        expect(events.some(e => e.kind === 'patientZero')).toBe(false)
     })
 })

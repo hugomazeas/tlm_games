@@ -733,6 +733,25 @@ describe('Infection', () => {
         expect([countdown?.arena.width, countdown?.arena.height]).toEqual([80, 50])
     })
 
+    test('patient zero dropping out hands the infection to someone, and the game goes on', () => {
+        const { a, b, c } = lobbyOfThree()
+        const d = connect(dave)
+        send(d, { type: 'join' })
+        send(a, { type: 'start', durationMin: 1, theme: 'random', mode: 'infection' })
+        advance(COUNTDOWN_MS + TICK_MS)
+        const zeroId = last(a, 'snapshot')?.players.find(p => p.infected)?.id
+        const zeroConn = [a, b, c, d][(zeroId ?? 1) - 1]!
+        manager.disconnect(zeroConn.id)
+        advance(TICK_MS)
+
+        const watcher = zeroConn === a ? b : a
+        const handedTo = last(watcher, 'patientZero')?.playerId
+        expect(handedTo).toBeDefined()
+        expect(handedTo).not.toBe(zeroId)
+        expect(last(watcher, 'office')?.session?.phase).toBe('playing')
+        expect(last(watcher, 'snapshot')?.players.find(p => p.id === handedTo)?.infected).toBe(true)
+    })
+
     test('snapshots say who is infected; the game is ranked clean first, patient zero last', () => {
         const { a } = lobbyOfThree()
         send(a, { type: 'start', durationMin: 1, theme: 'random', mode: 'infection' })
