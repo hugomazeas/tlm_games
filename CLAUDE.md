@@ -176,7 +176,11 @@ that is played live, in real time, rather than scored afterwards.
   a new name in a theme needs a drawing there (`obstacles.test.ts` checks).
 - **Open tabs pick up a deploy on their own.** The bundle is stamped with a
   build id (`client/build.ts`); `welcome` carries the server's, and a tab on an
-  older one reloads once it isn't mid-game. `client.js` is `no-cache` + ETag.
+  older one reloads once it isn't mid-game, at most once per build, after fetching the
+  bundle past every cache (`client/freshness.ts`; still old after that, it asks for a hard
+  refresh). The pages load the bundles as `client.js?v=…` / `replay.js?v=…` (`BundleVersion`:
+  from the game server's sources, so every deploy changes it), because Cloudflare rewrites
+  the sidecar's `no-cache` into a 4-hour browser cache for `.js`.
 - **AI players.** The host adds them in the lobby (`addBot` / `removeBot`, negative
   ids, up to the 12 seats; they count toward the 3-player minimum, so one person
   and two AIs is a solo game). They are never hosts and never reach Laravel:
