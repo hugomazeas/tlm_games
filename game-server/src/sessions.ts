@@ -23,6 +23,7 @@ import {
     winnerIds,
 } from './sim/game.ts'
 import { createRng, pickOne, type Rng } from './sim/rng.ts'
+import { botAvatarUrl, pickBotName } from './bots.ts'
 import { THEME_IDS, type ThemeId } from './sim/themes.ts'
 import { TrainedPilot } from './ai/pilot.ts'
 import type { TrainedPolicy } from './ai/policy.ts'
@@ -37,6 +38,8 @@ export const EMOTE_COOLDOWN_MS = 700
 export const RECONNECT_GRACE_MS = 10_000
 /** Killer Potato's AI hunter, as the room sees it. */
 export const HUNTER_NAME = 'Killer Potato'
+/** The hunter's robot sits on blood red. */
+const HUNTER_BACKGROUND = '#991b1b'
 /** A stalled event loop never makes the simulation jump further than this. */
 const MAX_STEP_MS = 100
 
@@ -78,6 +81,8 @@ export interface SessionHooks {
     botPolicy?: TrainedPolicy | null
     /** The policy a Killer Potato hunter plays; without one the hunter plays `botPolicy`. */
     hunterPolicy?: TrainedPolicy | null
+    /** Picks AI seats' names; kept apart from `rng` so naming never shifts a game. Defaults to Math.random. */
+    botNameRng?: Rng
 }
 
 interface Member {
@@ -287,8 +292,9 @@ export class SessionManager {
                 if (!this.hooks.botPolicy) return fail('NO_BOTS')
                 if (session.members.length >= MAX_PLAYERS) return fail('LOBBY_FULL')
                 const id = session.nextBotId--
+                const name = botName(session, this.hooks.botNameRng ?? Math.random)
                 session.members.push({
-                    player: { id, name: botName(session), avatarUrl: null, bot: true },
+                    player: { id, name, avatarUrl: botAvatarUrl(name), bot: true },
                     connId: null,
                     awayUntil: null,
                 })
@@ -388,7 +394,13 @@ export class SessionManager {
 
     /** Killer Potato's hunter, made once per session. */
     private hunterOf(session: Session): PlayerInfo {
-        session.hunter ??= { id: session.nextBotId--, name: HUNTER_NAME, avatarUrl: null, bot: true, hunter: true }
+        session.hunter ??= {
+            id: session.nextBotId--,
+            name: HUNTER_NAME,
+            avatarUrl: botAvatarUrl(HUNTER_NAME, HUNTER_BACKGROUND),
+            bot: true,
+            hunter: true,
+        }
         return session.hunter
     }
 
@@ -638,12 +650,9 @@ function rankByReign(game: GameState): GameResult['players'] {
     }))
 }
 
-/** "AI 1", "AI 2", …: the lowest number no AI in the lobby has. */
-function botName(session: Session): string {
-    const taken = new Set(session.members.filter(m => m.player.bot).map(m => m.player.name))
-    let n = 1
-    while (taken.has(`AI ${n}`)) n++
-    return `AI ${n}`
+/** A random Québécois name no one in the lobby (person or AI) already has. */
+function botName(session: Session, rng: Rng): string {
+    return pickBotName(rng, new Set(session.members.map(m => m.player.name)))
 }
 
 function round(value: number): number {
