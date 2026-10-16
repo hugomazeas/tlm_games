@@ -13,9 +13,7 @@ export interface PlayerInfo {
     avatarUrl: string | null
     /** An AI seat added by the host: negative id, never a Hub player, never in results. */
     bot?: boolean
-    /** Killer Potato: the AI hunter, seated only for that mode's games. */
-    hunter?: boolean
-    /** Their colour, potato skin, hat, trail and boom; the defaults when absent (the hunter). */
+    /** Their colour, hat, trail and boom; the defaults when absent (the hunter). */
     look?: Look
 }
 
@@ -33,6 +31,8 @@ export interface SessionView {
     settings: Settings
     /** Join order. `away` players dropped and have a few seconds to come back. */
     players: Array<PlayerInfo & { away: boolean }>
+    /** Killer Potato: who hunts, from the countdown to the end of the results; null otherwise. */
+    hunterId: number | null
 }
 
 export interface SnapshotPlayer {
@@ -83,6 +83,8 @@ export interface Results {
     /** Latest-out first. */
     eliminated: Array<{ id: number; atMs: number }>
     stats: Array<{ id: number; holdMs: number; passes: number }>
+    /** Killer Potato: who hunted last (the knife can change hands). */
+    hunterId?: number
 }
 
 export type ClientMessage =
@@ -146,6 +148,8 @@ export type ServerMessage =
     | { type: 'infected'; playerId: number; by: number }
     /** Infection: the last infected left; `playerId` is patient zero now. */
     | { type: 'patientZero'; playerId: number }
+    /** Killer Potato: the hunter left; `playerId` hunts now. */
+    | { type: 'newHunter'; playerId: number }
     /** Someone went through a portal (`portalId`). */
     | { type: 'teleport'; playerId: number; portalId: number }
     /** `targetId`: who a swap traded places with. */

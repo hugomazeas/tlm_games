@@ -94,7 +94,7 @@ export interface RendererOptions {
     myId: () => number | null
     nameOf: (id: number) => string
     avatarOf: (id: number) => string | null
-    /** Their colour, skin, hat, trail and boom; undefined draws the defaults. */
+    /** Their colour, hat, trail and boom; undefined draws the defaults. */
     lookOf: (id: number) => Look | undefined
 }
 
@@ -416,8 +416,6 @@ export class Renderer {
         const name = this.options.nameOf(p.id)
         const look = this.options.lookOf(p.id)
         const hat = active ? cosmeticValue('hat', look?.hat) : null
-        const skin = cosmeticValue('skin', look?.skin) ?? '🥔'
-        const golden = look?.skin === 'gold'
 
         // Before the first snapshot (the countdown), your own avatar pulses so you can find yourself.
         if (isMe && this.snapshots.length === 0) {
@@ -612,7 +610,7 @@ export class Renderer {
         if (isHolder && king) {
             const bob = (this.options.reducedMotion ? 0 : Math.sin(time / 200) * 0.15) - lift
             context.font = `${1.2}px sans-serif`
-            this.drawSkin(context, skin, golden, p.x, p.y - r - 1.4 + bob)
+            context.fillText('🥔', p.x, p.y - r - 1.4 + bob)
             context.font = `${1}px sans-serif`
             context.fillText('👑', p.x, p.y - r - 2.6 + bob)
         } else if (isHolder) {
@@ -621,7 +619,12 @@ export class Renderer {
             const jy = (Math.random() - 0.5) * jitter
             const bob = (this.options.reducedMotion ? 0 : Math.sin(time / 200) * 0.15) - lift
             context.font = `${1.3 + state.shake * 0.4}px sans-serif`
-            this.drawSkin(context, skin, golden, p.x + jx, p.y - r - 1.6 + bob + jy)
+            context.fillText('🥔', p.x + jx, p.y - r - 1.6 + bob + jy)
+            // Killer Potato: whoever hunts carries a knife with it, so nobody mistakes them for prey.
+            if (this.options.mode() === 'killer') {
+                context.font = `${1}px sans-serif`
+                context.fillText('🔪', p.x + 0.95, p.y - r - 1.3 + bob)
+            }
         }
 
         context.restore()
@@ -681,19 +684,6 @@ export class Renderer {
             context.textBaseline = 'middle'
             context.fillText(ITEM_ICONS[item.kind], item.x, item.y + bob + 0.05)
             context.restore()
-        }
-    }
-
-    /** The potato as its holder dresses it; the golden one glows. */
-    private drawSkin(context: CanvasRenderingContext2D, skin: string, golden: boolean, x: number, y: number) {
-        if (golden) {
-            context.save()
-            context.shadowColor = '#facc15'
-            context.shadowBlur = 14 * devicePixelRatio
-            context.fillText(skin, x, y)
-            context.restore()
-        } else {
-            context.fillText(skin, x, y)
         }
     }
 

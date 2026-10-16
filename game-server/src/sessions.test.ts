@@ -6,7 +6,6 @@ import {
     COUNTDOWN_MS,
     EMOTE_COOLDOWN_MS,
     type GameResult,
-    HUNTER_NAME,
     RECONNECT_GRACE_MS,
     RESULTS_MS,
     SessionManager,
@@ -480,7 +479,7 @@ describe('looks', () => {
         })
     })
 
-    const pumpkin = { ...DEFAULT_LOOK, skin: 'pumpkin', hat: 'top' }
+    const pumpkin = { ...DEFAULT_LOOK, trail: 'fire', hat: 'top' }
 
     test('a lobby member who changed their look gets fetched again, and the lobby shows it', () => {
         const { a, b } = lobbyOfThree()
@@ -1064,107 +1063,108 @@ describe('Killer Potato', () => {
 
     const killer = { type: 'start', durationMin: 1, theme: 'open_space', mode: 'killer' }
 
-    test('one person is enough: you against the AI hunter, shown in the view', () => {
-        const a = connect(alice)
-        send(a, { type: 'open' })
-        send(a, killer)
-
-        expect(errors(a)).toEqual([])
-        const hunter = last(a, 'office')?.session?.players.find(p => p.hunter)
-        expect(hunter).toMatchObject({ name: HUNTER_NAME, bot: true, hunter: true })
-        expect(hunter?.avatarUrl).toStartWith('data:image/svg+xml,')
-        expect(last(a, 'countdown')?.playerIds).toEqual([1, hunter?.id ?? 0])
-    })
-
-    test('AIs added in the lobby sit the game out', () => {
+    test('needs three seated, AIs counting; one of them hunts, with no extra seat', () => {
         const a = connect(alice)
         send(a, { type: 'open' })
         send(a, { type: 'addBot' })
+        send(a, killer)
+        expect(errors(a)).toEqual(['NOT_ENOUGH_PLAYERS'])
+
         send(a, { type: 'addBot' })
         send(a, killer)
-
-        const ids = last(a, 'countdown')?.playerIds ?? []
-        expect(ids).toHaveLength(2)
-        expect(ids).not.toContain(-1)
-        expect(ids).not.toContain(-2)
+        const seated = last(a, 'countdown')?.playerIds ?? []
+        expect(seated.sort((x, y) => x - y)).toEqual([-2, -1, 1])
+        const hunterId = last(a, 'office')?.session?.hunterId
+        expect(seated).toContain(hunterId!)
+        expect(last(a, 'office')?.session?.players).toHaveLength(3)
     })
 
-    test('a server without a policy refuses the mode', () => {
-        manager = new SessionManager({
-            build: 'build-1',
-            now: () => now,
-            rng: createRng(42),
-            nextSeed: () => 1234,
-            onOpened: () => {},
-            onResults: () => {},
-        })
-        const a = connect(alice)
-        send(a, { type: 'open' })
-        send(a, killer)
-
-        expect(errors(a)).toEqual(['NO_BOTS'])
+    test('the hunter is picked at random: a person or an AI', () => {
+        const hunters = new Set<number>()
+        for (let seed = 1; seed <= 20; seed++) {
+            manager = new SessionManager({
+                build: 'build-1',
+                now: () => now,
+                rng: createRng(seed),
+                nextSeed: () => 1234,
+                onOpened: () => {},
+                onResults: () => {},
+                botPolicy: policy,
+            })
+            const a = connect(alice)
+            send(a, { type: 'open' })
+            send(a, { type: 'addBot' })
+            send(a, { type: 'addBot' })
+            send(a, killer)
+            hunters.add(last(a, 'office')?.session?.hunterId ?? 0)
+        }
+        expect([...hunters].sort((x, y) => x - y)).toEqual([-2, -1, 1])
     })
 
-    test('the hunter plays the hunter policy, other AI seats the default one', () => {
+    test('an AI hunter plays the hunter policy, AI prey the default one', () => {
         const hunterPolicy = { ...policy, config: { ...policy.config, stickiness: 123 } }
-        manager = new SessionManager({
-            build: 'build-1',
-            now: () => now,
-            rng: createRng(42),
-            nextSeed: () => 1234,
-            onOpened: () => {},
-            onResults: () => {},
-            botPolicy: policy,
-            hunterPolicy,
-        })
-        const a = connect(alice)
-        send(a, { type: 'open' })
-        send(a, killer)
-        const pilotsOf = () => (manager as unknown as Internals).sessions.values().next().value?.pilots
-        const pilots = [...(pilotsOf()?.entries() ?? [])]
-        expect(pilots).toHaveLength(1)
-        expect(pilots[0]?.[1].policy).toBe(hunterPolicy)
-
-        // Without a hunter policy the hunter plays the default one.
-        manager = new SessionManager({
-            build: 'build-1',
-            now: () => now,
-            rng: createRng(42),
-            nextSeed: () => 1234,
-            onOpened: () => {},
-            onResults: () => {},
-            botPolicy: policy,
-        })
-        const b = connect(bob)
-        send(b, { type: 'open' })
-        send(b, killer)
-        expect([...(pilotsOf()?.values() ?? [])].map(p => p.policy)).toEqual([policy])
+        for (let seed = 1; seed <= 20; seed++) {
+            manager = new SessionManager({
+                build: 'build-1',
+                now: () => now,
+                rng: createRng(seed),
+                nextSeed: () => 1234,
+                onOpened: () => {},
+                onResults: () => {},
+                botPolicy: policy,
+                hunterPolicy,
+            })
+            const a = connect(alice)
+            send(a, { type: 'open' })
+            send(a, { type: 'addBot' })
+            send(a, { type: 'addBot' })
+            send(a, killer)
+            const hunterId = last(a, 'office')?.session?.hunterId
+            const pilots = (manager as unknown as Internals).sessions.values().next().value?.pilots
+            for (const [id, pilot] of pilots?.entries() ?? []) {
+                expect(pilot.policy).toBe(id === hunterId ? hunterPolicy : policy)
+            }
+        }
     })
 
-    test('the hunter hunts, and only people reach the Hub', () => {
+    test('a person can hunt: everyone people reach the Hub, the hunter included, never as a survivor', () => {
         const { a } = lobbyOfThree()
         send(a, killer)
+        const hunterId = last(a, 'office')?.session?.hunterId
         for (let t = 0; t < COUNTDOWN_MS + 61_000 && !last(a, 'results'); t += TICK_MS) advance(TICK_MS)
 
         const final = last(a, 'results')?.results
         expect(final?.mode).toBe('killer')
-        expect(results).toHaveLength(1)
+        expect(final?.hunterId).toBe(hunterId!)
+        expect(final?.survivorIds).not.toContain(hunterId)
         expect(results[0]?.players.map(p => p.playerId).sort((x, y) => x - y)).toEqual([1, 2, 3])
-        const hunterStats = final?.stats.find(row => row.id < 0)
-        // The round ends at one person left or at the timer; never with the hunter as a survivor.
-        expect(final?.survivorIds.every(id => id > 0)).toBe(true)
-        expect(final?.survivorIds.length).toBeLessThanOrEqual(3 - (hunterStats?.passes ?? 0))
-        expect(last(a, 'office')?.session?.players.some(p => p.hunter)).toBe(true)
+        expect(results[0]?.players.find(p => p.playerId === hunterId)?.survived).toBe(false)
 
         advance(RESULTS_MS)
-        expect(last(a, 'office')?.session?.players.some(p => p.hunter)).toBe(false)
+        expect(last(a, 'office')?.session?.hunterId).toBeNull()
     })
 
-    test('two people: one leaving during the countdown calls the game off', () => {
-        const a = connect(alice)
-        const b = connect(bob)
-        send(a, { type: 'open' })
-        send(b, { type: 'join' })
+    test('the hunter dropping out hands the knife on, and the game goes on', () => {
+        const { a, b, c } = lobbyOfThree()
+        const d = connect(dave)
+        send(d, { type: 'join' })
+        send(a, killer)
+        advance(COUNTDOWN_MS + TICK_MS)
+        const hunterId = last(a, 'office')?.session?.hunterId
+        const conns = [a, b, c, d]
+        manager.disconnect(conns[(hunterId ?? 1) - 1]!.id)
+        advance(TICK_MS)
+
+        const watcher = conns.find((_, i) => i + 1 !== hunterId)!
+        const next = last(watcher, 'newHunter')?.playerId
+        expect(next).toBeDefined()
+        expect(next).not.toBe(hunterId)
+        expect(last(watcher, 'office')?.session?.hunterId).toBe(next!)
+        expect(last(watcher, 'office')?.session?.phase).toBe('playing')
+    })
+
+    test('a leaver during the countdown that leaves fewer than three calls the game off', () => {
+        const { a, b } = lobbyOfThree()
         send(a, killer)
         send(b, { type: 'leave' })
         advance(COUNTDOWN_MS + TICK_MS)

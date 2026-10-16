@@ -23,7 +23,7 @@
                 'pushConfig' => url('/push/config'),
                 'pushSubscribe' => url('/push/hot-potato/subscribe'),
                 'pushUnsubscribe' => url('/push/hot-potato/unsubscribe'),
-                'locker' => url('/games/hot-potato/locker'),
+                'recentGames' => url('/games/hot-potato/recent'),
             ],
         ];
     @endphp
@@ -180,27 +180,6 @@
                             </template>
                         </div>
 
-                        {{-- Your potato, quick: the rest of your look is in the locker --}}
-                        <template x-if="isMember">
-                            <div class="mb-4" data-skin-picker>
-                                <span class="block text-xs font-medium text-white/60 mb-1">Your potato</span>
-                                <div class="flex flex-wrap items-center gap-1.5">
-                                    <template x-for="option in skins" :key="option.id">
-                                        <button type="button" @click="pickSkin(option.id)" :disabled="look.busy" :title="option.label"
-                                                :class="myLook.skin === option.id ? 'bg-orange-500/30 border-orange-400' : 'bg-white/5 border-white/15 hover:bg-white/10'"
-                                                class="w-10 h-10 rounded-lg border text-xl transition disabled:opacity-50"
-                                                :style="option.id === 'gold' ? 'text-shadow: 0 0 8px #facc15' : ''"
-                                                x-text="option.value"></button>
-                                    </template>
-                                    <a :href="lockerUrl" class="ml-1 text-xs text-indigo-300 hover:text-indigo-200">Colour, hat & more →</a>
-                                </div>
-                                <p x-show="look.error === 'locked'" class="mt-1 text-xs text-amber-300">
-                                    Claim or unlock your profile to change your look: <a :href="lockerUrl" class="underline">open your locker</a>.
-                                </p>
-                                <p x-show="look.error === 'failed'" class="mt-1 text-xs text-red-300">Couldn’t save that. Try again.</p>
-                            </div>
-                        </template>
-
                         <template x-if="isHost">
                             <div class="mb-4" data-mode-picker>
                                 <span class="block text-xs font-medium text-white/60 mb-1">Mode</span>
@@ -247,9 +226,9 @@
                                             class="bg-emerald-500 hover:bg-emerald-400 disabled:bg-white/10 disabled:text-white/30 text-white font-bold rounded-lg px-6 py-2 transition">
                                         Start
                                     </button>
-                                    <p x-show="!canStart && mode !== 'killer' && mode !== 'infection'" class="text-xs text-white/40 mt-1">Needs at least 3 players. Alone? Add 2 AIs or more.</p>
+                                    <p x-show="!canStart && mode !== 'infection'" class="text-xs text-white/40 mt-1">Needs at least 3 players. Alone? Add 2 AIs or more.</p>
                                     <p x-show="mode === 'infection'" class="text-xs text-white/40 mt-1">People only: 3 or more. Added AIs sit out, and the arena is extra big.</p>
-                                    <p x-show="mode === 'killer'" class="text-xs text-white/40 mt-1">You against the AI hunter: one person is enough, added AIs sit out.</p>
+                                    <p x-show="mode === 'killer'" class="text-xs text-white/40 mt-1">One of you hunts, picked at random. Needs 3 seated: AIs count.</p>
                                 </div>
                             </div>
                         </template>
@@ -424,11 +403,18 @@
                 </div>
                 </div>
 
-                {{-- The office's recent games, each with its replay while it lasts --}}
-                @foreach($recentGames as $officeId => $games)
-                    <section x-show="officeId === '{{ $officeId }}'" class="mt-8">
+                {{-- The office's recent games, each with its replay while it lasts. Every office
+                     has its section (hidden while empty) so the page can refresh it after a game. --}}
+                @foreach($offices as $office)
+                    @php($games = $recentGames->get($office->id))
+                    <section x-show="officeId === '{{ $office->id }}'" class="mt-8"
+                             data-recent-games-office="{{ $office->id }}" @if(! $games) hidden @endif>
                         <h2 class="text-base font-bold mb-3">Recent games</h2>
-                        @include('games.hot-potato.partials.game-list', ['games' => $games])
+                        <div data-recent-games-list>
+                            @if($games)
+                                @include('games.hot-potato.partials.game-list', ['games' => $games])
+                            @endif
+                        </div>
                     </section>
                 @endforeach
 

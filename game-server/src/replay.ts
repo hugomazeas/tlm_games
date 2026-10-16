@@ -23,6 +23,7 @@ const RECORDED = [
     'pickup',
     'infected',
     'patientZero',
+    'newHunter',
     'teleport',
     'results',
 ] as const
@@ -34,7 +35,7 @@ export interface ReplayMeta {
     mode: GameMode
     theme: ThemeId
     durationMs: number
-    /** Everyone in the game as they were then, AIs and the hunter included. */
+    /** Everyone in the game as they were then, AIs included. */
     roster: PlayerInfo[]
 }
 

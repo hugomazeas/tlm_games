@@ -50,7 +50,7 @@ GET  /leaderboards                  All game types
 GET  /leaderboards/{gameType:slug}  Per-game leaderboard (dynamic columns)
 GET  /notifications                 Web push opt-in (pick your player, enable)
 GET  /games/hot-potato              Hot potato: pick office + player, lobby, live game, the office's recent games
-GET  /games/hot-potato/locker/{player}      Locker: a player's hot potato look (colour, potato skin, hat, trail, boom)
+GET  /games/hot-potato/locker/{player}      Locker: a player's hot potato look (colour, hat, trail, boom; the potato is always a potato)
 PUT  /games/hot-potato/locker/{player}      Save it (needs the profile claimed with a PIN and unlocked)
 GET  /games/hot-potato/replays/{game}       Watch a finished game again (404 once its replay is pruned)
 GET  /games/hot-potato/replays/{game}/data  The recording, gzipped JSON
@@ -176,7 +176,11 @@ that is played live, in real time, rather than scored afterwards.
   a new name in a theme needs a drawing there (`obstacles.test.ts` checks).
 - **Open tabs pick up a deploy on their own.** The bundle is stamped with a
   build id (`client/build.ts`); `welcome` carries the server's, and a tab on an
-  older one reloads once it isn't mid-game. `client.js` is `no-cache` + ETag.
+  older one reloads once it isn't mid-game, at most once per build, after fetching the
+  bundle past every cache (`client/freshness.ts`; still old after that, it asks for a hard
+  refresh). The pages load the bundles as `client.js?v=…` / `replay.js?v=…` (`BundleVersion`:
+  from the game server's sources, so every deploy changes it), because Cloudflare rewrites
+  the sidecar's `no-cache` into a 4-hour browser cache for `.js`.
 - **AI players.** The host adds them in the lobby (`addBot` / `removeBot`, negative
   ids, up to the 12 seats; they count toward the 3-player minimum, so one person
   and two AIs is a solo game). They are never hosts and never reach Laravel:
@@ -194,12 +198,12 @@ that is played live, in real time, rather than scored afterwards.
 - **Portals** (every mode): a linked pair opens on open floor every 25–40 s (first at 20 s),
   lasts 12 s; stepping in one end puts you out of the other. AIs don't observe them (the
   observation's item list is fixed) until the policy is retrained.
-- **Killer Potato** (`mode: 'killer'`): the session adds its own AI hunter seat
-  (`HUNTER_NAME`, not a lobby member, `hunter: true` in the view during its games)
-  that holds the potato all game, has no fuse and knocks out whoever it touches;
-  added AIs sit out, one person can start, the game ends at one person left (zero
-  when it started with one) or at the timer. Needs the policy (`NO_BOTS` otherwise).
-  A leaver during its countdown calls the game off rather than hand someone a win.
+- **Killer Potato** (`mode: 'killer'`): one of the seated (a person or an added AI), picked at
+  random at the start, hunts (`hunterId` in the view and the results): they hold the potato all
+  game, it has no fuse, and their touch knocks you out. Needs three seated. An AI hunter plays
+  `hunterPolicy`. If the hunter leaves with three or more left, someone else takes the knife
+  (`newHunter`). Ends at one player left or at the timer. In Killer and Infection, a countdown
+  leaver who leaves fewer than three calls the game off rather than hand someone a win.
 - **Replays** (`src/replay.ts`): the session records what it broadcasts from a game's
   countdown to its results (snapshots are full state, so playback never re-simulates and
   survives sim changes). The sidecar posts the gzipped recording to
@@ -210,7 +214,7 @@ that is played live, in real time, rather than scored afterwards.
 - **Looks** (`src/cosmetics.json`, the one catalogue: TS imports it, Laravel's `Cosmetics`
   reads it to validate): stored in `hot_potato_looks`, sent with the player by
   `/internal/hot-potato/players/{id}` (`PlayerInfo.look`), drawn by the renderer, kept in
-  replays' rosters. AIs get a random one. The lobby's skin picker saves to the locker, then
+  replays' rosters. AIs get a random one. Back on the hot potato tab after the locker, the page
   sends `refreshLook` (lobby only) so the sidecar fetches the player again.
 - **Watchers and chat** (`src/chat.ts`, pure): the sidecar sends each office who's on its page
   without a seat (`watchers`: named once each, guests counted) and runs one chat room per

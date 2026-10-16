@@ -182,6 +182,8 @@ export type GameEvent =
     | { kind: 'infected'; playerId: number; by: number }
     /** Infection: the last infected player left, and `playerId` carries it now. */
     | { kind: 'patientZero'; playerId: number }
+    /** Killer Potato: the hunter left, and `playerId` hunts now. */
+    | { kind: 'newHunter'; playerId: number }
     | { kind: 'teleport'; playerId: number; portalId: number }
     /** Survivors, or in King of the Potato the longest holders (ties share). */
     | { kind: 'ended'; survivorIds: number[] }
@@ -304,10 +306,10 @@ export function removePlayer(game: GameState, playerId: number, rng: Rng): GameE
 
     eliminate(game, leaving)
 
-    // Killer Potato has one hunter: if it goes, nobody else takes the potato and the round ends.
     if (game.holderId === playerId) {
         game.holderId = null
-        if (game.mode !== 'killer') handOutPotato(game, rng, events)
+        if (game.mode === 'killer') passKnifeOn(game, rng, events)
+        else handOutPotato(game, rng, events)
     }
 
     if (game.mode === 'infection') passInfectionOn(game, rng, events)
@@ -736,6 +738,22 @@ function blast(game: GameState, centre: SimPlayer) {
         p.vy = ny * INFECTION_BLAST_SPEED
         p.launchMs = Math.max(p.launchMs, INFECTION_BLAST_MS)
     }
+}
+
+/**
+ * Killer Potato: the hunter left. Someone still in takes the knife (and the potato), with the
+ * same head start as at the start, while that leaves two to chase (three left); with fewer,
+ * nobody does and the game ends, the players winning.
+ */
+function passKnifeOn(game: GameState, rng: Rng, events: GameEvent[]) {
+    const alive = alivePlayers(game)
+    if (alive.length < 3) return
+
+    const next = pickOne(rng, alive)
+    game.hunterId = next.id
+    game.holderId = next.id
+    next.frozenMs = HUNTER_HEAD_START_MS
+    events.push({ kind: 'newHunter', playerId: next.id })
 }
 
 /**

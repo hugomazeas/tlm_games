@@ -27,7 +27,8 @@ export type ChatEvent =
     | { type: 'joined'; name: string }
     | { type: 'left'; name: string }
     | { type: 'started'; mode: GameMode; theme: ThemeId; players: number }
-    | { type: 'results'; mode: GameMode; winners: string[] }
+    /** `hunter`: Killer Potato's, for "Hugo caught everyone". */
+    | { type: 'results'; mode: GameMode; winners: string[]; hunter?: string }
     | { type: 'replay'; gameId: number }
 
 export interface ChatAuthor {

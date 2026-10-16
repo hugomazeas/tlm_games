@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Route;
 // The live game (WebSocket and the page's script) is served by the sidecar
 // under /games/hot-potato/live/, which nginx sends straight to it.
 Route::get('/games/hot-potato', [HotPotatoController::class, 'play']);
+Route::get('/games/hot-potato/recent/{office}', [HotPotatoController::class, 'recent']);
 Route::get('/games/hot-potato/locker/{player}', [HotPotatoLockerController::class, 'show']);
 Route::put('/games/hot-potato/locker/{player}', [HotPotatoLockerController::class, 'update']);
 Route::get('/games/hot-potato/replays/{game}', [HotPotatoReplayController::class, 'show']);

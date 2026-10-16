@@ -163,6 +163,21 @@ class GameTypeSeeder extends Seeder
         );
 
         GameMode::updateOrCreate(
+            ['game_type_id' => $hotPotato->id, 'slug' => 'killer'],
+            [
+                'name' => 'Killer Potato',
+                'description' => 'Games survived as prey, then people caught as the hunter.',
+                'is_active' => true,
+                'sort_order' => 3,
+                'leaderboard_columns' => [
+                    ['key' => 'survivals', 'label' => 'Survived', 'sortable' => true],
+                    ['key' => 'catches', 'label' => 'Catches', 'sortable' => true],
+                    ['key' => 'games_played', 'label' => 'Games', 'sortable' => true],
+                ],
+            ]
+        );
+
+        GameMode::updateOrCreate(
             ['game_type_id' => $pingPong->id, 'slug' => 'doubles-elo-ranking'],
             [
                 'name' => '2v2 ELO Ranking',

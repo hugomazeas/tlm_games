@@ -181,6 +181,9 @@ function hotPotatoReplay(config: Config) {
                     renderer?.infectionBlast(message.playerId)
                     this.showBanner(STRINGS.gotInfected(this.nameOf(message.playerId)))
                     return
+                case 'newHunter':
+                    this.showBanner(STRINGS.newKiller(this.nameOf(message.playerId)))
+                    return
                 case 'patientZero':
                     this.showBanner(STRINGS.newPatientZero(this.nameOf(message.playerId)))
                     return
@@ -258,9 +261,6 @@ function hotPotatoReplay(config: Config) {
 
         nameOf(id: number): string {
             return roster.get(id)?.name ?? STRINGS.someone
-        },
-        isHunter(id: number): boolean {
-            return Boolean(roster.get(id)?.hunter)
         },
         colourOf(player: PlayerInfo): string {
             return playerColour(player.id, player.look)

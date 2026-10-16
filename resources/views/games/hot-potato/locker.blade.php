@@ -42,8 +42,7 @@
     <div x-data="hotPotatoLocker(@js($config))" class="grid md:grid-cols-[14rem_1fr] gap-6">
         {{-- Preview: the avatar in its colour and hat, holding its potato --}}
         <div class="bg-white/5 border border-white/10 rounded-xl p-6 flex flex-col items-center gap-3 self-start" data-locker-preview>
-            <div class="relative mt-10">
-                <span class="absolute left-1/2 -translate-x-1/2 -top-14 text-4xl" :style="skin === 'gold' ? 'text-shadow: 0 0 12px #facc15' : ''" x-text="optionValue('skin', skin)"></span>
+            <div class="relative mt-6">
                 <span x-show="optionValue('hat', hat)" class="absolute left-1/2 -translate-x-1/2 -top-5 text-2xl z-10" x-text="optionValue('hat', hat)"></span>
                 <div class="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold"
                      :style="'background:' + previewColour()" x-text="@js(mb_strtoupper(mb_substr($player->name, 0, 1)))"></div>
@@ -68,8 +67,7 @@
                                     <span class="w-6 h-6 rounded-full" :style="'background:' + (option.value ?? autoColour)"></span>
                                 </template>
                                 <template x-if="slot.id !== 'colour'">
-                                    <span :style="option.id === 'gold' ? 'text-shadow: 0 0 8px #facc15' : ''"
-                                          x-text="option.value ?? (slot.id === 'trail' ? '◌' : '∅')"></span>
+                                    <span x-text="option.value ?? (slot.id === 'trail' ? '◌' : '∅')"></span>
                                 </template>
                             </button>
                         </template>
@@ -100,7 +98,6 @@
                 message: '',
                 slots: [
                     { id: 'colour', label: 'Colour' },
-                    { id: 'skin', label: 'Potato (while you hold it)' },
                     { id: 'hat', label: 'Hat' },
                     { id: 'trail', label: 'Trail (speed and boost)' },
                     { id: 'boom', label: 'Boom' },

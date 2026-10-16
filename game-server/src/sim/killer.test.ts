@@ -142,13 +142,26 @@ describe('Killer Potato', () => {
         expect(winnerIds(game)).toEqual([2, 3])
     })
 
-    test('if the hunter leaves, nobody takes the potato and the players win', () => {
+    test('if the hunter leaves, someone left takes the knife, after the same head start', () => {
         const game = setup(3)
+        run(game, 5000)
+        const events = removePlayer(game, HUNTER, createRng(2))
+
+        expect(game.ended).toBe(false)
+        const next = game.hunterId
+        expect([1, 2, 3]).toContain(next!)
+        expect(game.holderId).toBe(next)
+        expect(events).toEqual([{ kind: 'newHunter', playerId: next! }])
+        expect(player(game, next!).frozenMs).toBe(HUNTER_HEAD_START_MS)
+    })
+
+    test('with only two left, nobody takes the knife and they win', () => {
+        const game = setup(2)
         const events = removePlayer(game, HUNTER, createRng(2))
 
         expect(game.ended).toBe(true)
-        expect(events.some(e => e.kind === 'newPotato')).toBe(false)
-        expect(winnerIds(game)).toEqual([1, 2, 3])
+        expect(events.some(e => e.kind === 'newHunter')).toBe(false)
+        expect(winnerIds(game)).toEqual([1, 2])
     })
 
     test('a player leaving is just out; the hunter keeps hunting', () => {
