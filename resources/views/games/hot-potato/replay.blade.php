@@ -130,7 +130,7 @@
                                 <button type="button" @click="follow(p.id)"
                                         :class="followId === p.id ? 'bg-white/15 border-white/30' : 'bg-white/5 border-transparent hover:bg-white/10'"
                                         class="w-full flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm text-left transition">
-                                    <span class="w-2.5 h-2.5 rounded-full shrink-0" :style="'background:' + colourFor(p.id)"></span>
+                                    <span class="w-2.5 h-2.5 rounded-full shrink-0" :style="'background:' + colourOf(p)"></span>
                                     <span x-show="p.bot" title="AI">🤖</span>
                                     <span class="truncate" x-text="p.name"></span>
                                     <span x-show="followId === p.id" class="ml-auto text-xs text-white/50">following</span>

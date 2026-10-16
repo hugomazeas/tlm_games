@@ -4,6 +4,7 @@ namespace App\Games\HotPotato\Controllers;
 
 use App\Games\HotPotato\Jobs\SendHotPotatoInviteJob;
 use App\Games\HotPotato\Models\HotPotatoGame;
+use App\Games\HotPotato\Models\HotPotatoLook;
 use App\Games\HotPotato\Services\ReplayPruner;
 use App\Http\Controllers\Controller;
 use App\Models\Player;
@@ -34,6 +35,7 @@ class HotPotatoInternalController extends Controller
             'name' => $player->name,
             'avatar_url' => $player->avatarUrl(),
             'office_id' => $player->office_id,
+            'look' => HotPotatoLook::of($player),
         ]);
     }
 

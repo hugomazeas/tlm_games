@@ -1,0 +1,56 @@
+{
+    "colour": [
+        { "id": "auto", "label": "Auto", "value": null, "default": true },
+        { "id": "tomato", "label": "Tomato", "value": "#ef4444" },
+        { "id": "tangerine", "label": "Tangerine", "value": "#f97316" },
+        { "id": "butter", "label": "Butter", "value": "#eab308" },
+        { "id": "lime", "label": "Lime", "value": "#84cc16" },
+        { "id": "mint", "label": "Mint", "value": "#10b981" },
+        { "id": "teal", "label": "Teal", "value": "#14b8a6" },
+        { "id": "sky", "label": "Sky", "value": "#0ea5e9" },
+        { "id": "cobalt", "label": "Cobalt", "value": "#3b82f6" },
+        { "id": "grape", "label": "Grape", "value": "#8b5cf6" },
+        { "id": "orchid", "label": "Orchid", "value": "#d946ef" },
+        { "id": "bubblegum", "label": "Bubblegum", "value": "#ec4899" },
+        { "id": "slate", "label": "Slate", "value": "#64748b" }
+    ],
+    "skin": [
+        { "id": "classic", "label": "Classic", "value": "🥔", "default": true },
+        { "id": "gold", "label": "Golden", "value": "🥔" },
+        { "id": "sweet", "label": "Sweet potato", "value": "🍠" },
+        { "id": "pumpkin", "label": "Pumpkin", "value": "🎃" },
+        { "id": "egg", "label": "Egg", "value": "🥚" },
+        { "id": "avocado", "label": "Avocado", "value": "🥑" },
+        { "id": "cheese", "label": "Cheese", "value": "🧀" },
+        { "id": "bomb", "label": "Bomb", "value": "💣" },
+        { "id": "donut", "label": "Donut", "value": "🍩" },
+        { "id": "pepper", "label": "Hot pepper", "value": "🌶️" }
+    ],
+    "hat": [
+        { "id": "none", "label": "None", "value": null, "default": true },
+        { "id": "top", "label": "Top hat", "value": "🎩" },
+        { "id": "cap", "label": "Cap", "value": "🧢" },
+        { "id": "grad", "label": "Graduate", "value": "🎓" },
+        { "id": "helmet", "label": "Helmet", "value": "⛑️" },
+        { "id": "bow", "label": "Bow", "value": "🎀" },
+        { "id": "flower", "label": "Flower", "value": "🌼" },
+        { "id": "unicorn", "label": "Unicorn", "value": "🦄" },
+        { "id": "cowboy", "label": "Cowboy", "value": "🤠" }
+    ],
+    "trail": [
+        { "id": "ghosts", "label": "Colour ghosts", "value": null, "default": true },
+        { "id": "sparkles", "label": "Sparkles", "value": "✨" },
+        { "id": "fire", "label": "Fire", "value": "🔥" },
+        { "id": "hearts", "label": "Hearts", "value": "💖" },
+        { "id": "bubbles", "label": "Bubbles", "value": "🫧" },
+        { "id": "stars", "label": "Stars", "value": "⭐" }
+    ],
+    "boom": [
+        { "id": "pie", "label": "Pie", "value": "🥧", "default": true },
+        { "id": "confetti", "label": "Confetti", "value": "🎉" },
+        { "id": "ghost", "label": "Ghost", "value": "👻" },
+        { "id": "skull", "label": "Skull", "value": "💀" },
+        { "id": "fireworks", "label": "Fireworks", "value": "🎆" },
+        { "id": "ice", "label": "Ice", "value": "🧊" }
+    ]
+}

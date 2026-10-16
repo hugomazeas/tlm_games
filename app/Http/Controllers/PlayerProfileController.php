@@ -54,7 +54,12 @@ class PlayerProfileController extends Controller
             ]);
         }
 
-        return redirect('/players/'.$player->id)->with('success', 'Profile unlocked.');
+        // A page that asked for the PIN (the hot potato locker) gets you back; only paths on this site.
+        $back = (string) $request->input('redirect', '');
+        // "//host" and "/\host" leave the site in a browser.
+        $target = preg_match('#^/(?![/\\\\])#', $back) === 1 ? $back : '/players/'.$player->id;
+
+        return redirect($target)->with('success', 'Profile unlocked.');
     }
 
     public function lock(Player $player): RedirectResponse

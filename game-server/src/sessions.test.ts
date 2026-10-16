@@ -12,6 +12,7 @@ import {
     SessionManager,
     TICK_MS,
 } from './sessions.ts'
+import { DEFAULT_LOOK, isValidLook } from './cosmetics.ts'
 import { isReplayMessage, REPLAY_VERSION, type Replay } from './replay.ts'
 import { EFFECTS, FIRST_ITEM_MS } from './sim/items.ts'
 import { createRng } from './sim/rng.ts'
@@ -464,6 +465,59 @@ describe('replays', () => {
     })
 })
 
+describe('looks', () => {
+    let refreshed: number[]
+    beforeEach(() => {
+        refreshed = []
+        manager = new SessionManager({
+            build: 'build-1',
+            now: () => now,
+            rng: createRng(42),
+            nextSeed: () => 1234,
+            onOpened: () => {},
+            onResults: result => results.push(result),
+            refreshPlayer: playerId => refreshed.push(playerId),
+        })
+    })
+
+    const pumpkin = { ...DEFAULT_LOOK, skin: 'pumpkin', hat: 'top' }
+
+    test('a lobby member who changed their look gets fetched again, and the lobby shows it', () => {
+        const { a, b } = lobbyOfThree()
+        send(b, { type: 'refreshLook' })
+        expect(refreshed).toEqual([2])
+
+        manager.updatePlayer({ ...bob, look: pumpkin })
+        expect(last(a, 'office')?.session?.players.find(p => p.id === 2)?.look).toEqual(pumpkin)
+    })
+
+    test('nobody outside the lobby, and nothing during a game, refreshes', () => {
+        const { a, b } = lobbyOfThree()
+        const outsider = connect(dave)
+        send(outsider, { type: 'refreshLook' })
+        send(a, { type: 'start', durationMin: 1, theme: 'random' })
+        send(b, { type: 'refreshLook' })
+        expect(refreshed).toEqual([])
+
+        // A fetch that lands after the start leaves the game's look alone.
+        manager.updatePlayer({ ...bob, look: pumpkin })
+        expect(last(a, 'office')?.session?.players.find(p => p.id === 2)?.look).toBeUndefined()
+    })
+
+    test('a replay keeps everyone’s look', () => {
+        const a = connect({ ...alice, look: pumpkin })
+        const b = connect(bob)
+        const c = connect(carol)
+        send(a, { type: 'open' })
+        send(b, { type: 'join' })
+        send(c, { type: 'join' })
+        playToResults(a)
+
+        const replay = JSON.parse(new TextDecoder().decode(Bun.gunzipSync(results[0]!.replay!))) as Replay
+        expect(replay.meta.roster.find(p => p.id === 1)?.look).toEqual(pumpkin)
+    })
+})
+
 /** Plays a one-minute game through to the results screen (two booms can end it early). */
 function playToResults(conn: FakeConn) {
     send(conn, { type: 'start', durationMin: 1, theme: 'random' })
@@ -627,6 +681,7 @@ describe('AI players', () => {
         for (const bot of bots) {
             expect(BOT_NAMES as readonly string[]).toContain(bot.name)
             expect(bot.avatarUrl).toBe(botAvatarUrl(bot.name))
+            expect(isValidLook(bot.look)).toBe(true)
         }
         expect(bots[0]!.name).not.toBe(bots[1]!.name)
         expect(errors(a)).toEqual([])

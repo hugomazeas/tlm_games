@@ -1,3 +1,4 @@
+import { cosmeticValue, type Look } from '../cosmetics.ts'
 import type { SnapshotItem, SnapshotPlayer } from '../protocol.ts'
 import { type Arena, AVATAR_RADIUS, PAD_RADIUS } from '../sim/arena.ts'
 import { FREEZE_MS, type GameMode, STEAL_SAFETY_MS } from '../sim/game.ts'
@@ -63,6 +64,8 @@ interface Splat {
     x: number
     y: number
     at: number
+    /** The player's boom: 🥧 unless they picked another. */
+    emoji: string
 }
 
 interface FloatingEmote {
@@ -85,6 +88,8 @@ export interface RendererOptions {
     myId: () => number | null
     nameOf: (id: number) => string
     avatarOf: (id: number) => string | null
+    /** Their colour, skin, hat, trail and boom; undefined draws the defaults. */
+    lookOf: (id: number) => Look | undefined
 }
 
 /**
@@ -155,7 +160,9 @@ export class Renderer {
     boom(playerId: number) {
         const latest = this.snapshots.at(-1)
         const p = latest?.players.find(candidate => candidate.id === playerId)
-        if (p) this.splats.push({ x: p.x, y: p.y, at: performance.now() })
+        if (!p) return
+        const emoji = cosmeticValue('boom', this.options.lookOf(playerId)?.boom) ?? '🥧'
+        this.splats.push({ x: p.x, y: p.y, at: performance.now(), emoji })
     }
 
     /** An end-of-game reaction, floating up from its player. */
@@ -366,6 +373,10 @@ export class Renderer {
         const isMe = p.id === this.options.myId()
         const isHolder = p.id === state.holderId
         const name = this.options.nameOf(p.id)
+        const look = this.options.lookOf(p.id)
+        const hat = active ? cosmeticValue('hat', look?.hat) : null
+        const skin = cosmeticValue('skin', look?.skin) ?? '🥔'
+        const golden = look?.skin === 'gold'
 
         // Before the first snapshot (the countdown), your own avatar pulses so you can find yourself.
         if (isMe && this.snapshots.length === 0) {
@@ -403,7 +414,7 @@ export class Renderer {
         if (p.out) context.globalAlpha = 0.25
         else if (p.ghostMs > 0) context.globalAlpha = 0.45
 
-        if (active && (p.speedMs > 0 || p.launchMs > 0)) this.drawTrail(context, p, r)
+        if (active && (p.speedMs > 0 || p.launchMs > 0)) this.drawTrail(context, p, r, look)
         else this.trails.delete(p.id)
 
         const king = this.options.mode() === 'king'
@@ -414,7 +425,7 @@ export class Renderer {
             context.shadowBlur = (10 + 20 * pulse) * devicePixelRatio
         }
 
-        context.fillStyle = colourFor(p.id)
+        context.fillStyle = playerColour(p.id, look)
         context.beginPath()
         context.arc(p.x, p.y, r, 0, Math.PI * 2)
         context.fill()
@@ -456,9 +467,14 @@ export class Renderer {
             context.fillText(initials(name), p.x, p.y + 0.05)
         }
 
+        if (hat) {
+            context.font = `${0.9 * (r / AVATAR_RADIUS)}px sans-serif`
+            context.fillText(hat, p.x, p.y - r * 0.95)
+        }
+
         context.font = `600 ${0.65}px Outfit, sans-serif`
         context.fillStyle = 'rgba(255,255,255,0.85)'
-        context.fillText(name, p.x, p.y - r - 0.6)
+        context.fillText(name, p.x, p.y - r - (hat ? 1.1 : 0.6))
 
         if (p.frozenMs > 0 && !p.out) {
             context.fillStyle = 'rgba(96,165,250,0.45)'
@@ -516,19 +532,21 @@ export class Renderer {
             context.stroke()
         }
 
+        // A hat pushes the name up, and the potato above it.
+        const lift = hat ? 0.5 : 0
         if (isHolder && king) {
-            const bob = this.options.reducedMotion ? 0 : Math.sin(time / 200) * 0.15
+            const bob = (this.options.reducedMotion ? 0 : Math.sin(time / 200) * 0.15) - lift
             context.font = `${1.2}px sans-serif`
-            context.fillText('🥔', p.x, p.y - r - 1.4 + bob)
+            this.drawSkin(context, skin, golden, p.x, p.y - r - 1.4 + bob)
             context.font = `${1}px sans-serif`
             context.fillText('👑', p.x, p.y - r - 2.6 + bob)
         } else if (isHolder) {
             const jitter = this.options.reducedMotion ? 0 : state.shake * 0.35
             const jx = (Math.random() - 0.5) * jitter
             const jy = (Math.random() - 0.5) * jitter
-            const bob = this.options.reducedMotion ? 0 : Math.sin(time / 200) * 0.15
+            const bob = (this.options.reducedMotion ? 0 : Math.sin(time / 200) * 0.15) - lift
             context.font = `${1.3 + state.shake * 0.4}px sans-serif`
-            context.fillText('🥔', p.x + jx, p.y - r - 1.6 + bob + jy)
+            this.drawSkin(context, skin, golden, p.x + jx, p.y - r - 1.6 + bob + jy)
         }
 
         context.restore()
@@ -560,8 +578,24 @@ export class Renderer {
         }
     }
 
-    /** Fading copies of a boosted avatar where it has just been, spaced out so they show behind it. */
-    private drawTrail(context: CanvasRenderingContext2D, p: SnapshotPlayer, radius: number) {
+    /** The potato as its holder dresses it; the golden one glows. */
+    private drawSkin(context: CanvasRenderingContext2D, skin: string, golden: boolean, x: number, y: number) {
+        if (golden) {
+            context.save()
+            context.shadowColor = '#facc15'
+            context.shadowBlur = 14 * devicePixelRatio
+            context.fillText(skin, x, y)
+            context.restore()
+        } else {
+            context.fillText(skin, x, y)
+        }
+    }
+
+    /**
+     * Where a boosted avatar has just been, spaced out so it shows behind it: fading
+     * copies of it, or the emoji trail its player picked.
+     */
+    private drawTrail(context: CanvasRenderingContext2D, p: SnapshotPlayer, radius: number, look: Look | undefined) {
         const trail = this.trails.get(p.id) ?? []
         const newest = trail.at(-1)
         if (!newest || Math.hypot(p.x - newest.x, p.y - newest.y) >= TRAIL_SPACING) {
@@ -571,9 +605,18 @@ export class Renderer {
         this.trails.set(p.id, trail)
         if (this.options.reducedMotion) return
 
+        const emoji = cosmeticValue('trail', look?.trail)
         context.save()
-        context.fillStyle = colourFor(p.id)
+        context.fillStyle = playerColour(p.id, look)
+        context.textAlign = 'center'
+        context.textBaseline = 'middle'
+        context.font = `${radius * 1.2}px sans-serif`
         trail.forEach((point, i) => {
+            if (emoji) {
+                context.globalAlpha = ((i + 1) / (trail.length + 1)) * 0.8
+                context.fillText(emoji, point.x, point.y)
+                return
+            }
             context.globalAlpha = ((i + 1) / (trail.length + 1)) * 0.35
             context.beginPath()
             context.arc(point.x, point.y, radius * 0.9, 0, Math.PI * 2)
@@ -592,7 +635,7 @@ export class Renderer {
 
             if (this.options.reducedMotion) {
                 context.font = '1.6px sans-serif'
-                context.fillText('🥧', splat.x, splat.y)
+                context.fillText(splat.emoji, splat.x, splat.y)
             } else {
                 const progress = (time - splat.at) / SPLAT_MS
                 context.globalAlpha = 1 - progress
@@ -611,7 +654,7 @@ export class Renderer {
                     context.fill()
                 }
                 context.font = `${1.6 + progress * 1.5}px sans-serif`
-                context.fillText('🥧', splat.x, splat.y)
+                context.fillText(splat.emoji, splat.x, splat.y)
             }
 
             context.restore()
@@ -723,6 +766,11 @@ function line(context: CanvasRenderingContext2D, x1: number, y1: number, x2: num
 
 export function colourFor(id: number): string {
     return `hsl(${(id * 137.508) % 360} 70% 50%)`
+}
+
+/** The colour a player picked, or the one their id gives them. */
+export function playerColour(id: number, look: Look | undefined): string {
+    return cosmeticValue('colour', look?.colour) ?? colourFor(id)
 }
 
 function initials(name: string): string {

@@ -55,6 +55,12 @@ const manager = new SessionManager({
     },
     botPolicy,
     hunterPolicy,
+    refreshPlayer: playerId => {
+        laravel
+            .findPlayer(playerId)
+            .then(player => player && manager.updatePlayer(player))
+            .catch(error => console.warn('Look not refreshed:', error.message))
+    },
 })
 
 setInterval(() => manager.tick(), TICK_MS)

@@ -2,7 +2,7 @@ import type { PlayerInfo } from '../protocol.ts'
 import { REPLAY_VERSION, type Replay, type ReplayMessage, type ReplayMeta } from '../replay.ts'
 import { THEMES } from '../sim/themes.ts'
 import { describeResults, type ResultsView } from './describe.ts'
-import { colourFor, Renderer } from './renderer.ts'
+import { playerColour, Renderer } from './renderer.ts'
 import { ReplayPlayer, type SeekState, type Speed, SPEEDS } from './replay-player.ts'
 import { STRINGS } from './strings.ts'
 
@@ -57,7 +57,6 @@ function hotPotatoReplay(config: Config) {
         banner: '',
         remainingMs: 0,
         aliveCount: 0,
-        colourFor,
 
         async init() {
             try {
@@ -84,6 +83,7 @@ function hotPotatoReplay(config: Config) {
                     myId: () => this.followId,
                     nameOf: id => this.nameOf(id),
                     avatarOf: id => roster.get(id)?.avatarUrl ?? null,
+                    lookOf: id => roster.get(id)?.look,
                 })
                 renderer.setArena(countdown.arena, countdown.playerIds)
                 this.seek(player.startMs)
@@ -251,6 +251,9 @@ function hotPotatoReplay(config: Config) {
         },
         isHunter(id: number): boolean {
             return Boolean(roster.get(id)?.hunter)
+        },
+        colourOf(player: PlayerInfo): string {
+            return playerColour(player.id, player.look)
         },
         avatarOf(id: number): string | null {
             return roster.get(id)?.avatarUrl ?? null
