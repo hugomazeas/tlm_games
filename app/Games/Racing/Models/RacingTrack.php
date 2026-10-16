@@ -7,9 +7,11 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * A circuit for the racing game: checkpoints to drive through in order,
  * `laps` times round. Each checkpoint is a line across a street, as
- * latitude/longitude, the way through it (`heading`, degrees, 0 north and
- * 90 west) and how wide it is; the first is the start line. Made in the
- * track editor, which checks a track can be raced before saving it.
+ * latitude/longitude, a direction along the street that lays the line across
+ * it (`heading`, degrees, 0 north and 90 west; either way round, since a
+ * checkpoint is crossed either way) and how wide it is; the first is the
+ * start line. Made in the track editor, which checks a track can be raced
+ * before saving it.
  *
  * @property array<int, array{lat: float, lon: float, heading: float, width: float}> $gates
  */

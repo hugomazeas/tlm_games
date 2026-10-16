@@ -6,16 +6,21 @@ import type { DriveWorld } from './world.ts'
 
 /**
  * What the Hub's track editor does to a track: drop a checkpoint across the
- * street clicked, slot it into the loop where it was clicked, point every
- * checkpoint on towards the next, and write the track out in latitude/longitude.
- * A track is a circuit: the last checkpoint always leads back to the first.
+ * street clicked, slot it into the loop where it was clicked, and write the
+ * track out in latitude/longitude. A track is a circuit: the last checkpoint
+ * always leads back to the first. Checkpoints have no direction (crossing
+ * either way counts); the route between them decides the way round.
  */
 
 /** A gate reaches this far past each kerb, so a kart hugging the edge still counts. */
 const GATE_MARGIN = 2
 const MAX_GATE_WIDTH = 60
 
-/** A gate across the nearest road to x, z, facing the way along it closer to `heading`. */
+/**
+ * A gate across the nearest road to x, z. Its line runs square across the
+ * road; which way along the road it faces (the one closer to `heading`)
+ * doesn't matter for racing, and only keeps a dragged gate from flipping.
+ */
 export function gateAcrossRoad(world: DriveWorld, x: number, z: number, heading: number): Gate | null {
     const road = world.nearestRoad(x, z, heading)
     if (!road) return null
@@ -27,24 +32,6 @@ export function gateAcrossRoad(world: DriveWorld, x: number, z: number, heading:
         dz: round(-Math.cos(road.heading), 4),
         width: Math.min(MAX_GATE_WIDTH, Math.round(road.width + GATE_MARGIN * 2)),
     }
-}
-
-/**
- * Each checkpoint turned to face along its road towards the next one; the
- * last towards the first once the loop is closed, else onwards from the
- * one before it. A lone checkpoint keeps its way.
- */
-export function orientGates(world: DriveWorld, gates: readonly Gate[], closed: boolean): Gate[] {
-    return gates.map((gate, i) => {
-        const next = gates[i + 1] ?? (closed ? gates[0] : undefined)
-        const previous = gates[i - 1]
-        let bearing: number
-        if (next && next !== gate) bearing = Math.atan2(-(next.x - gate.x), -(next.z - gate.z))
-        else if (previous) bearing = Math.atan2(-(gate.x - previous.x), -(gate.z - previous.z))
-        else return gate
-
-        return gateAcrossRoad(world, gate.x, gate.z, bearing) ?? gate
-    })
 }
 
 /**
@@ -82,6 +69,7 @@ export function courseFile(course: Omit<Course, 'slug'>, unproject: (point: [num
             return {
                 lat: round(lat, 7),
                 lon: round(lon, 7),
+                // Only the line's orientation across the road: a gate is crossed either way.
                 heading: round((Math.atan2(-gate.dx, -gate.dz) * 180) / Math.PI, 1),
                 width: gate.width,
             }

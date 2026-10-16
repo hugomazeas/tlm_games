@@ -1,5 +1,5 @@
 import { courseProblems } from '../drive/checks.ts'
-import { courseFile, gateAcrossRoad, insertionIndex, orientGates } from '../drive/editing.ts'
+import { courseFile, gateAcrossRoad, insertionIndex } from '../drive/editing.ts'
 import { courseRoute, type Route } from '../drive/route.ts'
 import { buildWorld } from '../drive/world.ts'
 import { projectionAt } from '../map/convert.ts'
@@ -12,7 +12,9 @@ import type { Course, Gate, RaceMap } from '../map/format.ts'
  * the orange route to put one between two; drag one to move it; right-click
  * (or ✕ in the list) to remove it. Every track is a circuit: the route runs
  * from each checkpoint to the next and from the last back to the start.
- * The sidebar checks the track can be raced before it can be saved.
+ * Checkpoints have no direction: crossing one either way counts, and the
+ * route decides the way round. The sidebar checks the track can be raced
+ * before it can be saved.
  */
 
 /** What the Hub's editor page tells the editor. */
@@ -149,7 +151,6 @@ fitView()
 update()
 
 function update(): void {
-    gates = orientGates(world, gates, true)
     route = gates.length >= 2 ? courseRoute(draft(), map.roads) : null
     problems = gates.length < 3 ? ['Place at least 3 checkpoints.'] : courseProblems(draft(), world, map.roads)
     renderSidebar()
@@ -269,7 +270,8 @@ function draw(): void {
         context.stroke()
     }
 
-    // Checkpoints in screen pixels, so they stay the same size at any zoom.
+    // Checkpoints in screen pixels, so they stay the same size at any zoom: a bar across the road, and its number.
+    // No arrow: a checkpoint is crossed either way, the route decides the way round.
     context.setTransform(ratio, 0, 0, ratio, 0, 0)
     gates.forEach((gate, i) => {
         const [x, y] = toScreen(gate.x, gate.z)
@@ -281,14 +283,7 @@ function draw(): void {
         context.moveTo(x - gate.dz * half, y + gate.dx * half)
         context.lineTo(x + gate.dz * half, y - gate.dx * half)
         context.stroke()
-        // An arrow the way through, beyond the marker.
         context.fillStyle = colour
-        context.beginPath()
-        context.moveTo(x + gate.dx * 30, y + gate.dz * 30)
-        context.lineTo(x + gate.dx * 18 - gate.dz * 7, y + gate.dz * 18 + gate.dx * 7)
-        context.lineTo(x + gate.dx * 18 + gate.dz * 7, y + gate.dz * 18 - gate.dx * 7)
-        context.closePath()
-        context.fill()
         context.beginPath()
         context.arc(x, y, 12, 0, Math.PI * 2)
         context.fill()

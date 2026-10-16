@@ -97,12 +97,27 @@ describe('advance', () => {
         expect(through(progress, 1, 160)).toBe(progress)
     })
 
-    test('skipping a gate or crossing backwards counts for nothing', () => {
+    test('skipping a gate counts for nothing', () => {
         const started = through(startProgress(), 0, 2)
         expect(through(started, 2, 30)).toBe(started)
-        expect(through(started, 1, 30, true)).toBe(started)
         // Cutting from gate 1 straight back over the start line doesn't complete a lap.
         expect(through(through(started, 1, 20), 0, 40)).toMatchObject({ lap: 1, next: 2 })
+    })
+
+    test('a checkpoint has no direction: crossing it either way counts, in order', () => {
+        const started = through(startProgress(), 0, 2)
+        expect(through(started, 1, 30, true)).toMatchObject({ next: 2, lastGate: 1 })
+        // The start line too, the first time and to finish a lap.
+        expect(through(startProgress(), 0, 2, true)).toMatchObject({ lap: 1, next: 1 })
+        let progress = started
+        for (const [gate, time] of [
+            [1, 20],
+            [2, 40],
+            [3, 60],
+        ] as const) {
+            progress = through(progress, gate, time, true)
+        }
+        expect(through(progress, 0, 80, true)).toMatchObject({ lap: 2, lapTimes: [80.5] })
     })
 })
 
