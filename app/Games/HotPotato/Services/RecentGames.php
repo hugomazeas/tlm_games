@@ -37,6 +37,22 @@ class RecentGames
     }
 
     /**
+     * One office's newest games, for the page to refresh its list after a game.
+     *
+     * @return Collection<int, array{id: int, mode: string, arena: string, ended_at: \Illuminate\Support\Carbon, winners: string, replay_url: ?string}>
+     */
+    public function forOffice(Office $office): Collection
+    {
+        return HotPotatoGame::query()
+            ->where('office_id', $office->id)
+            ->with('players.player:id,name')
+            ->latest('id')
+            ->limit(self::PER_OFFICE)
+            ->get()
+            ->map(fn (HotPotatoGame $game) => $this->summary($game));
+    }
+
+    /**
      * The player's newest games, with where they finished.
      *
      * @return Collection<int, array{id: int, mode: string, arena: string, ended_at: \Illuminate\Support\Carbon, winners: string, replay_url: ?string, position: int, survived: bool}>

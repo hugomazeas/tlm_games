@@ -53,7 +53,8 @@ export function botBackground(name: string): string {
 }
 
 /** A robot head on the bot's own colour, as an SVG data URL usable wherever a photo is. */
-export function botAvatarUrl(name: string, background = botBackground(name)): string {
+export function botAvatarUrl(name: string): string {
+    const background = botBackground(name)
     const svg =
         `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">` +
         `<rect width="64" height="64" fill="${background}"/>` +
