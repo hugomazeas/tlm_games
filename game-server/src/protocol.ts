@@ -1,3 +1,4 @@
+import type { Look } from './cosmetics.ts'
 import type { Arena } from './sim/arena.ts'
 import type { GameMode } from './sim/game.ts'
 import type { Effect, ItemKind } from './sim/items.ts'
@@ -13,6 +14,8 @@ export interface PlayerInfo {
     bot?: boolean
     /** Killer Potato: the AI hunter, seated only for that mode's games. */
     hunter?: boolean
+    /** Their colour, potato skin, hat, trail and boom; the defaults when absent (the hunter). */
+    look?: Look
 }
 
 export type Phase = 'lobby' | 'countdown' | 'playing' | 'results'
@@ -83,6 +86,8 @@ export type ClientMessage =
     /** Host, lobby only: seat one more AI, or take one out (`playerId` is the AI's negative id). */
     | { type: 'addBot' }
     | { type: 'removeBot'; playerId: number }
+    /** Lobby only: "I just changed my look in the Hub", so the server fetches it again. */
+    | { type: 'refreshLook' }
 
 /** End-of-game reactions: tap one on the results screen and it pops over your avatar. */
 export const EMOTES = ['😂', '🔥', '👏', '😭', '🤬', '🥔', '💀', '🫡'] as const
@@ -158,6 +163,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
         case 'close':
         case 'addBot':
         case 'backToLobby':
+        case 'refreshLook':
             return { type: message.type }
         case 'removeBot':
             if (typeof message.playerId !== 'number' || !Number.isInteger(message.playerId) || message.playerId >= 0)

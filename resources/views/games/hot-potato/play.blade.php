@@ -23,6 +23,7 @@
                 'pushConfig' => url('/push/config'),
                 'pushSubscribe' => url('/push/hot-potato/subscribe'),
                 'pushUnsubscribe' => url('/push/hot-potato/unsubscribe'),
+                'locker' => url('/games/hot-potato/locker'),
             ],
         ];
     @endphp
@@ -58,7 +59,11 @@
                         </select>
                     </label>
                     <label class="block">
-                        <span class="block text-xs font-medium text-white/60 mb-1">You are</span>
+                        <span class="flex items-center justify-between text-xs font-medium text-white/60 mb-1">
+                            You are
+                            <a x-show="playerId" :href="'{{ url('/games/hot-potato/locker') }}/' + playerId"
+                               class="text-indigo-300 hover:text-indigo-200" data-locker-link>🎨 Locker</a>
+                        </span>
                         <select x-model="playerId" :disabled="!officeId || pickersLocked"
                                 :title="pickersLocked ? 'Locked until this game is over' : ''"
                                 class="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-orange-400 disabled:opacity-40">
@@ -140,12 +145,13 @@
                                       :class="player.away ? 'border-white/10 text-white/30' : 'border-white/20 bg-white/10'">
                                     <template x-if="player.avatarUrl">
                                         <img :src="player.avatarUrl" alt="" class="w-5 h-5 -ml-1.5 rounded-full object-cover"
-                                             :style="'box-shadow: 0 0 0 2px ' + colourFor(player.id)">
+                                             :style="'box-shadow: 0 0 0 2px ' + colourOf(player)">
                                     </template>
                                     <template x-if="!player.avatarUrl">
-                                        <span class="w-2.5 h-2.5 rounded-full" :style="'background:' + colourFor(player.id)"></span>
+                                        <span class="w-2.5 h-2.5 rounded-full" :style="'background:' + colourOf(player)"></span>
                                     </template>
                                     <span x-show="player.bot" title="AI">🤖</span>
+                                    <span x-show="hatOf(player)" x-text="hatOf(player)"></span>
                                     <span x-text="player.name"></span>
                                     <span x-show="player.id === session.hostId" title="Host">👑</span>
                                     <span x-show="player.away" class="text-xs">(away)</span>
@@ -156,6 +162,27 @@
                                 </span>
                             </template>
                         </div>
+
+                        {{-- Your potato, quick: the rest of your look is in the locker --}}
+                        <template x-if="isMember">
+                            <div class="mb-4" data-skin-picker>
+                                <span class="block text-xs font-medium text-white/60 mb-1">Your potato</span>
+                                <div class="flex flex-wrap items-center gap-1.5">
+                                    <template x-for="option in skins" :key="option.id">
+                                        <button type="button" @click="pickSkin(option.id)" :disabled="look.busy" :title="option.label"
+                                                :class="myLook.skin === option.id ? 'bg-orange-500/30 border-orange-400' : 'bg-white/5 border-white/15 hover:bg-white/10'"
+                                                class="w-10 h-10 rounded-lg border text-xl transition disabled:opacity-50"
+                                                :style="option.id === 'gold' ? 'text-shadow: 0 0 8px #facc15' : ''"
+                                                x-text="option.value"></button>
+                                    </template>
+                                    <a :href="lockerUrl" class="ml-1 text-xs text-indigo-300 hover:text-indigo-200">Colour, hat & more →</a>
+                                </div>
+                                <p x-show="look.error === 'locked'" class="mt-1 text-xs text-amber-300">
+                                    Claim or unlock your profile to change your look: <a :href="lockerUrl" class="underline">open your locker</a>.
+                                </p>
+                                <p x-show="look.error === 'failed'" class="mt-1 text-xs text-red-300">Couldn’t save that. Try again.</p>
+                            </div>
+                        </template>
 
                         <template x-if="isHost">
                             <div class="mb-4" data-mode-picker>

@@ -159,7 +159,10 @@
         @endif
     </div>
 
-    <h2 class="text-base sm:text-lg font-bold mb-3 sm:mb-4">Game Stats</h2>
+    <div class="flex items-center justify-between gap-3 mb-3 sm:mb-4">
+        <h2 class="text-base sm:text-lg font-bold">Game Stats</h2>
+        <a href="{{ url('/games/hot-potato/locker/' . $player->id) }}" class="text-sm text-indigo-300 hover:text-indigo-200" data-locker-link>🎨 Hot potato locker</a>
+    </div>
     @if(empty($gameStats))
         <x-empty-state icon="🎮" title="No game stats yet" message="This player hasn't participated in any games." />
     @else

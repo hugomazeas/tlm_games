@@ -1,3 +1,4 @@
+import { lookFrom } from './cosmetics.ts'
 import type { PlayerInfo } from './protocol.ts'
 import type { GateSpec } from './race/map/courses.ts'
 import type { RaceResult } from './race/lobbies.ts'
@@ -19,9 +20,14 @@ export class LaravelClient {
         if (response.status === 404) return null
         if (!response.ok) throw new Error(`Player lookup failed with ${response.status}`)
 
-        const body = (await response.json()) as { id: number; name: string; avatar_url?: string | null }
+        const body = (await response.json()) as {
+            id: number
+            name: string
+            avatar_url?: string | null
+            look?: unknown
+        }
 
-        return { id: body.id, name: body.name, avatarUrl: body.avatar_url ?? null }
+        return { id: body.id, name: body.name, avatarUrl: body.avatar_url ?? null, look: lookFrom(body.look) }
     }
 
     async sessionOpened(officeId: number, hostPlayerId: number): Promise<void> {

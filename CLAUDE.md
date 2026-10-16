@@ -50,6 +50,8 @@ GET  /leaderboards                  All game types
 GET  /leaderboards/{gameType:slug}  Per-game leaderboard (dynamic columns)
 GET  /notifications                 Web push opt-in (pick your player, enable)
 GET  /games/hot-potato              Hot potato: pick office + player, lobby, live game, the office's recent games
+GET  /games/hot-potato/locker/{player}      Locker: a player's hot potato look (colour, potato skin, hat, trail, boom)
+PUT  /games/hot-potato/locker/{player}      Save it (needs the profile claimed with a PIN and unlocked)
 GET  /games/hot-potato/replays/{game}       Watch a finished game again (404 once its replay is pruned)
 GET  /games/hot-potato/replays/{game}/data  The recording, gzipped JSON
 GET  /games/typing                  Typing: solo 30s test + hub-wide race
@@ -193,6 +195,11 @@ that is played live, in real time, rather than scored afterwards.
   Laravel keeps the newest `HOT_POTATO_REPLAYS_PER_OFFICE` (100) per office (`ReplayPruner`).
   The replay page loads `/games/hot-potato/live/replay.js` (`client/replay-page.ts`,
   `ReplayPlayer` in `client/replay-player.ts`), reusing the live renderer.
+- **Looks** (`src/cosmetics.json`, the one catalogue: TS imports it, Laravel's `Cosmetics`
+  reads it to validate): stored in `hot_potato_looks`, sent with the player by
+  `/internal/hot-potato/players/{id}` (`PlayerInfo.look`), drawn by the renderer, kept in
+  replays' rosters. AIs get a random one. The lobby's skin picker saves to the locker, then
+  sends `refreshLook` (lobby only) so the sidecar fetches the player again.
 - Tests: `cd game-server && bun test` (sim, arenas, sessions);
   `bun run typecheck`; `bun run format`. Laravel side: `tests/Feature/HotPotatoTest.php`.
 

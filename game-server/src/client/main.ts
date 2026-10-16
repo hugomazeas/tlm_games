@@ -5,7 +5,8 @@ import type { ItemKind } from '../sim/items.ts'
 import { THEMES, THEME_IDS, type ThemeId } from '../sim/themes.ts'
 import { BUILD } from './build.ts'
 import { describeResults, type ResultsView } from './describe.ts'
-import { colourFor, ITEM_ICONS, Renderer } from './renderer.ts'
+import { COSMETICS, cosmeticValue, DEFAULT_LOOK, type Look } from '../cosmetics.ts'
+import { ITEM_ICONS, playerColour, Renderer } from './renderer.ts'
 import { STRINGS } from './strings.ts'
 
 /**
@@ -22,7 +23,7 @@ interface Config {
     offices: Array<{ id: number; name: string }>
     players: Array<{ id: number; name: string; office_id: number | null; avatar_url: string | null }>
     csrf: string
-    urls: { pushConfig: string; pushSubscribe: string; pushUnsubscribe: string }
+    urls: { pushConfig: string; pushSubscribe: string; pushUnsubscribe: string; locker: string }
 }
 
 type Alpine = {
@@ -99,7 +100,9 @@ function hotPotatoApp(config: Config) {
             label: STRINGS.items[kind],
         })),
         padLegend: STRINGS.pads,
-        colourFor,
+        skins: COSMETICS.skin,
+        /** The lobby's skin picker: saving, or why it couldn't ('locked': claim or unlock the profile first). */
+        look: { busy: false, error: '' as '' | 'locked' | 'failed' },
 
         init() {
             const alpine = this as unknown as Alpine
@@ -109,6 +112,10 @@ function hotPotatoApp(config: Config) {
             window.addEventListener('keyup', event => this.onKey(event, false))
             document.addEventListener('fullscreenchange', () => {
                 this.fullscreen = document.fullscreenElement !== null
+            })
+            // Back from the locker in another tab: the lobby picks up your new look.
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden && this.isMember && this.phase === 'lobby') this.send({ type: 'refreshLook' })
             })
             window.addEventListener('blur', () => {
                 pressed.clear()
@@ -182,6 +189,13 @@ function hotPotatoApp(config: Config) {
         },
         get modeHint() {
             return STRINGS.modes[this.gameMode].hint
+        },
+        /** Your look as the lobby has it. */
+        get myLook(): Look {
+            return this.session?.players.find(p => p.id === this.me?.id)?.look ?? this.me?.look ?? DEFAULT_LOOK
+        },
+        get lockerUrl() {
+            return this.me ? `${config.urls.locker}/${this.me.id}` : config.urls.locker
         },
         get timerText() {
             const seconds = Math.ceil(this.remainingMs / 1000)
@@ -417,6 +431,7 @@ function hotPotatoApp(config: Config) {
                     myId: () => this.me?.id ?? null,
                     nameOf: id => this.nameOf(id),
                     avatarOf: id => this.avatarOf(id),
+                    lookOf: id => this.session?.players.find(p => p.id === id)?.look,
                 })
             }
             return renderer
@@ -457,6 +472,45 @@ function hotPotatoApp(config: Config) {
                 this.allPlayers.find(p => p.id === id)?.name ??
                 STRINGS.someone
             )
+        },
+
+        colourOf(player: PlayerInfo): string {
+            return playerColour(player.id, player.look)
+        },
+
+        hatOf(player: PlayerInfo): string | null {
+            return cosmeticValue('hat', player.look?.hat)
+        },
+
+        /**
+         * Saves a potato skin in the Hub (it needs your profile claimed and unlocked
+         * there), then asks the game server to fetch your look again.
+         */
+        async pickSkin(skin: string) {
+            if (!this.me || this.look.busy || skin === this.myLook.skin) return
+            this.look.busy = true
+            this.look.error = ''
+            try {
+                const response = await fetch(this.lockerUrl, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Accept: 'application/json',
+                        'X-CSRF-TOKEN': config.csrf,
+                    },
+                    body: JSON.stringify({ ...this.myLook, skin }),
+                })
+                if (response.status === 403) {
+                    this.look.error = 'locked'
+                    return
+                }
+                if (!response.ok) throw new Error(`HTTP ${response.status}`)
+                this.send({ type: 'refreshLook' })
+            } catch {
+                this.look.error = 'failed'
+            } finally {
+                this.look.busy = false
+            }
         },
 
         isHunter(id: number): boolean {

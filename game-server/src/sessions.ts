@@ -24,6 +24,7 @@ import {
 } from './sim/game.ts'
 import { createRng, pickOne, type Rng } from './sim/rng.ts'
 import { botAvatarUrl, pickBotName } from './bots.ts'
+import { randomLook } from './cosmetics.ts'
 import { THEME_IDS, type ThemeId } from './sim/themes.ts'
 import { TrainedPilot } from './ai/pilot.ts'
 import type { TrainedPolicy } from './ai/policy.ts'
@@ -84,8 +85,10 @@ export interface SessionHooks {
     botPolicy?: TrainedPolicy | null
     /** The policy a Killer Potato hunter plays; without one the hunter plays `botPolicy`. */
     hunterPolicy?: TrainedPolicy | null
-    /** Picks AI seats' names; kept apart from `rng` so naming never shifts a game. Defaults to Math.random. */
+    /** Picks AI seats' names and looks; kept apart from `rng` so neither shifts a game. Defaults to Math.random. */
     botNameRng?: Rng
+    /** A lobby member changed their look in the Hub: fetch them again and hand them to `updatePlayer`. */
+    refreshPlayer?(playerId: number): void
 }
 
 interface Member {
@@ -298,13 +301,21 @@ export class SessionManager {
                 if (!this.hooks.botPolicy) return fail('NO_BOTS')
                 if (session.members.length >= MAX_PLAYERS) return fail('LOBBY_FULL')
                 const id = session.nextBotId--
-                const name = botName(session, this.hooks.botNameRng ?? Math.random)
+                const nameRng = this.hooks.botNameRng ?? Math.random
+                const name = botName(session, nameRng)
                 session.members.push({
-                    player: { id, name, avatarUrl: botAvatarUrl(name), bot: true },
+                    player: { id, name, avatarUrl: botAvatarUrl(name), bot: true, look: randomLook(nameRng) },
                     connId: null,
                     awayUntil: null,
                 })
                 this.broadcastOffice(session)
+                return
+            }
+
+            case 'refreshLook': {
+                if (session?.phase === 'lobby' && session.members.some(m => m.player.id === player.id)) {
+                    this.hooks.refreshPlayer?.(player.id)
+                }
                 return
             }
 
@@ -317,6 +328,22 @@ export class SessionManager {
                 this.removeMember(session, message.playerId)
                 return
             }
+        }
+    }
+
+    /**
+     * A player as Laravel has them now (after `refreshPlayer`). Their tabs pick it up; a lobby
+     * they sit in shows it. A game already under way keeps the look it started with.
+     */
+    updatePlayer(player: PlayerInfo) {
+        for (const client of this.clients.values()) {
+            if (client.player?.id === player.id) client.player = player
+        }
+        for (const session of this.sessions.values()) {
+            const member = session.members.find(m => m.player.id === player.id)
+            if (!member || session.phase !== 'lobby') continue
+            member.player = player
+            this.broadcastOffice(session)
         }
     }
 
