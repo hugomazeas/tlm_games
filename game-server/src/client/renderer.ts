@@ -532,8 +532,10 @@ export class Renderer {
             context.stroke()
         }
 
+        // A hat pushes the name up, and the potato above it.
+        const lift = hat ? 0.5 : 0
         if (isHolder && king) {
-            const bob = this.options.reducedMotion ? 0 : Math.sin(time / 200) * 0.15
+            const bob = (this.options.reducedMotion ? 0 : Math.sin(time / 200) * 0.15) - lift
             context.font = `${1.2}px sans-serif`
             this.drawSkin(context, skin, golden, p.x, p.y - r - 1.4 + bob)
             context.font = `${1}px sans-serif`
@@ -542,7 +544,7 @@ export class Renderer {
             const jitter = this.options.reducedMotion ? 0 : state.shake * 0.35
             const jx = (Math.random() - 0.5) * jitter
             const jy = (Math.random() - 0.5) * jitter
-            const bob = this.options.reducedMotion ? 0 : Math.sin(time / 200) * 0.15
+            const bob = (this.options.reducedMotion ? 0 : Math.sin(time / 200) * 0.15) - lift
             context.font = `${1.3 + state.shake * 0.4}px sans-serif`
             this.drawSkin(context, skin, golden, p.x + jx, p.y - r - 1.6 + bob + jy)
         }

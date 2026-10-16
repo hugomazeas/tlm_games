@@ -43,15 +43,15 @@
         {{-- Preview: the avatar in its colour and hat, holding its potato --}}
         <div class="bg-white/5 border border-white/10 rounded-xl p-6 flex flex-col items-center gap-3 self-start" data-locker-preview>
             <div class="relative mt-10">
-                <span class="absolute left-1/2 -translate-x-1/2 -top-14 text-4xl" :style="skin === 'gold' ? 'text-shadow: 0 0 12px #facc15' : ''" x-text="valueOf('skin', skin)"></span>
-                <span x-show="valueOf('hat', hat)" class="absolute left-1/2 -translate-x-1/2 -top-5 text-2xl z-10" x-text="valueOf('hat', hat)"></span>
+                <span class="absolute left-1/2 -translate-x-1/2 -top-14 text-4xl" :style="skin === 'gold' ? 'text-shadow: 0 0 12px #facc15' : ''" x-text="optionValue('skin', skin)"></span>
+                <span x-show="optionValue('hat', hat)" class="absolute left-1/2 -translate-x-1/2 -top-5 text-2xl z-10" x-text="optionValue('hat', hat)"></span>
                 <div class="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold"
                      :style="'background:' + previewColour()" x-text="@js(mb_strtoupper(mb_substr($player->name, 0, 1)))"></div>
             </div>
             <p class="font-semibold">{{ $player->name }}</p>
             <p class="text-sm text-white/60">
-                Trail <span x-text="valueOf('trail', trail) ?? '◌◌◌'"></span> ·
-                Boom <span x-text="valueOf('boom', boom)"></span>
+                Trail <span x-text="optionValue('trail', trail) ?? '◌◌◌'"></span> ·
+                Boom <span x-text="optionValue('boom', boom)"></span>
             </p>
         </div>
 
@@ -111,11 +111,11 @@
                 get dirty() {
                     return this.slots.some(slot => this[slot.id] !== this.saved[slot.id]);
                 },
-                valueOf(slot, id) {
+                optionValue(slot, id) {
                     return this.catalogue[slot].find(option => option.id === id)?.value ?? null;
                 },
                 previewColour() {
-                    return this.valueOf('colour', this.colour) ?? this.autoColour;
+                    return this.optionValue('colour', this.colour) ?? this.autoColour;
                 },
                 pick(slot, id) {
                     if (!this.canEdit) return;
