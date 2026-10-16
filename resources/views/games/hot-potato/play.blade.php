@@ -9,7 +9,7 @@
         on purpose: it must define hotPotatoApp before Alpine (deferred) starts.
         If the sidecar is down, the stub below shows that instead of a broken page.
     --}}
-    <script src="{{ url('/games/hot-potato/live/client.js') }}"></script>
+    <script src="{{ url('/games/hot-potato/live/client.js') }}?v={{ $bundleVersion }}"></script>
     <script>
         window.hotPotatoApp = window.hotPotatoApp || (() => ({ unavailable: true }));
     </script>
@@ -82,6 +82,12 @@
                             </template>
                         </select>
                     </label>
+                </div>
+
+                {{-- Reloaded once for a new version and still on the old one: a cache holds it. --}}
+                <div x-show="staleStuck" x-cloak data-stale-notice
+                     class="mb-4 bg-amber-500/15 border border-amber-500/30 text-amber-200 text-sm rounded-lg px-4 py-3">
+                    A new version of the game is out. Refresh the page (Ctrl+Shift+R, or ⌘+Shift+R on a Mac) to get it.
                 </div>
 
                 <div x-show="status === 'connecting' || status === 'offline'"

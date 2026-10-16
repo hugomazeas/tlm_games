@@ -2,6 +2,7 @@
 
 namespace App\Games\HotPotato\Providers;
 
+use App\Games\HotPotato\Services\BundleVersion;
 use App\Games\HotPotato\Services\Leaderboards\InfectionProvider;
 use App\Games\HotPotato\Services\Leaderboards\KingProvider;
 use App\Games\HotPotato\Services\Leaderboards\SurvivalsProvider;
@@ -28,6 +29,11 @@ class HotPotatoServiceProvider extends ServiceProvider
         $leaderboard->register(new SurvivalsProvider);
         $leaderboard->register(new KingProvider);
         $leaderboard->register(new InfectionProvider);
+
+        // The sidecar's bundles load with a version in their URL, so a deploy is never hidden by a cache.
+        View::composer(['games.hot-potato.play', 'games.hot-potato.replay'], function ($view) {
+            $view->with('bundleVersion', $this->app->make(BundleVersion::class)->current());
+        });
 
         // A player's profile lists their recent games, each with its replay while it lasts.
         View::composer('players.show', function ($view) {
