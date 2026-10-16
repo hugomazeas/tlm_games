@@ -20,10 +20,11 @@ and the game narrates itself. Stacked on cosmetics (looks show in the list and t
   10 s per player (`SLOW_DOWN` otherwise). Guests get `PICK_A_PLAYER`. Rendered with
   `x-text` only.
 - Event lines, written by the sidecar, stored as data and worded by the page (`STRINGS.chat`):
-  `opened`, `joined`, `left`, `botAdded`, `botRemoved`, `started` (mode, arena, players),
-  `boom` (Killer: caught), `steal` (King), `pickup` (item, effect, target), `results`
+  `opened`, `joined`, `left` (people only, never AIs), `started` (mode, arena, players), `results`
   (mode, winners), `replay` (game id: "▶ Watch replay", sent when the replay is saved, as
   its own line so lines never change once written). Names are captured at the time.
+  Nothing mid-game (booms, steals, pickups): tried, and it drowned the talk. A line of a
+  kind the page doesn't know is hidden.
 - Lines: `{ id, at, kind: 'message' | 'event', author?, body?, event? }`; `id` is the
   sidecar's own (history from Laravel gets fresh ids when loaded). Server messages:
   `chat` (one new line) and `chatHistory` (all kept lines, on connect and once history loads).
@@ -42,7 +43,7 @@ and the game narrates itself. Stacked on cosmetics (looks show in the list and t
 ## Page
 
 - Wide screens: a right-hand column beside the lobby or arena (inside the full-screen
-  stage) with Watching, then Chat (scrolls, newest at the bottom, input under it). Narrow:
+  stage; in full screen it runs the screen's height) with Watching, then Chat (thin, quiet scrollbar) (scrolls, newest at the bottom, input under it). Narrow:
   below. Typing in the input never steers (inputs are already ignored by the key handler).
 - Guests see "Pick your name above to chat" instead of the input.
 
@@ -54,7 +55,7 @@ Moderation UI, chat in replays, Giphy.
 
 - Bun (`sessions.test.ts`): watchers (seated excluded, one per player, guests counted,
   updates on join/leave), chat validation, rate limit, guests refused, event lines
-  for lobby/start/booms/steals/pickups/results/replay, history on connect, merge after
+  for lobby/start/results/replay (none mid-game, none for AIs), history on connect, merge after
   load, the unsaved queue and requeue.
 - Laravel `HotPotatoChatTest`: a batch is stored (secret, validation), pruning per office,
   history oldest first with authors and looks.

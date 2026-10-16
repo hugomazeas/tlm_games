@@ -202,8 +202,8 @@ that is played live, in real time, rather than scored afterwards.
   sends `refreshLook` (lobby only) so the sidecar fetches the player again.
 - **Watchers and chat** (`src/chat.ts`, pure): the sidecar sends each office who's on its page
   without a seat (`watchers`: named once each, guests counted) and runs one chat room per
-  office: messages from named people (5 per 10 s) and event lines it narrates (lobby, start,
-  booms, steals, pickups, results, replay), stored as data and worded by `client/describe.ts`.
+  office: messages from named people (5 per 10 s) and event lines it narrates (joins and leaves,
+  a game's start and results, its replay; nothing mid-game), stored as data and worded by `client/describe.ts`.
   Lines go to `/internal/hot-potato/chat` in batches every 2 s (`hot_potato_chat_lines`, the
   newest 1 000 per office); after a restart an office's last 100 come back from
   `/internal/hot-potato/offices/{id}/chat`.
