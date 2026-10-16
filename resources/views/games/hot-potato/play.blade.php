@@ -292,6 +292,10 @@
                                                     :aria-label="'React ' + option" x-text="option"></button>
                                         </template>
                                     </div>
+                                    <div x-show="replayUrl" class="mt-4 text-center" data-watch-replay>
+                                        <a :href="replayUrl" target="_blank" rel="noopener"
+                                           class="inline-block bg-white/10 hover:bg-white/20 rounded-lg px-4 py-2 text-sm font-semibold transition">▶ Watch replay</a>
+                                    </div>
                                     <div class="mt-4 text-center" data-back-to-lobby>
                                         <template x-if="isHost">
                                             <button type="button" @click="backToLobby()"
@@ -316,6 +320,14 @@
                     </ul>
                 </div>
                 </div>
+
+                {{-- The office's recent games, each with its replay while it lasts --}}
+                @foreach($recentGames as $officeId => $games)
+                    <section x-show="officeId === '{{ $officeId }}'" class="mt-8">
+                        <h2 class="text-base font-bold mb-3">Recent games</h2>
+                        @include('games.hot-potato.partials.game-list', ['games' => $games])
+                    </section>
+                @endforeach
 
                 {{-- Push opt-in --}}
                 <div x-show="alerts.available && playerId" class="mt-8 flex flex-wrap items-center gap-3 text-sm text-white/60">

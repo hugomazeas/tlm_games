@@ -12,6 +12,7 @@ import {
     SessionManager,
     TICK_MS,
 } from './sessions.ts'
+import { isReplayMessage, REPLAY_VERSION, type Replay } from './replay.ts'
 import { EFFECTS, FIRST_ITEM_MS } from './sim/items.ts'
 import { createRng } from './sim/rng.ts'
 
@@ -412,6 +413,54 @@ describe('hosts and leaving', () => {
         advance(TICK_MS)
 
         expect(last(a, 'snapshot')?.players.find(p => p.id === 3)?.out).toBe(true)
+    })
+})
+
+describe('replays', () => {
+    const unzip = (bytes: Uint8Array<ArrayBuffer> | null | undefined) =>
+        JSON.parse(new TextDecoder().decode(Bun.gunzipSync(bytes ?? new Uint8Array()))) as Replay
+
+    test('a finished game hands its recording, gzipped, to the Hub with the results', () => {
+        const { a, b } = lobbyOfThree()
+        playToResults(a)
+
+        const replay = unzip(results[0]?.replay)
+        expect(replay.version).toBe(REPLAY_VERSION)
+        expect(replay.meta).toMatchObject({ mode: 'survival', durationMs: 60_000 })
+        expect(replay.meta.roster.map(p => p.name)).toEqual(['Alice', 'Bob', 'Carol'])
+
+        const types = replay.frames.map(([, message]) => message.type)
+        expect(types[0]).toBe('countdown')
+        expect(types.at(-1)).toBe('results')
+        expect(types).toContain('snapshot')
+        expect(types).not.toContain('office')
+        // Exactly what the room saw, in order, timed from the countdown.
+        const seen: ServerMessage[] = b.inbox.filter(isReplayMessage)
+        expect(replay.frames.map(([, message]): ServerMessage => message)).toEqual(seen.slice(-replay.frames.length))
+        expect(replay.frames[0]?.[0]).toBe(0)
+        expect(replay.frames.at(-1)?.[0]).toBeGreaterThan(COUNTDOWN_MS)
+    })
+
+    test('each game gets its own recording', () => {
+        const { a } = lobbyOfThree()
+        playToResults(a)
+        advance(RESULTS_MS)
+        playToResults(a)
+
+        expect(results).toHaveLength(2)
+        const second = unzip(results[1]?.replay)
+        expect(second.frames.filter(([, m]) => m.type === 'countdown')).toHaveLength(1)
+        expect(second.frames[0]?.[0]).toBe(0)
+    })
+
+    test('once saved, the office is told the replay is ready', () => {
+        const { a, b } = lobbyOfThree()
+        const watcher = connect(null)
+        playToResults(a)
+        manager.replayReady(OFFICE, 77)
+
+        expect(last(b, 'replayReady')).toEqual({ type: 'replayReady', gameId: 77 })
+        expect(last(watcher, 'replayReady')?.gameId).toBe(77)
     })
 })
 

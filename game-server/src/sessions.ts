@@ -27,6 +27,7 @@ import { botAvatarUrl, pickBotName } from './bots.ts'
 import { THEME_IDS, type ThemeId } from './sim/themes.ts'
 import { TrainedPilot } from './ai/pilot.ts'
 import type { TrainedPolicy } from './ai/policy.ts'
+import { ReplayRecorder } from './replay.ts'
 
 export const TICK_MS = 50
 /** Three seconds to announce the mode and arena, then three to count down. */
@@ -65,6 +66,8 @@ export interface GameResult {
         holdMs: number
         passes: number
     }>
+    /** The gzipped replay (JSON, see replay.ts); null when it outgrew its limit. */
+    replay: Uint8Array<ArrayBuffer> | null
 }
 
 export interface SessionHooks {
@@ -115,6 +118,8 @@ interface Session {
      * never a lobby member. Made on the first such game, then kept.
      */
     hunter: PlayerInfo | null
+    /** Records the current game's broadcast, from its countdown to its results. */
+    recorder: ReplayRecorder | null
 }
 
 interface Client {
@@ -203,6 +208,7 @@ export class SessionManager {
                     nextBotId: -1,
                     pilots: new Map(),
                     hunter: null,
+                    recorder: null,
                 }
                 this.sessions.set(client.officeId, created)
                 this.broadcastOffice(created)
@@ -314,6 +320,11 @@ export class SessionManager {
         }
     }
 
+    /** The game just played was saved with its replay: the office's results screen can offer it. */
+    replayReady(officeId: number, gameId: number) {
+        this.broadcast(officeId, { type: 'replayReady', gameId })
+    }
+
     /** Called every TICK_MS by the server; advances every session. */
     tick() {
         const now = this.hooks.now()
@@ -348,6 +359,7 @@ export class SessionManager {
         session.phase = 'lobby'
         session.game = null
         session.gameMeta = null
+        session.recorder = null
         session.emotedAt.clear()
         this.broadcastOffice(session)
     }
@@ -387,6 +399,16 @@ export class SessionManager {
         }
         session.phase = 'countdown'
         session.phaseEndsAt = this.hooks.now() + COUNTDOWN_MS
+        const seated = [...session.members.map(m => m.player), ...(session.hunter ? [session.hunter] : [])]
+        session.recorder = new ReplayRecorder(
+            {
+                mode: session.settings.mode,
+                theme,
+                durationMs: session.game.durationMs,
+                roster: playerIds.flatMap(id => seated.filter(p => p.id === id)),
+            },
+            this.hooks.now()
+        )
 
         this.broadcastOffice(session)
         this.broadcast(session.officeId, this.countdownMessage(session, arena))
@@ -464,6 +486,8 @@ export class SessionManager {
         session.phaseEndsAt = this.hooks.now() + RESULTS_MS
         this.broadcast(session.officeId, { type: 'results', results, endsInMs: RESULTS_MS })
         this.broadcastOffice(session)
+        const replay = session.recorder?.finish() ?? null
+        session.recorder = null
 
         // AI seats never reach the Hub: their places stay in the humans' positions, their rows don't.
         const humans = players.filter(p => p.playerId > 0)
@@ -477,6 +501,7 @@ export class SessionManager {
             startedAt: new Date(meta.startedAt).toISOString(),
             endedAt: new Date(this.hooks.now()).toISOString(),
             players: humans,
+            replay: replay ? Bun.gzipSync(JSON.stringify(replay)) : null,
         })
     }
 
@@ -496,6 +521,7 @@ export class SessionManager {
                 session.phase = 'lobby'
                 session.game = null
                 session.gameMeta = null
+                session.recorder = null
                 session.inputs.clear()
                 session.pilots.clear()
                 return
@@ -569,6 +595,7 @@ export class SessionManager {
         for (const client of this.clients.values()) {
             if (client.officeId === officeId) client.conn.send(message)
         }
+        this.sessions.get(officeId)?.recorder?.record(message, this.hooks.now())
     }
 }
 

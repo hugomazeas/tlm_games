@@ -49,7 +49,9 @@ DELETE /players/{player}            Delete player
 GET  /leaderboards                  All game types
 GET  /leaderboards/{gameType:slug}  Per-game leaderboard (dynamic columns)
 GET  /notifications                 Web push opt-in (pick your player, enable)
-GET  /games/hot-potato              Hot potato: pick office + player, lobby, live game
+GET  /games/hot-potato              Hot potato: pick office + player, lobby, live game, the office's recent games
+GET  /games/hot-potato/replays/{game}       Watch a finished game again (404 once its replay is pruned)
+GET  /games/hot-potato/replays/{game}/data  The recording, gzipped JSON
 GET  /games/typing                  Typing: solo 30s test + hub-wide race
 POST /games/typing/tests            Issue a solo test (server picks the text)
 POST /games/typing/tests/{test}/submit  Submit a solo test (server scores it)
@@ -184,6 +186,13 @@ that is played live, in real time, rather than scored afterwards.
   added AIs sit out, one person can start, the game ends at one person left (zero
   when it started with one) or at the timer. Needs the policy (`NO_BOTS` otherwise).
   A leaver during its countdown calls the game off rather than hand someone a win.
+- **Replays** (`src/replay.ts`): the session records what it broadcasts from a game's
+  countdown to its results (snapshots are full state, so playback never re-simulates and
+  survives sim changes). The sidecar posts the gzipped recording to
+  `/internal/hot-potato/games/{id}/replay` after the results, then sends `replayReady`.
+  Laravel keeps the newest `HOT_POTATO_REPLAYS_PER_OFFICE` (100) per office (`ReplayPruner`).
+  The replay page loads `/games/hot-potato/live/replay.js` (`client/replay-page.ts`,
+  `ReplayPlayer` in `client/replay-player.ts`), reusing the live renderer.
 - Tests: `cd game-server && bun test` (sim, arenas, sessions);
   `bun run typecheck`; `bun run format`. Laravel side: `tests/Feature/HotPotatoTest.php`.
 

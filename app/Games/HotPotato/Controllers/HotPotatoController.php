@@ -2,6 +2,7 @@
 
 namespace App\Games\HotPotato\Controllers;
 
+use App\Games\HotPotato\Services\RecentGames;
 use App\Http\Controllers\Controller;
 use App\Models\Office;
 use App\Models\Player;
@@ -16,9 +17,10 @@ use Illuminate\View\View;
  */
 class HotPotatoController extends Controller
 {
-    public function play(): View
+    public function play(RecentGames $recentGames): View
     {
         return view('games.hot-potato.play', [
+            'recentGames' => $recentGames->byOffice(),
             'offices' => Office::orderBy('name')->get(['id', 'name']),
             // avatar_path is hidden; the serialized players carry avatar_url instead.
             'players' => Player::orderBy('name')->get(['id', 'name', 'office_id', 'avatar_path']),

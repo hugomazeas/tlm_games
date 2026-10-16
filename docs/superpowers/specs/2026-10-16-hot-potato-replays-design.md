@@ -33,22 +33,26 @@ replayed. Instead the session records what it already broadcasts: snapshots are 
   - First entry `meta`: `version: 1`, mode, theme, duration, roster
     `{ id, name, avatarUrl, bot, hunter }` (names and avatars as they were, AIs included).
   - Then every game message the session broadcasts, as `[msSinceCountdown, message]`:
-    `countdown`, `snapshot`, `pass`, `boom`, `newPotato`, `pickup`, `emote`, `results`.
-    Lobby messages (`office`, `welcome`, `error`) are not recorded.
-  - Size cap 20 MB (serialised): past it the recording is dropped and results go without a replay.
+    `countdown`, `snapshot`, `pass`, `boom`, `newPotato`, `pickup`, `results`.
+    Lobby messages (`office`, `welcome`, `error`) and results-screen emotes are not recorded:
+    the recording ends at `results`.
+  - Size cap 40 M characters serialised (a 5-minute, 12-player game is ~15 M): past it the
+    recording is dropped and results go without a replay.
 - At game end the recording is gzipped (`Bun.gzipSync`) and handed to `onResults` with the results.
-- `LaravelClient.postResults` becomes multipart: the existing fields plus an optional `replay`
-  file, in one request, so there is never a replay without a game row or the reverse.
-  It returns the game id Laravel answers.
-- After the save, the session broadcasts `{ type: 'replayReady', gameId }` to the office.
-  If the save fails (logged as today), no `replayReady` is sent.
+- `LaravelClient.postResults` returns the game id Laravel answers; `postReplay` then posts
+  the gzip as the raw body to `/internal/hot-potato/games/{id}/replay`. Two requests keep the
+  results payload unchanged; a failed replay upload only leaves a game without a replay.
+- After both, `server.ts` calls `manager.replayReady(officeId, gameId)`, which broadcasts
+  `{ type: 'replayReady', gameId }` to the office. If either save fails (logged), none is sent.
 - Games that end without results (host closes mid-game, server restart) record nothing.
 
 ## Storage (Laravel)
 
 - Migration: nullable `replay_path` on `hot_potato_games`.
-- `HotPotatoInternalController::results` accepts an optional `replay` file (max 20 MB),
-  stored on the local disk at `hot-potato/replays/{game_id}.json.gz`, and sets `replay_path`.
+- `HotPotatoInternalController::replay` takes the raw gzip body (max 7 MB: PHP's
+  post_max_size is 8 MB; nginx's `client_max_body_size` goes to 8 MB), refuses anything not
+  gzip (422), stores it on the local disk at `hot-potato/replays/{game_id}.json.gz` and sets
+  `replay_path`.
 - `ReplayPruner` runs after each save: for that game's office (null office is its own group),
   it deletes replay files and nulls `replay_path` beyond the newest N games. Result rows stay.
 - `config/games.php`: `hot_potato.replays_per_office`, from `HOT_POTATO_REPLAYS_PER_OFFICE`,
@@ -60,12 +64,13 @@ replayed. Instead the session records what it already broadcasts: snapshots are 
   mode, arena, date and players, control bar). 404 when `replay_path` is null.
 - `GET /games/hot-potato/replays/{game}/data`: the stored gzip with `Content-Encoding: gzip`
   and `Content-Type: application/json`. 404 when there's no replay or the file is gone.
-- `client/replay.ts`: a second bundle entry, served as `/games/hot-potato/live/replay.js`,
-  built at start-up like `client.js`. Alpine app `hotPotatoReplay`, reusing `Renderer` and
-  `STRINGS`. The results and banner text move from `main.ts` to a shared `client/describe.ts`
-  (no behaviour change to the live page).
-- `ReplayPlayer` (pure, the time is passed in): holds the timeline and `currentTime`, returns
-  the messages due since the last frame.
+- `client/replay-page.ts`: a second bundle entry, served as `/games/hot-potato/live/replay.js`,
+  built at start-up like `client.js`. Alpine app `hotPotatoReplay`, reusing `Renderer` (plus a
+  `jumpTo` for seeks) and `STRINGS`. The results card text moves from `main.ts` to a shared
+  `client/describe.ts` (no behaviour change to the live page).
+- `ReplayPlayer` (`client/replay-player.ts`, pure, the time is passed in): holds the timeline
+  and `currentMs`, returns the messages due since the last frame. Playback opens 3 s before
+  the first snapshot, with the 3 · 2 · 1.
   - Play/pause, speed 0.5× / 1× / 2×; Space toggles, ←/→ jump 5 s.
   - Seeking applies the latest snapshot at or before the target. Transient effects (bursts,
     emotes, banners) fire only during forward play, never while seeking.
@@ -80,7 +85,8 @@ replayed. Instead the session records what it already broadcasts: snapshots are 
 - `/games/hot-potato`: the office's last 20 games (date, mode, arena, winner), Watch when the
   replay still exists.
 - `/players/{player}`: "Recent hot potato games", their last 10 (placement, mode, date), with
-  Watch links when the replay still exists.
+  Watch links when the replay still exists. A view composer in `HotPotatoServiceProvider`
+  supplies them, so `PlayerController` stays game-agnostic. Both lists come from `RecentGames`.
 
 ## Testing
 

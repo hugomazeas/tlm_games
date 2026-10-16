@@ -6,7 +6,7 @@ import { BUILD_PLACEHOLDER } from './client/build.ts'
 import { createRacingLive } from './race/live.ts'
 import { parseClientMessage as parseRaceMessage, type ServerMessage as RaceServerMessage } from './race/protocol.ts'
 import { buildRacingAssets, RACING_PREFIX, serveRacing } from './race/serve.ts'
-import { SessionManager, TICK_MS } from './sessions.ts'
+import { type GameResult, SessionManager, TICK_MS } from './sessions.ts'
 
 /**
  * The hot potato game server. nginx sends `/games/hot-potato/live/*` here:
@@ -30,6 +30,8 @@ if (!secret) console.warn('HOT_POTATO_INTERNAL_SECRET is not set; the game stays
 const laravel = new LaravelClient(laravelUrl, secret)
 
 const clientBundle = await buildClient()
+// The replay page's player: same renderer, no socket.
+const replayBundle = await buildClient('replay-page.ts')
 // The AI seats' policy. A missing or mismatched file only turns AIs off.
 const botPolicy = await loadBotPolicy()
 const hunterPolicy = await loadBotPolicy('hunter-policy.json')
@@ -49,13 +51,32 @@ const manager = new SessionManager({
         laravel.sessionOpened(officeId, hostPlayerId).catch(error => console.warn('Invite not sent:', error.message))
     },
     onResults: result => {
-        laravel.postResults(result).catch(error => console.error('Results not saved:', error.message))
+        void saveResults(result)
     },
     botPolicy,
     hunterPolicy,
 })
 
 setInterval(() => manager.tick(), TICK_MS)
+
+/** Results first, then the replay under the game's id; the room hears about the replay once both are in. */
+async function saveResults(result: GameResult): Promise<void> {
+    let gameId: number
+    try {
+        gameId = await laravel.postResults(result)
+    } catch (error) {
+        console.error('Results not saved:', (error as Error).message)
+        return
+    }
+    if (!result.replay) return
+
+    try {
+        await laravel.postReplay(gameId, result.replay)
+        manager.replayReady(result.officeId, gameId)
+    } catch (error) {
+        console.error('Replay not saved:', (error as Error).message)
+    }
+}
 
 // Racing lobbies share the socket server: /games/racing/live/ws, and the lobby list the Hub's racing page polls.
 const racing = await createRacingLive(laravel).catch(error => {
@@ -106,13 +127,15 @@ const server = Bun.serve<SocketData>({
         }
 
         // no-cache: browsers check back on every page load, and get a 304 while nothing changed.
-        if (pathname === `${PREFIX}/client.js`) {
-            const headers = { 'Cache-Control': 'no-cache', ETag: clientBundle.etag }
-            if (request.headers.get('If-None-Match') === clientBundle.etag) {
+        const bundle =
+            pathname === `${PREFIX}/client.js` ? clientBundle : pathname === `${PREFIX}/replay.js` ? replayBundle : null
+        if (bundle) {
+            const headers = { 'Cache-Control': 'no-cache', ETag: bundle.etag }
+            if (request.headers.get('If-None-Match') === bundle.etag) {
                 return new Response(null, { status: 304, headers })
             }
 
-            return new Response(clientBundle.code, {
+            return new Response(bundle.code, {
                 headers: { ...headers, 'Content-Type': 'text/javascript; charset=utf-8' },
             })
         }
@@ -199,13 +222,13 @@ function send(ws: ServerWebSocket<SocketData>, message: ServerMessage) {
 }
 
 /**
- * Bundles src/client for the browser and stamps it with a build id: a hash of
- * the code, swapped in for BUILD_PLACEHOLDER. The same id goes out in every
+ * Bundles a src/client entry for the browser and stamps it with a build id: a hash of
+ * the code, swapped in for BUILD_PLACEHOLDER. The live page's id goes out in every
  * welcome, so a tab still running an older bundle after a deploy reloads.
  */
-async function buildClient(): Promise<{ code: string; etag: string; build: string }> {
+async function buildClient(entry = 'main.ts'): Promise<{ code: string; etag: string; build: string }> {
     const result = await Bun.build({
-        entrypoints: [`${import.meta.dir}/client/main.ts`],
+        entrypoints: [`${import.meta.dir}/client/${entry}`],
         target: 'browser',
         format: 'iife',
         minify: true,
@@ -218,7 +241,9 @@ async function buildClient(): Promise<{ code: string; etag: string; build: strin
     }
 
     const built = await output.text()
-    if (!built.includes(BUILD_PLACEHOLDER)) throw new Error('The browser bundle lost its build placeholder')
+    if (entry === 'main.ts' && !built.includes(BUILD_PLACEHOLDER)) {
+        throw new Error('The browser bundle lost its build placeholder')
+    }
 
     const build = Bun.hash(built).toString(36)
     const code = built.replaceAll(BUILD_PLACEHOLDER, build)

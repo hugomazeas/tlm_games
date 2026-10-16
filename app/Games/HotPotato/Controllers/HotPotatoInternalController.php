@@ -4,12 +4,14 @@ namespace App\Games\HotPotato\Controllers;
 
 use App\Games\HotPotato\Jobs\SendHotPotatoInviteJob;
 use App\Games\HotPotato\Models\HotPotatoGame;
+use App\Games\HotPotato\Services\ReplayPruner;
 use App\Http\Controllers\Controller;
 use App\Models\Player;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 /**
@@ -19,6 +21,11 @@ use Illuminate\Validation\Rule;
  */
 class HotPotatoInternalController extends Controller
 {
+    /** Below PHP's default post_max_size (8 MB); a long 12-player game gzips to ~2 MB. */
+    private const MAX_REPLAY_BYTES = 7 * 1024 * 1024;
+
+    private const GZIP_MAGIC = "\x1f\x8b";
+
     /** Lets the sidecar check a player is real before seating them. */
     public function player(Player $player): JsonResponse
     {
@@ -85,6 +92,30 @@ class HotPotatoInternalController extends Controller
 
             return $game;
         });
+
+        return response()->json(['id' => $game->id], 201);
+    }
+
+    /**
+     * A saved game's replay: the gzipped recording as the raw body, stored as is.
+     * Saving one prunes the office's oldest replays past the configured count.
+     */
+    public function replay(Request $request, HotPotatoGame $game, ReplayPruner $pruner): JsonResponse
+    {
+        $body = $request->getContent();
+
+        if (strlen($body) > self::MAX_REPLAY_BYTES) {
+            return response()->json(['message' => 'Replay too large.'], 413);
+        }
+        if (! str_starts_with($body, self::GZIP_MAGIC)) {
+            return response()->json(['message' => 'Expected a gzipped replay.'], 422);
+        }
+
+        $path = HotPotatoGame::replayPathFor($game->id);
+        Storage::disk('local')->put($path, $body);
+        $game->update(['replay_path' => $path]);
+
+        $pruner->prune($game->office_id);
 
         return response()->json(['id' => $game->id], 201);
     }

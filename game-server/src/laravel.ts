@@ -32,7 +32,8 @@ export class LaravelClient {
         if (!response.ok) throw new Error(`Session announcement failed with ${response.status}`)
     }
 
-    async postResults(result: GameResult): Promise<void> {
+    /** Saves a game's results; returns the game's id. */
+    async postResults(result: GameResult): Promise<number> {
         const response = await this.request('POST', '/internal/hot-potato/results', {
             mode: result.mode,
             office_id: result.officeId,
@@ -51,6 +52,23 @@ export class LaravelClient {
             })),
         })
         if (!response.ok) throw new Error(`Saving results failed with ${response.status}`)
+
+        return ((await response.json()) as { id: number }).id
+    }
+
+    /** Attaches a saved game's replay: the gzipped recording, sent as is. */
+    async postReplay(gameId: number, replay: Uint8Array<ArrayBuffer>): Promise<void> {
+        const response = await fetch(`${this.baseUrl}/internal/hot-potato/games/${gameId}/replay`, {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/gzip',
+                'X-Internal-Secret': this.secret,
+            },
+            body: replay,
+            signal: AbortSignal.timeout(30_000),
+        })
+        if (!response.ok) throw new Error(`Saving the replay failed with ${response.status}`)
     }
 
     /** A racing driver's name and garage colours; null when Laravel says the player doesn't exist. */

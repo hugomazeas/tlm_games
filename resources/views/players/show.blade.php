@@ -183,6 +183,11 @@
         </div>
     @endif
 
+    @if(! empty($hotPotatoGames) && $hotPotatoGames->isNotEmpty())
+        <h2 class="text-base sm:text-lg font-bold mt-6 sm:mt-8 mb-3 sm:mb-4">Recent hot potato games</h2>
+        @include('games.hot-potato.partials.game-list', ['games' => $hotPotatoGames])
+    @endif
+
     <script>
         function playerProfile({ uploadUrl, showPinForm }) {
             let cropper = null;

@@ -135,6 +135,17 @@ export class Renderer {
         context?.clearRect(0, 0, this.canvas.width, this.canvas.height)
     }
 
+    /** A replay jumped: forget the motion so far and stand everyone where `snapshot` has them. */
+    jumpTo(snapshot: Omit<Snapshot, 'receivedAt'> | null) {
+        this.snapshots = []
+        this.splats = []
+        this.emotes = []
+        this.bursts = []
+        this.trails.clear()
+        this.drawn.clear()
+        if (snapshot) this.pushSnapshot(snapshot)
+    }
+
     pushSnapshot(snapshot: Omit<Snapshot, 'receivedAt'>) {
         this.snapshots.push({ ...snapshot, receivedAt: performance.now() })
         if (this.snapshots.length > 20) this.snapshots.shift()
