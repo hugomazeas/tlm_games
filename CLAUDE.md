@@ -188,8 +188,8 @@ that is played live, in real time, rather than scored afterwards.
   ship a new policy: `game-server/src/ai/README.md`.
 - **Infection** (`mode: 'infection'`): people only (3+, added AIs sit out: no policy was
   trained for it). A random patient zero (`infectedAtMs`) starts frozen; a touch infects, the
-  infected move 10% faster, nobody is knocked out. Ends at the timer, at one clean player left,
-  or with no infected left; the clean win. Always the big 80 × 50 arena (`generateArena(…, { big })`).
+  infected move 10% faster, nobody is knocked out. If the last infected player leaves, a clean
+  one becomes patient zero (same head start). Ends at the timer or at one clean player left; the clean win. Always the big 80 × 50 arena (`generateArena(…, { big })`).
   Results: `passes` = people infected, `holdMs` = time clean; its own leaderboard (`InfectionProvider`).
 - **Portals** (every mode): a linked pair opens on open floor every 25–40 s (first at 20 s),
   lasts 12 s; stepping in one end puts you out of the other. AIs don't observe them (the

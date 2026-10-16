@@ -31,6 +31,8 @@ export const STRINGS = {
     patientZero: '🦠 You’re patient zero — infect them all!',
     gotInfected: (name: string) => `🦠 ${name} got infected`,
     isPatientZero: (name: string) => `🦠 ${name} is patient zero — run!`,
+    newPatientZero: (name: string) => `🦠 Patient zero left — ${name} carries it now. Run!`,
+    youAreNewPatientZero: '🦠 Patient zero left — you carry it now. Infect them all!',
     everyoneInfected: '🦠 Everyone got infected',
     crownStolen: (name: string) => `😤 ${name} stole your crown`,
     kings: (names: string[], seconds: number) =>

@@ -19,7 +19,9 @@ don't observe portals (the observation's item list is fixed, so nothing breaks).
 - The infected are hard to miss: a toxic green wash over the avatar, a thick pulsing aura,
   two germs circling.
 - Ends at the timer, when one clean player is left (none, if the game somehow started with
-  one), or when no infected player is left. Winners: the clean players; if none, those
+  one). If the last infected player leaves while three or more remain (two clean to chase), one becomes
+  patient zero, frozen `HUNTER_HEAD_START_MS` (event `patientZero`, banner for the room);
+  with fewer, the game ends. Winners: the clean players; if none, those
   infected last (same instant).
 - Event `{ kind: 'infected', playerId, by }`; server message `infected` (recorded in replays).
 - Results: clean first (position 1); then by infection time, later is better; leavers after

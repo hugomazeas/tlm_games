@@ -180,6 +180,8 @@ export type GameEvent =
     | { kind: 'pickup'; playerId: number; item: ItemKind; effect: Effect; targetId?: number }
     /** Infection: `by` caught `playerId`. */
     | { kind: 'infected'; playerId: number; by: number }
+    /** Infection: the last infected player left, and `playerId` carries it now. */
+    | { kind: 'patientZero'; playerId: number }
     | { kind: 'teleport'; playerId: number; portalId: number }
     /** Survivors, or in King of the Potato the longest holders (ties share). */
     | { kind: 'ended'; survivorIds: number[] }
@@ -307,6 +309,8 @@ export function removePlayer(game: GameState, playerId: number, rng: Rng): GameE
         game.holderId = null
         if (game.mode !== 'killer') handOutPotato(game, rng, events)
     }
+
+    if (game.mode === 'infection') passInfectionOn(game, rng, events)
 
     checkEnd(game, events)
 
@@ -732,6 +736,22 @@ function blast(game: GameState, centre: SimPlayer) {
         p.vy = ny * INFECTION_BLAST_SPEED
         p.launchMs = Math.max(p.launchMs, INFECTION_BLAST_MS)
     }
+}
+
+/**
+ * Infection: the last infected player left. One of the clean becomes patient zero, with the
+ * same head start as at the start, while that still leaves two clean to chase (three left);
+ * with fewer, nobody takes it and the game ends, the clean winning.
+ */
+function passInfectionOn(game: GameState, rng: Rng, events: GameEvent[]) {
+    const alive = alivePlayers(game)
+    if (alive.some(p => p.infectedAtMs !== null)) return
+    if (alive.length < 3) return
+
+    const zero = pickOne(rng, alive)
+    zero.infectedAtMs = game.elapsedMs
+    zero.frozenMs = HUNTER_HEAD_START_MS
+    events.push({ kind: 'patientZero', playerId: zero.id })
 }
 
 /**

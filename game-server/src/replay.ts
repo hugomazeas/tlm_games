@@ -22,6 +22,7 @@ const RECORDED = [
     'newPotato',
     'pickup',
     'infected',
+    'patientZero',
     'teleport',
     'results',
 ] as const
