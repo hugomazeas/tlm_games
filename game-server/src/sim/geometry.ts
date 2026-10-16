@@ -15,9 +15,13 @@ export interface Mover {
  * one wall (an L, T or U) share a `group`; the spacing rule only applies
  * between different groups.
  */
+/**
+ * `look`: what it is (its theme's name for it: "desk", "car", "rack row"…), for drawing only.
+ * Collisions only ever use the shape.
+ */
 export type Obstacle =
-    | { kind: 'rect'; x: number; y: number; w: number; h: number; mover?: Mover; group?: number }
-    | { kind: 'circle'; x: number; y: number; r: number; mover?: Mover; group?: number }
+    | { kind: 'rect'; x: number; y: number; w: number; h: number; mover?: Mover; group?: number; look?: string }
+    | { kind: 'circle'; x: number; y: number; r: number; mover?: Mover; group?: number; look?: string }
 
 /** Where an obstacle is at a given time; a static obstacle never moves. */
 export function obstacleAt(obstacle: Obstacle, timeMs: number): Obstacle {
