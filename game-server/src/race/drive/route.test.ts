@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { Course, Road } from '../map/format.ts'
-import { courseRoute, findTurns, locate, pointAt, RoadGraph } from './route.ts'
+import { courseRoute, locate, orientAlongRoute, pointAt, RoadGraph } from './route.ts'
 
 /**
  * A 200 m square block of streets, corners at (0, 0) and (200, 200), with
@@ -88,19 +88,17 @@ describe('courseRoute', () => {
     })
 })
 
-test('findTurns finds each corner of the block, turning right', () => {
-    const turns = findTurns(courseRoute(block, roads)!)
-    expect(turns).toHaveLength(4)
-    // Turns are found on the route sampled every 4 m, so the apex is within a sample of the corner.
-    const corners = [
-        [200, 0],
-        [200, 200],
-        [0, 200],
-        [0, 0],
-    ]
-    turns.forEach((turn, i) =>
-        expect(Math.hypot(turn.x - corners[i]![0]!, turn.z - corners[i]![1]!)).toBeLessThanOrEqual(4)
-    )
-    expect(turns.every(turn => turn.direction === -1)).toBe(true)
-    expect(turns[0]!.angle).toBeCloseTo(Math.PI / 2)
+describe('orientAlongRoute', () => {
+    const route = courseRoute(block, roads)!
+
+    test('turns each gate to face the way the route goes through it', () => {
+        // Every gate laid the other way round, as the editor may leave them: the route still goes clockwise.
+        const reversed = { ...block, gates: block.gates.map(gate => ({ ...gate, dx: -gate.dx, dz: -gate.dz })) }
+        expect(orientAlongRoute(reversed, route).gates).toEqual(block.gates)
+    })
+
+    test('a gate already facing the way through is left as it is, its line across the road too', () => {
+        const oriented = orientAlongRoute(block, route)
+        oriented.gates.forEach((gate, i) => expect(gate).toBe(block.gates[i]!))
+    })
 })

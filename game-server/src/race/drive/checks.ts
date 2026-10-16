@@ -1,7 +1,7 @@
 import type { Course, Road } from '../map/format.ts'
 import { KART_RADIUS } from './kart.ts'
 import { gridSlot } from './laps.ts'
-import { courseRoute } from './route.ts'
+import { courseRoute, orientAlongRoute } from './route.ts'
 import { closestOnSegment, type DriveWorld } from './world.ts'
 
 /**
@@ -19,7 +19,10 @@ const OPEN_SHARE = 0.7
 /** What's wrong with a course, one line each; empty when it's fine. */
 export function courseProblems(course: Course, world: DriveWorld, roads: readonly Road[]): string[] {
     const problems: string[] = []
-    if (!courseRoute(course, roads)) problems.push('no streets join all its checkpoints')
+    const route = courseRoute(course, roads)
+    if (!route) problems.push('no streets join all its checkpoints')
+    // The grid lines up behind the start line the way the route leaves it.
+    const raced = route ? orientAlongRoute(course, route) : course
     course.gates.forEach((gate, i) => {
         const label = i === 0 ? 'the start line' : `checkpoint ${i + 1}`
         if (world.surface(gate.x, gate.z) !== 'road') problems.push(`${label} isn't on a road`)
@@ -34,7 +37,7 @@ export function courseProblems(course: Course, world: DriveWorld, roads: readonl
     })
     if (course.gates.length > 0) {
         for (let slot = 0; slot < GRID_SIZE; slot++) {
-            const { x, z } = gridSlot(course, slot)
+            const { x, z } = gridSlot(raced, slot)
             if (world.surface(x, z) !== 'road' || blockedAt(world, x, z, KART_RADIUS)) {
                 problems.push(`no room on the grid for kart ${slot + 1}: move the start line further along a straight`)
                 break

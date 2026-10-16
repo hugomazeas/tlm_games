@@ -2,9 +2,13 @@ import type { Course, Gate } from '../map/format.ts'
 
 /**
  * Where a kart is in a race: which lap, which gate it needs next, and its
- * lap times. Gates count only in order and only crossed the right way, so
- * cutting one or doubling back gains nothing. Pure, like the kart: the
- * server will run the same function over the positions karts report.
+ * lap times. Gates count only in order, crossed either way: a checkpoint has
+ * no direction, and the order alone keeps a course from being cut. Pure,
+ * like the kart: the server runs the same function over the positions karts
+ * report.
+ *
+ * The grid, a reset and the wrong-way warning still need a way through each
+ * gate: that's the route's (route.ts orientAlongRoute turns a course so).
  *
  * The clock starts at the green light with the karts on the grid, just
  * behind the start line; crossing it the first time starts lap 1, every
@@ -77,7 +81,7 @@ export function advance(
     if (progress.finishedAt !== null) return progress
     const gate = course.gates[progress.next]!
     const { direction, at } = crossGate(gate, from, to)
-    if (direction !== 1) return progress
+    if (direction === 0) return progress
 
     const time = start + (end - start) * at
     const next = { ...progress, lastGate: progress.next, next: (progress.next + 1) % course.gates.length }

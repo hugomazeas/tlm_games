@@ -3,8 +3,9 @@ import type { Course, Gate, Road, RoadKind } from '../map/format.ts'
 /**
  * The way a course actually goes: from each gate to the next along the
  * streets, the shortest way through the road network. Gates only say where
- * to pass; the route is what the minimap draws, where turn signs go, what
- * the HUD arrow follows, and how far each kart is from its next gate.
+ * to pass, either way across; the route is what the minimap draws, which
+ * way each gate is driven through, what the HUD arrow follows, and how far
+ * each kart is from its next gate.
  */
 
 export interface Route {
@@ -17,26 +18,10 @@ export interface Route {
     gateAlong: number[]
 }
 
-/** A bend in the route: where it's sharpest, which way it goes (1 left, −1 right), and by how much. */
-export interface Turn {
-    x: number
-    z: number
-    along: number
-    direction: 1 | -1
-    /** Radians the route turns through. */
-    angle: number
-    /** The route's heading at the sharpest point. */
-    heading: number
-}
-
 /** Kinds a route may follow. */
 const ROUTED: readonly RoadKind[] = ['major', 'street', 'service']
-/** Turns are found on the route resampled this often, in metres… */
-const SAMPLE = 4
-/** …comparing its heading this far before and after each point… */
-const TURN_REACH = 20
-/** …and count when it changes by more than this. */
-const TURN_MIN = (40 * Math.PI) / 180
+/** A gate's way through is the route's from this far before it to this far after. */
+const THROUGH = 5
 
 /** The road network as a graph: points where roads meet or bend, joined by the stretches between. */
 export class RoadGraph {
@@ -174,6 +159,27 @@ export function courseRoute(course: Course, roads: readonly Road[]): Route | nul
     }
 }
 
+/**
+ * The course with each gate facing the way the route drives through it.
+ * A gate has no direction of its own (crossing it either way counts), but
+ * the grid lines up behind the start line, a reset faces you on, and the
+ * wrong-way warning checks you against the way through: the route's. The
+ * gate's line across the road stays as it is; only which side is "ahead"
+ * follows the route.
+ */
+export function orientAlongRoute(course: Course, route: Route): Course {
+    return {
+        ...course,
+        gates: course.gates.map((gate, i) => {
+            const before = pointAt(route, route.gateAlong[i]! - THROUGH)
+            const after = pointAt(route, route.gateAlong[i]! + THROUGH)
+            const ahead = (after.x - before.x) * gate.dx + (after.z - before.z) * gate.dz
+            // 0 - v rather than -v: a turned gate keeps +0, not −0.
+            return ahead >= 0 ? gate : { ...gate, dx: 0 - gate.dx, dz: 0 - gate.dz }
+        }),
+    }
+}
+
 /** The point and heading `distance` metres along the route, wrapping round. */
 export function pointAt(route: Route, distance: number): { x: number; z: number; heading: number } {
     const s = ((distance % route.length) + route.length) % route.length
@@ -212,62 +218,6 @@ export function locate(route: Route, x: number, z: number, from: number, to: num
     }
 
     return best
-}
-
-/** The route's sharp bends, in order along it. */
-export function findTurns(route: Route): Turn[] {
-    const count = Math.floor(route.length / SAMPLE)
-    const samples = Array.from({ length: count }, (_, i) => pointAt(route, i * SAMPLE))
-    const reach = Math.round(TURN_REACH / SAMPLE)
-    const change = samples.map((_, i) => {
-        const before = samples[(i - reach + count) % count]!
-        const after = samples[(i + reach) % count]!
-
-        return wrapAngle(after.heading - before.heading)
-    })
-
-    const turns: Turn[] = []
-    let i = 0
-    // Start counting at a straight bit, so a turn across the start line isn't split in two.
-    const start = change.findIndex(c => Math.abs(c) < TURN_MIN)
-    if (start < 0) return turns
-    while (i < count) {
-        const index = (start + i) % count
-        if (Math.abs(change[index]!) < TURN_MIN) {
-            i++
-            continue
-        }
-        const sign = Math.sign(change[index]!)
-        const bend: number[] = []
-        while (
-            i < count &&
-            Math.abs(change[(start + i) % count]!) >= TURN_MIN &&
-            Math.sign(change[(start + i) % count]!) === sign
-        ) {
-            bend.push((start + i) % count)
-            i++
-        }
-        // The sharpest point; on a plateau of equally sharp ones (a square corner), the middle of it.
-        const sharpest = Math.max(...bend.map(at => Math.abs(change[at]!)))
-        const plateau = bend.filter(at => Math.abs(change[at]!) >= sharpest * 0.95)
-        const apex = plateau[Math.floor(plateau.length / 2)]!
-        const point = samples[apex]!
-        turns.push({
-            x: point.x,
-            z: point.z,
-            along: apex * SAMPLE,
-            direction: sign > 0 ? 1 : -1,
-            angle: Math.abs(change[apex]!),
-            heading: point.heading,
-        })
-    }
-
-    return turns.sort((a, b) => a.along - b.along)
-}
-
-/** An angle brought into (−π, π]. */
-function wrapAngle(angle: number): number {
-    return angle - Math.ceil((angle - Math.PI) / (2 * Math.PI)) * 2 * Math.PI
 }
 
 function clamp(value: number, min: number, max: number): number {

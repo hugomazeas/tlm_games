@@ -1,14 +1,13 @@
 import type * as THREE from 'three'
 import { forwardSpeed, STEP } from '../drive/kart.ts'
 import { bestLap, gridSlot, isWrongWay, respawnPoint } from '../drive/laps.ts'
-import { courseRoute, findTurns, locate, pointAt, type Route } from '../drive/route.ts'
+import { courseRoute, locate, orientAlongRoute, pointAt, type Route } from '../drive/route.ts'
 import { ordinal } from '../drive/standings.ts'
 import { countdownLeft, formatTime, raceClock, startTrial, stepTrial, type Trial } from '../drive/trial.ts'
 import type { DriveWorld } from '../drive/world.ts'
 import type { Course, Road } from '../map/format.ts'
 import { buildCourseView, type CourseView } from './course.ts'
 import type { Driver } from './drive.ts'
-import { buildGuides } from './guides.ts'
 import { createSpeedometer, pointArrow } from './hud.ts'
 import type { Minimap, MinimapKart } from './minimap.ts'
 
@@ -20,8 +19,10 @@ import type { Minimap, MinimapKart } from './minimap.ts'
  * reported through `onSample`. R puts you back on your last checkpoint.
  *
  * While driving: a speedometer, a minimap, and during a race the standings
- * (the server's) and an arrow pointing the way the route goes next;
- * chevrons and road arrows mark each bend of the course.
+ * (the server's) and an arrow pointing the way the route goes next.
+ *
+ * Checkpoints have no direction: the course is turned to face the way its
+ * route goes through each one, for the grid, resets and the wrong-way warning.
  */
 
 /** Below this speed you aren't really going the wrong way, just turning round. */
@@ -70,9 +71,10 @@ export interface Race {
 }
 
 export function createRace(options: RaceOptions): Race {
-    const { world, scene, driver, course, panel, banner, standingsPanel, arrow, minimap } = options
+    const { world, scene, driver, panel, banner, standingsPanel, arrow, minimap } = options
     const speedometer = createSpeedometer(options.speedometer)
-    let route: Route | null = null
+    const route: Route | null = options.course ? courseRoute(options.course, options.roads) : null
+    const course = options.course && route ? orientAlongRoute(options.course, route) : options.course
     let view: CourseView | null = null
     let trial: Trial | null = null
     let lines: readonly StandingLine[] | null = null
@@ -82,8 +84,6 @@ export function createRace(options: RaceOptions): Race {
         view = buildCourseView(course, world.ground)
         scene.add(view.group)
         view.setNext(0)
-        route = courseRoute(course, options.roads)
-        if (route) scene.add(buildGuides(route, findTurns(route), world))
     }
     minimap.setCourse(course, route)
 
