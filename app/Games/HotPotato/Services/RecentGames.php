@@ -70,8 +70,21 @@ class RecentGames
             'ended_at' => $game->ended_at,
             'winners' => $winners->isNotEmpty()
                 ? $winners->join(', ')
-                : ($game->mode === HotPotatoGame::MODE_KILLER ? 'The Killer Potato' : 'Nobody'),
+                : ($game->mode === HotPotatoGame::MODE_KILLER ? $this->hunterName($game) : 'Nobody'),
             'replay_url' => $game->hasReplay() ? url("/games/hot-potato/replays/{$game->id}") : null,
         ];
+    }
+
+    /**
+     * Who won a Killer game nobody survived: the hunter. Their stored row is the one
+     * with catches (or first place without surviving); with no such row, an AI hunted.
+     */
+    private function hunterName(HotPotatoGame $game): string
+    {
+        $hunter = $game->players->first(
+            fn (HotPotatoGamePlayer $row) => (int) $row->passes > 0 || ((int) $row->position === 1 && ! $row->survived)
+        );
+
+        return $hunter?->player?->name ?? 'An AI hunter';
     }
 }
