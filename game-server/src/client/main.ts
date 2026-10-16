@@ -189,8 +189,6 @@ function hotPotatoApp(config: Config) {
         },
         get canStart() {
             if (!this.isHost || this.phase !== 'lobby') return false
-            // Killer Potato is people against the AI hunter: one person is enough, AIs sit out.
-            if (this.mode === 'killer') return Boolean(this.session?.players.some(p => !p.away && !p.bot))
             // Infection is people only: three of them; AIs sit out.
             if (this.mode === 'infection') {
                 return (this.session?.players.filter(p => !p.away && !p.bot).length ?? 0) >= MIN_PLAYERS
@@ -381,6 +379,12 @@ function hotPotatoApp(config: Config) {
                         if (zero?.id === this.me?.id) this.showBanner(STRINGS.patientZero, true)
                         else if (zero) this.showBanner(STRINGS.isPatientZero(this.nameOf(zero.id)), false)
                     }
+                    // Killer Potato: who hunts (they hold the potato) gets said once too.
+                    if (this.gameMode === 'killer' && !patientZeroTold && message.holderId !== null) {
+                        patientZeroTold = true
+                        if (message.holderId === this.me?.id) this.showBanner(STRINGS.youAreKiller, true)
+                        else this.showBanner(STRINGS.isKiller(this.nameOf(message.holderId)), false)
+                    }
                     const now = performance.now()
                     if (now - lastHudAt > 250) {
                         lastHudAt = now
@@ -409,6 +413,10 @@ function hotPotatoApp(config: Config) {
                     renderer?.infectionBlast(message.playerId)
                     if (message.playerId === this.me?.id) this.showBanner(STRINGS.youAreInfected, true)
                     else this.showBanner(STRINGS.gotInfected(this.nameOf(message.playerId)), false)
+                    return
+                case 'newHunter':
+                    if (message.playerId === this.me?.id) this.showBanner(STRINGS.youAreNewKiller, true)
+                    else this.showBanner(STRINGS.newKiller(this.nameOf(message.playerId)), false)
                     return
                 case 'patientZero':
                     if (message.playerId === this.me?.id) this.showBanner(STRINGS.youAreNewPatientZero, true)
@@ -573,10 +581,6 @@ function hotPotatoApp(config: Config) {
 
         hatOf(player: PlayerInfo): string | null {
             return cosmeticValue('hat', player.look?.hat)
-        },
-
-        isHunter(id: number): boolean {
-            return Boolean(this.session?.players.find(p => p.id === id)?.hunter)
         },
 
         avatarOf(id: number): string | null {

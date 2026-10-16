@@ -39,10 +39,6 @@ export const RESULTS_MS = 12_000
 /** One emote per player this often, so a results screen doesn't turn into a wall of emoji. */
 export const EMOTE_COOLDOWN_MS = 700
 export const RECONNECT_GRACE_MS = 10_000
-/** Killer Potato's AI hunter, as the room sees it. */
-export const HUNTER_NAME = 'Killer Potato'
-/** The hunter's robot sits on blood red. */
-const HUNTER_BACKGROUND = '#991b1b'
 /** A stalled event loop never makes the simulation jump further than this. */
 const MAX_STEP_MS = 100
 
@@ -119,11 +115,6 @@ interface Session {
     nextBotId: number
     /** One per AI seat of the current game. */
     pilots: Map<number, TrainedPilot>
-    /**
-     * Killer Potato's AI hunter: an AI seat that plays only in that mode's games and is
-     * never a lobby member. Made on the first such game, then kept.
-     */
-    hunter: PlayerInfo | null
     /** Records the current game's broadcast, from its countdown to its results. */
     recorder: ReplayRecorder | null
 }
@@ -228,7 +219,6 @@ export class SessionManager {
                     emotedAt: new Map(),
                     nextBotId: -1,
                     pilots: new Map(),
-                    hunter: null,
                     recorder: null,
                 }
                 this.sessions.set(client.officeId, created)
@@ -264,27 +254,17 @@ export class SessionManager {
                 if (session.hostId !== player.id) return fail('NOT_HOST')
                 if (session.phase !== 'lobby') return fail('NOT_IN_LOBBY')
                 const present = session.members.filter(m => m.awayUntil === null)
-                // Killer Potato is people against the AI hunter: one person is enough, and AIs sit out.
                 // Infection is people only (no AI was trained for it): three of them, AIs sit out.
-                const killer = message.mode === 'killer'
+                // Every other mode seats everyone present, AIs included (Killer's hunter is one of them).
                 const infection = message.mode === 'infection'
-                if (killer && !this.hooks.botPolicy) return fail('NO_BOTS')
                 const people = present.filter(m => !m.player.bot)
-                const enough = killer
-                    ? people.length > 0
-                    : infection
-                      ? people.length >= MIN_PLAYERS
-                      : present.length >= MIN_PLAYERS
-                if (!enough) return fail('NOT_ENOUGH_PLAYERS')
+                const seated = infection ? people : present
+                if (seated.length < MIN_PLAYERS) return fail('NOT_ENOUGH_PLAYERS')
 
                 session.settings = { durationMin: message.durationMin, theme: message.theme, mode: message.mode }
                 this.startCountdown(
                     session,
-                    killer
-                        ? [...people.map(m => m.player.id), this.hunterOf(session).id]
-                        : infection
-                          ? people.map(m => m.player.id)
-                          : present.map(m => m.player.id)
+                    seated.map(m => m.player.id)
                 )
                 return
             }
@@ -469,20 +449,21 @@ export class SessionManager {
             session.settings.durationMin * 60_000,
             this.hooks.rng,
             session.settings.mode,
-            session.settings.mode === 'killer' ? this.hunterOf(session).id : null
+            // Killer Potato: anyone seated hunts, picked at random, like Infection's patient zero.
+            session.settings.mode === 'killer' ? pickOne(this.hooks.rng, playerIds) : null
         )
         session.gameMeta = { seed, theme, startedAt: this.hooks.now() }
         session.inputs.clear()
         session.pilots.clear()
         const policy = this.hooks.botPolicy
         if (policy) {
-            const seats = [...session.members.map(m => m.player), ...(session.hunter ? [session.hunter] : [])]
-            for (const seat of seats) {
+            const hunterId = session.game.hunterId
+            for (const seat of session.members.map(m => m.player)) {
                 if (seat.bot && playerIds.includes(seat.id)) {
                     session.pilots.set(
                         seat.id,
                         new TrainedPilot(
-                            seat.hunter ? (this.hooks.hunterPolicy ?? policy) : policy,
+                            seat.id === hunterId ? (this.hooks.hunterPolicy ?? policy) : policy,
                             session.game,
                             seat.id
                         )
@@ -492,7 +473,7 @@ export class SessionManager {
         }
         session.phase = 'countdown'
         session.phaseEndsAt = this.hooks.now() + COUNTDOWN_MS
-        const seated = [...session.members.map(m => m.player), ...(session.hunter ? [session.hunter] : [])]
+        const seated = session.members.map(m => m.player)
         session.recorder = new ReplayRecorder(
             {
                 mode: session.settings.mode,
@@ -513,18 +494,6 @@ export class SessionManager {
         this.broadcast(session.officeId, this.countdownMessage(session, arena))
     }
 
-    /** Killer Potato's hunter, made once per session. */
-    private hunterOf(session: Session): PlayerInfo {
-        session.hunter ??= {
-            id: session.nextBotId--,
-            name: HUNTER_NAME,
-            avatarUrl: botAvatarUrl(HUNTER_NAME, HUNTER_BACKGROUND),
-            bot: true,
-            hunter: true,
-        }
-        return session.hunter
-    }
-
     private countdownMessage(session: Session, arena: Arena): ServerMessage {
         return {
             type: 'countdown',
@@ -533,6 +502,13 @@ export class SessionManager {
             durationMs: session.game?.durationMs ?? 0,
             startsInMs: Math.max(0, session.phaseEndsAt - this.hooks.now()),
         }
+    }
+
+    /** Killer Potato: an AI that just took the knife plays the hunter's policy from now on. */
+    private swapPilotPolicy(session: Session, hunterId: number) {
+        const policy = this.hooks.botPolicy
+        if (!policy || !session.game || !session.pilots.has(hunterId)) return
+        session.pilots.set(hunterId, new TrainedPilot(this.hooks.hunterPolicy ?? policy, session.game, hunterId))
     }
 
     /** Every AI seat still in the game picks its steering for this tick, before the simulation steps. */
@@ -552,6 +528,10 @@ export class SessionManager {
                 this.broadcast(session.officeId, { type: 'boom', playerId: event.playerId })
             } else if (event.kind === 'infected') {
                 this.broadcast(session.officeId, { type: 'infected', playerId: event.playerId, by: event.by })
+            } else if (event.kind === 'newHunter') {
+                this.swapPilotPolicy(session, event.playerId)
+                this.broadcast(session.officeId, { type: 'newHunter', playerId: event.playerId })
+                this.broadcastOffice(session)
             } else if (event.kind === 'patientZero') {
                 this.broadcast(session.officeId, { type: 'patientZero', playerId: event.playerId })
             } else if (event.kind === 'teleport') {
@@ -595,6 +575,7 @@ export class SessionManager {
                           .sort((a, b) => (b.eliminatedAtMs ?? 0) - (a.eliminatedAtMs ?? 0))
                           .map(p => ({ id: p.id, atMs: p.eliminatedAtMs ?? 0 })),
             stats: game.players.map(p => ({ id: p.id, holdMs: p.holdMs, passes: p.passes })),
+            ...(game.mode === 'killer' && game.hunterId !== null ? { hunterId: game.hunterId } : {}),
         }
 
         session.phase = 'results'
@@ -604,6 +585,7 @@ export class SessionManager {
             type: 'results',
             mode: game.mode,
             winners: results.survivorIds.map(id => nameIn(session, id)),
+            ...(results.hunterId === undefined ? {} : { hunter: nameIn(session, results.hunterId) }),
         })
         this.broadcastOffice(session)
         const replay = session.recorder?.finish() ?? null
@@ -634,10 +616,10 @@ export class SessionManager {
         const game = session.game
         if (!game || !inGame(session)) return
 
-        if (session.phase === 'countdown' && game.mode === 'killer') {
-            const prey = game.players.filter(p => p.id !== game.hunterId)
-            const remaining = prey.filter(p => !p.out && p.id !== playerId).length
-            if (remaining < (prey.length > 1 ? 2 : 1)) {
+        // Killer and Infection need three: below that a countdown leaver would hand the rest a win.
+        if (session.phase === 'countdown' && (game.mode === 'killer' || game.mode === 'infection')) {
+            const remaining = game.players.filter(p => !p.out && p.id !== playerId).length
+            if (remaining < MIN_PLAYERS) {
                 session.phase = 'lobby'
                 session.game = null
                 session.gameMeta = null
@@ -767,16 +749,14 @@ export class SessionManager {
 }
 
 function view(session: Session): SessionView {
-    // The hunter shows from a Killer Potato game's countdown to the end of its results.
-    const hunter = session.game?.mode === 'killer' && session.phase !== 'lobby' ? session.hunter : null
+    const game = session.game
     return {
         hostId: session.hostId,
         phase: session.phase,
         settings: session.settings,
-        players: [
-            ...session.members.map(m => ({ ...m.player, away: m.awayUntil !== null })),
-            ...(hunter ? [{ ...hunter, away: false }] : []),
-        ],
+        players: session.members.map(m => ({ ...m.player, away: m.awayUntil !== null })),
+        // Who hunts shows from a Killer Potato game's countdown to the end of its results.
+        hunterId: game?.mode === 'killer' && session.phase !== 'lobby' ? game.hunterId : null,
     }
 }
 
@@ -800,8 +780,8 @@ function rankPlayers(game: GameState): GameResult['players'] {
 }
 
 /**
- * Killer Potato: the players rank as in survival, among themselves. The hunter is first
- * when it caught everyone, last otherwise; it never counts as a survivor (and never reaches the Hub).
+ * Killer Potato: the players rank as in survival, among themselves. The hunter (whoever holds the
+ * knife at the end) is first when it caught everyone, last otherwise; never a survivor.
  */
 function rankAgainstHunter(game: GameState): GameResult['players'] {
     const prey = game.players.filter(p => p.id !== game.hunterId)
@@ -878,12 +858,9 @@ function rankByReign(game: GameState): GameResult['players'] {
     }))
 }
 
-/** A seat's name as the room knows it: members, then the hunter. */
+/** A seat's name as the room knows it. */
 function nameIn(session: Session, playerId: number): string {
-    return (
-        session.members.find(m => m.player.id === playerId)?.player.name ??
-        (session.hunter?.id === playerId ? session.hunter.name : 'Someone')
-    )
+    return session.members.find(m => m.player.id === playerId)?.player.name ?? 'Someone'
 }
 
 /** A random Québécois name no one in the lobby (person or AI) already has. */

@@ -12,14 +12,18 @@ export const STRINGS = {
     survivors: (names: string[]) => (names.length === 1 ? `🏆 ${names[0]} wins!` : `🏆 ${names.join(', ')} survived!`),
     nobody: 'Nobody survived 🥧',
     caught: (name: string) => `🔪 ${name} got caught!`,
-    youWereCaught: '🔪 The Killer Potato got you — enjoy the show',
-    hunterWins: '🔪 The Killer Potato caught everyone',
+    youWereCaught: '🔪 You got caught — enjoy the show',
+    hunterWins: (name: string) => `🔪 ${name} caught everyone`,
+    youAreKiller: '🔪 You’re the Killer — catch them all!',
+    isKiller: (name: string) => `🔪 ${name} is the Killer — run!`,
+    newKiller: (name: string) => `🔪 The Killer left — ${name} has the knife now. Run!`,
+    youAreNewKiller: '🔪 The Killer left — you have the knife now. Catch them all!',
     modes: {
         survival: { label: '🥔 Hot potato', hint: 'Pass it before it blows. Last ones standing win.' },
         king: { label: '👑 King of the Potato', hint: 'Grab the potato and keep it. Longest reign wins.' },
         killer: {
             label: '🔪 Killer Potato',
-            hint: 'An AI holds the potato all game: if it touches you, you’re out. Last one standing wins.',
+            hint: 'One of you, picked at random, holds the potato all game: its touch knocks you out. Last one standing wins.',
         },
         infection: {
             label: '🦠 Infection',

@@ -16,7 +16,7 @@ class HotPotatoGame extends Model
     /** King of the Potato: hold it as long as you can; the longest reign wins. */
     public const MODE_KING = 'king';
 
-    /** Killer Potato: an AI hunter holds it all game and its touch knocks you out; the last one standing wins. */
+    /** Killer Potato: one player, picked at random, holds it all game and their touch knocks you out; the last one standing wins. */
     public const MODE_KILLER = 'killer';
 
     /** Infection: a touch spreads it; whoever stays clean wins. People only. */

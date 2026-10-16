@@ -8,7 +8,7 @@ describe('chatText', () => {
             '▶️ 👑 King of the Potato · ❄️ Ice rink · 6 players'
         )
         expect(chatText({ type: 'results', mode: 'survival', winners: ['Hugo'] })).toBe('🏆 Hugo wins!')
-        expect(chatText({ type: 'results', mode: 'killer', winners: [] })).toBe('🔪 The Killer Potato caught everyone')
+        expect(chatText({ type: 'results', mode: 'killer', winners: [], hunter: 'Hugo' })).toBe('🔪 Hugo caught everyone')
         expect(chatText({ type: 'results', mode: 'king', winners: ['Ana'] })).toBe('👑 Ana kept the crown longest')
         expect(chatText({ type: 'replay', gameId: 3 })).toBe('🎬 The replay is ready')
     })

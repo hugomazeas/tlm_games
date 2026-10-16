@@ -620,6 +620,11 @@ export class Renderer {
             const bob = (this.options.reducedMotion ? 0 : Math.sin(time / 200) * 0.15) - lift
             context.font = `${1.3 + state.shake * 0.4}px sans-serif`
             context.fillText('🥔', p.x + jx, p.y - r - 1.6 + bob + jy)
+            // Killer Potato: whoever hunts carries a knife with it, so nobody mistakes them for prey.
+            if (this.options.mode() === 'killer') {
+                context.font = `${1}px sans-serif`
+                context.fillText('🔪', p.x + 0.95, p.y - r - 1.3 + bob)
+            }
         }
 
         context.restore()

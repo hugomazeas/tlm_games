@@ -194,12 +194,12 @@ that is played live, in real time, rather than scored afterwards.
 - **Portals** (every mode): a linked pair opens on open floor every 25–40 s (first at 20 s),
   lasts 12 s; stepping in one end puts you out of the other. AIs don't observe them (the
   observation's item list is fixed) until the policy is retrained.
-- **Killer Potato** (`mode: 'killer'`): the session adds its own AI hunter seat
-  (`HUNTER_NAME`, not a lobby member, `hunter: true` in the view during its games)
-  that holds the potato all game, has no fuse and knocks out whoever it touches;
-  added AIs sit out, one person can start, the game ends at one person left (zero
-  when it started with one) or at the timer. Needs the policy (`NO_BOTS` otherwise).
-  A leaver during its countdown calls the game off rather than hand someone a win.
+- **Killer Potato** (`mode: 'killer'`): one of the seated (a person or an added AI), picked at
+  random at the start, hunts (`hunterId` in the view and the results): they hold the potato all
+  game, it has no fuse, and their touch knocks you out. Needs three seated. An AI hunter plays
+  `hunterPolicy`. If the hunter leaves with three or more left, someone else takes the knife
+  (`newHunter`). Ends at one player left or at the timer. In Killer and Infection, a countdown
+  leaver who leaves fewer than three calls the game off rather than hand someone a win.
 - **Replays** (`src/replay.ts`): the session records what it broadcasts from a game's
   countdown to its results (snapshots are full state, so playback never re-simulates and
   survives sim changes). The sidecar posts the gzipped recording to

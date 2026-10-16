@@ -15,7 +15,6 @@ export interface ResultsView {
 /** Who's who, from wherever the page knows the players. */
 export interface Names {
     nameOf(id: number): string
-    isHunter(id: number): boolean
 }
 
 export function describeResults(results: Results, names: Names): ResultsView {
@@ -28,8 +27,9 @@ export function describeResults(results: Results, names: Names): ResultsView {
         ...results.eliminated.map(e => ({ id: e.id, survived: false })),
     ]
     // Killer Potato: the hunter is neither a survivor nor out; it comes last, or first if it caught everyone.
+    const hunterId = results.hunterId ?? results.stats.find(s => !ordered.some(row => row.id === s.id))?.id
     if (results.mode === 'killer') {
-        const hunter = results.stats.find(s => !ordered.some(row => row.id === s.id))
+        const hunter = results.stats.find(s => s.id === hunterId && !ordered.some(row => row.id === s.id))
         if (hunter) {
             const row = { id: hunter.id, survived: false }
             if (survivors.length > 0) ordered.push(row)
@@ -37,7 +37,7 @@ export function describeResults(results: Results, names: Names): ResultsView {
         }
     }
     const place = (row: { id: number; survived: boolean }, index: number) =>
-        row.survived ? '🏆' : results.mode === 'killer' && names.isHunter(row.id) ? '🔪' : `#${index + 1}`
+        row.survived ? '🏆' : results.mode === 'killer' && row.id === hunterId ? '🔪' : `#${index + 1}`
 
     return {
         mode: results.mode,
@@ -45,7 +45,7 @@ export function describeResults(results: Results, names: Names): ResultsView {
             survivors.length > 0
                 ? STRINGS.survivors(survivors)
                 : results.mode === 'killer'
-                  ? STRINGS.hunterWins
+                  ? STRINGS.hunterWins(hunterId === undefined ? STRINGS.someone : names.nameOf(hunterId))
                   : results.mode === 'infection'
                     ? STRINGS.everyoneInfected
                     : STRINGS.nobody,
@@ -104,7 +104,7 @@ export function chatText(event: ChatEvent): string {
         }
         case 'results':
             if (event.winners.length === 0) {
-                if (event.mode === 'killer') return STRINGS.hunterWins
+                if (event.mode === 'killer') return STRINGS.hunterWins(event.hunter ?? STRINGS.someone)
                 return event.mode === 'infection' ? STRINGS.everyoneInfected : STRINGS.nobody
             }
             return event.mode === 'king' ? STRINGS.chat.reign(event.winners) : STRINGS.survivors(event.winners)

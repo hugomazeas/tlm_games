@@ -225,9 +225,9 @@
                                             class="bg-emerald-500 hover:bg-emerald-400 disabled:bg-white/10 disabled:text-white/30 text-white font-bold rounded-lg px-6 py-2 transition">
                                         Start
                                     </button>
-                                    <p x-show="!canStart && mode !== 'killer' && mode !== 'infection'" class="text-xs text-white/40 mt-1">Needs at least 3 players. Alone? Add 2 AIs or more.</p>
+                                    <p x-show="!canStart && mode !== 'infection'" class="text-xs text-white/40 mt-1">Needs at least 3 players. Alone? Add 2 AIs or more.</p>
                                     <p x-show="mode === 'infection'" class="text-xs text-white/40 mt-1">People only: 3 or more. Added AIs sit out, and the arena is extra big.</p>
-                                    <p x-show="mode === 'killer'" class="text-xs text-white/40 mt-1">You against the AI hunter: one person is enough, added AIs sit out.</p>
+                                    <p x-show="mode === 'killer'" class="text-xs text-white/40 mt-1">One of you hunts, picked at random. Needs 3 seated: AIs count.</p>
                                 </div>
                             </div>
                         </template>
