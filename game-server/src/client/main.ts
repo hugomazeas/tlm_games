@@ -394,6 +394,7 @@ function hotPotatoApp(config: Config) {
                     }
                     return
                 case 'infected':
+                    renderer?.infectionBlast(message.playerId)
                     if (message.playerId === this.me?.id) this.showBanner(STRINGS.youAreInfected, true)
                     else this.showBanner(STRINGS.gotInfected(this.nameOf(message.playerId)), false)
                     return

@@ -99,6 +99,37 @@ describe('Infection', () => {
         expect(game.players.some(p => p.out)).toBe(false)
     })
 
+    test('a catch goes off like a blast: everyone near is thrown clear, the carrier too', () => {
+        const game = setup(5)
+        patientZero(game, 1)
+        const prey = player(game, 3)
+        touch(game, 1, 3)
+        // Two bystanders, one close, one far.
+        Object.assign(player(game, 2), { x: prey.x + 3, y: prey.y, vx: 0, vy: 0 })
+        Object.assign(player(game, 5), { x: prey.x, y: prey.y + 20, vx: 0, vy: 0 })
+        const events = run(game, TICK)
+
+        expect(events.filter(e => e.kind === 'infected')).toHaveLength(1)
+        expect(player(game, 2).vx).toBeGreaterThan(10)
+        expect(player(game, 1).vx).toBeLessThan(-10)
+        expect(player(game, 5).vy).toBe(0)
+        expect(Math.hypot(player(game, 3).vx, player(game, 3).vy)).toBe(0)
+    })
+
+    test('one person at a time: two touching the carrier at once, only one is caught', () => {
+        const game = setup(4)
+        patientZero(game, 1)
+        const carrier = player(game, 1)
+        Object.assign(player(game, 2), { x: carrier.x + 1.5, y: carrier.y })
+        Object.assign(player(game, 3), { x: carrier.x - 1.5, y: carrier.y })
+        const events = run(game, TICK)
+
+        expect(events.filter(e => e.kind === 'infected')).toHaveLength(1)
+        expect(infected(game)).toHaveLength(2)
+        // Still flying from the blast: no second catch on the way.
+        expect(run(game, 250).filter(e => e.kind === 'infected')).toEqual([])
+    })
+
     test('a frozen carrier infects nobody, and a shield holds', () => {
         const game = setup()
         patientZero(game, 1)

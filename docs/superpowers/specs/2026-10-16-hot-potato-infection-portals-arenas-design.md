@@ -12,6 +12,12 @@ don't observe portals (the observation's item list is fixed, so nothing breaks).
 - An infected, unfrozen player touching a clean, unshielded one infects them; the newly
   infected freeze 1 s (`INFECTED_FREEZE_MS`). Infected move 10% faster (`INFECTED_BOOST`).
   `SimPlayer.infectedAtMs` (null = clean); nobody is `out` for being infected.
+- Each catch goes off like a blast: everyone within `INFECTION_BLAST_RADIUS` (6) but the one
+  caught, the carrier too, is thrown clear (`INFECTION_BLAST_SPEED`, no steering for
+  `INFECTION_BLAST_MS`), and a carrier still flying can't catch. One catch per step: one
+  person at a time. Drawn as a green shockwave the blast's size.
+- The infected are hard to miss: a toxic green wash over the avatar, a thick pulsing aura,
+  two germs circling.
 - Ends at the timer, when one clean player is left (none, if the game somehow started with
   one), or when no infected player is left. Winners: the clean players; if none, those
   infected last (same instant).

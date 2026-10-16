@@ -57,6 +57,14 @@ export const KILLER_FUSE_MS = 6000
 export const INFECTED_BOOST = 1.1
 /** Infection: someone just infected stands still this long, so it can't spread through a crowd at once. */
 export const INFECTED_FREEZE_MS = 1000
+/**
+ * Infection: each catch goes off like a blast. Everyone within the radius but the one caught
+ * (the carrier too) is thrown clear at this speed, with no steering for a moment, so one
+ * person gets caught at a time.
+ */
+export const INFECTION_BLAST_RADIUS = 6
+export const INFECTION_BLAST_SPEED = 20
+export const INFECTION_BLAST_MS = 300
 /** Portals: how close to an end takes you through, and how long they then ignore you. */
 export const PORTAL_RADIUS = 1.1
 export const PORTAL_COOLDOWN_MS = 1000
@@ -689,16 +697,40 @@ function spread(game: GameState, sliceMs: number, events: GameEvent[]) {
     const alive = alivePlayers(game)
     for (const p of alive) if (p.infectedAtMs === null) p.holdMs += sliceMs
 
-    const carriers = alive.filter(p => p.infectedAtMs !== null && p.frozenMs <= 0)
+    // Thrown by a blast (or a pad), a carrier can't catch anyone until it lands.
+    const carriers = alive.filter(p => p.infectedAtMs !== null && p.frozenMs <= 0 && p.launchMs <= 0)
     for (const carrier of carriers) {
-        for (const prey of alive) {
-            if (prey.infectedAtMs !== null || prey.shieldMs > 0 || !touching(prey, carrier)) continue
+        const prey = alive.find(p => p.infectedAtMs === null && p.shieldMs <= 0 && touching(p, carrier))
+        if (!prey) continue
 
-            prey.infectedAtMs = game.elapsedMs
-            freeze(prey, INFECTED_FREEZE_MS)
-            carrier.passes++
-            events.push({ kind: 'infected', playerId: prey.id, by: carrier.id })
-        }
+        prey.infectedAtMs = game.elapsedMs
+        freeze(prey, INFECTED_FREEZE_MS)
+        carrier.passes++
+        events.push({ kind: 'infected', playerId: prey.id, by: carrier.id })
+        blast(game, prey)
+        // One catch at a time: the blast has cleared everyone else away for this step.
+        return
+    }
+}
+
+/** Throws everyone near `centre` (but `centre`) straight away from it, ghosts aside. */
+function blast(game: GameState, centre: SimPlayer) {
+    for (const p of alivePlayers(game)) {
+        if (p.id === centre.id || p.ghostMs > 0) continue
+
+        const dx = p.x - centre.x
+        const dy = p.y - centre.y
+        const distance = Math.hypot(dx, dy)
+        if (distance >= INFECTION_BLAST_RADIUS) continue
+
+        // Right on top of the centre: any way out will do.
+        const nx = distance === 0 ? 1 : dx / distance
+        const ny = distance === 0 ? 0 : dy / distance
+        p.frozenMs = 0
+        p.slipMs = 0
+        p.vx = nx * INFECTION_BLAST_SPEED
+        p.vy = ny * INFECTION_BLAST_SPEED
+        p.launchMs = Math.max(p.launchMs, INFECTION_BLAST_MS)
     }
 }
 

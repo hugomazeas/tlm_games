@@ -178,6 +178,7 @@ function hotPotatoReplay(config: Config) {
                     this.results = describeResults(message.results, this)
                     return
                 case 'infected':
+                    renderer?.infectionBlast(message.playerId)
                     this.showBanner(STRINGS.gotInfected(this.nameOf(message.playerId)))
                     return
                 case 'teleport':

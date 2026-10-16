@@ -1,7 +1,7 @@
 import { cosmeticValue, type Look } from '../cosmetics.ts'
 import type { SnapshotItem, SnapshotPlayer, SnapshotPortal } from '../protocol.ts'
 import { type Arena, AVATAR_RADIUS, PAD_RADIUS } from '../sim/arena.ts'
-import { FREEZE_MS, type GameMode, PORTAL_RADIUS, STEAL_SAFETY_MS } from '../sim/game.ts'
+import { FREEZE_MS, type GameMode, INFECTION_BLAST_RADIUS, PORTAL_RADIUS, STEAL_SAFETY_MS } from '../sim/game.ts'
 import { obstacleAt } from '../sim/geometry.ts'
 import { FREEZE_RADIUS, ITEM_RADIUS, type ItemKind, MAGNET_RADIUS, SHIELD_MS, TINY_RADIUS } from '../sim/items.ts'
 import { THEMES } from '../sim/themes.ts'
@@ -174,6 +174,16 @@ export class Renderer {
     emote(playerId: number, emote: string) {
         this.emotes.push({ playerId, emote, at: performance.now() })
         if (this.emotes.length > 40) this.emotes.shift()
+    }
+
+    /** Infection: a catch goes off as a shockwave the size of the blast that throws everyone clear. */
+    infectionBlast(playerId: number) {
+        const p = this.snapshots.at(-1)?.players.find(candidate => candidate.id === playerId)
+        if (!p) return
+
+        const at = performance.now()
+        this.bursts.push({ x: p.x, y: p.y, radius: INFECTION_BLAST_RADIUS, colour: INFECTED_COLOUR, at })
+        this.bursts.push({ x: p.x, y: p.y, radius: INFECTION_BLAST_RADIUS * 0.5, colour: '#d9f99d', at })
     }
 
     /** Someone went through a portal: both ends flash. */
@@ -454,18 +464,16 @@ export class Renderer {
         context.arc(p.x, p.y, r, 0, Math.PI * 2)
         context.fill()
         context.shadowBlur = 0
-        // Infection: a green ring and a germ, so the clean know whom to run from.
+        // Infection: a thick pulsing aura, so the clean see from across the arena whom to run from.
         if (active && p.infected) {
+            const pulse = this.options.reducedMotion ? 0.5 : 0.5 + 0.5 * Math.sin(time / 160)
             context.save()
             context.strokeStyle = INFECTED_COLOUR
-            context.lineWidth = 0.25
+            context.globalAlpha = 0.5 + 0.5 * pulse
+            context.lineWidth = 0.3 + 0.2 * pulse
             context.beginPath()
-            context.arc(p.x, p.y, r + 0.2, 0, Math.PI * 2)
+            context.arc(p.x, p.y, r + 0.35 + 0.25 * pulse, 0, Math.PI * 2)
             context.stroke()
-            context.font = `${0.8}px sans-serif`
-            context.textAlign = 'center'
-            context.textBaseline = 'middle'
-            context.fillText('🦠', p.x + r * 0.8, p.y - r * 0.8)
             context.restore()
         }
 
@@ -503,6 +511,24 @@ export class Renderer {
             context.restore()
         } else {
             context.fillText(initials(name), p.x, p.y + 0.05)
+        }
+
+        // Infected: a toxic green wash over the face, and two germs circling it.
+        if (active && p.infected) {
+            context.save()
+            context.globalAlpha = 0.55
+            context.fillStyle = INFECTED_COLOUR
+            context.beginPath()
+            context.arc(p.x, p.y, r, 0, Math.PI * 2)
+            context.fill()
+            context.globalAlpha = 1
+            context.font = `${0.75}px sans-serif`
+            const orbit = this.options.reducedMotion ? Math.PI / 4 : time / 400
+            for (const offset of [0, Math.PI]) {
+                const angle = orbit + offset
+                context.fillText('🦠', p.x + Math.cos(angle) * (r + 0.7), p.y + Math.sin(angle) * (r + 0.7))
+            }
+            context.restore()
         }
 
         if (hat) {
