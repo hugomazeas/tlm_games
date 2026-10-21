@@ -107,6 +107,19 @@ export function buildKartModel(look: KartLook, withTag = true): KartModel {
     )
     flame.rotation.x = Math.PI / 2
     flame.visible = false
+    // A soft dark patch under the kart: the sun's shadow map is drawn once for the buildings, so karts bring their own.
+    const blob = new THREE.Mesh(
+        new THREE.PlaneGeometry(2.6, 3.4).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({
+            map: blobTexture(),
+            transparent: true,
+            depthWrite: false,
+            polygonOffset: true,
+            polygonOffsetFactor: -2,
+        })
+    )
+    blob.position.y = 0.04
+    root.add(blob)
 
     // On the root, not the body: the tag stays level and doesn't swing out with a drift.
     const tag = withTag ? nameTag(look) : null
@@ -148,8 +161,27 @@ export function buildKartModel(look: KartLook, withTag = true): KartModel {
             }
             flame.visible = kart.boost > 0
             flame.scale.set(1, 0.8 + Math.random() * 0.5, 1)
+            // In the air the patch would fly with the kart: let it fade instead.
+            blob.visible = !kart.airborne
         },
     }
+}
+
+/** A dark oval fading out to its edges. Shared: every kart's shadow looks the same. Null without a page to draw on. */
+let blobMap: THREE.Texture | null = null
+function blobTexture(): THREE.Texture | null {
+    if (blobMap || typeof document === 'undefined') return blobMap
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = 64
+    const context = canvas.getContext('2d')!
+    const gradient = context.createRadialGradient(32, 32, 4, 32, 32, 32)
+    gradient.addColorStop(0, 'rgba(0, 0, 0, 0.55)')
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
+    context.fillStyle = gradient
+    context.fillRect(0, 0, 64, 64)
+    blobMap = new THREE.CanvasTexture(canvas)
+
+    return blobMap
 }
 
 /** The driver's name on a dark tag with a stripe of their body colour, always facing the camera. */

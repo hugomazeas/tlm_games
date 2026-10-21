@@ -1,4 +1,5 @@
 import { forwardSpeed } from '../drive/kart.ts'
+import type { Sky } from '../drive/weather.ts'
 import type { ClientMessage, ErrorCode, LobbyView, ServerMessage } from '../protocol.ts'
 import type { Driver } from './drive.ts'
 import { createLobbyPanel, type TrackRecords } from './lobby-panel.ts'
@@ -47,6 +48,8 @@ export interface LobbyOptions {
     panel: HTMLElement
     /** Switches between driving your kart and watching the race. */
     setWatching(watching: boolean): void
+    /** The lobby's sky for the next race, or the one under way: on arriving and whenever it changes. */
+    setSky(sky: Sky): void
 }
 
 export interface Lobby {
@@ -66,7 +69,8 @@ export function joinLobby(options: LobbyOptions): Lobby {
         options.panel,
         options.laps,
         () => send({ type: 'start' }),
-        () => send({ type: 'close' })
+        () => send({ type: 'close' }),
+        time => send({ type: 'setTime', time })
     )
 
     let you = ''
@@ -106,6 +110,9 @@ export function joinLobby(options: LobbyOptions): Lobby {
         const live = lobby.phase === 'countdown' || lobby.phase === 'racing'
         others.setDrivers(lobby.members.filter(m => m.id !== you))
         panel.show(lobby, you)
+        if (!before || before.sky.time !== lobby.sky.time || before.sky.weather !== lobby.sky.weather) {
+            options.setSky(lobby.sky)
+        }
 
         if (live && !me?.racing) {
             if (!watching) {

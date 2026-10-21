@@ -508,6 +508,7 @@ function wallMaterial(style: WallStyle): THREE.MeshLambertMaterial {
         side: THREE.DoubleSide,
     })
     material.onBeforeCompile = shader => {
+        shader.uniforms.windowsLit = WINDOWS_LIT
         shader.vertexShader = shader.vertexShader
             .replace(
                 '#include <common>',
@@ -533,6 +534,7 @@ function wallMaterial(style: WallStyle): THREE.MeshLambertMaterial {
                 varying vec3 vGlass;
                 varying vec2 vMetres;
                 varying float vMaterial;
+                uniform float windowsLit;
                 ${MATERIAL_GLSL}`
             )
             .replace(
@@ -543,10 +545,21 @@ function wallMaterial(style: WallStyle): THREE.MeshLambertMaterial {
                 diffuseColor.rgb = mix( wallColour, glassColour, bay.r );`
             )
             .replace('#include <color_fragment>', '')
+            .replace(
+                '#include <emissivemap_fragment>',
+                `#include <emissivemap_fragment>
+                // At night, about a third of the windows have the lights on, warm or cool.
+                vec2 room = floor( vMetres / vec2( 3.0, 3.4 ) );
+                float lit = step( 0.66, wallHash( room ) ) * bay.r * windowsLit;
+                totalEmissiveRadiance += lit * mix( vec3( 1.1, 0.78, 0.4 ), vec3( 0.65, 0.72, 0.85 ), step( 0.9, wallHash( room + 7.0 ) ) );`
+            )
     }
 
     return material
 }
+
+/** 0 by day, 1 at night: how many windows glow (the atmosphere sets it). Shared by every wall material. */
+export const WINDOWS_LIT = { value: 0 }
 
 /**
  * The walls' materials, drawn in metres: brick courses with lighter mortar

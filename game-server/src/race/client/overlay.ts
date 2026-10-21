@@ -19,6 +19,8 @@ const CSS = `
     #race-panel { top: 12px; left: auto; right: 12px; white-space: pre; text-align: right; font-size: 15px; font-variant-numeric: tabular-nums; }
     #race-back { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); padding: 6px 12px; border-radius: 6px; background: rgb(15 23 42 / 0.7); color: #f8fafc; text-decoration: none; }
     #race-banner { position: fixed; top: 22%; left: 0; right: 0; text-align: center; font: 800 64px system-ui, sans-serif; color: #fff; text-shadow: 0 3px 12px rgb(15 23 42 / 0.8); pointer-events: none; }
+    #race-quality { position: fixed; top: 12px; right: 12px; padding: 6px 10px; border: 0; border-radius: 6px; background: rgb(15 23 42 / 0.7); color: #f8fafc; font: inherit; cursor: pointer; }
+    #race-stats { position: fixed; top: 46px; right: 12px; padding: 4px 8px; border-radius: 6px; background: rgb(15 23 42 / 0.7); color: #f8fafc; font: 12px ui-monospace, monospace; text-align: right; white-space: pre; pointer-events: none; }
     #race-minimap { position: fixed; right: 12px; bottom: 26px; width: 300px; height: 300px; pointer-events: none; }
     #race-speedometer { position: fixed; left: 50%; bottom: 8px; width: 220px; height: 140px; margin-left: -110px; pointer-events: none; filter: drop-shadow(0 2px 6px rgb(15 23 42 / 0.6)); }
     #race-standings { top: auto; bottom: 340px; left: auto; right: 12px; min-width: 120px; font-size: 14px; }
@@ -27,6 +29,10 @@ const CSS = `
     #race-lobby { top: 12px; pointer-events: auto; width: 250px; max-height: calc(100vh - 360px); overflow-y: auto; display: grid; gap: 6px; font-size: 14px; }
     #race-lobby .title { font-weight: 700; font-size: 15px; }
     #race-lobby .phase { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; }
+    #race-lobby .sky { font-size: 12px; color: #cbd5e1; }
+    #race-lobby .time { display: flex; align-items: center; justify-content: space-between; color: #cbd5e1; }
+    #race-lobby select { font: inherit; padding: 3px 6px; border-radius: 6px; border: 0; background: rgb(255 255 255 / 0.12); color: #f8fafc; cursor: pointer; }
+    #race-lobby select option { color: #0f172a; }
     #race-lobby .phase-waiting { color: #6ee7b7; }
     #race-lobby .phase-countdown, #race-lobby .phase-racing { color: #fcd34d; }
     #race-lobby .note { color: #cbd5e1; font-size: 13px; }
@@ -54,6 +60,8 @@ const HTML = `
     <div id="race-panel" class="panel"></div>
     <div id="race-lobby" class="panel" hidden></div>
     <a id="race-back" hidden>← Tracks</a>
+    <button id="race-quality" type="button" title="Low turns off shadows and glow, for slower computers"></button>
+    <div id="race-stats"></div>
     <div id="race-banner"></div>
     <canvas id="race-minimap" width="300" height="300"></canvas>
     <canvas id="race-speedometer" width="220" height="140" hidden></canvas>
@@ -73,6 +81,9 @@ export interface Overlay {
     lobby: HTMLElement
     crosshair: HTMLElement
     back: HTMLAnchorElement
+    quality: HTMLButtonElement
+    /** Frame rate and memory, under the Graphics button. */
+    stats: HTMLElement
     banner: HTMLElement
     minimap: HTMLCanvasElement
     speedometer: HTMLCanvasElement
@@ -102,6 +113,8 @@ export function createOverlay(parent: HTMLElement = document.body): Overlay {
         lobby: find('lobby'),
         crosshair: find('crosshair'),
         back: find<HTMLAnchorElement>('back'),
+        quality: find<HTMLButtonElement>('quality'),
+        stats: find('stats'),
         banner: find('banner'),
         minimap: find<HTMLCanvasElement>('minimap'),
         speedometer: find<HTMLCanvasElement>('speedometer'),

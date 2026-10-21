@@ -2,6 +2,7 @@ import { advance, bestLap, type Point, type Progress, respawnPoint, startProgres
 import { toGate, type Route } from './drive/route.ts'
 import { standings } from './drive/standings.ts'
 import { COUNTDOWN } from './drive/trial.ts'
+import { rollSky, type Sky, type TimeOfDay } from './drive/weather.ts'
 import type { Course } from './map/format.ts'
 import {
     type DriverInfo,
@@ -68,6 +69,8 @@ export interface LobbyHooks {
     now(): number
     /** A fresh lobby id: short, lowercase letters and digits. */
     newId(): string
+    /** 0 ≤ x < 1, for the sky of each race. */
+    random(): number
     onResults(result: RaceResult): void
 }
 
@@ -96,6 +99,10 @@ interface Lobby {
     firstFinishAt: number | null
     results: ResultRow[] | null
     races: number
+    /** Rolled when the lobby opens and after each race, for the next one. */
+    sky: Sky
+    /** The host's pick of time of day, kept for every race; null: random. */
+    time: TimeOfDay | null
 }
 
 export class LobbyManager {
@@ -140,6 +147,8 @@ export class LobbyManager {
                 firstFinishAt: null,
                 results: null,
                 races: 0,
+                sky: rollSky(this.hooks.random),
+                time: null,
             }
             this.lobbies.set(lobby.id, lobby)
         }
@@ -159,6 +168,20 @@ export class LobbyManager {
         }
         const host = lobby.members.find(m => m.conn.id === connId)!.driver.name
         this.closeLobby(lobby.id, host)
+    }
+
+    /** The host picks the time of day for the next race and the ones after (null: random each race). */
+    setTime(connId: string, time: TimeOfDay | null): void {
+        const lobby = this.lobbyOf(connId)
+        if (!lobby) return
+        if (lobby.hostId !== connId) {
+            return lobby.members.find(m => m.conn.id === connId)!.conn.send({ type: 'error', code: 'NOT_HOST' })
+        }
+        // Not mid-race: the sky would change under the karts.
+        if (lobby.phase === 'countdown' || lobby.phase === 'racing') return
+        lobby.time = time
+        lobby.sky = { ...lobby.sky, time: time ?? rollSky(this.hooks.random).time }
+        this.broadcastLobby(lobby)
     }
 
     /**
@@ -313,6 +336,7 @@ export class LobbyManager {
             bestLap: bestLap(member.racer!.progress),
         }))
         lobby.races += 1
+        lobby.sky = rollSky(this.hooks.random, lobby.time)
         this.setPhase(lobby, 'finished')
         this.broadcastLobby(lobby)
 
@@ -439,5 +463,7 @@ function view(lobby: Lobby): LobbyView {
         phase: lobby.phase,
         members: lobby.members.map(m => ({ ...m.driver, racing: m.racer !== null })),
         results: lobby.results,
+        sky: lobby.sky,
+        time: lobby.time,
     }
 }

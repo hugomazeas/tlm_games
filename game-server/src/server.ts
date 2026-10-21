@@ -247,6 +247,7 @@ async function raceMessage(ws: ServerWebSocket<SocketData>, raw: string): Promis
     if (!(await ws.data.ready)) return
     if (message.type === 'start') racing.manager.start(ws.data.id)
     else if (message.type === 'close') racing.manager.close(ws.data.id)
+    else if (message.type === 'setTime') racing.manager.setTime(ws.data.id, message.time)
     else racing.manager.pose(ws.data.id, message.pose, message.samples)
 }
 
