@@ -2,22 +2,19 @@ import * as THREE from 'three'
 import type { Course } from '../map/format.ts'
 
 /**
- * A course's checkpoints in the scene, as holograms: two glowing posts, a
- * curtain of light across the road, and chevrons floating over it that
- * scroll the way to drive. The one to drive through next glows gold, the
- * rest cyan. The start line also gets a chequered banner and a chequered
- * strip across the road.
+ * A course's checkpoints in the scene, as holograms: two glowing posts and
+ * a curtain of light across the road, with no direction (a checkpoint is
+ * crossed either way). The one to drive through next glows gold, the rest
+ * cyan. The start line also gets a chequered banner and a chequered strip
+ * across the road.
  */
 
 const POST = { height: 3.4, radius: 0.12 }
 const START_POST_HEIGHT = 5.2
 const BANNER = { bottom: 4.4, height: 0.8, depth: 0.25 }
-const CHEVRONS = { length: 9, lift: 1.3, widthShare: 0.8 }
 const CURTAIN_HEIGHT = 3
 const NEXT = { colour: 0xffd22e, opacity: 0.95 }
 const OTHER = { colour: 0x3fe0ff, opacity: 0.4 }
-/** Chevrons scroll forward this many texture lengths a second. */
-const SCROLL_SPEED = 0.6
 const START_LINE_DEPTH = 1.6
 const LINE_LIFT = 0.16
 
@@ -31,9 +28,8 @@ export interface CourseView {
 export function buildCourseView(course: Course, ground: (x: number, z: number) => number): CourseView {
     const group = new THREE.Group()
     const chequer = chequerTexture()
-    const chevrons = chevronTexture()
     const curtain = curtainTexture()
-    const disposables: { dispose(): void }[] = [chequer, chevrons, curtain]
+    const disposables: { dispose(): void }[] = [chequer, curtain]
     /** Each gate's tinted materials, so the next one can be lit up. */
     const tinted: THREE.MeshBasicMaterial[][] = []
     const hologram = (map: THREE.Texture, own: THREE.MeshBasicMaterial[]) => {
@@ -57,13 +53,12 @@ export function buildCourseView(course: Course, ground: (x: number, z: number) =
         const gateGroup = new THREE.Group()
         const y = ground(gate.x, gate.z)
         gateGroup.position.set(gate.x, y, gate.z)
-        // Local x runs across the gate, local -z through it (the way karts face).
+        // Local x runs across the gate, local -z through it.
         gateGroup.rotation.y = Math.atan2(-gate.dx, -gate.dz)
         group.add(gateGroup)
 
         const own: THREE.MeshBasicMaterial[] = []
         tinted.push(own)
-        const glow = hologram(chevrons, own)
         const half = gate.width / 2
         const postHeight = isStart ? START_POST_HEIGHT : POST.height
         const postMaterial = new THREE.MeshBasicMaterial({ color: OTHER.colour })
@@ -85,20 +80,6 @@ export function buildCourseView(course: Course, ground: (x: number, z: number) =
         curtainMesh.position.set(0, CURTAIN_HEIGHT / 2, 0)
         gateGroup.add(curtainMesh)
         disposables.push(curtainMesh.geometry)
-
-        // Flat over the road, the texture's top pointing the way through.
-        const chevronGeometry = new THREE.PlaneGeometry(gate.width * CHEVRONS.widthShare, CHEVRONS.length)
-        chevronGeometry.rotateX(-Math.PI / 2)
-        const chevronMesh = new THREE.Mesh(chevronGeometry, glow)
-        chevronMesh.position.set(0, CHEVRONS.lift, -CHEVRONS.length / 2 + 1)
-        chevronMesh.renderOrder = 1
-        gateGroup.add(chevronMesh)
-        disposables.push(chevronGeometry)
-        if (index === 0) {
-            chevronMesh.onBeforeRender = () => {
-                chevrons.offset.y = -((performance.now() / 1000) * SCROLL_SPEED) % 1
-            }
-        }
 
         if (isStart) {
             // Squares as tall as half the banner, however wide the road.
@@ -138,31 +119,6 @@ export function buildCourseView(course: Course, ground: (x: number, z: number) =
             for (const item of disposables) item.dispose()
         },
     }
-}
-
-/** Three chevrons pointing up the texture, fading at the edges; tinted by the material. */
-function chevronTexture(): THREE.CanvasTexture {
-    const canvas = document.createElement('canvas')
-    canvas.width = 64
-    canvas.height = 128
-    const context = canvas.getContext('2d')!
-    context.fillStyle = '#ffffff'
-    for (const top of [8, 50, 92]) {
-        context.beginPath()
-        context.moveTo(32, top)
-        context.lineTo(60, top + 22)
-        context.lineTo(60, top + 34)
-        context.lineTo(32, top + 12)
-        context.lineTo(4, top + 34)
-        context.lineTo(4, top + 22)
-        context.closePath()
-        context.fill()
-    }
-    const texture = new THREE.CanvasTexture(canvas)
-    texture.wrapT = THREE.RepeatWrapping
-    texture.colorSpace = THREE.SRGBColorSpace
-
-    return texture
 }
 
 /** Bright at the ground, fading out upwards, with faint scan lines. */

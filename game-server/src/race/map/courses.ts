@@ -7,9 +7,10 @@ import type { Course } from './format.ts'
  * placed in latitude/longitude, like landmarks, so a course survives the
  * map's bounds changing; the build turns them into map metres.
  *
- * A gate's `heading` is the way through it, in degrees as the viewer counts
- * them: 0 is north, 90 west. The viewer's course editor (E, then G) writes
- * these files.
+ * A gate's `heading` lays its line square across the road: a direction along
+ * the road, in degrees as the viewer counts them (0 north, 90 west). Which
+ * way round doesn't matter: a gate is crossed either way, and the route
+ * between the gates decides the way round (route.ts orientAlongRoute).
  */
 
 export interface GateSpec {

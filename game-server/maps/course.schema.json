@@ -24,7 +24,7 @@
                         "type": "number",
                         "minimum": -360,
                         "maximum": 360,
-                        "description": "The way through the gate, in degrees: 0 north, 90 west (as in the viewer's URL)."
+                        "description": "Lays the gate's line square across the road: a direction along the road, in degrees, 0 north and 90 west (as in the viewer's URL). Which way round doesn't matter: a gate is crossed either way, and the route decides the way round."
                     },
                     "width": {
                         "type": "number",

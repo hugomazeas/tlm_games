@@ -355,17 +355,23 @@ built from OpenStreetMap and federal elevation data, drawn with Three.js.
   at the top of `kart.ts`; `kart.test.ts` pins the feel (0–60 in 3 s, ~700 m to top
   speed). The viewer starts driving unless the URL has a view; F switches to flying.
 - **Tracks** (`Course` in the TS code; `map/courses.ts` projects lat/lon checkpoints):
-  circuits only, gate 0 the start/finish, the grid behind it. `drive/laps.ts` counts
-  gates only in order and the right way; `drive/trial.ts` is the step-counted clock.
+  circuits only, gate 0 the start/finish, the grid behind it. Gates have no direction:
+  `drive/laps.ts` counts them only in order, crossed either way; the route between them
+  decides the way round, and `orientAlongRoute` (`drive/route.ts`) turns a course to face
+  it for the grid, resets and the wrong-way warning (client, server and the editor's
+  checks alike). A gate's stored `heading` only lays its line across the road.
+  `drive/trial.ts` is the step-counted clock.
   A track must pass `drive/checks.ts` (streets join every gate, nothing built across
   one, the 8-kart grid fits): the editor won't save one that doesn't, and
   `pipeline.test.ts` holds the default tracks to it after a map refresh. The editor
   (`client/track-editor.ts`): click a street to add a checkpoint, click the route to
-  insert, drag to move, right-click to remove; each points to the next
-  (`drive/editing.ts`). Laravel validates shape and that checkpoints are on the map.
+  insert, drag to move, right-click to remove (`drive/editing.ts`); checkpoints show as
+  bars across the road, without arrows. Laravel validates shape and that checkpoints are
+  on the map.
 - **Race HUD:** the course's route along the streets (`drive/route.ts`, Dijkstra gate to
-  gate) feeds the minimap, chevron boards and road arrows at bends, the HUD arrow, and
-  the standings (`drive/standings.ts`, shared with the future server).
+  gate) feeds the minimap, the HUD arrow, and the standings (`drive/standings.ts`, shared
+  with the server). No signs at bends (chevron boards and road arrows were removed as
+  misleading), and the checkpoints' holograms carry no arrows either.
 - Install packages with Bun 1.4 (the container's: `docker run oven/bun:1.4.0-alpine`);
   an older local Bun rewrites `bun.lock` in an old format.
 

@@ -1,5 +1,5 @@
 import type { LaravelClient } from '../laravel.ts'
-import { courseRoute } from './drive/route.ts'
+import { courseRoute, orientAlongRoute } from './drive/route.ts'
 import { type Connection, type LoadedTrack, LobbyManager } from './lobbies.ts'
 import { projectionAt } from './map/convert.ts'
 import { projectCourse } from './map/courses.ts'
@@ -44,8 +44,11 @@ export async function createRacingLive(laravel: LaravelClient): Promise<RacingLi
         if (cached && Date.now() - cached.at < TRACK_CACHE_MS) return cached.track
         const spec = await laravel.findTrack(trackId)
         if (!spec) return null
-        const course = projectCourse(`track-${spec.id}`, spec, project)
-        const track = { id: spec.id, name: spec.name, course, route: courseRoute(course, map.roads) }
+        const projected = projectCourse(`track-${spec.id}`, spec, project)
+        const route = courseRoute(projected, map.roads)
+        // Gates are crossed either way; turned the way the route goes, they match the tabs' resets.
+        const course = route ? orientAlongRoute(projected, route) : projected
+        const track = { id: spec.id, name: spec.name, course, route }
         tracks.set(trackId, { track, at: Date.now() })
 
         return track

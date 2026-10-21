@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { parseCourse, projectCourse } from '../map/courses.ts'
 import { projector } from '../map/convert.ts'
 import type { Gate } from '../map/format.ts'
-import { courseFile, gateAcrossRoad, insertionIndex, orientGates } from './editing.ts'
+import { courseFile, gateAcrossRoad, insertionIndex } from './editing.ts'
 import { courseRoute } from './route.ts'
 import { testMap } from './fixtures.ts'
 import { buildWorld } from './world.ts'
@@ -21,49 +21,6 @@ describe('gateAcrossRoad', () => {
 
     test('none without a road in reach', () => {
         expect(gateAcrossRoad(buildWorld(testMap()), 0, 0, 0)).toBeNull()
-    })
-})
-
-describe('orientGates', () => {
-    // A square block of streets, corners at (0, 0) and (200, 200).
-    const world = buildWorld(
-        testMap({
-            roads: [
-                { kind: 'street', width: 10, points: [0, 0, 200, 0] },
-                { kind: 'street', width: 10, points: [200, 0, 200, 200] },
-                { kind: 'street', width: 10, points: [200, 200, 0, 200] },
-                { kind: 'street', width: 10, points: [0, 200, 0, 0] },
-            ],
-        })
-    )
-    // Placed going round clockwise, all facing north to begin with.
-    const placed = [gate(100, 0), gate(200, 100), gate(100, 200), gate(0, 100)].map(g => ({ ...g, dx: 0, dz: -1 }))
-    // "+ 0" turns -0 into 0, which toEqual tells apart.
-    const ways = (gates: Gate[]) => gates.map(g => [Math.round(g.dx) + 0, Math.round(g.dz) + 0])
-
-    test('each faces along its road towards the next', () => {
-        expect(ways(orientGates(world, placed, true))).toEqual([
-            [1, 0],
-            [0, 1],
-            [-1, 0],
-            [0, -1],
-        ])
-    })
-
-    test('placed the other way round, they all turn round', () => {
-        expect(ways(orientGates(world, [...placed].reverse(), true))).toEqual([
-            [0, 1],
-            [1, 0],
-            [0, -1],
-            [-1, 0],
-        ])
-    })
-
-    test('until the loop is closed, the last carries on from the one before', () => {
-        expect(ways(orientGates(world, placed.slice(0, 2), false))).toEqual([
-            [1, 0],
-            [0, 1],
-        ])
     })
 })
 
