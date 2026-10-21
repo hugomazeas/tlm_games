@@ -1,16 +1,18 @@
 import type { RaceMap } from '../map/format.ts'
 
 /**
- * A small made-up map for the driving tests: 1 km square, flat at 10 m
- * unless `height` says otherwise, with nothing on it but what a test adds.
+ * A small made-up map for the driving tests: 1 km square (or `size` metres),
+ * flat at 10 m unless `height` says otherwise, with nothing on it but what a
+ * test adds.
  */
 export function testMap(
     overrides: Partial<RaceMap> = {},
-    height: (x: number, z: number) => number = () => 10
+    height: (x: number, z: number) => number = () => 10,
+    metres = 1000
 ): RaceMap {
     const cell = 10
-    const cols = 101
-    const rows = 101
+    const cols = metres / cell + 1
+    const rows = cols
     const size = (cols - 1) * cell
     const heights: number[] = []
     for (let row = 0; row < rows; row++) {

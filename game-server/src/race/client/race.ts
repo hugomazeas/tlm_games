@@ -48,6 +48,8 @@ export interface RaceOptions {
     standingsPanel: HTMLElement
     arrow: HTMLElement
     speedometer: HTMLCanvasElement
+    /** You crossed the finish line, here: confetti. */
+    onFinish?: (x: number, y: number, z: number) => void
 }
 
 /** A line of the standings, leader first, as the lobby ranks the racers. */
@@ -112,6 +114,7 @@ export function createRace(options: RaceOptions): Race {
                 if (trial.phase === 'racing' || (wasRacing && trial.phase === 'finished')) {
                     race.onSample?.(after.x, after.z, trial.steps * STEP)
                 }
+                if (wasRacing && trial.phase === 'finished') options.onFinish?.(after.x, after.y, after.z)
             }
             driver.onReset = () => {
                 if (!trial) return

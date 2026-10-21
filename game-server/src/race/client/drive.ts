@@ -1,6 +1,16 @@
 import * as THREE from 'three'
-import { createKart, forwardSpeed, type KartInput, type KartState, resetKart, STEP, stepKart } from '../drive/kart.ts'
+import {
+    createKart,
+    forwardSpeed,
+    type KartInput,
+    type KartState,
+    resetKart,
+    STEP,
+    stepKart,
+    TOP_SPEED,
+} from '../drive/kart.ts'
 import type { DriveWorld, Pad } from '../drive/world.ts'
+import type { Effects } from './effects.ts'
 import { buildKartModel, DEFAULT_LOOK, type KartLook } from './kart.ts'
 
 /**
@@ -11,12 +21,17 @@ import { buildKartModel, DEFAULT_LOOK, type KartLook } from './kart.ts'
 
 /** Keyboard steering eases in and out this fast (per second), so a tap isn't a jerk. */
 const STEER_RATE = 6
-/** The chase camera sits this far behind and above, pulling back with speed. */
-const CHASE_DISTANCE = 6
-const CHASE_HEIGHT = 2.6
-/** How quickly the camera catches up, per second. */
+/** The chase camera sits this far behind and above, pulling back a little with speed. */
+const CHASE_DISTANCE = 4.6
+const CHASE_HEIGHT = 1.9
+/** How quickly the camera swings round behind the kart in a bend, per second. */
 const CHASE_RATE = 5
 const BASE_FOV = 70
+/** The lens widens this many degrees per m/s, and more on a boost: speed you feel at the edges. */
+const FOV_PER_SPEED = 0.4
+const FOV_BOOST = 10
+/** Near top speed the camera shakes, this much at most (metres). */
+const SHAKE = 0.05
 const PAD_LIFT = 0.14
 
 export interface Driver {
@@ -45,10 +60,12 @@ export function createDriver(
     world: DriveWorld,
     scene: THREE.Scene,
     camera: THREE.PerspectiveCamera,
-    look: KartLook = DEFAULT_LOOK
+    look: KartLook = DEFAULT_LOOK,
+    effects: Effects | null = null
 ): Driver {
     // No name tag over your own kart: you know who you are, and it hides the road ahead.
     const model = buildKartModel(look, false)
+    const fx = effects?.forKart() ?? null
     scene.add(model.root)
     scene.add(buildPads(world))
 
@@ -117,19 +134,44 @@ export function createDriver(
             model.pose(x, y, z, heading, up, current, steer, dt)
 
             const speed = forwardSpeed(current)
+            fx?.update(
+                {
+                    x,
+                    y,
+                    z,
+                    heading,
+                    speed,
+                    vy: current.vy,
+                    drift: current.drift,
+                    charge: current.charge,
+                    boosting: current.boost > 0,
+                    airborne: current.airborne,
+                },
+                dt
+            )
+            effects?.speedLines(speed, current.boost > 0)
             const forward = new THREE.Vector3(-Math.sin(heading), 0, -Math.cos(heading))
-            const back = CHASE_DISTANCE + Math.max(0, speed) * 0.09
-            const wanted = new THREE.Vector3(x, y, z).addScaledVector(forward, -back)
-            wanted.y = Math.max(y, world.ground(wanted.x, wanted.z)) + CHASE_HEIGHT + Math.max(0, speed) * 0.025
+            const ahead = Math.max(0, speed)
+            const back = CHASE_DISTANCE + ahead * 0.04
+            // Where the camera wants to be, from the kart: only this swing is smoothed, so the camera
+            // keeps up at any speed instead of trailing further behind the faster you go.
+            const wanted = forward.clone().multiplyScalar(-back)
+            const groundBehind = world.ground(x + wanted.x, z + wanted.z)
+            wanted.y = Math.max(0, groundBehind - y) + CHASE_HEIGHT + ahead * 0.01
             if (!chaseReady) chase.copy(wanted)
             chase.lerp(wanted, 1 - Math.exp(-CHASE_RATE * dt))
-            chase.y = Math.max(chase.y, world.ground(chase.x, chase.z) + 1)
             chaseReady = true
-            camera.position.copy(chase)
-            camera.lookAt(x + forward.x * 4, y + 1.2, z + forward.z * 4)
+            const shake = SHAKE * Math.pow(Math.min(1, ahead / TOP_SPEED), 3) * (current.surface === 'road' ? 1 : 2.5)
+            camera.position.set(
+                x + chase.x + (Math.random() - 0.5) * shake,
+                y + chase.y + (Math.random() - 0.5) * shake,
+                z + chase.z
+            )
+            camera.position.y = Math.max(camera.position.y, world.ground(camera.position.x, camera.position.z) + 1)
+            camera.lookAt(x + forward.x * 6, y + 1.0, z + forward.z * 6)
             camera.fov = THREE.MathUtils.lerp(
                 camera.fov,
-                BASE_FOV + Math.max(0, speed) * 0.25 + (current.boost > 0 ? 8 : 0),
+                BASE_FOV + ahead * FOV_PER_SPEED + (current.boost > 0 ? FOV_BOOST : 0),
                 1 - Math.exp(-4 * dt)
             )
             camera.updateProjectionMatrix()
@@ -168,6 +210,7 @@ export function createDriver(
             }
             active = isActive
             model.root.visible = isActive
+            if (!isActive) effects?.speedLines(0, false)
             keys.clear()
             steer = 0
         },

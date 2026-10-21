@@ -1,6 +1,7 @@
 import { advance, bestLap, type Point, type Progress, respawnPoint, startProgress } from './drive/laps.ts'
 import { toGate, type Route } from './drive/route.ts'
 import { standings } from './drive/standings.ts'
+import { PACE } from './drive/kart.ts'
 import { COUNTDOWN } from './drive/trial.ts'
 import { rollSky, type Sky, type TimeOfDay } from './drive/weather.ts'
 import type { Course } from './map/format.ts'
@@ -37,8 +38,8 @@ export const FINISH_GRACE_MS = 30_000
 export const MAX_RACE_MS = 20 * 60_000
 /** A tab's race clock may run this far ahead of the server's (it starts later, so it shouldn't at all). */
 const CLOCK_LEAD = 1
-/** Faster than this between two steps isn't driving: a reset or a respawn. Boosted top speed is ~47 m/s. */
-const MAX_MOVE_SPEED = 80
+/** Faster than this between two steps isn't driving: a reset or a respawn. Boosted top speed is ~47 m/s, times PACE on the ground. */
+const MAX_MOVE_SPEED = 80 * PACE
 /** A jump landing this close to your last checkpoint is R putting you back on it. */
 const RESPAWN_REACH = 20
 /** Any other jump (out of the water onto a road) may bring you at most this much closer to your next gate. */

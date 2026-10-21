@@ -46,6 +46,14 @@ export interface KartState {
 const ACCEL = 9
 const ACCEL_FALLOFF = 1.5
 const CRUISE_ACCEL = 0.7
+/**
+ * The map is real size, and a real 150 km/h seen from a chase camera feels
+ * slow. So karts cover the ground PACE times faster than their speed says,
+ * and turn PACE times faster too (same lines through a bend, taken sooner):
+ * speeds, the speedometer and the feel tests stay in "kart" km/h, distances
+ * and the server's speed checks are in real metres.
+ */
+export const PACE = 1.5
 /** 150 km/h. */
 export const TOP_SPEED = 41.67
 /** A boost may take you past top speed, up to 170 km/h. */
@@ -172,7 +180,7 @@ export function stepKart(world: DriveWorld, previous: KartState, input: KartInpu
     } else {
         yaw = steer * turn * Math.sign(speed || 1)
     }
-    kart.heading = wrapAngle(kart.heading + yaw * dt * (touching ? 1 : AIR_STEER))
+    kart.heading = wrapAngle(kart.heading + yaw * dt * PACE * (touching ? 1 : AIR_STEER))
     forwardX = -Math.sin(kart.heading)
     forwardZ = -Math.cos(kart.heading)
     if (grip < 1 && touching) {
@@ -222,8 +230,8 @@ export function stepKart(world: DriveWorld, previous: KartState, input: KartInpu
     kart.vx = forwardX * speed - forwardZ * sideways
     kart.vz = forwardZ * speed + forwardX * sideways
 
-    kart.x += kart.vx * dt
-    kart.z += kart.vz * dt
+    kart.x += kart.vx * dt * PACE
+    kart.z += kart.vz * dt * PACE
     collide(world, kart)
 
     // Up and down: follow the ground while it curves less sharply than gravity pulls, else fly.
@@ -234,7 +242,7 @@ export function stepKart(world: DriveWorld, previous: KartState, input: KartInpu
         if (kart.y <= ground) {
             // Land moving with the ground, or a downhill landing bounces straight back off it.
             kart.y = ground
-            kart.vy = (world.ground(kart.x + kart.vx * dt, kart.z + kart.vz * dt) - ground) / dt
+            kart.vy = (world.ground(kart.x + kart.vx * dt * PACE, kart.z + kart.vz * dt * PACE) - ground) / dt
             kart.airborne = false
         }
     } else {
