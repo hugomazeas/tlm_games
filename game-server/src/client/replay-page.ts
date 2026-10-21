@@ -262,6 +262,10 @@ function hotPotatoReplay(config: Config) {
         nameOf(id: number): string {
             return roster.get(id)?.name ?? STRINGS.someone
         },
+        /** The roster badge of an AI seat (its level); a seat with no level is an easy one. */
+        aiLabel(player: PlayerInfo): string {
+            return STRINGS.ai[player.botLevel ?? 'easy'].label
+        },
         colourOf(player: PlayerInfo): string {
             return playerColour(player.id, player.look)
         },

@@ -142,8 +142,12 @@
                                             class="bg-white/10 hover:bg-white/20 rounded-lg px-4 py-2 text-sm transition">Leave</button>
                                 </template>
                                 <template x-if="isHost">
-                                    <button @click="addBot()" :disabled="!canAddBot" data-add-bot
-                                            class="bg-white/10 hover:bg-white/20 disabled:text-white/30 rounded-lg px-4 py-2 text-sm transition">🤖 Add AI</button>
+                                    <button @click="addBot('easy')" :disabled="!canAddBot" data-add-bot="easy"
+                                            class="bg-white/10 hover:bg-white/20 disabled:text-white/30 rounded-lg px-4 py-2 text-sm transition" x-text="aiStrings.easy.add"></button>
+                                </template>
+                                <template x-if="isHost">
+                                    <button @click="addBot('hard')" :disabled="!canAddBot" data-add-bot="hard"
+                                            class="bg-white/10 hover:bg-white/20 disabled:text-white/30 rounded-lg px-4 py-2 text-sm transition" x-text="aiStrings.hard.add"></button>
                                 </template>
                                 <template x-if="isHost">
                                     <button @click="close()"
@@ -167,7 +171,7 @@
                                     <template x-if="!player.avatarUrl">
                                         <span class="w-2.5 h-2.5 rounded-full" :style="'background:' + colourOf(player)"></span>
                                     </template>
-                                    <span x-show="player.bot" title="AI">🤖</span>
+                                    <span x-show="player.bot" :title="aiLabel(player)" x-text="'🤖 ' + aiLabel(player)"></span>
                                     <span x-show="hatOf(player)" x-text="hatOf(player)"></span>
                                     <span x-text="player.name"></span>
                                     <span x-show="player.id === session.hostId" title="Host">👑</span>

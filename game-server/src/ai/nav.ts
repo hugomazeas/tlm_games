@@ -76,6 +76,9 @@ export class NavGrid {
         dist: Int16Array
     } | null = null
     private readonly fieldBuffer: Int16Array
+    /** A second field (obs spec 6): the seat's own distances, kept apart from the cached one. */
+    private readonly ownBuffer: Int16Array
+    private readonly extraBuffer: Int16Array
 
     constructor(readonly arena: Arena) {
         this.cols = Math.floor(arena.width / CELL)
@@ -92,6 +95,8 @@ export class NavGrid {
         this.scratch = new Int16Array(this.size)
         this.parent = new Int32Array(this.size)
         this.fieldBuffer = new Int16Array(this.size)
+        this.ownBuffer = new Int16Array(this.size)
+        this.extraBuffer = new Int16Array(this.size)
         this.movers = arena.obstacles.filter(o => o.mover)
         this.footprints = uFootprints(arena)
 
@@ -373,6 +378,43 @@ export class NavGrid {
     }
 
     /**
+     * An uncached field from one cell into one of two spare buffers (`own`: the seat's own distances;
+     * `extra`: a portal exit's). It overwrites the path tree: call `pathDirection` before it.
+     */
+    spareField(cell: number, maxUnits: number, which: 'own' | 'extra'): Int16Array {
+        const buffer = which === 'own' ? this.ownBuffer : this.extraBuffer
+        this.flood([cell], maxUnits * UNIT, buffer, null)
+        return buffer
+    }
+
+    /**
+     * Share of the floor the seat reaches before the threat (walking, both capped at the fields'
+     * range): 1 when it owns every cell either of them reaches, 0 when the threat owns them all. Ties
+     * split. The classic evader's measure: a corner leaves little floor that is yours.
+     */
+    territory(own: Int16Array, threat: Int16Array): number {
+        let mine = 0
+        let total = 0
+        for (let cell = 0; cell < this.size; cell++) {
+            const a = own[cell] as number
+            const b = threat[cell] as number
+            if (a >= UNREACHED && b >= UNREACHED) continue
+            total++
+            if (a < b) mine++
+            else if (a === b) mine += 0.5
+        }
+        return total === 0 ? 0 : mine / total
+    }
+
+    /** Walkable cells within `units` of walking in a field, over the cells of a disc of that radius. */
+    mobility(field: Int16Array, units: number): number {
+        const limit = units * UNIT
+        let count = 0
+        for (let cell = 0; cell < this.size; cell++) if ((field[cell] as number) <= limit) count++
+        return count / ((Math.PI * units * units) / (CELL * CELL))
+    }
+
+    /**
      * Unit vector along the first `lookahead` units of the shortest path from the source of the field
      * returned by the last `fieldFrom` call to `to` (zero when `to` was not reached).
      */
@@ -499,6 +541,8 @@ export function uWallCount(arena: Arena): number {
 
 /** Furthest geodesic distance a query looks for a target (arena units). */
 export const NAV_RANGE = 30
+/** Obs spec 6: the floor within this walk of the seat is its "room to move". */
+export const MOBILITY_RANGE = 6
 
 /** What one seat's navigation queries say right now (all distances in arena units). */
 export interface SeatNav {
@@ -516,6 +560,18 @@ export interface SeatNav {
     pocketDepth: number
     exitDx: number
     exitDy: number
+    /** Obs spec 6: share of the floor reached before the holder (not holding; 0 otherwise). */
+    territory: number
+    /** Obs spec 6: walkable floor within MOBILITY_RANGE of walking, over a free disc of that radius. */
+    mobility: number
+    /** Obs spec 6: walking distance to the nearer end of the open portal (null: none, or out of range). */
+    portalWalk: number | null
+    /**
+     * Obs spec 6: what going through the portal gains, in walking units (capped at the range):
+     * not holding, how much farther from the holder its far end is than the seat; holding, how much
+     * nearer the nearest player. Zero without a portal.
+     */
+    portalGain: number
 }
 
 const ZERO_NAV: SeatNav = {
@@ -528,6 +584,68 @@ const ZERO_NAV: SeatNav = {
     pocketDepth: 0,
     exitDx: 0,
     exitDy: 0,
+    territory: 0,
+    mobility: 0,
+    portalWalk: null,
+    portalGain: 0,
+}
+
+/** The open portal's end nearer to a point, and the other one; null when none is open. */
+export function nearestPortal(
+    game: GameState,
+    x: number,
+    y: number
+): { near: Point; far: Point; expiresAtMs: number } | null {
+    let best: { near: Point; far: Point; expiresAtMs: number } | null = null
+    let bestDistance = Infinity
+    for (const portal of game.portals ?? []) {
+        for (const [near, far] of [
+            [portal.a, portal.b],
+            [portal.b, portal.a],
+        ] as const) {
+            const distance = Math.hypot(near.x - x, near.y - y)
+            if (distance < bestDistance) {
+                bestDistance = distance
+                best = { near, far, expiresAtMs: portal.expiresAtMs }
+            }
+        }
+    }
+    return best
+}
+
+const capped = (units: number) => (Number.isFinite(units) ? Math.min(units, NAV_RANGE + 10) : NAV_RANGE + 10)
+
+/** Obs spec 6 queries that need the seat's own field (call after the path queries). */
+function ownQueries(
+    grid: NavGrid,
+    game: GameState,
+    me: { x: number; y: number },
+    nav: SeatNav,
+    /** Not holding: the holder's field. Holding: the living others, for the portal gain. */
+    threat: Int16Array | null,
+    targets: ReadonlyArray<{ x: number; y: number }>
+): void {
+    const cell = grid.cellOf(me.x, me.y)
+    if (cell < 0) return
+    const own = grid.spareField(cell, NAV_RANGE + 10, 'own')
+    nav.mobility = Math.min(1, grid.mobility(own, MOBILITY_RANGE))
+    if (threat) nav.territory = grid.territory(own, threat)
+    const portal = nearestPortal(game, me.x, me.y)
+    if (!portal) return
+    const walk = grid.sample(own, portal.near.x, portal.near.y)
+    nav.portalWalk = Number.isFinite(walk) ? walk : null
+    if (threat) {
+        nav.portalGain =
+            capped(grid.sample(threat, portal.far.x, portal.far.y)) - capped(grid.sample(threat, me.x, me.y))
+        return
+    }
+    if (targets.length === 0) return
+    const exitCell = grid.cellOf(portal.far.x, portal.far.y)
+    if (exitCell < 0) return
+    const exitField = grid.spareField(exitCell, NAV_RANGE + 10, 'extra')
+    const fromHere = Math.min(...targets.map(t => capped(grid.sample(own, t.x, t.y))))
+    const fromExit = Math.min(...targets.map(t => capped(grid.sample(exitField, t.x, t.y))))
+    nav.portalGain = fromHere - fromExit
 }
 
 /** Runs this seat's navigation queries on the grid as it stands (call `refresh` first). */
@@ -542,10 +660,16 @@ export function computeSeatNav(grid: NavGrid, game: GameState, seat: number): Se
         exitDx: exit.dx,
         exitDy: exit.dy,
     }
-    if (game.holderId === null) return nav
+    if (game.holderId === null) {
+        ownQueries(grid, game, me, nav, null, [])
+        return nav
+    }
     if (game.holderId === seat) {
         const targets = game.players.filter(p => p.id !== seat && !p.out)
-        if (targets.length === 0) return nav
+        if (targets.length === 0) {
+            ownQueries(grid, game, me, nav, null, [])
+            return nav
+        }
         nav.targetEuclid = Math.min(...targets.map(p => Math.hypot(p.x - me.x, p.y - me.y)))
         // Walk out from the holder's own cell and read the field at each target (smooth in the targets' moves).
         const source = grid.cellOf(me.x, me.y)
@@ -570,12 +694,15 @@ export function computeSeatNav(grid: NavGrid, game: GameState, seat: number): Se
             0,
             nav.targetDistance - ((me.x - centre.x) * path.dx + (me.y - centre.y) * path.dy)
         )
+        ownQueries(grid, game, me, nav, null, targets)
         return nav
     }
     const holder = game.players.find(p => p.id === game.holderId)
-    if (!holder) return nav
-    const source = grid.cellOf(holder.x, holder.y)
-    if (source < 0) return nav
+    const source = holder ? grid.cellOf(holder.x, holder.y) : -1
+    if (!holder || source < 0) {
+        ownQueries(grid, game, me, nav, null, [])
+        return nav
+    }
     const field = grid.fieldFrom(source, NAV_RANGE + 10)
     const distance = grid.distanceFrom(holder, me, NAV_RANGE + 10)
     const path = grid.towardSource(field, me)
@@ -587,25 +714,39 @@ export function computeSeatNav(grid: NavGrid, game: GameState, seat: number): Se
     nav.pathDy = path.dy
     nav.fleeDx = flee.dx
     nav.fleeDy = flee.dy
+    ownQueries(grid, game, me, nav, field, [])
     return nav
 }
 
 /** Last N tick positions of one seat, for the "how far did I really get" features. */
 export class MotionHistory {
     static readonly CAPACITY = 41
-    private readonly xs = new Float64Array(MotionHistory.CAPACITY)
-    private readonly ys = new Float64Array(MotionHistory.CAPACITY)
+    private readonly xs: Float64Array
+    private readonly ys: Float64Array
     private count = 0
     private head = 0
-    constructor(x: number, y: number) {
+    constructor(
+        x: number,
+        y: number,
+        readonly capacity = MotionHistory.CAPACITY
+    ) {
+        this.xs = new Float64Array(capacity)
+        this.ys = new Float64Array(capacity)
         this.push(x, y)
     }
 
     push(x: number, y: number): void {
-        this.head = (this.head + 1) % MotionHistory.CAPACITY
+        this.head = (this.head + 1) % this.capacity
         this.xs[this.head] = x
         this.ys[this.head] = y
-        this.count = Math.min(this.count + 1, MotionHistory.CAPACITY)
+        this.count = Math.min(this.count + 1, this.capacity)
+    }
+
+    /** The position `ticks` ticks ago (the oldest known when the history is shorter). */
+    ago(ticks: number): Point {
+        const back = Math.min(ticks, this.count - 1)
+        const i = (this.head - back + this.capacity) % this.capacity
+        return { x: this.xs[i] as number, y: this.ys[i] as number }
     }
 
     /** Ticks of history available (at least 1). */
@@ -616,10 +757,65 @@ export class MotionHistory {
     /** Move since `ticks` ticks ago (since the oldest known position when the history is shorter). */
     displacement(ticks: number): { dx: number; dy: number } {
         const back = Math.min(ticks, this.count - 1)
-        const then = (this.head - back + MotionHistory.CAPACITY) % MotionHistory.CAPACITY
+        const then = (this.head - back + this.capacity) % this.capacity
         return {
             dx: (this.xs[this.head] as number) - (this.xs[then] as number),
             dy: (this.ys[this.head] as number) - (this.ys[then] as number),
         }
+    }
+}
+
+/** Obs spec 6: ten seconds of positions, one per 50 ms tick (long motion memory). */
+export const LONG_HISTORY_TICKS = 200
+
+export function longHistory(x: number, y: number): MotionHistory {
+    return new MotionHistory(x, y, LONG_HISTORY_TICKS + 1)
+}
+
+/**
+ * Obs spec 6: when the seat last stood in each square of a coarse grid over the arena (VISIT_CELL
+ * units), so a policy sees where it has just been and where it has not.
+ */
+export const VISIT_CELL = 4
+export const VISIT_HALF_LIFE_MS = 10_000
+
+export class VisitMap {
+    readonly cols: number
+    readonly rows: number
+    private readonly last: Float64Array
+
+    constructor(width: number, height: number) {
+        this.cols = Math.max(1, Math.ceil(width / VISIT_CELL))
+        this.rows = Math.max(1, Math.ceil(height / VISIT_CELL))
+        this.last = new Float64Array(this.cols * this.rows).fill(-Infinity)
+    }
+
+    private index(col: number, row: number): number {
+        return col < 0 || row < 0 || col >= this.cols || row >= this.rows ? -1 : row * this.cols + col
+    }
+
+    visit(x: number, y: number, timeMs: number): void {
+        const i = this.index(Math.floor(x / VISIT_CELL), Math.floor(y / VISIT_CELL))
+        if (i >= 0) this.last[i] = timeMs
+    }
+
+    /**
+     * The 3 × 3 squares around the seat's own, row by row from the top left: 2^(−age / half-life) of
+     * the last visit (1 = just now, 0 = never), −1 beyond the arena.
+     */
+    patch(x: number, y: number, timeMs: number): number[] {
+        const col = Math.floor(x / VISIT_CELL)
+        const row = Math.floor(y / VISIT_CELL)
+        const out: number[] = []
+        for (let dr = -1; dr <= 1; dr++)
+            for (let dc = -1; dc <= 1; dc++) {
+                const i = this.index(col + dc, row + dr)
+                if (i < 0) out.push(-1)
+                else {
+                    const last = this.last[i] as number
+                    out.push(last === -Infinity ? 0 : 2 ** (-Math.max(0, timeMs - last) / VISIT_HALF_LIFE_MS))
+                }
+            }
+        return out
     }
 }

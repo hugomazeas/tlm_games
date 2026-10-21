@@ -185,11 +185,16 @@ that is played live, in real time, rather than scored afterwards.
   ids, up to the 12 seats; they count toward the 3-player minimum, so one person
   and two AIs is a solo game). They are never hosts and never reach Laravel:
   results keep only people. Each AI seat is a `TrainedPilot` (`game-server/src/ai/`)
-  running a neural policy trained by self-play on this simulation
-  (`ai/trained-policy.json`, loaded at start-up; missing or mismatched → AIs off,
-  `NO_BOTS`). The policy only knows the rules it trained on: changing the sim
-  (items, physics, arenas) or the observation means retraining. How to train and
-  ship a new policy: `game-server/src/ai/README.md`.
+  running a neural policy trained by self-play on this simulation, at the level the
+  host picked (`addBot {level}`, `easy` when absent; the seat's `botLevel` shows as an
+  "Easy AI" / "Hard AI" badge). Easy plays one policy (`ai/easy-policy.json`); Hard plays
+  a stronger one with a memory (`hard-policy.json`) and its own King of the potato policy
+  (`hard-king-policy.json`); a Killer hunter of either level plays `hunter-policy.json`,
+  and an AI that takes the knife mid-game switches to it. They load at start-up; a
+  missing or mismatched file turns off the levels that use it (`NO_BOTS`). The policies
+  only know the rules they trained on: changing the sim (items, physics, arenas) or the
+  observation means retraining. How to train and ship a policy:
+  `game-server/src/ai/README.md`.
 - **Infection** (`mode: 'infection'`): people only (3+, added AIs sit out: no policy was
   trained for it). A random patient zero (`infectedAtMs`) starts frozen; a touch infects, the
   infected move 10% faster, nobody is knocked out. If the last infected player leaves, a clean
@@ -201,7 +206,7 @@ that is played live, in real time, rather than scored afterwards.
 - **Killer Potato** (`mode: 'killer'`): one of the seated (a person or an added AI), picked at
   random at the start, hunts (`hunterId` in the view and the results): they hold the potato all
   game, it has no fuse, and their touch knocks you out. Needs three seated. An AI hunter plays
-  `hunterPolicy`. If the hunter leaves with three or more left, someone else takes the knife
+  its level's hunter policy (`hunter-policy.json`, shared by both levels). If the hunter leaves with three or more left, someone else takes the knife
   (`newHunter`). Ends at one player left or at the timer. In Killer and Infection, a countdown
   leaver who leaves fewer than three calls the game off rather than hand someone a win.
 - **Replays** (`src/replay.ts`): the session records what it broadcasts from a game's

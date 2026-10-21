@@ -1,12 +1,12 @@
 import type { ServerWebSocket } from 'bun'
-import { checkPolicy, type TrainedPolicy } from './ai/policy.ts'
+import { checkPolicy, decodePolicy, type TrainedPolicy } from './ai/policy.ts'
 import { LaravelClient } from './laravel.ts'
-import { parseClientMessage, type ServerMessage } from './protocol.ts'
+import { type AiLevel, parseClientMessage, type ServerMessage } from './protocol.ts'
 import { BUILD_PLACEHOLDER } from './client/build.ts'
 import { createRacingLive } from './race/live.ts'
 import { parseClientMessage as parseRaceMessage, type ServerMessage as RaceServerMessage } from './race/protocol.ts'
 import { buildRacingAssets, RACING_PREFIX, serveRacing } from './race/serve.ts'
-import { type GameResult, SessionManager, TICK_MS } from './sessions.ts'
+import { type AiPolicies, type GameResult, SessionManager, TICK_MS } from './sessions.ts'
 
 /**
  * The hot potato game server. nginx sends `/games/hot-potato/live/*` here:
@@ -34,9 +34,19 @@ const laravel = new LaravelClient(laravelUrl, secret)
 const clientBundle = await buildClient()
 // The replay page's player: same renderer, no socket.
 const replayBundle = await buildClient('replay-page.ts')
-// The AI seats' policy. A missing or mismatched file only turns AIs off.
-const botPolicy = await loadBotPolicy()
+// The AI seats' policies per level. A missing or mismatched file only turns off the levels that use it.
 const hunterPolicy = await loadBotPolicy('hunter-policy.json')
+const easyPolicy = await loadBotPolicy('easy-policy.json')
+const hardPolicy = await loadBotPolicy('hard-policy.json')
+const hardKingPolicy = await loadBotPolicy('hard-king-policy.json')
+const aiPolicies: Partial<Record<AiLevel, AiPolicies | null>> = {
+    // Easy plays its one policy in King of the potato too.
+    easy: easyPolicy && hunterPolicy ? { main: easyPolicy, king: easyPolicy, hunter: hunterPolicy } : null,
+    hard:
+        hardPolicy && hardKingPolicy && hunterPolicy
+            ? { main: hardPolicy, king: hardKingPolicy, hunter: hunterPolicy }
+            : null,
+}
 // The racing game's pages load their bundles and the map from here too (see race/serve.ts).
 // A failed build (missing packages, say) closes racing, not the whole server.
 const racingAssets = await buildRacingAssets().catch(error => {
@@ -55,8 +65,7 @@ const manager = new SessionManager({
     onResults: result => {
         void saveResults(result)
     },
-    botPolicy,
-    hunterPolicy,
+    aiPolicies,
     loadChat: officeId => {
         laravel
             .loadChat(officeId)
@@ -285,13 +294,13 @@ async function buildClient(entry = 'main.ts'): Promise<{ code: string; etag: str
     return { code, etag: `"${build}"`, build }
 }
 
-async function loadBotPolicy(file = 'trained-policy.json'): Promise<TrainedPolicy | null> {
+async function loadBotPolicy(file: string): Promise<TrainedPolicy | null> {
     try {
-        const policy = (await Bun.file(new URL(`./ai/${file}`, import.meta.url)).json()) as TrainedPolicy
+        const policy = decodePolicy(await Bun.file(new URL(`./ai/${file}`, import.meta.url)).json())
         checkPolicy(policy)
         return policy
     } catch (error) {
-        console.error('AI players are unavailable, the policy did not load:', (error as Error).message)
+        console.error(`AI policy ${file} did not load:`, (error as Error).message)
         return null
     }
 }
