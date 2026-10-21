@@ -13,9 +13,15 @@ export interface PlayerInfo {
     avatarUrl: string | null
     /** An AI seat added by the host: negative id, never a Hub player, never in results. */
     bot?: boolean
+    /** Which AI level an AI seat plays at; set with `bot`. */
+    botLevel?: AiLevel
     /** Their colour, hat, trail and boom; the defaults when absent (the hunter). */
     look?: Look
 }
+
+/** How strong an AI seat plays; the host picks it when adding one. */
+export const AI_LEVELS = ['easy', 'hard'] as const
+export type AiLevel = (typeof AI_LEVELS)[number]
 
 export type Phase = 'lobby' | 'countdown' | 'playing' | 'results'
 
@@ -100,8 +106,8 @@ export type ClientMessage =
     | { type: 'emote'; emote: Emote }
     /** Host, results screen only: end it now for everyone instead of waiting out the timer. */
     | { type: 'backToLobby' }
-    /** Host, lobby only: seat one more AI, or take one out (`playerId` is the AI's negative id). */
-    | { type: 'addBot' }
+    /** Host, lobby only: seat one more AI (a page that sends no level wants an easy one), or take one out (`playerId` is the AI's negative id). */
+    | { type: 'addBot'; level?: AiLevel }
     | { type: 'removeBot'; playerId: number }
     /** Lobby only: "I just changed my look in the Hub", so the server fetches it again. */
     | { type: 'refreshLook' }
@@ -195,10 +201,13 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
         case 'join':
         case 'leave':
         case 'close':
-        case 'addBot':
         case 'backToLobby':
         case 'refreshLook':
             return { type: message.type }
+        case 'addBot':
+            if (message.level === undefined) return { type: 'addBot' }
+            if (!(AI_LEVELS as readonly unknown[]).includes(message.level)) return null
+            return { type: 'addBot', level: message.level as AiLevel }
         case 'removeBot':
             if (typeof message.playerId !== 'number' || !Number.isInteger(message.playerId) || message.playerId >= 0)
                 return null

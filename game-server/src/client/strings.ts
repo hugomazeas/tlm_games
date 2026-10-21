@@ -1,4 +1,4 @@
-import type { ErrorCode } from '../protocol.ts'
+import type { AiLevel, ErrorCode } from '../protocol.ts'
 import type { GameMode } from '../sim/game.ts'
 import type { Effect, ItemKind } from '../sim/items.ts'
 
@@ -102,6 +102,11 @@ export const STRINGS = {
         pickName: 'Pick your name above to chat.',
         placeholder: 'Say something…',
     },
+    /** AI players, by level: the lobby buttons and the roster badge. */
+    ai: {
+        easy: { label: 'Easy AI', add: '🤖 Add Easy AI' },
+        hard: { label: 'Hard AI', add: '🤖 Add Hard AI' },
+    } satisfies Record<AiLevel, { label: string; add: string }>,
     someone: 'Someone',
     errors: {
         BAD_MESSAGE: 'Something went wrong. Reload the page.',

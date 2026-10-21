@@ -1,4 +1,4 @@
-import type { Emote, PlayerInfo, Results, ServerMessage, SessionView } from '../protocol.ts'
+import type { AiLevel, Emote, PlayerInfo, Results, ServerMessage, SessionView } from '../protocol.ts'
 import { EMOTES, GAME_MODES, MAX_PLAYERS, MIN_PLAYERS } from '../protocol.ts'
 import type { GameMode } from '../sim/game.ts'
 import type { ItemKind } from '../sim/items.ts'
@@ -83,6 +83,7 @@ function hotPotatoApp(config: Config) {
         chatDraft: '',
         chatMaxLength: CHAT_MAX_BODY,
         chatStrings: STRINGS.chat,
+        aiStrings: STRINGS.ai,
         banner: '',
         bannerFlash: false,
         error: '',
@@ -282,8 +283,12 @@ function hotPotatoApp(config: Config) {
             if (!this.isHost || this.phase !== 'lobby') return
             this.send({ type: 'settings', durationMin: Number(this.duration), theme: this.theme, mode: this.mode })
         },
-        addBot() {
-            if (this.canAddBot) this.send({ type: 'addBot' })
+        addBot(level: AiLevel) {
+            if (this.canAddBot) this.send({ type: 'addBot', level })
+        },
+        /** The roster badge of an AI seat (its level); a seat with no level is an easy one. */
+        aiLabel(player: PlayerInfo) {
+            return STRINGS.ai[player.botLevel ?? 'easy'].label
         },
         removeBot(playerId: number) {
             if (this.isHost) this.send({ type: 'removeBot', playerId })

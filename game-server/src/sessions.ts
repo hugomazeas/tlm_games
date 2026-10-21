@@ -1,4 +1,5 @@
 import {
+    type AiLevel,
     type ClientMessage,
     type ErrorCode,
     MAX_PLAYERS,
@@ -68,6 +69,20 @@ export interface GameResult {
     replay: Uint8Array<ArrayBuffer> | null
 }
 
+/** What one AI level plays: `main` for survival and a Killer prey, `king` for King of the potato, `hunter` for the knife. */
+export interface AiPolicies {
+    main: TrainedPolicy
+    king: TrainedPolicy
+    hunter: TrainedPolicy
+}
+
+/** The policy an AI seat plays in a mode (and, in Killer Potato, as the hunter or as prey). */
+export function policyFor(policies: AiPolicies, mode: GameMode, hunting: boolean): TrainedPolicy {
+    if (mode === 'king') return policies.king
+    if (mode === 'killer' && hunting) return policies.hunter
+    return policies.main
+}
+
 export interface SessionHooks {
     /** Identifies the browser bundle being served; sent to every tab in `welcome`. */
     build: string
@@ -78,10 +93,8 @@ export interface SessionHooks {
     nextSeed(): number
     onOpened(officeId: number, hostPlayerId: number): void
     onResults(result: GameResult): void
-    /** The policy AI seats play with; without one, `addBot` is refused. */
-    botPolicy?: TrainedPolicy | null
-    /** The policy a Killer Potato hunter plays; without one the hunter plays `botPolicy`. */
-    hunterPolicy?: TrainedPolicy | null
+    /** The policies of each AI level; a level without them is refused by `addBot`. */
+    aiPolicies?: Partial<Record<AiLevel, AiPolicies | null>>
     /** Picks AI seats' names and looks; kept apart from `rng` so neither shifts a game. Defaults to Math.random. */
     botNameRng?: Rng
     /** A lobby member changed their look in the Hub: fetch them again and hand them to `updatePlayer`. */
@@ -317,13 +330,21 @@ export class SessionManager {
                 if (!session) return fail('NO_SESSION')
                 if (session.hostId !== player.id) return fail('NOT_HOST')
                 if (session.phase !== 'lobby') return fail('NOT_IN_LOBBY')
-                if (!this.hooks.botPolicy) return fail('NO_BOTS')
+                const level = message.level ?? 'easy'
+                if (!this.hooks.aiPolicies?.[level]) return fail('NO_BOTS')
                 if (session.members.length >= MAX_PLAYERS) return fail('LOBBY_FULL')
                 const id = session.nextBotId--
                 const nameRng = this.hooks.botNameRng ?? Math.random
                 const name = botName(session, nameRng)
                 session.members.push({
-                    player: { id, name, avatarUrl: botAvatarUrl(name), bot: true, look: randomLook(nameRng) },
+                    player: {
+                        id,
+                        name,
+                        avatarUrl: botAvatarUrl(name),
+                        bot: true,
+                        botLevel: level,
+                        look: randomLook(nameRng),
+                    },
                     connId: null,
                     awayUntil: null,
                 })
@@ -455,20 +476,12 @@ export class SessionManager {
         session.gameMeta = { seed, theme, startedAt: this.hooks.now() }
         session.inputs.clear()
         session.pilots.clear()
-        const policy = this.hooks.botPolicy
-        if (policy) {
-            const hunterId = session.game.hunterId
-            for (const seat of session.members.map(m => m.player)) {
-                if (seat.bot && playerIds.includes(seat.id)) {
-                    session.pilots.set(
-                        seat.id,
-                        new TrainedPilot(
-                            seat.id === hunterId ? (this.hooks.hunterPolicy ?? policy) : policy,
-                            session.game,
-                            seat.id
-                        )
-                    )
-                }
+        const hunterId = session.game.hunterId
+        for (const seat of session.members.map(m => m.player)) {
+            const policies = seat.bot ? this.hooks.aiPolicies?.[seat.botLevel ?? 'easy'] : null
+            if (policies && playerIds.includes(seat.id)) {
+                const policy = policyFor(policies, session.settings.mode, seat.id === hunterId)
+                session.pilots.set(seat.id, new TrainedPilot(policy, session.game, seat.id))
             }
         }
         session.phase = 'countdown'
@@ -506,9 +519,11 @@ export class SessionManager {
 
     /** Killer Potato: an AI that just took the knife plays the hunter's policy from now on. */
     private swapPilotPolicy(session: Session, hunterId: number) {
-        const policy = this.hooks.botPolicy
-        if (!policy || !session.game || !session.pilots.has(hunterId)) return
-        session.pilots.set(hunterId, new TrainedPilot(this.hooks.hunterPolicy ?? policy, session.game, hunterId))
+        const pilot = session.pilots.get(hunterId)
+        const level = session.members.find(m => m.player.id === hunterId)?.player.botLevel ?? 'easy'
+        const policies = this.hooks.aiPolicies?.[level]
+        // The pilot keeps the seat's motion memory; only the policy and its own memory change.
+        if (pilot && policies) pilot.usePolicy(policies.hunter)
     }
 
     /** Every AI seat still in the game picks its steering for this tick, before the simulation steps. */

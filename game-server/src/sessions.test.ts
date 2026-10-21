@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
-import type { TrainedPolicy } from './ai/policy.ts'
+import { decodePolicy, type TrainedPolicy } from './ai/policy.ts'
 import { BOT_NAMES, botAvatarUrl } from './bots.ts'
-import { MAX_PLAYERS, parseClientMessage, type PlayerInfo, type ServerMessage } from './protocol.ts'
+import { type AiLevel, MAX_PLAYERS, parseClientMessage, type PlayerInfo, type ServerMessage } from './protocol.ts'
 import {
     COUNTDOWN_MS,
     EMOTE_COOLDOWN_MS,
+    type AiPolicies,
     type GameResult,
+    policyFor,
     RECONNECT_GRACE_MS,
     RESULTS_MS,
     SessionManager,
@@ -16,7 +18,37 @@ import { isReplayMessage, REPLAY_VERSION, type Replay } from './replay.ts'
 import { EFFECTS, FIRST_ITEM_MS } from './sim/items.ts'
 import { createRng } from './sim/rng.ts'
 
-const policy = (await Bun.file(new URL('./ai/trained-policy.json', import.meta.url)).json()) as TrainedPolicy
+const loadPolicy = async (file: string) => decodePolicy(await Bun.file(new URL(`./ai/${file}`, import.meta.url)).json())
+const easyPolicy = await loadPolicy('easy-policy.json')
+const hardPolicy = await loadPolicy('hard-policy.json')
+const hardKingPolicy = await loadPolicy('hard-king-policy.json')
+const hunterPolicy = await loadPolicy('hunter-policy.json')
+
+/** The bundled policies of each level, as the server wires them. */
+const policies: Record<AiLevel, AiPolicies> = {
+    easy: { main: easyPolicy, king: easyPolicy, hunter: hunterPolicy },
+    hard: { main: hardPolicy, king: hardKingPolicy, hunter: hunterPolicy },
+}
+
+/** A copy of a policy that can be told apart by identity and by its `tag`. */
+const tagged = (policy: TrainedPolicy, tag: string): TrainedPolicy => ({
+    ...policy,
+    config: { ...policy.config, tag },
+})
+
+/** Policies whose every role is a different object, to see which one a seat was given. */
+const taggedPolicies: Record<AiLevel, AiPolicies> = {
+    easy: {
+        main: tagged(easyPolicy, 'easy-main'),
+        king: tagged(easyPolicy, 'easy-king'),
+        hunter: tagged(hunterPolicy, 'easy-hunter'),
+    },
+    hard: {
+        main: tagged(hardPolicy, 'hard-main'),
+        king: tagged(hardKingPolicy, 'hard-king'),
+        hunter: tagged(hunterPolicy, 'hard-hunter'),
+    },
+}
 
 const OFFICE = 1
 const OTHER_OFFICE = 2
@@ -528,7 +560,7 @@ describe('the host’s picks', () => {
             nextSeed: () => 1234,
             onOpened: () => {},
             onResults: () => {},
-            botPolicy: policy,
+            aiPolicies: policies,
         })
         const a = connect(alice)
         const b = connect(bob)
@@ -655,7 +687,7 @@ describe('chat', () => {
             nextSeed: () => 1234,
             onOpened: () => {},
             onResults: () => {},
-            botPolicy: policy,
+            aiPolicies: policies,
         })
         const a = connect(alice)
         send(a, { type: 'open' })
@@ -709,7 +741,7 @@ describe('Infection', () => {
             nextSeed: () => 1234,
             onOpened: () => {},
             onResults: result => results.push(result),
-            botPolicy: policy,
+            aiPolicies: policies,
             botNameRng: createRng(7),
         })
     })
@@ -904,7 +936,7 @@ describe('AI players', () => {
             nextSeed: () => 1234,
             onOpened: (officeId, hostPlayerId) => opened.push({ officeId, hostPlayerId }),
             onResults: result => results.push(result),
-            botPolicy: policy,
+            aiPolicies: policies,
             botNameRng: createRng(7),
         })
     })
@@ -1045,8 +1077,123 @@ describe('AI players', () => {
     })
 })
 
+describe('AI levels', () => {
+    const levels: Array<[AiLevel, string]> = [
+        ['easy', 'Easy'],
+        ['hard', 'Hard'],
+    ]
+    const withPolicies = (aiPolicies: Partial<Record<AiLevel, AiPolicies | null>>) => {
+        manager = new SessionManager({
+            build: 'build-1',
+            now: () => now,
+            rng: createRng(42),
+            nextSeed: () => 1234,
+            onOpened: () => {},
+            onResults: () => {},
+            aiPolicies,
+        })
+    }
+    const host = () => {
+        const a = connect(alice)
+        send(a, { type: 'open' })
+        return a
+    }
+    const botLevels = (conn: FakeConn) =>
+        (last(conn, 'office')?.session?.players ?? []).filter(p => p.bot).map(p => p.botLevel)
+
+    test.each(levels)('the host seats a %s AI and its seat carries the level', level => {
+        withPolicies(taggedPolicies)
+        const a = host()
+        send(a, { type: 'addBot', level })
+        expect(botLevels(a)).toEqual([level])
+        expect(errors(a)).toEqual([])
+    })
+
+    test('a request with no level seats an easy AI, so a page from before levels keeps working', () => {
+        withPolicies(taggedPolicies)
+        const a = host()
+        send(a, { type: 'addBot' })
+        expect(botLevels(a)).toEqual(['easy'])
+    })
+
+    test('an unknown level is a bad message', () => {
+        expect(parseClientMessage(JSON.stringify({ type: 'addBot', level: 'insane' }))).toBeNull()
+        expect(parseClientMessage(JSON.stringify({ type: 'addBot', level: 3 }))).toBeNull()
+        expect(parseClientMessage(JSON.stringify({ type: 'addBot', level: null }))).toBeNull()
+        expect(parseClientMessage(JSON.stringify({ type: 'addBot' }))).toEqual({ type: 'addBot' })
+        expect(parseClientMessage(JSON.stringify({ type: 'addBot', level: 'hard' }))).toEqual({
+            type: 'addBot',
+            level: 'hard',
+        })
+    })
+
+    test('a level without policies is refused on its own', () => {
+        withPolicies({ easy: taggedPolicies.easy, hard: null })
+        const a = host()
+        send(a, { type: 'addBot', level: 'hard' })
+        expect(errors(a)).toEqual(['NO_BOTS'])
+        send(a, { type: 'addBot', level: 'easy' })
+        expect(botLevels(a)).toEqual(['easy'])
+
+        withPolicies({ hard: taggedPolicies.hard })
+        const b = host()
+        send(b, { type: 'addBot' })
+        expect(errors(b)).toEqual(['NO_BOTS'])
+    })
+
+    test('policyFor: King gets the king policy, a hunter the hunter policy, everyone else the main one', () => {
+        for (const level of ['easy', 'hard'] as const) {
+            const p = taggedPolicies[level]
+            expect(policyFor(p, 'survival', false)).toBe(p.main)
+            expect(policyFor(p, 'survival', true)).toBe(p.main)
+            expect(policyFor(p, 'king', false)).toBe(p.king)
+            expect(policyFor(p, 'killer', true)).toBe(p.hunter)
+            expect(policyFor(p, 'killer', false)).toBe(p.main)
+        }
+    })
+
+    test('each AI seat plays its own level’s policy for the mode', () => {
+        const expectPolicies = (mode: string, pick: (p: AiPolicies, hunting: boolean) => TrainedPolicy) => {
+            withPolicies(taggedPolicies)
+            const a = host()
+            send(a, { type: 'addBot', level: 'easy' })
+            send(a, { type: 'addBot', level: 'hard' })
+            send(a, { type: 'start', durationMin: 1, theme: 'open_space', mode })
+            expect(errors(a)).toEqual([])
+            const session = (manager as unknown as Internals).sessions.values().next().value!
+            const hunterId = session.game?.hunterId
+            expect(session.pilots.get(-1)?.policy).toBe(pick(taggedPolicies.easy, hunterId === -1))
+            expect(session.pilots.get(-2)?.policy).toBe(pick(taggedPolicies.hard, hunterId === -2))
+        }
+        expectPolicies('survival', p => p.main)
+        expectPolicies('king', p => p.king)
+        expectPolicies('killer', (p, hunting) => (hunting ? p.hunter : p.main))
+    })
+
+    test('Infection seats people only: AIs sit out', () => {
+        withPolicies(taggedPolicies)
+        const a = host()
+        const b = connect(bob)
+        const c = connect(carol)
+        send(b, { type: 'join' })
+        send(c, { type: 'join' })
+        send(a, { type: 'addBot', level: 'hard' })
+        send(a, { type: 'start', durationMin: 1, theme: 'open_space', mode: 'infection' })
+        expect((manager as unknown as Internals).sessions.values().next().value!.pilots.size).toBe(0)
+    })
+})
+
 /** The session table and pilots, which the manager keeps private. */
-type Internals = { sessions: Map<number, { pilots: Map<number, { policy: TrainedPolicy }> }> }
+type Internals = {
+    sessions: Map<
+        number,
+        {
+            game: { hunterId: number | null } | null
+            pilots: Map<number, { policy: TrainedPolicy; actionRepeat: number }>
+        }
+    >
+    applyEvents(session: unknown, events: object[]): void
+}
 
 describe('Killer Potato', () => {
     beforeEach(() => {
@@ -1057,7 +1204,7 @@ describe('Killer Potato', () => {
             nextSeed: () => 1234,
             onOpened: (officeId, hostPlayerId) => opened.push({ officeId, hostPlayerId }),
             onResults: result => results.push(result),
-            botPolicy: policy,
+            aiPolicies: policies,
         })
     })
 
@@ -1089,7 +1236,7 @@ describe('Killer Potato', () => {
                 nextSeed: () => 1234,
                 onOpened: () => {},
                 onResults: () => {},
-                botPolicy: policy,
+                aiPolicies: policies,
             })
             const a = connect(alice)
             send(a, { type: 'open' })
@@ -1101,8 +1248,7 @@ describe('Killer Potato', () => {
         expect([...hunters].sort((x, y) => x - y)).toEqual([-2, -1, 1])
     })
 
-    test('an AI hunter plays the hunter policy, AI prey the default one', () => {
-        const hunterPolicy = { ...policy, config: { ...policy.config, stickiness: 123 } }
+    test('an AI hunter plays the hunter policy, AI prey the main one, at each level', () => {
         for (let seed = 1; seed <= 20; seed++) {
             manager = new SessionManager({
                 build: 'build-1',
@@ -1111,19 +1257,52 @@ describe('Killer Potato', () => {
                 nextSeed: () => 1234,
                 onOpened: () => {},
                 onResults: () => {},
-                botPolicy: policy,
-                hunterPolicy,
+                aiPolicies: taggedPolicies,
             })
             const a = connect(alice)
             send(a, { type: 'open' })
-            send(a, { type: 'addBot' })
-            send(a, { type: 'addBot' })
+            send(a, { type: 'addBot', level: 'easy' })
+            send(a, { type: 'addBot', level: 'hard' })
             send(a, killer)
             const hunterId = last(a, 'office')?.session?.hunterId
             const pilots = (manager as unknown as Internals).sessions.values().next().value?.pilots
+            expect(pilots?.size).toBe(2)
             for (const [id, pilot] of pilots?.entries() ?? []) {
-                expect(pilot.policy).toBe(id === hunterId ? hunterPolicy : policy)
+                const level: AiLevel = id === -1 ? 'easy' : 'hard'
+                expect(pilot.policy).toBe(id === hunterId ? taggedPolicies[level].hunter : taggedPolicies[level].main)
             }
+        }
+    })
+
+    test('an AI that takes the knife switches to its level’s hunter policy and keeps its motion memory', () => {
+        for (const level of ['easy', 'hard'] as const) {
+            manager = new SessionManager({
+                build: 'build-1',
+                now: () => now,
+                rng: createRng(3),
+                nextSeed: () => 1234,
+                onOpened: () => {},
+                onResults: () => {},
+                aiPolicies: taggedPolicies,
+            })
+            const a = connect(alice)
+            send(a, { type: 'open' })
+            send(a, { type: 'addBot', level })
+            send(a, { type: 'addBot', level })
+            send(a, killer)
+            advance(COUNTDOWN_MS + 5 * TICK_MS)
+            const internals = manager as unknown as Internals
+            const session = internals.sessions.values().next().value!
+            const hunterId = session.game?.hunterId
+            const prey = [-1, -2].find(id => id !== hunterId)!
+            const pilot = session.pilots.get(prey)!
+            expect(pilot.policy).toBe(taggedPolicies[level].main)
+
+            internals.applyEvents(session, [{ kind: 'newHunter', playerId: prey }])
+
+            expect(session.pilots.get(prey)).toBe(pilot)
+            expect(pilot.policy).toBe(taggedPolicies[level].hunter)
+            expect(pilot.actionRepeat).toBe(taggedPolicies[level].hunter.config.action_repeat!)
         }
     })
 
