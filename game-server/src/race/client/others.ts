@@ -3,6 +3,7 @@ import type { KartState } from '../drive/kart.ts'
 import type { DriveWorld } from '../drive/world.ts'
 import type { DriverInfo, Pose } from '../protocol.ts'
 import { groundNormal } from './drive.ts'
+import type { Effects, KartEffects } from './effects.ts'
 import { buildKartModel, type KartModel } from './kart.ts'
 import type { MinimapKart } from './minimap.ts'
 
@@ -19,6 +20,7 @@ const FOLLOW = { distance: 8, height: 3.4, rate: 4 }
 
 interface Other {
     model: KartModel
+    fx: KartEffects | null
     look: DriverInfo
     from: Pose
     to: Pose
@@ -39,7 +41,7 @@ export interface Others {
     follow(id: string, camera: THREE.PerspectiveCamera, dt: number): boolean
 }
 
-export function createOthers(world: DriveWorld, scene: THREE.Scene): Others {
+export function createOthers(world: DriveWorld, scene: THREE.Scene, effects: Effects | null = null): Others {
     const others = new Map<string, Other>()
     let drivers = new Map<string, DriverInfo>()
     const chase = new THREE.Vector3()
@@ -76,6 +78,7 @@ export function createOthers(world: DriveWorld, scene: THREE.Scene): Others {
                 scene.add(model.root)
                 others.set(id, {
                     model,
+                    fx: effects?.forKart() ?? null,
                     look,
                     from: pose,
                     to: pose,
@@ -104,6 +107,7 @@ export function createOthers(world: DriveWorld, scene: THREE.Scene): Others {
                 const target = shown.airborne ? new THREE.Vector3(0, 1, 0) : groundNormal(world, shown.x, shown.z)
                 other.up.lerp(target, 1 - Math.exp(-8 * dt)).normalize()
                 other.model.pose(shown.x, shown.y, shown.z, shown.heading, other.up, asKart(shown), shown.steer, dt)
+                other.fx?.update({ ...shown, vy: 0, boosting: shown.boost }, dt)
             }
         },
 

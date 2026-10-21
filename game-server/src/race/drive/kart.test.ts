@@ -8,6 +8,7 @@ import {
     type KartState,
     MINI_TURBO,
     OFFROAD_SPEED,
+    PACE,
     resetKart,
     STEP,
     stepKart,
@@ -21,10 +22,10 @@ const NORTH = 0
 const EAST = -Math.PI / 2
 const GAS: KartInput = { throttle: 1, steer: 0, drift: false }
 
-/** A long east–west back lane (no boost pads) through the middle of the test map, plus whatever else. */
+/** A 2 km east–west back lane (no boost pads) through the middle of the test map, plus whatever else. */
 function avenue(overrides: Parameters<typeof testMap>[0] = {}, height?: Parameters<typeof testMap>[1]): DriveWorld {
     return buildWorld(
-        testMap({ roads: [{ kind: 'service', width: 20, points: [-500, 0, 500, 0] }], ...overrides }, height)
+        testMap({ roads: [{ kind: 'service', width: 20, points: [-1000, 0, 1000, 0] }], ...overrides }, height, 2000)
     )
 }
 
@@ -51,10 +52,10 @@ describe('acceleration', () => {
         expect(forwardSpeed(long)).toBeLessThanOrEqual(TOP_SPEED + 1e-9)
     })
 
-    test('it takes most of a kilometre to reach top speed', () => {
+    test('it takes most of a kilometre (in kart terms) to reach top speed', () => {
         let kart = createKart(world, -480, 0, EAST)
         while (forwardSpeed(kart) < TOP_SPEED - 0.01) kart = stepKart(world, kart, GAS)
-        expect(kart.x + 480).toBeGreaterThan(600)
+        expect(kart.x + 480).toBeGreaterThan(600 * PACE)
     })
 
     test('braking stops you, then you reverse slowly', () => {
@@ -158,7 +159,9 @@ describe('drifting', () => {
 
 describe('boost', () => {
     test('a pad boosts you past top speed', () => {
-        const world = buildWorld(testMap({ roads: [{ kind: 'major', width: 20, points: [-500, 0, 500, 0] }] }))
+        const world = buildWorld(
+            testMap({ roads: [{ kind: 'major', width: 20, points: [-1000, 0, 1000, 0] }] }, undefined, 2000)
+        )
         const pad = world.pads.at(-1)!
         let kart = drive(world, createKart(world, -480, 0, EAST), 25, GAS)
         kart = { ...kart, x: pad.x - 3, z: pad.z }
@@ -202,7 +205,8 @@ describe('jumps', () => {
     test('a crest at speed throws you into the air, and you land', () => {
         // A ramp up to x = 0, then a drop.
         const world = avenue({}, x => (x < -100 ? 10 : x < 0 ? 10 + (x + 100) * 0.15 : 10))
-        let kart = drive(world, createKart(world, -480, 0, EAST), 15, GAS)
+        // Up to speed just short of the ramp.
+        let kart = drive(world, createKart(world, -480, 0, EAST), 10, GAS)
         let flew = false
         for (let t = 0; t < 5; t += STEP) {
             kart = stepKart(world, kart, GAS)
