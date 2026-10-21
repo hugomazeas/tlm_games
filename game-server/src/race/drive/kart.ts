@@ -137,8 +137,8 @@ export function forwardSpeed(kart: KartState): number {
     return -Math.sin(kart.heading) * kart.vx - Math.cos(kart.heading) * kart.vz
 }
 
-/** The kart one STEP later. */
-export function stepKart(world: DriveWorld, previous: KartState, input: KartInput): KartState {
+/** The kart one STEP later. `grip` scales the tyres' sideways grip: under 1 on wet or snowy roads. */
+export function stepKart(world: DriveWorld, previous: KartState, input: KartInput, grip = 1): KartState {
     const kart = { ...previous }
     const dt = STEP
     const throttle = clamp(input.throttle, -1, 1)
@@ -175,6 +175,12 @@ export function stepKart(world: DriveWorld, previous: KartState, input: KartInpu
     kart.heading = wrapAngle(kart.heading + yaw * dt * (touching ? 1 : AIR_STEER))
     forwardX = -Math.sin(kart.heading)
     forwardZ = -Math.cos(kart.heading)
+    if (grip < 1 && touching) {
+        // Slippery: the kart turns, but its momentum only partly follows, so it slides wide.
+        const slip = 1 - grip
+        speed += (kart.vx * forwardX + kart.vz * forwardZ - speed) * slip
+        sideways += (kart.vx * -forwardZ + kart.vz * forwardX - sideways) * slip
+    }
 
     if (touching) {
         const limit =
@@ -210,8 +216,8 @@ export function stepKart(world: DriveWorld, previous: KartState, input: KartInpu
         const next = speed + accel * dt
         const floor = throttle < 0 ? Math.min(speed, -REVERSE_SPEED) : -Infinity
         speed = Math.max(floor, speed <= limit ? Math.min(next, Math.max(speed, limit)) : Math.max(next, limit))
-        const grip = kart.drift !== 0 ? DRIFT_GRIP : kart.surface === 'road' ? GRIP : OFFROAD_GRIP
-        sideways *= Math.exp(-grip * dt)
+        const tyres = kart.drift !== 0 ? DRIFT_GRIP : kart.surface === 'road' ? GRIP : OFFROAD_GRIP
+        sideways *= Math.exp(-tyres * grip * dt)
     }
     kart.vx = forwardX * speed - forwardZ * sideways
     kart.vz = forwardZ * speed + forwardX * sideways

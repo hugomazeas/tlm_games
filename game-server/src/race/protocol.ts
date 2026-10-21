@@ -10,6 +10,8 @@
  * the end of the race, and the results it posts to the Hub.
  */
 
+import { type Sky, type TimeOfDay, TIMES_OF_DAY } from './drive/weather.ts'
+
 export const MAX_RACERS = 8
 
 /** waiting: free driving before the start. countdown, racing. finished: results up, free driving again. */
@@ -45,6 +47,10 @@ export interface LobbyView {
     members: Array<DriverInfo & { racing: boolean }>
     /** The last race's results, while `finished`. */
     results: ResultRow[] | null
+    /** The sky the next race (or the one under way) runs under. */
+    sky: Sky
+    /** The time of day the host picked for every race; null: a random one each race. */
+    time: TimeOfDay | null
 }
 
 /** One row of the lobby list on the Hub's racing page. */
@@ -87,6 +93,8 @@ export type ClientMessage =
     | { type: 'start' }
     /** The host closes the lobby for everyone. */
     | { type: 'close' }
+    /** The host picks the time of day for the races (null: random each race), between races. */
+    | { type: 'setTime'; time: TimeOfDay | null }
     /**
      * The kart now, and, while racing, every physics step since the last
      * message as flat [x, z, t, …] (t: the tab's race clock, seconds).
@@ -139,6 +147,12 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     }
     if (message.type === 'start') return { type: 'start' }
     if (message.type === 'close') return { type: 'close' }
+    if (message.type === 'setTime') {
+        const time = TIMES_OF_DAY.find(t => t === message.time) ?? null
+        if (time === null && message.time !== null) return null
+
+        return { type: 'setTime', time }
+    }
     if (message.type === 'pose') {
         const pose = parsePose(message.pose)
         if (!pose) return null

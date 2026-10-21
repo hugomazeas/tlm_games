@@ -33,6 +33,8 @@ export interface Driver {
     setActive(active: boolean): void
     /** Held in place, ignoring the keys: on the grid before the green light. */
     frozen: boolean
+    /** The tyres' grip under the race's weather (weather.ts GRIP): 1 when dry. */
+    grip: number
     /** Called after every physics step, with the kart before and after it. */
     onStep: ((before: KartState, after: KartState) => void) | null
     /** What R does instead of the nearest road, when set: a race puts you back on your last gate. */
@@ -99,7 +101,7 @@ export function createDriver(
             while (accumulator >= STEP) {
                 const input = read(STEP)
                 previous = current
-                current = driver.frozen ? current : stepKart(world, current, input)
+                current = driver.frozen ? current : stepKart(world, current, input, driver.grip)
                 driver.onStep?.(previous, current)
                 accumulator -= STEP
             }
@@ -149,6 +151,7 @@ export function createDriver(
         },
 
         frozen: false,
+        grip: 1,
         onStep: null,
         onReset: null,
 

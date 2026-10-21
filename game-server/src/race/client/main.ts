@@ -3,6 +3,8 @@ import { buildWorld } from '../drive/world.ts'
 import { heightAt } from '../map/convert.ts'
 import { type GateSpec, projectCourse } from '../map/courses.ts'
 import type { AreaKind, Course, RaceMap } from '../map/format.ts'
+import { CLEAR_NOON, GRIP, rollSky, type Sky, type TimeOfDay, type Weather } from '../drive/weather.ts'
+import { createAtmosphere } from './atmosphere.ts'
 import { createDriver } from './drive.ts'
 import type { KartLook } from './kart.ts'
 import { joinLobby, type Lobby } from './lobby.ts'
@@ -46,7 +48,6 @@ interface RacingConfig {
     recordsUrl?: string
 }
 
-const SKY = 0xbfd9ee
 const GROUND = '#d9d4c7'
 const AREA_COLOURS: Record<AreaKind, string> = {
     park: '#a7cf8f',
@@ -102,23 +103,23 @@ renderer.domElement.classList.add('race-view')
 overlay.root.prepend(renderer.domElement)
 
 const scene = new THREE.Scene()
-scene.background = new THREE.Color(SKY)
-scene.fog = new THREE.Fog(SKY, 400, 3000)
-scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8170, 1.6))
-const sun = new THREE.DirectionalLight(0xfff4e0, 1.8)
-sun.position.set(-0.6, 1, 0.35)
-scene.add(sun)
-
 const camera = new THREE.PerspectiveCamera(FOV, window.innerWidth / window.innerHeight, 0.5, 8000)
+const atmosphere = createAtmosphere(renderer, scene, camera, map)
 
-scene.add(buildTerrain(map))
+const solid = { cast: true, receive: true }
+const flat = { cast: false, receive: true }
+const add = (object: THREE.Object3D, shading: { cast: boolean; receive: boolean }) => {
+    atmosphere.shade(object, shading)
+    scene.add(object)
+}
+add(buildTerrain(map), flat)
 scene.add(buildWater(map))
 const buildings = buildBuildings(map.buildings)
-scene.add(buildings)
-scene.add(buildStreets(map, ground))
-scene.add(buildFurniture(map, ground))
-scene.add(buildDecor(map.decor))
-scene.add(buildWalls(map.walls, ground))
+add(buildings, solid)
+add(buildStreets(map, ground), flat)
+add(buildFurniture(map, ground), solid)
+add(buildDecor(map.decor), solid)
+add(buildWalls(map.walls, ground), solid)
 
 const controls = flyControls(camera, renderer.domElement)
 const world = buildWorld(map)
@@ -152,6 +153,9 @@ const race = createRace({
 })
 if (!racing) setupIdentify(camera, [buildings], overlay.identify, renderer.domElement)
 
+// A race's sky comes from its lobby. Otherwise the one in the URL (?sky=sunset,snow), else a random one in free roam, else noon.
+if (!racing) setSky(skyFromUrl() ?? (roaming ? rollSky(Math.random) : CLEAR_NOON))
+
 let lobby: Lobby | null = null
 if (racing && config.track) {
     // Until the lobby says where the grid slot is, wait on the start line.
@@ -168,6 +172,7 @@ if (racing && config.track) {
         others,
         panel: overlay.lobby,
         setWatching: watching => setMode(watching ? 'watch' : 'drive'),
+        setSky,
     })
 } else if (roaming) {
     applyViewFromHash(location.hash || ROAM_VIEW)
@@ -222,13 +227,26 @@ setInterval(() => {
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight
     camera.updateProjectionMatrix()
-    renderer.setSize(window.innerWidth, window.innerHeight)
+    atmosphere.resize(window.innerWidth, window.innerHeight)
 })
+
+overlay.quality.textContent = qualityLabel()
+overlay.quality.addEventListener('click', () => {
+    atmosphere.setQuality(atmosphere.quality === 'high' ? 'low' : 'high')
+    overlay.quality.textContent = qualityLabel()
+    overlay.quality.blur()
+})
+
+function qualityLabel(): string {
+    return `Graphics: ${atmosphere.quality === 'high' ? 'High' : 'Low'}`
+}
 
 status.textContent = `${map.buildings.length} buildings · ${map.roads.length} roads`
 
 const clock = new THREE.Clock()
+const stats = frameStats(overlay.stats)
 renderer.setAnimationLoop(() => {
+    stats.frame()
     const dt = Math.min(clock.getDelta(), 0.1)
     others.update(dt)
     if (mode === 'drive') {
@@ -251,8 +269,74 @@ renderer.setAnimationLoop(() => {
             `alt ${(p.y - ground(p.x, p.z)).toFixed(0)} m  speed ${controls.speed.toFixed(0)} m/s`
     }
     race.update(mode === 'drive', others.minimapKarts())
-    renderer.render(scene, camera)
+    atmosphere.update(dt, focus())
+    atmosphere.render()
 })
+
+/**
+ * The frame rate, the slowest frame (a stutter shows there before it shows in
+ * the average) and memory, twice a second. Memory is the page's JavaScript
+ * heap, which only Chrome and Edge report; the GPU's isn't exposed, so the
+ * textures and meshes loaded on it are counted instead.
+ */
+function frameStats(element: HTMLElement) {
+    const memory = (performance as { memory?: { usedJSHeapSize: number } }).memory
+    let frames = 0
+    let slowest = 0
+    let last = performance.now()
+    let since = last
+
+    return {
+        frame() {
+            const now = performance.now()
+            frames += 1
+            slowest = Math.max(slowest, now - last)
+            last = now
+            if (now - since < 500) return
+            const fps = (frames * 1000) / (now - since)
+            const { geometries, textures } = renderer.info.memory
+            element.textContent =
+                `${fps.toFixed(0)} fps · worst ${slowest.toFixed(0)} ms\n` +
+                (memory ? `${(memory.usedJSHeapSize / 1048576).toFixed(0)} MB JS · ` : '') +
+                `${geometries} meshes · ${textures} textures`
+            element.style.color = fps < 30 ? '#fca5a5' : fps < 50 ? '#fde68a' : '#f8fafc'
+            frames = 0
+            slowest = 0
+            since = now
+        },
+    }
+}
+
+/** Where the night lamp shines: your kart, the leader you watch, or ahead of the flying camera. */
+function focus(): THREE.Vector3 {
+    if (mode === 'drive') return new THREE.Vector3(driver.kart.x, driver.kart.y, driver.kart.z)
+    const ahead = new THREE.Vector3()
+    camera.getWorldDirection(ahead)
+    const reach = Math.min(80, Math.max(20, camera.position.y - ground(camera.position.x, camera.position.z)))
+    const spot = camera.position.clone().addScaledVector(ahead, reach)
+    spot.y = ground(spot.x, spot.z)
+
+    return spot
+}
+
+function setSky(sky: Sky): void {
+    atmosphere.setSky(sky)
+    driver.grip = GRIP[sky.weather]
+}
+
+/** `?sky=time,weather` (both optional: `?sky=night`, `?sky=,snow`), for looking at one in the viewer. */
+function skyFromUrl(): Sky | null {
+    const asked = new URLSearchParams(location.search).get('sky')
+    if (asked === null) return null
+    const [time, weather] = asked.split(',')
+    const times: TimeOfDay[] = ['morning', 'noon', 'sunset', 'night']
+    const weathers: Weather[] = ['clear', 'rain', 'snow']
+
+    return {
+        time: times.find(t => t === time) ?? CLEAR_NOON.time,
+        weather: weathers.find(w => w === weather) ?? CLEAR_NOON.weather,
+    }
+}
 
 /** Lands on the road under where you're looking from, heading the way the camera faces. */
 function flyToDrive(): void {

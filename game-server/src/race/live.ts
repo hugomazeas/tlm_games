@@ -34,6 +34,7 @@ export async function createRacingLive(laravel: LaravelClient): Promise<RacingLi
     const manager = new LobbyManager({
         now: () => Date.now(),
         newId: () => Math.random().toString(36).slice(2, 8).padEnd(6, '0'),
+        random: Math.random,
         onResults: result => {
             laravel.postRaceResults(result).catch(error => console.error('Race results not saved:', error.message))
         },

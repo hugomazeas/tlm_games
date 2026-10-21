@@ -1,4 +1,7 @@
 import { formatTime } from '../drive/trial.ts'
+import { describeSky, type TimeOfDay, TIMES_OF_DAY } from '../drive/weather.ts'
+
+const TIME_LABELS: Record<TimeOfDay, string> = { morning: 'Morning', noon: 'Noon', sunset: 'Sunset', night: 'Night' }
 import type { LobbyPhase, LobbyView } from '../protocol.ts'
 
 /**
@@ -31,7 +34,8 @@ export function createLobbyPanel(
     element: HTMLElement,
     laps: number,
     onStart: () => void,
-    onClose: () => void
+    onClose: () => void,
+    onTime: (time: TimeOfDay | null) => void
 ): LobbyPanel {
     let lobby: LobbyView | null = null
     let you = ''
@@ -41,6 +45,26 @@ export function createLobbyPanel(
 
     const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = '') =>
         Object.assign(document.createElement(tag), { className, textContent: text })
+
+    /** The host's pick of time of day: random each race, or one for every race. */
+    const timePicker = (time: TimeOfDay | null) => {
+        const label = el('label', 'time', 'Time ')
+        const select = el('select')
+        for (const value of ['random', ...TIMES_OF_DAY]) {
+            const option = el('option', '', TIME_LABELS[value as TimeOfDay] ?? 'Random')
+            option.value = value
+            option.selected = value === (time ?? 'random')
+            select.append(option)
+        }
+        select.addEventListener('change', () => {
+            // Off the menu straight away, or the arrow keys would keep changing it instead of steering.
+            select.blur()
+            onTime(select.value === 'random' ? null : (select.value as TimeOfDay))
+        })
+        label.append(select)
+
+        return label
+    }
 
     const button = (text: string, onClick: () => void, className = '') => {
         const b = el('button', className, text)
@@ -60,6 +84,7 @@ export function createLobbyPanel(
         const children: HTMLElement[] = [
             el('div', 'title', `${lobby.trackName} · ${laps} ${laps === 1 ? 'lap' : 'laps'}`),
             el('div', `phase phase-${lobby.phase}`, PHASES[lobby.phase]),
+            el('div', 'sky', `${live ? '' : 'Next race: '}${describeSky(lobby.sky)}`),
         ]
 
         if (lobby.phase === 'finished' && lobby.results) {
@@ -89,6 +114,8 @@ export function createLobbyPanel(
             members.append(item)
         }
         children.push(members)
+
+        if (!live && lobby.hostId === you) children.push(timePicker(lobby.time))
 
         if (!live) {
             if (lobby.hostId === you) {

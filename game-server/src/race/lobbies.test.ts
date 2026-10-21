@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { FINISH_GRACE_MS, type LoadedTrack, LobbyManager, type RaceResult } from './lobbies.ts'
 import type { Course } from './map/format.ts'
-import { type LobbyView, MAX_RACERS, type Pose, type ServerMessage } from './protocol.ts'
+import { type LobbyView, MAX_RACERS, parseClientMessage, type Pose, type ServerMessage } from './protocol.ts'
 
 /** The square loop from laps.test.ts: start line on the north side, a gate on each other side. */
 const square: Course = {
@@ -32,6 +32,7 @@ const POSE: Pose = {
 
 let now: number
 let ids: number
+let rolls: number
 let results: RaceResult[]
 let manager: LobbyManager
 let inboxes: Map<string, ServerMessage[]>
@@ -84,11 +85,13 @@ function startRace(host: string): void {
 beforeEach(() => {
     now = 1_000_000
     ids = 0
+    rolls = 0
     results = []
     inboxes = new Map()
     manager = new LobbyManager({
         now: () => now,
         newId: () => `lobby${++ids}`,
+        random: () => (rolls++ * 0.37) % 1,
         onResults: result => results.push(result),
     })
 })
@@ -238,6 +241,57 @@ describe('races', () => {
         manager.tick()
         expect(lobbyOf('b').phase).toBe('racing')
         expect(manager.summaries()[0]!.phase).toBe('racing')
+    })
+
+    test('everyone in a lobby sees the same sky, and a new one is rolled after each race', () => {
+        join('a', 1)
+        join('b', 2, 'lobby1')
+        const before = lobbyOf('a').sky
+        expect(lobbyOf('b').sky).toEqual(before)
+
+        startRace('a')
+        expect(lobbyOf('a').sky).toEqual(before)
+        now += 60_000
+        lap('a', 1, 45)
+        lap('b', 1, 50)
+        expect(lobbyOf('a').phase).toBe('finished')
+        expect(rolls).toBe(4)
+        expect(lobbyOf('b').sky).toEqual(lobbyOf('a').sky)
+    })
+
+    test('the host picks the time of day for every race, between races only; random again on null', () => {
+        join('a', 1)
+        join('b', 2, 'lobby1')
+        manager.setTime('b', 'night')
+        expect(last('b', 'error')).toEqual({ type: 'error', code: 'NOT_HOST' })
+
+        manager.setTime('a', 'night')
+        expect(lobbyOf('b')).toMatchObject({ time: 'night', sky: { time: 'night' } })
+
+        startRace('a')
+        manager.setTime('a', 'noon')
+        expect(lobbyOf('a').time).toBe('night')
+        now += 60_000
+        lap('a', 1, 45)
+        lap('b', 1, 50)
+        // The next race's sky is rolled at night too.
+        expect(lobbyOf('a')).toMatchObject({ phase: 'finished', time: 'night', sky: { time: 'night' } })
+
+        manager.setTime('a', null)
+        expect(lobbyOf('b').time).toBeNull()
+    })
+
+    test('setTime only takes a time of day or null', () => {
+        expect(parseClientMessage(JSON.stringify({ type: 'setTime', time: 'sunset' }))).toEqual({
+            type: 'setTime',
+            time: 'sunset',
+        })
+        expect(parseClientMessage(JSON.stringify({ type: 'setTime', time: null }))).toEqual({
+            type: 'setTime',
+            time: null,
+        })
+        expect(parseClientMessage(JSON.stringify({ type: 'setTime', time: 'midnight' }))).toBeNull()
+        expect(parseClientMessage(JSON.stringify({ type: 'setTime' }))).toBeNull()
     })
 
     test('the race ends when everyone is in, with results to the Hub for players only', () => {

@@ -13,6 +13,7 @@ import {
     stepKart,
     TOP_SPEED,
 } from './kart.ts'
+import { GRIP } from './weather.ts'
 import { buildWorld, type DriveWorld } from './world.ts'
 
 const KMH = 3.6
@@ -135,6 +136,18 @@ describe('drifting', () => {
 
         const short = stepKart(world, drive(world, fast(), 0.3, drifting), GAS)
         expect(short.boost).toBe(0)
+    })
+
+    test('on snow, less grip: a drift slides further sideways', () => {
+        const sideways = (kart: KartState) =>
+            Math.abs(kart.vx * Math.cos(kart.heading) - kart.vz * Math.sin(kart.heading))
+        const slide = (grip: number) => {
+            let kart = fast()
+            for (let t = 0; t < 1; t += STEP) kart = stepKart(world, kart, drifting, grip)
+
+            return sideways(kart)
+        }
+        expect(slide(GRIP.snow)).toBeGreaterThan(slide(GRIP.clear) * 1.2)
     })
 
     test('needs speed and a direction to start', () => {

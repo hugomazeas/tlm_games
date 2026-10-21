@@ -368,6 +368,21 @@ built from OpenStreetMap and federal elevation data, drawn with Three.js.
   insert, drag to move, right-click to remove (`drive/editing.ts`); checkpoints show as
   bars across the road, without arrows. Laravel validates shape and that checkpoints are
   on the map.
+- **Sky and weather** (`drive/weather.ts`, `client/atmosphere.ts`): each race runs under a
+  time of day (morning, noon, sunset, night) and weather (clear, rain, snow). The lobby rolls
+  it when it opens and after each race (`LobbyView.sky`), so a lobby races under one sky; the
+  panel says "Next race: Snow at sunset". The host can pick the time of day between races
+  (`setTime`, `LobbyView.time`; Random by default), kept for every race; weather stays random. Rain and snow cut grip (`GRIP`, passed to `stepKart`:
+  momentum lags the heading, drifts slide wide); night is only a look (stars, lit windows from
+  the wall shader's `WINDOWS_LIT`, a lamp over your kart). Out of a race: `?sky=sunset,snow`
+  in the URL, else random in free roam, else clear noon. The atmosphere draws a sky dome, the
+  sun's shadows (one 4096 map fitted over the whole map, drawn only when the sky or quality
+  changes, since nothing that casts moves; `shade()` says what casts and receives; karts have a
+  blob under them instead), fog the
+  horizon's colour, rain/snow in a box around the camera, and on High bloom and a colour grade.
+  The Graphics button (top right) switches High/Low (no shadows, no bloom, fewer drops, pixel
+  ratio 1), remembered in localStorage. Under it, fps, the slowest frame, the JS heap (Chrome
+  and Edge only) and the GPU's mesh/texture counts (`frameStats` in main.ts).
 - **Race HUD:** the course's route along the streets (`drive/route.ts`, Dijkstra gate to
   gate) feeds the minimap, the HUD arrow, and the standings (`drive/standings.ts`, shared
   with the server). No signs at bends (chevron boards and road arrows were removed as
