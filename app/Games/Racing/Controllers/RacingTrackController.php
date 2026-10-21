@@ -52,6 +52,7 @@ class RacingTrackController extends Controller
             'track' => $track,
             'player' => $player,
             'driver' => RacingKart::lookOf($player),
+            'drivers' => RacingKart::drivers(),
             'lobby' => preg_match('/^[a-z0-9]{1,16}$/', $lobby) ? $lobby : null,
         ]);
     }

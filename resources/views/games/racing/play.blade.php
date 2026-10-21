@@ -14,6 +14,11 @@
                 'playerId' => $player?->id,
                 'lobby' => $lobby,
                 'recordsUrl' => url("/games/racing/tracks/{$track->id}/records"),
+                // For the welcome screen: who to pick from, where to add yourself and save your kart.
+                'drivers' => $drivers,
+                'newDriverUrl' => url('/games/racing/drivers'),
+                'garageUrl' => url('/games/racing/garage'),
+                'csrf' => csrf_token(),
             ]
             : [
                 'mode' => 'roam',

@@ -69,6 +69,7 @@ PUT  /games/racing/tracks/{track}   Save a track's changes
 DELETE /games/racing/tracks/{track} Delete a track
 GET  /games/racing/tracks/{track}/play  Race a track in a lobby (?lobby= joins one, none opens one; ?player= drives as them)
 GET  /games/racing/tracks/{track}/records  The track's records (JSON): each player's best time, the fastest lap
+POST /games/racing/drivers          Add yourself as a player from the game's welcome screen (JSON)
 GET  /games/racing/garage/{player}  Garage: paint a player's kart (body + accent)
 PUT  /games/racing/garage/{player}  Save a player's kart colours
 POST /push/hot-potato/subscribe     Opt a player's browser into "a hot potato opened" pushes
@@ -263,7 +264,15 @@ built from OpenStreetMap and federal elevation data, drawn with Three.js.
   and I (identify) are free roam's (`/games/racing/roam`). The standalone viewer keeps both (F).
 - **Drivers:** the track list's "Driving as" picker (remembered in localStorage) adds
   `?player=` to Play; `RacingKart::lookOf()` gives the game their name and garage
-  colours (`racing_karts`), or a guest's. The kart (`client/kart.ts`) is painted body
+  colours (`racing_karts`), or a guest's.
+- **Welcome screen** (`client/welcome.ts`), for colleagues opening a shared lobby link: on a
+  browser's first race (no `racing_welcomed` in localStorage) the game opens it before joining
+  the lobby. Pick yourself from `RacingKart::drivers()` (or add yourself: `POST
+  /games/racing/drivers`, or race as a guest), paint the kart (saved through the garage's PUT)
+  while the camera circles it on the start line (`driver.showcase`), read Controls / Rules /
+  Options (graphics). Ready remembers the choice (`racing_player`, shared with the track list)
+  and joins. "Driver & kart" reopens it (a change reloads into the same lobby as the new
+  driver); "?" opens only the guide. The kart (`client/kart.ts`) is painted body
   (chassis, nose, pods) + accent (wings, suit, helmet stripe), with a name tag sprite over other
   drivers' karts (not your own). It rides on springs (squat, dive, roll, landing bounce), the
   driver's head and wheel turn, brake lights glow when slowing. `client/effects.ts` gives every

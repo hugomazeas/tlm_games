@@ -19,7 +19,10 @@ const CSS = `
     #race-panel { top: 12px; left: auto; right: 12px; white-space: pre; text-align: right; font-size: 15px; font-variant-numeric: tabular-nums; }
     #race-back { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); padding: 6px 12px; border-radius: 6px; background: rgb(15 23 42 / 0.7); color: #f8fafc; text-decoration: none; }
     #race-banner { position: fixed; top: 22%; left: 0; right: 0; text-align: center; font: 800 64px system-ui, sans-serif; color: #fff; text-shadow: 0 3px 12px rgb(15 23 42 / 0.8); pointer-events: none; }
-    #race-quality { position: fixed; top: 12px; right: 12px; padding: 6px 10px; border: 0; border-radius: 6px; background: rgb(15 23 42 / 0.7); color: #f8fafc; font: inherit; cursor: pointer; }
+    #race-corner { position: fixed; top: 12px; right: 12px; display: flex; gap: 6px; }
+    #race-corner button { padding: 6px 10px; border: 0; border-radius: 6px; background: rgb(15 23 42 / 0.7); color: #f8fafc; font: inherit; cursor: pointer; }
+    #race-corner button:hover { background: rgb(15 23 42 / 0.9); }
+    #race-guide { font-weight: 800; min-width: 30px; }
     #race-stats { position: fixed; top: 46px; right: 12px; padding: 4px 8px; border-radius: 6px; background: rgb(15 23 42 / 0.7); color: #f8fafc; font: 12px ui-monospace, monospace; text-align: right; white-space: pre; pointer-events: none; }
     #race-minimap { position: fixed; right: 12px; bottom: 26px; width: 300px; height: 300px; pointer-events: none; }
     #race-speedometer { position: fixed; left: 50%; bottom: 8px; width: 220px; height: 140px; margin-left: -110px; pointer-events: none; filter: drop-shadow(0 2px 6px rgb(15 23 42 / 0.6)); }
@@ -60,7 +63,11 @@ const HTML = `
     <div id="race-panel" class="panel"></div>
     <div id="race-lobby" class="panel" hidden></div>
     <a id="race-back" hidden>← Tracks</a>
-    <button id="race-quality" type="button" title="Low turns off shadows and glow, for slower computers"></button>
+    <div id="race-corner">
+        <button id="race-kart" type="button" title="Change who's driving and your kart's colours" hidden>Driver &amp; kart</button>
+        <button id="race-guide" type="button" title="Controls, rules and options" hidden>?</button>
+        <button id="race-quality" type="button" title="Low turns off shadows and glow, for slower computers"></button>
+    </div>
     <div id="race-stats"></div>
     <div id="race-banner"></div>
     <canvas id="race-minimap" width="300" height="300"></canvas>
@@ -82,6 +89,9 @@ export interface Overlay {
     crosshair: HTMLElement
     back: HTMLAnchorElement
     quality: HTMLButtonElement
+    /** Reopen the welcome screen: all of it, or only the guide. Racing only. */
+    kart: HTMLButtonElement
+    guide: HTMLButtonElement
     /** Frame rate and memory, under the Graphics button. */
     stats: HTMLElement
     banner: HTMLElement
@@ -114,6 +124,8 @@ export function createOverlay(parent: HTMLElement = document.body): Overlay {
         crosshair: find('crosshair'),
         back: find<HTMLAnchorElement>('back'),
         quality: find<HTMLButtonElement>('quality'),
+        kart: find<HTMLButtonElement>('kart'),
+        guide: find<HTMLButtonElement>('guide'),
         stats: find('stats'),
         banner: find('banner'),
         minimap: find<HTMLCanvasElement>('minimap'),
