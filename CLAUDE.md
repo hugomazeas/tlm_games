@@ -259,7 +259,12 @@ built from OpenStreetMap and federal elevation data, drawn with Three.js.
 - **Drivers:** the track list's "Driving as" picker (remembered in localStorage) adds
   `?player=` to Play; `RacingKart::lookOf()` gives the game their name and garage
   colours (`racing_karts`), or a guest's. The kart (`client/kart.ts`) is painted body
-  (chassis, nose) + accent (wing, suit), with a name tag sprite over other drivers' karts (not your own).
+  (chassis, nose, pods) + accent (wings, suit, helmet stripe), with a name tag sprite over other
+  drivers' karts (not your own). It rides on springs (squat, dive, roll, landing bounce), the
+  driver's head and wheel turn, brake lights glow when slowing. `client/effects.ts` gives every
+  kart (yours and the lobby's) its dust, spray, drift smoke and sparks, skid marks, splashes,
+  wall sparks, landing dust, boost fire and exhaust puffs, from two fixed particle pools (fewer
+  alive on Low); plus speed lines near top speed and confetti at your finish.
 - **Standalone viewer:** `bun run race:viewer` on http://localhost:8091 (`RACE_POC_PORT`
   to change it), free roam and landmark work (click, WASD, I identifies the building under
   the crosshair). A view link `#lat,lon,altitude,heading,pitch[,fov]` takes an optional
@@ -353,7 +358,11 @@ built from OpenStreetMap and federal elevation data, drawn with Three.js.
   `kart.ts` steps an arcade kart at a fixed 60 Hz (slow pull to 150 km/h, offroad
   cap, drift → mini-turbo, jumps off crests, bounce off walls). Tuning constants sit
   at the top of `kart.ts`; `kart.test.ts` pins the feel (0–60 in 3 s, ~700 m to top
-  speed). The viewer starts driving unless the URL has a view; F switches to flying.
+  speed, in kart terms). `PACE` (1.5): karts cover the real-size map, and turn, that much
+  faster than their speed says, so 150 km/h feels like it; speeds and the speedometer stay
+  nominal, positions and the server's speed checks are real metres. The chase camera keeps
+  its distance at any speed (only its swing is smoothed), widens with speed and shakes near
+  the top. The viewer starts driving unless the URL has a view; F switches to flying.
 - **Tracks** (`Course` in the TS code; `map/courses.ts` projects lat/lon checkpoints):
   circuits only, gate 0 the start/finish, the grid behind it. Gates have no direction:
   `drive/laps.ts` counts them only in order, crossed either way; the route between them

@@ -6,6 +6,7 @@ import type { AreaKind, Course, RaceMap } from '../map/format.ts'
 import { CLEAR_NOON, GRIP, rollSky, type Sky, type TimeOfDay, type Weather } from '../drive/weather.ts'
 import { createAtmosphere } from './atmosphere.ts'
 import { createDriver } from './drive.ts'
+import { createEffects } from './effects.ts'
 import type { KartLook } from './kart.ts'
 import { joinLobby, type Lobby } from './lobby.ts'
 import { createMinimap } from './minimap.ts'
@@ -123,8 +124,10 @@ add(buildWalls(map.walls, ground), solid)
 
 const controls = flyControls(camera, renderer.domElement)
 const world = buildWorld(map)
-const driver = createDriver(world, scene, camera, config?.driver)
-const others = createOthers(world, scene)
+const effects = createEffects(scene, world, renderer, overlay.root)
+effects.setQuality(atmosphere.quality)
+const driver = createDriver(world, scene, camera, config?.driver, effects)
+const others = createOthers(world, scene, effects)
 let mode: 'drive' | 'fly' | 'watch' = 'fly'
 const course: Course | null =
     racing && config.track
@@ -150,6 +153,7 @@ const race = createRace({
     standingsPanel: overlay.standings,
     arrow: overlay.arrow,
     speedometer: overlay.speedometer,
+    onFinish: (x, y, z) => effects.confetti(x, y, z),
 })
 if (!racing) setupIdentify(camera, [buildings], overlay.identify, renderer.domElement)
 
@@ -233,6 +237,7 @@ window.addEventListener('resize', () => {
 overlay.quality.textContent = qualityLabel()
 overlay.quality.addEventListener('click', () => {
     atmosphere.setQuality(atmosphere.quality === 'high' ? 'low' : 'high')
+    effects.setQuality(atmosphere.quality)
     overlay.quality.textContent = qualityLabel()
     overlay.quality.blur()
 })
@@ -269,6 +274,7 @@ renderer.setAnimationLoop(() => {
             `alt ${(p.y - ground(p.x, p.z)).toFixed(0)} m  speed ${controls.speed.toFixed(0)} m/s`
     }
     race.update(mode === 'drive', others.minimapKarts())
+    effects.update(dt, camera)
     atmosphere.update(dt, focus())
     atmosphere.render()
 })
@@ -321,6 +327,7 @@ function focus(): THREE.Vector3 {
 
 function setSky(sky: Sky): void {
     atmosphere.setSky(sky)
+    effects.setWeather(sky.weather)
     driver.grip = GRIP[sky.weather]
 }
 
