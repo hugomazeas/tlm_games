@@ -32,6 +32,8 @@ const FOV_PER_SPEED = 0.4
 const FOV_BOOST = 10
 /** Near top speed the camera shakes, this much at most (metres). */
 const SHAKE = 0.05
+/** The welcome screen's camera: circling this far out and up, this many radians a second. */
+const SHOWCASE = { radius: 5.2, height: 1.8, turn: 0.35 }
 const PAD_LIFT = 0.14
 
 export interface Driver {
@@ -46,6 +48,10 @@ export interface Driver {
     place(x: number, z: number, heading: number): void
     reset(): void
     setActive(active: boolean): void
+    /** The kart parked where it is with the camera circling it: the welcome screen's view. */
+    showcase(dt: number): void
+    /** Repaints your kart (the welcome screen's colour pickers). */
+    paint(body: string, accent: string): void
     /** Held in place, ignoring the keys: on the grid before the green light. */
     frozen: boolean
     /** The tyres' grip under the race's weather (weather.ts GRIP): 1 when dry. */
@@ -78,6 +84,7 @@ export function createDriver(
     const up = new THREE.Vector3(0, 1, 0)
     const chase = new THREE.Vector3()
     let chaseReady = false
+    let orbit = Math.PI * 0.8
 
     document.addEventListener('keydown', event => {
         if (!active) return
@@ -200,6 +207,27 @@ export function createDriver(
         reset() {
             previous = current = resetKart(world, current)
             chaseReady = false
+        },
+
+        showcase(dt) {
+            model.root.visible = true
+            orbit += dt * SHOWCASE.turn
+            const { x, y, z, heading } = current
+            model.pose(x, y, z, heading, groundNormal(world, x, z), current, 0, dt)
+            const angle = heading + orbit
+            camera.position.set(
+                x - Math.sin(angle) * SHOWCASE.radius,
+                Math.max(y, world.ground(x, z)) + SHOWCASE.height,
+                z - Math.cos(angle) * SHOWCASE.radius
+            )
+            camera.lookAt(x, y + 0.6, z)
+            camera.fov = BASE_FOV
+            camera.updateProjectionMatrix()
+            chaseReady = false
+        },
+
+        paint(body, accent) {
+            model.paint(body, accent)
         },
 
         setActive(isActive) {

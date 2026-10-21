@@ -41,4 +41,21 @@ class RacingGarageController extends Controller
 
         return response()->json(RacingKart::lookOf($player));
     }
+
+    /**
+     * A newcomer who isn't a Hub player yet adds themselves from the game's
+     * welcome screen, so their times count in the records.
+     */
+    public function createDriver(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:40', 'unique:players,name'],
+        ], [
+            'name.unique' => 'Someone already goes by that name: pick it from the list.',
+        ]);
+
+        $player = Player::create(['name' => trim($validated['name'])]);
+
+        return response()->json(['id' => $player->id, ...RacingKart::lookOf($player)], 201);
+    }
 }

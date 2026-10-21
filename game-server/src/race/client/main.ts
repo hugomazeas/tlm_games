@@ -7,7 +7,9 @@ import { CLEAR_NOON, GRIP, rollSky, type Sky, type TimeOfDay, type Weather } fro
 import { createAtmosphere } from './atmosphere.ts'
 import { createDriver } from './drive.ts'
 import { createEffects } from './effects.ts'
-import type { KartLook } from './kart.ts'
+import type { Quality } from './atmosphere.ts'
+import { DEFAULT_LOOK, type KartLook } from './kart.ts'
+import { createWelcome, type DriverChoice, type DriverOption, REMEMBER } from './welcome.ts'
 import { joinLobby, type Lobby } from './lobby.ts'
 import { createMinimap } from './minimap.ts'
 import { createOthers } from './others.ts'
@@ -42,11 +44,16 @@ interface RacingConfig {
     backUrl?: string
     /** Who's driving, in their garage colours; a guest when nobody is picked. */
     driver?: KartLook
-    /** The Hub player driving; null for a guest. */
+    /** The Hub player driving (?player=); null when the URL names nobody. */
     playerId?: number | null
     /** The lobby to join; null opens a new one. */
     lobby?: string | null
     recordsUrl?: string
+    /** For the welcome screen (welcome.ts): every player and their kart, adding yourself, saving a kart. */
+    drivers?: DriverOption[]
+    newDriverUrl?: string
+    garageUrl?: string
+    csrf?: string
 }
 
 const GROUND = '#d9d4c7'
@@ -63,6 +70,8 @@ const MAX_TEXTURE = 4096
 const EYE_HEIGHT = 2
 /** Vertical field of view, in degrees, unless a view link asks for another. */
 const FOV = 70
+/** The welcome screen's panel, down the right side (welcome.ts: min(420px, 100vw)). */
+const WELCOME_WIDTH = 420
 const BASE_SPEED = 40
 const LANDMARK = { name: 'Hôtel du Parlement', lat: 46.80868, lon: -71.2142 }
 /** Free roam starts here, looking at the Parliament from above the Plains. */
@@ -128,7 +137,9 @@ const effects = createEffects(scene, world, renderer, overlay.root)
 effects.setQuality(atmosphere.quality)
 const driver = createDriver(world, scene, camera, config?.driver, effects)
 const others = createOthers(world, scene, effects)
-let mode: 'drive' | 'fly' | 'watch' = 'fly'
+/** `welcome`: the welcome screen is up, the camera circles your parked kart. */
+type Mode = 'drive' | 'fly' | 'watch' | 'welcome'
+let mode: Mode = 'fly'
 const course: Course | null =
     racing && config.track
         ? projectCourse(`track-${config.track.id}`, config.track, ({ lat, lon }) => {
@@ -162,22 +173,77 @@ if (!racing) setSky(skyFromUrl() ?? (roaming ? rollSky(Math.random) : CLEAR_NOON
 
 let lobby: Lobby | null = null
 if (racing && config.track) {
+    const track = config.track
     // Until the lobby says where the grid slot is, wait on the start line.
     race.placeOnGrid(0)
-    setMode('drive')
-    lobby = joinLobby({
-        trackId: config.track.id,
-        laps: config.track.laps,
-        lobby: config.lobby ?? null,
-        playerId: config.playerId ?? null,
-        recordsUrl: config.recordsUrl ?? '',
-        driver,
-        race,
-        others,
-        panel: overlay.lobby,
-        setWatching: watching => setMode(watching ? 'watch' : 'drive'),
-        setSky,
+    let chosen = rememberedDriver(config)
+    const enter = (choice: DriverChoice) => {
+        chosen = choice
+        driver.paint(choice.body, choice.accent)
+        setMode('drive')
+        lobby = joinLobby({
+            trackId: track.id,
+            laps: track.laps,
+            lobby: config.lobby ?? null,
+            playerId: choice.playerId,
+            recordsUrl: config.recordsUrl ?? '',
+            driver,
+            race,
+            others,
+            panel: overlay.lobby,
+            setWatching: watching => setMode(watching ? 'watch' : 'drive'),
+            setSky,
+        })
+    }
+    const welcome = createWelcome(overlay.root, {
+        trackName: track.name,
+        laps: track.laps,
+        drivers: config.drivers ?? [],
+        newDriverUrl: config.newDriverUrl ?? '',
+        garageUrl: config.garageUrl ?? '',
+        csrf: config.csrf ?? '',
+        guest: DEFAULT_LOOK,
+        quality: () => atmosphere.quality,
+        setQuality,
+        onPaint: (body, accent) => driver.paint(body, accent),
+        onReady: choice => {
+            if (!lobby) return enter(choice)
+            // Already in the lobby: it knows you by your old name and colours, so come back in as the new ones.
+            const before = chosen
+            if (
+                before?.playerId === choice.playerId &&
+                before.body === choice.body &&
+                before.accent === choice.accent
+            ) {
+                return setMode('drive')
+            }
+            const url = new URL(location.href)
+            if (choice.playerId === null) url.searchParams.delete('player')
+            else url.searchParams.set('player', String(choice.playerId))
+            location.assign(url)
+        },
+        onClose: () => {},
     })
+    overlay.kart.hidden = false
+    overlay.guide.hidden = false
+    overlay.kart.addEventListener('click', () => {
+        overlay.kart.blur()
+        if (mode === 'watch') return welcome.open('help', chosen)
+        setMode('welcome')
+        welcome.open('full', chosen)
+    })
+    overlay.guide.addEventListener('click', () => {
+        overlay.guide.blur()
+        welcome.open('help', chosen)
+    })
+
+    if (chosen && localStorage.getItem(REMEMBER.welcomed) === '1') {
+        enter(chosen)
+    } else {
+        // A first visit (a shared link): who you are, your kart, how it works, before joining.
+        setMode('welcome')
+        welcome.open('full', chosen)
+    }
 } else if (roaming) {
     applyViewFromHash(location.hash || ROAM_VIEW)
     setMode('fly')
@@ -232,15 +298,43 @@ window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight
     camera.updateProjectionMatrix()
     atmosphere.resize(window.innerWidth, window.innerHeight)
+    frameForWelcome()
 })
 
 overlay.quality.textContent = qualityLabel()
 overlay.quality.addEventListener('click', () => {
-    atmosphere.setQuality(atmosphere.quality === 'high' ? 'low' : 'high')
-    effects.setQuality(atmosphere.quality)
-    overlay.quality.textContent = qualityLabel()
+    setQuality(atmosphere.quality === 'high' ? 'low' : 'high')
     overlay.quality.blur()
 })
+
+/** With the welcome panel down the right side, shift the view so the kart sits in the middle of what's left. */
+function frameForWelcome(): void {
+    if (mode !== 'welcome') return camera.clearViewOffset()
+    const { innerWidth: width, innerHeight: height } = window
+    camera.setViewOffset(width, height, Math.min(WELCOME_WIDTH, width) / 2, 0, width, height)
+}
+
+function setQuality(quality: Quality): void {
+    atmosphere.setQuality(quality)
+    effects.setQuality(quality)
+    overlay.quality.textContent = qualityLabel()
+}
+
+/**
+ * Who this browser races as without asking: the player in the URL, else the
+ * one it picked last time (a guest if it picked none), else nobody yet.
+ */
+function rememberedDriver(config: RacingConfig): DriverChoice | null {
+    const drivers = config.drivers ?? []
+    const fromUrl = config.playerId != null ? drivers.find(d => d.id === config.playerId) : undefined
+    const stored = localStorage.getItem(REMEMBER.player)
+    const known = fromUrl ?? drivers.find(d => String(d.id) === stored)
+    if (known) return { playerId: known.id, name: known.name, body: known.body, accent: known.accent }
+    // Picked "guest" before (the track list's picker stores an empty id for that).
+    if (stored === '') return { playerId: null, ...DEFAULT_LOOK }
+
+    return null
+}
 
 function qualityLabel(): string {
     return `Graphics: ${atmosphere.quality === 'high' ? 'High' : 'Low'}`
@@ -266,6 +360,8 @@ renderer.setAnimationLoop(() => {
     } else if (mode === 'watch') {
         const leader = lobby?.leader
         if (leader) others.follow(leader, camera, dt)
+    } else if (mode === 'welcome') {
+        driver.showcase(dt)
     } else {
         controls.update(dt, ground)
         const p = camera.position
@@ -315,7 +411,7 @@ function frameStats(element: HTMLElement) {
 
 /** Where the night lamp shines: your kart, the leader you watch, or ahead of the flying camera. */
 function focus(): THREE.Vector3 {
-    if (mode === 'drive') return new THREE.Vector3(driver.kart.x, driver.kart.y, driver.kart.z)
+    if (mode === 'drive' || mode === 'welcome') return new THREE.Vector3(driver.kart.x, driver.kart.y, driver.kart.z)
     const ahead = new THREE.Vector3()
     camera.getWorldDirection(ahead)
     const reach = Math.min(80, Math.max(20, camera.position.y - ground(camera.position.x, camera.position.z)))
@@ -352,11 +448,15 @@ function flyToDrive(): void {
     setMode('drive')
 }
 
-function setMode(next: 'drive' | 'fly' | 'watch'): void {
+function setMode(next: Mode): void {
     mode = next
     driver.setActive(next === 'drive')
     controls.setActive(next === 'fly')
     overlay.crosshair.hidden = next !== 'fly'
+    // The welcome screen has its own guide, and the lobby isn't joined yet.
+    help.hidden = next === 'welcome'
+    frameForWelcome()
+    overlay.minimap.hidden = next === 'welcome'
     if (racing) help.textContent = next === 'watch' ? HELP.watch : HELP.race
     else if (roaming) help.textContent = HELP.roam
     else help.textContent = next === 'fly' ? HELP.viewerFly : HELP.viewerDrive

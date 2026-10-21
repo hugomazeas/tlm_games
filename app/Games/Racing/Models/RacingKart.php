@@ -47,4 +47,24 @@ class RacingKart extends Model
             'accent' => $kart->accent ?? self::DEFAULT_ACCENT,
         ];
     }
+
+    /**
+     * Every player and their kart, by name: who a newcomer picks from in the game's welcome screen.
+     *
+     * @return list<array{id: int, name: string, body: string, accent: string}>
+     */
+    public static function drivers(): array
+    {
+        $karts = self::all()->keyBy('player_id');
+
+        return Player::orderBy('name')->get(['id', 'name'])
+            ->map(fn (Player $player) => [
+                'id' => $player->id,
+                'name' => $player->name,
+                'body' => $karts[$player->id]->body ?? self::DEFAULT_BODY,
+                'accent' => $karts[$player->id]->accent ?? self::DEFAULT_ACCENT,
+            ])
+            ->values()
+            ->all();
+    }
 }

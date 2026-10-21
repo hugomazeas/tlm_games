@@ -101,6 +101,41 @@ class RacingGarageTest extends TestCase
         $this->get("/games/racing/tracks/{$track->id}/play?player=999")->assertOk()->assertSee($guest, false);
     }
 
+    public function test_the_play_page_lists_every_driver_with_their_kart_for_the_welcome_screen(): void
+    {
+        $alice = Player::create(['name' => 'Alice']);
+        $bob = Player::create(['name' => 'Bob']);
+        RacingKart::create(['player_id' => $bob->id, 'body' => '#22c55e', 'accent' => '#8b5cf6']);
+
+        $this->assertSame([
+            ['id' => $alice->id, 'name' => 'Alice', 'body' => RacingKart::DEFAULT_BODY, 'accent' => RacingKart::DEFAULT_ACCENT],
+            ['id' => $bob->id, 'name' => 'Bob', 'body' => '#22c55e', 'accent' => '#8b5cf6'],
+        ], RacingKart::drivers());
+
+        $this->get("/games/racing/tracks/{$this->track()->id}/play")
+            ->assertOk()
+            ->assertSee('"drivers":[', false)
+            ->assertSee('"newDriverUrl"', false);
+    }
+
+    public function test_a_newcomer_adds_themselves_as_a_player_from_the_game(): void
+    {
+        $this->postJson('/games/racing/drivers', ['name' => ' Chloé '])
+            ->assertCreated()
+            ->assertJson(['name' => 'Chloé', 'body' => RacingKart::DEFAULT_BODY]);
+
+        $this->assertDatabaseHas('players', ['name' => 'Chloé']);
+    }
+
+    public function test_a_newcomer_cannot_take_a_name_already_in_the_list(): void
+    {
+        Player::create(['name' => 'Alice']);
+
+        $this->postJson('/games/racing/drivers', ['name' => 'Alice'])->assertUnprocessable()->assertJsonValidationErrors('name');
+        $this->postJson('/games/racing/drivers', ['name' => ''])->assertUnprocessable();
+        $this->assertSame(1, Player::count());
+    }
+
     public function test_deleting_a_player_takes_their_kart_with_them(): void
     {
         $player = Player::create(['name' => 'Alice']);

@@ -14,5 +14,6 @@ Route::delete('/games/racing/tracks/{track}', [RacingTrackController::class, 'de
 Route::get('/games/racing/tracks/{track}/play', [RacingTrackController::class, 'play']);
 Route::get('/games/racing/tracks/{track}/records', [RacingTrackController::class, 'records']);
 
+Route::post('/games/racing/drivers', [RacingGarageController::class, 'createDriver']);
 Route::get('/games/racing/garage/{player}', [RacingGarageController::class, 'show']);
 Route::put('/games/racing/garage/{player}', [RacingGarageController::class, 'update']);
