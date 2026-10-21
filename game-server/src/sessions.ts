@@ -27,7 +27,7 @@ import { createRng, pickOne, type Rng } from './sim/rng.ts'
 import { botAvatarUrl, pickBotName } from './bots.ts'
 import { randomLook } from './cosmetics.ts'
 import { THEME_IDS, type ThemeId } from './sim/themes.ts'
-import { TrainedPilot } from './ai/pilot.ts'
+import { DEFAULT_ACTION_REPEAT, PILOT_TICK_MS, TrainedPilot } from './ai/pilot.ts'
 import type { TrainedPolicy } from './ai/policy.ts'
 import { type ChatEvent, type ChatLine, ChatRooms, type UnsavedLine } from './chat.ts'
 import { ReplayRecorder } from './replay.ts'
@@ -481,7 +481,10 @@ export class SessionManager {
             const policies = seat.bot ? this.hooks.aiPolicies?.[seat.botLevel ?? 'easy'] : null
             if (policies && playerIds.includes(seat.id)) {
                 const policy = policyFor(policies, session.settings.mode, seat.id === hunterId)
-                session.pilots.set(seat.id, new TrainedPilot(policy, session.game, seat.id))
+                // A decision costs milliseconds: offset each AI by one tick so they don't all decide on the same one.
+                const period = (policy.config.action_repeat ?? DEFAULT_ACTION_REPEAT) * PILOT_TICK_MS
+                const delay = (session.pilots.size * PILOT_TICK_MS) % period
+                session.pilots.set(seat.id, new TrainedPilot(policy, session.game, seat.id, undefined, delay))
             }
         }
         session.phase = 'countdown'

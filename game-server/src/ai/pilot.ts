@@ -49,7 +49,9 @@ export class TrainedPilot {
         readonly game: GameState,
         readonly seat: number,
         /** Picks the action from an observation; the policy's (sticky) argmax unless a test replays recorded actions. */
-        private readonly choose?: (obs: number[]) => number
+        private readonly choose?: (obs: number[]) => number,
+        /** Game time before the first decision: AI seats of one game spread their decisions over different ticks. */
+        readonly startDelayMs = 0
     ) {
         this.actionRepeat = policy.config.action_repeat ?? DEFAULT_ACTION_REPEAT
         this.nav = new NavGrid(game.arena)
@@ -80,7 +82,7 @@ export class TrainedPilot {
             this.visits.visit(me.x, me.y, t)
             for (const p of game.players) this.trails.set(p.id, new MotionHistory(p.x, p.y))
             this.sampledAtMs = t
-            this.nextDecisionMs = t
+            this.nextDecisionMs = t + this.startDelayMs
         }
         // One sample per 50 ms of game time since the last one; a longer step repeats the position.
         while (this.sampledAtMs + PILOT_TICK_MS <= t + EPS_MS) {

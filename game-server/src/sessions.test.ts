@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
+import { PILOT_TICK_MS } from './ai/pilot.ts'
 import { decodePolicy, type TrainedPolicy } from './ai/policy.ts'
 import { BOT_NAMES, botAvatarUrl } from './bots.ts'
 import { type AiLevel, MAX_PLAYERS, parseClientMessage, type PlayerInfo, type ServerMessage } from './protocol.ts'
@@ -1152,6 +1153,20 @@ describe('AI levels', () => {
         }
     })
 
+    test('AI seats spread their decisions over different ticks', () => {
+        withPolicies(taggedPolicies)
+        const a = host()
+        for (const level of ['hard', 'hard', 'hard', 'easy'] as const) send(a, { type: 'addBot', level })
+        send(a, { type: 'start', durationMin: 1, theme: 'open_space', mode: 'survival' })
+        expect(errors(a)).toEqual([])
+        const session = (manager as unknown as Internals).sessions.values().next().value!
+        const pilots = [-1, -2, -3, -4].map(id => session.pilots.get(id)!)
+        const periods = pilots.map(p => p.actionRepeat * PILOT_TICK_MS)
+        // The n-th AI waits n ticks, wrapped to its own cadence.
+        expect(pilots.map(p => p.startDelayMs)).toEqual(periods.map((period, n) => (n * PILOT_TICK_MS) % period))
+        expect(new Set(pilots.slice(0, 2).map(p => p.startDelayMs)).size).toBe(2)
+    })
+
     test('each AI seat plays its own level’s policy for the mode', () => {
         const expectPolicies = (mode: string, pick: (p: AiPolicies, hunting: boolean) => TrainedPolicy) => {
             withPolicies(taggedPolicies)
@@ -1189,7 +1204,7 @@ type Internals = {
         number,
         {
             game: { hunterId: number | null } | null
-            pilots: Map<number, { policy: TrainedPolicy; actionRepeat: number }>
+            pilots: Map<number, { policy: TrainedPolicy; actionRepeat: number; startDelayMs: number }>
         }
     >
     applyEvents(session: unknown, events: object[]): void
@@ -1274,7 +1289,7 @@ describe('Killer Potato', () => {
         }
     })
 
-    test('an AI that takes the knife switches to its level’s hunter policy and keeps its motion memory', () => {
+    test('an AI that takes the knife switches its own pilot to its level’s hunter policy', () => {
         for (const level of ['easy', 'hard'] as const) {
             manager = new SessionManager({
                 build: 'build-1',

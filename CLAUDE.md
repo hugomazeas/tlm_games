@@ -206,7 +206,7 @@ that is played live, in real time, rather than scored afterwards.
 - **Killer Potato** (`mode: 'killer'`): one of the seated (a person or an added AI), picked at
   random at the start, hunts (`hunterId` in the view and the results): they hold the potato all
   game, it has no fuse, and their touch knocks you out. Needs three seated. An AI hunter plays
-  `hunterPolicy`. If the hunter leaves with three or more left, someone else takes the knife
+  its level's hunter policy (`hunter-policy.json`, shared by both levels). If the hunter leaves with three or more left, someone else takes the knife
   (`newHunter`). Ends at one player left or at the timer. In Killer and Infection, a countdown
   leaver who leaves fewer than three calls the game off rather than hand someone a win.
 - **Replays** (`src/replay.ts`): the session records what it broadcasts from a game's

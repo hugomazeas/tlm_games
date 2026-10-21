@@ -125,6 +125,21 @@ describe('trained pilot', () => {
         expect(decisionTimes([47, 53, 61, 39, 50, 70, 30, 50, 50, 50])).toEqual([0, 200, 400])
     })
 
+    test('a start delay pushes the first decision back and keeps the cadence', () => {
+        const rng = createRng(9)
+        const game = createGame(generateArena(9, 'open_space', 4), [1, 2, 3, 4], 90_000, rng)
+        const pilot = new TrainedPilot(zeroPolicy(4), game, 1, undefined, 100)
+        const times: number[] = []
+        let last: number[] | null = null
+        for (let i = 0; i < 16; i++) {
+            pilot.steer(game)
+            if (pilot.lastObservation !== last) times.push(game.elapsedMs)
+            last = pilot.lastObservation
+            step(game, new Map(), 50, rng)
+        }
+        expect(times).toEqual([100, 300, 500, 700])
+    })
+
     test('sticky argmax in the pilot: a near-tie keeps the previous heading, a clear winner replaces it', () => {
         const seed = 11
         const rng = createRng(seed)
