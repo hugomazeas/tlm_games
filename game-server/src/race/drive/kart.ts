@@ -56,6 +56,10 @@ export interface KartState {
 export const NITRO_CHARGE = 15
 export const NITRO_KICK = 20 / 3.6
 const SURGE = 2.5
+/** However slow snacks make you, you can still do 11 km/h. */
+const MIN_LIMIT = 3
+/** A frozen kart (someone's Drumsticks) loses speed this fast, per second. */
+const FREEZE_STOP = 6
 
 /** Engine pull from a standstill, m/s²; it falls off as speed rises, never below CRUISE_ACCEL. */
 const ACCEL = 9
@@ -162,10 +166,38 @@ export function forwardSpeed(kart: KartState): number {
     return -Math.sin(kart.heading) * kart.vx - Math.cos(kart.heading) * kart.vz
 }
 
-/** The kart one STEP later. `grip` scales the tyres' sideways grip: under 1 on wet or snowy roads. */
-export function stepKart(world: DriveWorld, previous: KartState, input: KartInput, grip = 1): KartState {
+/** What snacks (snacks.ts) do to the physics for a step. All optional: none, no change. */
+export interface KartMods {
+    /** Added to every speed limit, m/s (negative: slower). */
+    limit?: number
+    /** Extra pull while under the limit, m/s². */
+    accel?: number
+    /** Grass and parks count as road (limit and grip). */
+    offroadAsRoad?: boolean
+    /** How fast the nitro charges, 1 normally. */
+    nitroRate?: number
+    /** Times the tyres' grip (frost under 1). */
+    grip?: number
+    /** No control, and the kart grinds to a halt. */
+    frozen?: boolean
+}
+
+/**
+ * The kart one STEP later. `grip` scales the tyres' sideways grip: under 1 on
+ * wet or snowy roads; `mods` are the snacks' effects.
+ */
+export function stepKart(
+    world: DriveWorld,
+    previous: KartState,
+    input: KartInput,
+    weatherGrip = 1,
+    mods: KartMods = {}
+): KartState {
     const kart = { ...previous }
     const dt = STEP
+    const frozen = mods.frozen === true
+    if (frozen) input = { throttle: 0, steer: 0, drift: false }
+    const grip = weatherGrip * (mods.grip ?? 1)
     const throttle = clamp(input.throttle, -1, 1)
     const steer = clamp(input.steer, -1, 1)
     const touching = !kart.airborne || kart.y - world.ground(kart.x, kart.z) < CONTACT
@@ -207,15 +239,17 @@ export function stepKart(world: DriveWorld, previous: KartState, input: KartInpu
         sideways += (kart.vx * -forwardZ + kart.vz * forwardX - sideways) * slip
     }
 
-    kart.nitro = Math.min(NITRO_CHARGE, kart.nitro + dt)
+    kart.nitro = Math.min(NITRO_CHARGE, kart.nitro + dt * (mods.nitroRate ?? 1))
     kart.surge = Math.max(0, kart.surge - dt)
+    // A TrailMix makes the grass as good as road.
+    const surface = mods.offroadAsRoad && kart.surface === 'offroad' ? 'road' : kart.surface
     if (touching) {
         const base =
             kart.boost > 0
                 ? BOOST_SPEED
-                : kart.surface === 'water'
+                : surface === 'water'
                   ? WATER_SPEED
-                  : kart.surface === 'offroad'
+                  : surface === 'offroad'
                     ? OFFROAD_SPEED
                     : TOP_SPEED
         // Nitro: 20 km/h on top of whatever you're doing, and every limit 20 higher while it lasts, so
@@ -225,7 +259,7 @@ export function stepKart(world: DriveWorld, previous: KartState, input: KartInpu
             kart.surge = SURGE
             kart.nitro = 0
         }
-        const limit = base + (kart.surge > 0 ? NITRO_KICK : 0)
+        const limit = Math.max(MIN_LIMIT, base + (kart.surge > 0 ? NITRO_KICK : 0) + (mods.limit ?? 0))
         let accel = 0
         if (throttle > 0 && speed > -0.5) {
             const pull = Math.max(ACCEL * Math.pow(Math.max(0, 1 - speed / TOP_SPEED), ACCEL_FALLOFF), CRUISE_ACCEL)
@@ -240,6 +274,7 @@ export function stepKart(world: DriveWorld, previous: KartState, input: KartInpu
             accel = -Math.sign(speed) * Math.min(COAST_DECEL, Math.abs(speed) / dt)
         }
         if (kart.boost > 0) accel += BOOST_ACCEL
+        if (throttle > 0 && speed < limit) accel += mods.accel ?? 0
         if (speed > limit) accel = Math.min(accel, -OVER_LIMIT_DECEL)
 
         // Downhill speeds you up, uphill slows you down.
@@ -251,7 +286,8 @@ export function stepKart(world: DriveWorld, previous: KartState, input: KartInpu
         const next = speed + accel * dt
         const floor = throttle < 0 ? Math.min(speed, -REVERSE_SPEED) : -Infinity
         speed = Math.max(floor, speed <= limit ? Math.min(next, Math.max(speed, limit)) : Math.max(next, limit))
-        const tyres = kart.drift !== 0 ? DRIFT_GRIP : kart.surface === 'road' ? GRIP : OFFROAD_GRIP
+        if (frozen) speed *= Math.exp(-FREEZE_STOP * dt)
+        const tyres = kart.drift !== 0 ? DRIFT_GRIP : surface === 'road' ? GRIP : OFFROAD_GRIP
         sideways *= Math.exp(-tyres * grip * dt)
     }
     kart.vx = forwardX * speed - forwardZ * sideways

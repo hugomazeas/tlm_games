@@ -3,6 +3,7 @@ import { toGate, type Route } from './drive/route.ts'
 import { standings } from './drive/standings.ts'
 import { PACE } from './drive/kart.ts'
 import { COUNTDOWN } from './drive/trial.ts'
+import { DEFAULT_DENSITY, EAT_REACH, MAX_DENSITY, placeSnacks, RESPAWN_MS, type SnackSpot } from './drive/snacks.ts'
 import { rollSky, type Sky, type TimeOfDay } from './drive/weather.ts'
 import type { Course } from './map/format.ts'
 import {
@@ -44,6 +45,11 @@ const MAX_MOVE_SPEED = 80 * PACE
 const RESPAWN_REACH = 20
 /** Any other jump (out of the water onto a road) may bring you at most this much closer to your next gate. */
 const JUMP_GAIN = 30
+/** A kart can claim a snack this much further than EAT_REACH from where it last said it was (it moves between reports). */
+const EAT_SLACK = 8
+/** A Chipwich puts you this far ahead of the kart you pass, and allows the jump for this long. */
+const SANDWICH_LEAD = 10
+const TELEPORT_GRACE_MS = 3000
 
 export interface Connection {
     id: string
@@ -79,6 +85,8 @@ interface Racer {
     progress: Progress
     /** The last step reported: where, and when on the tab's race clock. */
     last: { x: number; z: number; t: number } | null
+    /** A Chipwich moved this kart: until then, its jump is allowed. */
+    teleportUntil: number
 }
 
 interface Member {
@@ -104,6 +112,12 @@ interface Lobby {
     sky: Sky
     /** The host's pick of time of day, kept for every race; null: random. */
     time: TimeOfDay | null
+    /** How many snacks, 0–10 (the host's slider). A race with snacks isn't sent to the Hub's records. */
+    density: number
+    /** This race's snacks; `eatenAt` set while one is gone. */
+    snacks: Array<SnackSpot & { eatenAt: number | null }>
+    /** Whether the race under way (or just finished) had snacks. */
+    raceChaos: boolean
 }
 
 export class LobbyManager {
@@ -150,6 +164,9 @@ export class LobbyManager {
                 races: 0,
                 sky: rollSky(this.hooks.random),
                 time: null,
+                density: DEFAULT_DENSITY,
+                snacks: [],
+                raceChaos: false,
             }
             this.lobbies.set(lobby.id, lobby)
         }
@@ -157,6 +174,9 @@ export class LobbyManager {
         lobby.members.push({ conn, driver: { ...driver, id: conn.id }, pose: null, racer: null })
         this.memberships.set(conn.id, lobby.id)
         conn.send({ type: 'welcome', you: conn.id, lobby: view(lobby) })
+        // Watching a race under way: its snacks too.
+        if (lobby.phase === 'countdown' || lobby.phase === 'racing')
+            conn.send({ type: 'snacks', snacks: onTrack(lobby) })
         this.broadcastLobby(lobby, conn.id)
     }
 
@@ -183,6 +203,63 @@ export class LobbyManager {
         lobby.time = time
         lobby.sky = { ...lobby.sky, time: time ?? rollSky(this.hooks.random).time }
         this.broadcastLobby(lobby)
+    }
+
+    /** The host sets how many snacks the next races have, 0 (none) to MAX_DENSITY. */
+    setDensity(connId: string, density: number): void {
+        const lobby = this.lobbyOf(connId)
+        if (!lobby) return
+        if (lobby.hostId !== connId) {
+            return lobby.members.find(m => m.conn.id === connId)!.conn.send({ type: 'error', code: 'NOT_HOST' })
+        }
+        if (lobby.phase === 'countdown' || lobby.phase === 'racing') return
+        lobby.density = Math.max(0, Math.min(MAX_DENSITY, Math.round(density)))
+        this.broadcastLobby(lobby)
+    }
+
+    /**
+     * A racer drove through a snack: if it's there and they're next to it, it's
+     * theirs, and everyone hears who ate what (each tab applies what that does
+     * to its own kart). A Chipwich is the server's to play: it knows the order.
+     */
+    eat(connId: string, snackId: number): void {
+        const lobby = this.lobbyOf(connId)
+        if (!lobby || lobby.phase !== 'racing') return
+        const member = lobby.members.find(m => m.conn.id === connId)!
+        const snack = lobby.snacks.find(s => s.id === snackId)
+        if (!member.racer || member.racer.progress.finishedAt !== null || !snack || snack.eatenAt !== null) return
+        const at = member.pose
+        if (!at || Math.hypot(at.x - snack.x, at.z - snack.z) > EAT_REACH + EAT_SLACK) return
+
+        snack.eatenAt = this.hooks.now()
+        for (const m of lobby.members) m.conn.send({ type: 'ate', snack: snack.id, kind: snack.kind, by: connId })
+        if (snack.kind === 'chipwich') this.sandwich(lobby, member)
+    }
+
+    /**
+     * Chipwich: puts the racer just ahead of the kart in front of them (still
+     * racing), level with it in the race. The leader gets nothing here: their
+     * tab fills their nitro instead.
+     */
+    private sandwich(lobby: Lobby, member: Member): void {
+        const order = this.ranked(lobby).filter(m => m.racer!.progress.finishedAt === null)
+        const index = order.indexOf(member)
+        const ahead = index > 0 ? order[index - 1]! : null
+        const pose = ahead?.pose
+        if (!ahead || !pose) return
+        const racer = member.racer!
+        const theirs = ahead.racer!.progress
+        racer.progress = { ...racer.progress, lap: theirs.lap, next: theirs.next, lastGate: theirs.lastGate }
+        racer.teleportUntil = this.hooks.now() + TELEPORT_GRACE_MS
+        member.conn.send({
+            type: 'teleport',
+            x: pose.x - Math.sin(pose.heading) * SANDWICH_LEAD,
+            z: pose.z - Math.cos(pose.heading) * SANDWICH_LEAD,
+            heading: pose.heading,
+            lap: theirs.lap,
+            next: theirs.next,
+            lastGate: theirs.lastGate,
+        })
     }
 
     /**
@@ -232,14 +309,19 @@ export class LobbyManager {
 
         const slots: Record<string, number> = {}
         lobby.members.forEach((m, i) => {
-            m.racer = { progress: startProgress(), last: null }
+            m.racer = { progress: startProgress(), last: null, teleportUntil: 0 }
             m.pose = null
             slots[m.conn.id] = i
         })
         lobby.results = null
         lobby.firstFinishAt = null
         this.setPhase(lobby, 'countdown')
-        for (const m of lobby.members) m.conn.send({ type: 'countdown', slots, seconds: COUNTDOWN })
+        lobby.raceChaos = lobby.density > 0 && lobby.track.route !== null
+        lobby.snacks = lobby.raceChaos
+            ? placeSnacks(lobby.track.route!, this.hooks.random, lobby.density).map(s => ({ ...s, eatenAt: null }))
+            : []
+        const snacks = onTrack(lobby)
+        for (const m of lobby.members) m.conn.send({ type: 'countdown', slots, seconds: COUNTDOWN, snacks })
         this.broadcastLobby(lobby)
     }
 
@@ -266,8 +348,11 @@ export class LobbyManager {
                 const speed = Math.hypot(point.x - last.x, point.z - last.z) / (point.t - last.t)
                 if (speed <= MAX_MOVE_SPEED) {
                     racer.progress = advance(lobby.track.course, racer.progress, last, point, last.t, point.t)
-                } else if (!this.isFairJump(lobby.track.course, racer.progress, last, point)) {
-                    // Teleporting ahead: the kart stays where it was as far as the race goes.
+                } else if (
+                    this.hooks.now() > racer.teleportUntil &&
+                    !this.isFairJump(lobby.track.course, racer.progress, last, point)
+                ) {
+                    // Teleporting ahead (and not a Chipwich): the kart stays where it was as far as the race goes.
                     continue
                 }
             }
@@ -288,6 +373,11 @@ export class LobbyManager {
                 this.broadcastLobby(lobby)
             }
             this.checkFinish(lobby)
+            for (const snack of lobby.snacks) {
+                if (snack.eatenAt === null || now < snack.eatenAt + RESPAWN_MS) continue
+                snack.eatenAt = null
+                for (const m of lobby.members) m.conn.send({ type: 'respawn', snack: snack.id })
+            }
             this.broadcastKarts(lobby)
         }
     }
@@ -338,6 +428,7 @@ export class LobbyManager {
         }))
         lobby.races += 1
         lobby.sky = rollSky(this.hooks.random, lobby.time)
+        lobby.snacks = []
         this.setPhase(lobby, 'finished')
         this.broadcastLobby(lobby)
 
@@ -356,7 +447,8 @@ export class LobbyManager {
                 },
             ]
         })
-        if (rows.length > 0) {
+        // A race with snacks is for fun: its times don't go in the records.
+        if (rows.length > 0 && !lobby.raceChaos) {
             this.hooks.onResults({
                 raceId: `${lobby.id}-${this.hooks.now().toString(36)}`,
                 trackId: lobby.track.id,
@@ -455,6 +547,11 @@ export class LobbyManager {
     }
 }
 
+/** The snacks lying on the track now. */
+function onTrack(lobby: Lobby): SnackSpot[] {
+    return lobby.snacks.filter(s => s.eatenAt === null).map(({ id, kind, x, z }) => ({ id, kind, x, z }))
+}
+
 function view(lobby: Lobby): LobbyView {
     return {
         id: lobby.id,
@@ -466,5 +563,6 @@ function view(lobby: Lobby): LobbyView {
         results: lobby.results,
         sky: lobby.sky,
         time: lobby.time,
+        density: lobby.density,
     }
 }

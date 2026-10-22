@@ -70,6 +70,10 @@ export interface Race {
     onSample: ((x: number, z: number, t: number) => void) | null
     setStandings(lines: readonly StandingLine[] | null): void
     setRecord(record: { name: string; time: number } | null): void
+    /** A Chipwich jumped you ahead: your race is now level with the kart you passed. */
+    level(progress: { lap: number; next: number; lastGate: number }): void
+    /** Racing now (green light given, not finished): when snacks can be eaten. */
+    readonly racing: boolean
 }
 
 export function createRace(options: RaceOptions): Race {
@@ -122,6 +126,16 @@ export function createRace(options: RaceOptions): Race {
                 driver.place(point.x, point.z, point.heading)
             }
             view?.setNext(0)
+        },
+
+        level(progress) {
+            if (!trial) return
+            trial = { ...trial, progress: { ...trial.progress, ...progress } }
+            view?.setNext(progress.next)
+        },
+
+        get racing() {
+            return trial?.phase === 'racing'
         },
 
         end() {

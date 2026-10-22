@@ -10,6 +10,7 @@
  * the end of the race, and the results it posts to the Hub.
  */
 
+import { MAX_DENSITY, type SnackKind, type SnackSpot } from './drive/snacks.ts'
 import { type Sky, type TimeOfDay, TIMES_OF_DAY } from './drive/weather.ts'
 
 export const MAX_RACERS = 8
@@ -51,6 +52,8 @@ export interface LobbyView {
     sky: Sky
     /** The time of day the host picked for every race; null: a random one each race. */
     time: TimeOfDay | null
+    /** How many snacks on the track, 0 (none: a clean race) to 10 (mayhem): the host's slider. */
+    density: number
 }
 
 /** One row of the lobby list on the Hub's racing page. */
@@ -95,6 +98,10 @@ export type ClientMessage =
     | { type: 'close' }
     /** The host picks the time of day for the races (null: random each race), between races. */
     | { type: 'setTime'; time: TimeOfDay | null }
+    /** The host sets how many snacks (0–10), between races. */
+    | { type: 'setDensity'; density: number }
+    /** I drove through snack `snack`. */
+    | { type: 'eat'; snack: number }
     /**
      * The kart now, and, while racing, every physics step since the last
      * message as flat [x, z, t, …] (t: the tab's race clock, seconds).
@@ -116,8 +123,15 @@ export type ErrorCode =
 export type ServerMessage =
     | { type: 'welcome'; you: string; lobby: LobbyView }
     | { type: 'lobby'; lobby: LobbyView }
-    /** Grid slots by driver id; the green light is `seconds` away. */
-    | { type: 'countdown'; slots: Record<string, number>; seconds: number }
+    /** Grid slots by driver id; the green light is `seconds` away. The race's snacks (none at density 0). */
+    | { type: 'countdown'; slots: Record<string, number>; seconds: number; snacks: SnackSpot[] }
+    /** Driver `by` ate snack `snack` (gone until `respawn`). */
+    | { type: 'ate'; snack: number; kind: SnackKind; by: string }
+    | { type: 'respawn'; snack: number }
+    /** Your Chipwich: you're put here, just ahead of the kart that was in front of you, level with it in the race. */
+    | { type: 'teleport'; x: number; z: number; heading: number; lap: number; next: number; lastGate: number }
+    /** On joining mid-race: the snacks still there. */
+    | { type: 'snacks'; snacks: SnackSpot[] }
     /** Every other kart, and while racing the standings, leader first. */
     | { type: 'karts'; karts: Array<{ id: string; pose: Pose }>; standings: Standing[] | null }
     /** The lobby was closed: by its host (their name), or from the Hub's lobby list (null). */
@@ -152,6 +166,18 @@ export function parseClientMessage(raw: string): ClientMessage | null {
         if (time === null && message.time !== null) return null
 
         return { type: 'setTime', time }
+    }
+    if (message.type === 'setDensity') {
+        const { density } = message
+        return Number.isInteger(density) && (density as number) >= 0 && (density as number) <= MAX_DENSITY
+            ? { type: 'setDensity', density: density as number }
+            : null
+    }
+    if (message.type === 'eat') {
+        const { snack } = message
+        return Number.isInteger(snack) && (snack as number) >= 0 && (snack as number) < 10_000
+            ? { type: 'eat', snack: snack as number }
+            : null
     }
     if (message.type === 'pose') {
         const pose = parsePose(message.pose)

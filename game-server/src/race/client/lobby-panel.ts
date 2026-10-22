@@ -1,14 +1,29 @@
+import { MAX_DENSITY, SNACK_ICONS } from '../drive/snacks.ts'
 import { formatTime } from '../drive/trial.ts'
 import { describeSky, type TimeOfDay, TIMES_OF_DAY } from '../drive/weather.ts'
-
-const TIME_LABELS: Record<TimeOfDay, string> = { morning: 'Morning', noon: 'Noon', sunset: 'Sunset', night: 'Night' }
 import type { LobbyPhase, LobbyView } from '../protocol.ts'
+import type { ReceiptLine } from './snacks.ts'
 
 /**
  * The lobby, in a panel over the game: the track, who's in, what's going on,
- * the host's Start button, the last race's results, and the track's records
- * (each player's best time, and the fastest lap) behind a toggle.
+ * the host's Start button and race settings (time of day, snacks), the last
+ * race's results and its dépanneur receipt, and the track's records (each
+ * player's best time, and the fastest lap) behind a toggle.
  */
+
+const TIME_LABELS: Record<TimeOfDay, string> = { morning: 'Morning', noon: 'Noon', sunset: 'Sunset', night: 'Night' }
+
+/** "3 / 10", "off", "10 / 10 🔥". */
+function densityLabel(density: number): string {
+    if (density === 0) return 'off'
+    return `${density} / ${MAX_DENSITY}${density === MAX_DENSITY ? ' 🔥' : ''}`
+}
+
+function densityNote(density: number): string {
+    if (density === 0) return 'Clean race: times count for the records.'
+    const metres = Math.round(320 / density)
+    return `About one every ${metres} m. Just for fun: times don't go in the records.`
+}
 
 /** A track's records, as the Hub's /games/racing/tracks/{track}/records gives them. */
 export interface TrackRecords {
@@ -26,6 +41,8 @@ const PHASES: Record<LobbyPhase, string> = {
 export interface LobbyPanel {
     show(lobby: LobbyView, you: string): void
     setRecords(records: TrackRecords | null): void
+    /** The last race's snacks: who ate what, and the bill (a joke: nothing is charged). */
+    setReceipt(lines: readonly ReceiptLine[]): void
     /** Replaces everything with a message: the lobby is full, the connection dropped… */
     fail(text: string): void
 }
@@ -35,8 +52,10 @@ export function createLobbyPanel(
     laps: number,
     onStart: () => void,
     onClose: () => void,
-    onTime: (time: TimeOfDay | null) => void
+    onTime: (time: TimeOfDay | null) => void,
+    onDensity: (density: number) => void
 ): LobbyPanel {
+    let receipt: readonly ReceiptLine[] = []
     let lobby: LobbyView | null = null
     let you = ''
     let records: TrackRecords | null = null
@@ -64,6 +83,48 @@ export function createLobbyPanel(
         label.append(select)
 
         return label
+    }
+
+    /** The host's snacks slider: 0 a clean race (it counts for the records), up to 10, total mayhem. */
+    const densitySlider = (density: number) => {
+        const label = el('label', 'time', '🍫 Snacks ')
+        const value = el('b', 'density', densityLabel(density))
+        const slider = el('input')
+        slider.type = 'range'
+        slider.min = '0'
+        slider.max = String(MAX_DENSITY)
+        slider.step = '1'
+        slider.value = String(density)
+        // Shows the number as you drag; tells the lobby once you let go.
+        slider.addEventListener('input', () => {
+            value.textContent = densityLabel(Number(slider.value))
+        })
+        slider.addEventListener('change', () => {
+            slider.blur()
+            onDensity(Number(slider.value))
+        })
+        label.append(slider, value)
+        const wrap = el('div')
+        wrap.append(label, el('div', 'note', densityNote(density)))
+        return wrap
+    }
+
+    /** Who ate what from the dépanneur this race, at real prices. */
+    const receiptTable = () => {
+        const box = el('div', 'receipt')
+        box.append(el('div', 'receipt-title', '🧾 Dépanneur bill (not really)'))
+        for (const line of receipt) {
+            const row = el('div', 'receipt-row')
+            const counts = new Map<string, number>()
+            for (const kind of line.items) counts.set(SNACK_ICONS[kind], (counts.get(SNACK_ICONS[kind]) ?? 0) + 1)
+            row.append(
+                el('span', 'name', line.name),
+                el('span', 'items', [...counts].map(([icon, n]) => (n > 1 ? `${icon}×${n}` : icon)).join(' ')),
+                el('span', 'total', `${(line.total / 100).toFixed(2).replace('.', ',')} $`)
+            )
+            box.append(row)
+        }
+        return box
     }
 
     const button = (text: string, onClick: () => void, className = '') => {
@@ -99,6 +160,7 @@ export function createLobbyPanel(
                 table.append(line)
             }
             children.push(table)
+            if (receipt.length > 0) children.push(receiptTable())
         }
 
         if (live && me && !me.racing) children.push(el('div', 'note', 'Watching this race; you race the next one.'))
@@ -115,7 +177,9 @@ export function createLobbyPanel(
         }
         children.push(members)
 
-        if (!live && lobby.hostId === you) children.push(timePicker(lobby.time))
+        if (!live && lobby.hostId === you) children.push(timePicker(lobby.time), densitySlider(lobby.density))
+        else if (!live)
+            children.push(el('div', 'sky', `🍫 Snacks: ${densityLabel(lobby.density)}. ${densityNote(lobby.density)}`))
 
         if (!live) {
             if (lobby.hostId === you) {
@@ -180,6 +244,11 @@ export function createLobbyPanel(
 
         setRecords(next) {
             records = next
+            render()
+        },
+
+        setReceipt(lines) {
+            receipt = lines
             render()
         },
 

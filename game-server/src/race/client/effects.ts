@@ -44,6 +44,8 @@ export interface Effects {
     /** Speed lines for your own kart, 0 to none. */
     speedLines(speed: number, boosting: boolean): void
     confetti(x: number, y: number, z: number): void
+    /** Snacks: a pop when one is eaten, a Coke's fizz, Bubly's bubbles, a sparkle (a few particles each call). */
+    burst(x: number, y: number, z: number, style: 'pop' | 'fizz' | 'bubbles' | 'sparkle'): void
     update(dt: number, camera: THREE.PerspectiveCamera): void
 }
 
@@ -350,6 +352,71 @@ export function createEffects(
         speedLines(speed, boosting) {
             const strength = THREE.MathUtils.clamp((speed - LINES_FROM) / (LINES_FULL - LINES_FROM), 0, 1)
             lines.draw(Math.min(1, strength + (boosting ? 0.6 : 0)))
+        },
+
+        burst(x, y, z, style) {
+            const around = () => ({ x: x + jitter(0.8), y: y + jitter(0.4), z: z + jitter(0.8) })
+            if (style === 'pop') {
+                for (let i = 0; i < 24; i++) {
+                    const angle = (i / 24) * Math.PI * 2
+                    spark({
+                        x,
+                        y,
+                        z,
+                        vx: Math.cos(angle) * 5,
+                        vy: 2 + Math.random() * 3,
+                        vz: Math.sin(angle) * 5,
+                        life: 0.5,
+                        size: 0.3,
+                        grow: 0.05,
+                        colour: CONFETTI[i % CONFETTI.length]!,
+                        alpha: 1,
+                        gravity: 6,
+                        drag: 2,
+                    })
+                }
+            } else if (style === 'fizz') {
+                for (let i = 0; i < 3; i++)
+                    puff({
+                        ...around(),
+                        vx: jitter(1),
+                        vy: 2 + Math.random() * 2,
+                        vz: jitter(1),
+                        life: 0.7,
+                        size: 0.2,
+                        grow: 0.5,
+                        colour: 0x7c4a1e,
+                        alpha: 0.6,
+                        gravity: 3,
+                    })
+            } else if (style === 'bubbles') {
+                for (let i = 0; i < 2; i++)
+                    puff({
+                        ...around(),
+                        vx: jitter(0.4),
+                        vy: 1 + Math.random(),
+                        vz: jitter(0.4),
+                        life: 1.4,
+                        size: 0.25,
+                        grow: 0.45,
+                        colour: 0xbae6fd,
+                        alpha: 0.5,
+                        gravity: -0.5,
+                        drag: 1,
+                    })
+            } else {
+                for (let i = 0; i < 2; i++)
+                    spark({
+                        ...around(),
+                        vy: 1.5,
+                        life: 0.5,
+                        size: 0.2,
+                        grow: 0.02,
+                        colour: 0xfef08a,
+                        alpha: 1,
+                        drag: 2,
+                    })
+            }
         },
 
         confetti(x, y, z) {

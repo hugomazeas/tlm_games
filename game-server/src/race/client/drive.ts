@@ -3,6 +3,7 @@ import {
     createKart,
     forwardSpeed,
     type KartInput,
+    type KartMods,
     type KartState,
     resetKart,
     STEP,
@@ -60,6 +61,12 @@ export interface Driver {
     onStep: ((before: KartState, after: KartState) => void) | null
     /** What R does instead of the nearest road, when set: a race puts you back on your last gate. */
     onReset: (() => void) | null
+    /** The snacks' physics tweaks for the next step (snacks.ts), when in a race with them. */
+    mods: ((kart: KartState) => KartMods) | null
+    /** Changes the kart's state on the spot: a chocolate's nitro, a Chipwich's jump, a nut's hop. */
+    modify(change: (kart: KartState) => KartState): void
+    /** Chips: a wider, heavier-looking kart. */
+    setFat(fat: boolean): void
 }
 
 export function createDriver(
@@ -126,7 +133,9 @@ export function createDriver(
             while (accumulator >= STEP) {
                 const input = read(STEP)
                 previous = current
-                current = driver.frozen ? current : stepKart(world, current, input, driver.grip)
+                current = driver.frozen
+                    ? current
+                    : stepKart(world, current, input, driver.grip, driver.mods?.(current) ?? {})
                 driver.onStep?.(previous, current)
                 accumulator -= STEP
             }
@@ -230,6 +239,22 @@ export function createDriver(
 
         paint(body, accent) {
             model.paint(body, accent)
+        },
+
+        mods: null,
+
+        modify(change) {
+            const before = current
+            current = change(current)
+            // A jump isn't drawn as a slide from where you were, and the camera cuts to it.
+            if (Math.hypot(current.x - before.x, current.z - before.z) > 5) {
+                previous = current
+                chaseReady = false
+            }
+        },
+
+        setFat(fat) {
+            model.setFat(fat)
         },
 
         setActive(isActive) {

@@ -394,6 +394,23 @@ built from OpenStreetMap and federal elevation data, drawn with Three.js.
   insert, drag to move, right-click to remove (`drive/editing.ts`); checkpoints show as
   bars across the road, without arrows. Laravel validates shape and that checkpoints are
   on the map.
+- **Snacks** (`drive/snacks.ts` pure and shared, `client/snacks.ts`, `client/snack-models.ts`):
+  the office dépanneur's 12 real items lie along a race's route, anywhere across the
+  street (up to 6.5 m off the route's line), as many as the host's slider says (`density`
+  0–10, default 3: one every 320 / density m; how often each kind turns up follows the
+  fridge's stock as `dep items` gave it, square-rooted). Drive through one and you eat it: the tab sends `eat`, the server checks
+  it's there and you're next to it, tells everyone `ate`, and brings it back after 12 s.
+  Each tab applies effects to its own kart as `KartMods` for `stepKart` (limit, accel,
+  off-road as road, nitro rate, grip, frozen): Coke rush then crash, Bubly, chips (fat, a
+  crumb trail), Montellier (cures), Fuze (frost trail others slide on), chocolate (+25%
+  nitro), Kirkland, Go Krisp (nitro ×3), TrailMix (off-road, a nut trail that bounces).
+  Popcorn turns everyone else's camera to the eater, a Drumsticks freezes the others 2 s,
+  a Chipwich is the server's (`sandwich`: just ahead of the kart in front, level with it in
+  the race, the jump allowed). Trails come from the eater's poses on every tab. The host's
+  Snacks slider (`setDensity`): a race with any snacks isn't sent to the Hub's records.
+  After a race the lobby panel shows the joke dépanneur bill (nothing is charged; never
+  `dep log`). The welcome screen lists them down its left side (a panel of its own, under
+  900 px wide it hides): each model rendered to a picture, its effect, how rare it is.
 - **Sky and weather** (`drive/weather.ts`, `client/atmosphere.ts`): each race runs under a
   time of day (morning, noon, sunset, night) and weather (clear, rain, snow). The lobby rolls
   it when it opens and after each race (`LobbyView.sky`), so a lobby races under one sky; the

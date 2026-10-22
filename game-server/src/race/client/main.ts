@@ -9,7 +9,16 @@ import { createDriver } from './drive.ts'
 import { createEffects } from './effects.ts'
 import type { Quality } from './atmosphere.ts'
 import { DEFAULT_LOOK, type KartLook } from './kart.ts'
-import { createWelcome, type DriverChoice, type DriverOption, REMEMBER } from './welcome.ts'
+import { createSnackPlay, type SnackPlay } from './snacks.ts'
+import {
+    createWelcome,
+    type DriverChoice,
+    type DriverOption,
+    GUIDE_PANEL,
+    REMEMBER,
+    SNACK_PANEL,
+    SNACK_PANEL_FROM,
+} from './welcome.ts'
 import { joinLobby, type Lobby } from './lobby.ts'
 import { createMinimap } from './minimap.ts'
 import { createOthers } from './others.ts'
@@ -70,8 +79,6 @@ const MAX_TEXTURE = 4096
 const EYE_HEIGHT = 2
 /** Vertical field of view, in degrees, unless a view link asks for another. */
 const FOV = 70
-/** The welcome screen's panel, down the right side (welcome.ts: min(420px, 100vw)). */
-const WELCOME_WIDTH = 420
 const BASE_SPEED = 40
 const LANDMARK = { name: 'Hôtel du Parlement', lat: 46.80868, lon: -71.2142 }
 /** Free roam starts here, looking at the Parliament from above the Plains. */
@@ -173,6 +180,8 @@ if (!racing) setupIdentify(camera, [buildings], overlay.identify, renderer.domEl
 if (!racing) setSky(skyFromUrl() ?? (roaming ? rollSky(Math.random) : CLEAR_NOON))
 
 let lobby: Lobby | null = null
+/** Snacks on the track: a lobby's races only. */
+let snackPlay: SnackPlay | null = null
 if (racing && config.track) {
     const track = config.track
     // Until the lobby says where the grid slot is, wait on the start line.
@@ -194,8 +203,23 @@ if (racing && config.track) {
             panel: overlay.lobby,
             setWatching: watching => setMode(watching ? 'watch' : 'drive'),
             setSky,
+            snacks: snackPlay!,
         })
     }
+    snackPlay = createSnackPlay({
+        scene,
+        world,
+        driver,
+        others,
+        race,
+        effects,
+        overlay: overlay.root,
+        eat: id => lobby?.eat(id),
+        you: () => lobby?.you ?? '',
+        nameOf: id => lobby?.nameOf(id) ?? 'Someone',
+        leader: () => lobby?.leader ?? null,
+    })
+    driver.mods = kart => snackPlay?.mods(kart) ?? {}
     const welcome = createWelcome(overlay.root, {
         trackName: track.name,
         laps: track.laps,
@@ -308,11 +332,13 @@ overlay.quality.addEventListener('click', () => {
     overlay.quality.blur()
 })
 
-/** With the welcome panel down the right side, shift the view so the kart sits in the middle of what's left. */
+/** With the welcome screen's panels on either side, shift the view so the kart sits in the gap between them. */
 function frameForWelcome(): void {
     if (mode !== 'welcome') return camera.clearViewOffset()
     const { innerWidth: width, innerHeight: height } = window
-    camera.setViewOffset(width, height, Math.min(WELCOME_WIDTH, width) / 2, 0, width, height)
+    const left = width >= SNACK_PANEL_FROM ? SNACK_PANEL : 0
+    const right = Math.min(GUIDE_PANEL, width)
+    camera.setViewOffset(width, height, (right - left) / 2, 0, width, height)
 }
 
 function setQuality(quality: Quality): void {
@@ -371,6 +397,7 @@ renderer.setAnimationLoop(() => {
             `alt ${(p.y - ground(p.x, p.z)).toFixed(0)} m  speed ${controls.speed.toFixed(0)} m/s`
     }
     race.update(mode === 'drive', others.minimapKarts())
+    snackPlay?.update(dt, camera, mode === 'drive')
     effects.update(dt, camera)
     atmosphere.update(dt, focus())
     atmosphere.render()
