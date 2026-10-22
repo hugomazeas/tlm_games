@@ -40,6 +40,8 @@ test('a landing pushes the body down on its springs, and it settles back', () =>
         padCooldown: 0,
         sinking: 0,
         surface: 'road',
+        nitro: 0,
+        surge: 0,
     }
     const up = new THREE.Vector3(0, 1, 0)
     kart.pose(0, 0, 0, 0, up, state, 0, 1 / 60)

@@ -163,14 +163,8 @@ export function buildKartModel(look: KartLook, withTag = true): KartModel {
         if (front) steering.push(pivot)
     }
 
-    const flame = add(
-        body,
-        new THREE.ConeGeometry(0.25, 1.2, 10),
-        new THREE.MeshBasicMaterial({ color: 0xffb13b }),
-        0,
-        0.62,
-        1.95
-    )
+    const flameMaterial = new THREE.MeshBasicMaterial({ color: 0xffb13b })
+    const flame = add(body, new THREE.ConeGeometry(0.25, 1.2, 10), flameMaterial, 0, 0.62, 1.95)
     flame.rotation.x = Math.PI / 2
     flame.visible = false
     // A soft dark patch under the kart: the sun's shadow map is drawn once for the buildings, so karts bring their own.
@@ -251,7 +245,8 @@ export function buildKartModel(look: KartLook, withTag = true): KartModel {
             )
 
             brakeLight.emissiveIntensity = accel < -4 || speed < -0.5 ? 3 : 0.6
-            flame.visible = kart.boost > 0
+            flame.visible = kart.boost > 0 || kart.surge > 0
+            flameMaterial.color.setHex(kart.boost > 0 ? 0xffb13b : 0x38e1ff)
             flame.scale.set(1, 0.8 + Math.random() * 0.5, 1)
             // In the air the patch would fly with the kart: let it fade instead.
             blob.visible = !kart.airborne

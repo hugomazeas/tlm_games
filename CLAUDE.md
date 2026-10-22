@@ -260,7 +260,10 @@ built from OpenStreetMap and federal elevation data, drawn with Three.js.
   winner (DNF). Results go to `/internal/racing/*` (`RacingInternalController`, same
   `HOT_POTATO_INTERNAL_SECRET`: racing lobbies need it set too) → `racing_results`.
   No kart-to-kart collisions; a reconnect mid-race comes back as a watcher.
-- **Keys:** racing is drive-only (W/S, A/D, Space/Shift drift, R back on track); flying
+- **Keys:** racing is drive-only (W/S, A/D, Space/Shift drift, E nitro, R back on track). The
+  nitro (`kart.ts`: `NITRO_CHARGE` 15 s, `NITRO_KICK` +20 km/h on the current speed, and every
+  limit 20 higher for 2.5 s, so it stacks with a drift or pad boost: ~190 km/h) shows as the speedometer's outer ring and a blue
+  flame; R starts its charge over. Flying
   and I (identify) are free roam's (`/games/racing/roam`). The standalone viewer keeps both (F).
 - **Drivers:** the track list's "Driving as" picker (remembered in localStorage) adds
   `?player=` to Play; `RacingKart::lookOf()` gives the game their name and garage

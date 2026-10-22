@@ -78,7 +78,8 @@ const LANDMARK = { name: 'Hôtel du Parlement', lat: 46.80868, lon: -71.2142 }
 const ROAM_VIEW = '#46.806500,-71.218500,80,-60,-15'
 
 const KMH = 3.6
-const DRIVE_KEYS = 'W/S gas · brake · A/D steer · Space or Shift drift (let go for a boost) · R back on track'
+const DRIVE_KEYS =
+    'W/S gas · brake · A/D steer · Space or Shift drift (let go for a boost) · E nitro when charged · R back on track'
 const FLY_KEYS =
     'Click to look around · WASD move · Space / C up / down · Shift faster · wheel speed · I identify building · Esc release mouse'
 const HELP = {

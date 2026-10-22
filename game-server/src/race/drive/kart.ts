@@ -17,6 +17,8 @@ export interface KartInput {
     throttle: number
     steer: number
     drift: boolean
+    /** Fire the nitro (E): does nothing until it has charged. */
+    nitro?: boolean
 }
 
 export interface KartState {
@@ -40,7 +42,20 @@ export interface KartState {
     /** Seconds spent in water; long enough puts you back on a road. */
     sinking: number
     surface: Surface
+    /** Seconds of nitro charged, up to NITRO_CHARGE: then it can fire. */
+    nitro: number
+    /** Seconds left of a fired nitro: until then every speed limit (a boost's too) is NITRO_KICK higher. */
+    surge: number
 }
+
+/**
+ * The nitro charges over this many seconds, then E adds NITRO_KICK (20 km/h)
+ * to your speed and lifts the limit by as much for SURGE seconds. It stacks
+ * with a drift or pad boost: 170 + 20, about 190 km/h.
+ */
+export const NITRO_CHARGE = 15
+export const NITRO_KICK = 20 / 3.6
+const SURGE = 2.5
 
 /** Engine pull from a standstill, m/s²; it falls off as speed rises, never below CRUISE_ACCEL. */
 const ACCEL = 9
@@ -130,6 +145,8 @@ export function createKart(world: DriveWorld, x: number, z: number, heading: num
         padCooldown: 0,
         sinking: 0,
         surface: world.surface(x, z),
+        nitro: 0,
+        surge: 0,
     }
 }
 
@@ -190,8 +207,10 @@ export function stepKart(world: DriveWorld, previous: KartState, input: KartInpu
         sideways += (kart.vx * -forwardZ + kart.vz * forwardX - sideways) * slip
     }
 
+    kart.nitro = Math.min(NITRO_CHARGE, kart.nitro + dt)
+    kart.surge = Math.max(0, kart.surge - dt)
     if (touching) {
-        const limit =
+        const base =
             kart.boost > 0
                 ? BOOST_SPEED
                 : kart.surface === 'water'
@@ -199,6 +218,14 @@ export function stepKart(world: DriveWorld, previous: KartState, input: KartInpu
                   : kart.surface === 'offroad'
                     ? OFFROAD_SPEED
                     : TOP_SPEED
+        // Nitro: 20 km/h on top of whatever you're doing, and every limit 20 higher while it lasts, so
+        // it stacks with a boost (on the grass too, but only 20 over the grass's limit).
+        if (input.nitro && kart.nitro >= NITRO_CHARGE) {
+            speed = Math.max(0, speed) + NITRO_KICK
+            kart.surge = SURGE
+            kart.nitro = 0
+        }
+        const limit = base + (kart.surge > 0 ? NITRO_KICK : 0)
         let accel = 0
         if (throttle > 0 && speed > -0.5) {
             const pull = Math.max(ACCEL * Math.pow(Math.max(0, 1 - speed / TOP_SPEED), ACCEL_FALLOFF), CRUISE_ACCEL)
