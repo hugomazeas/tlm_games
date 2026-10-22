@@ -27,6 +27,8 @@ export interface KartMotion {
     drift: number
     charge: number
     boosting: boolean
+    /** A nitro just fired and still holding the speed (your own kart only: the lobby doesn't send it). */
+    surging?: boolean
     airborne: boolean
 }
 
@@ -257,7 +259,10 @@ export function createEffects(
                     wasAirborne = m.airborne
 
                     const exhaust = { x: m.x - fx * 1.55, y: m.y + 0.62, z: m.z - fz * 1.55 }
-                    if (m.boosting) {
+                    // A drift or pad boost burns orange; the nitro burns blue.
+                    const fired = m.boosting || m.surging === true
+                    const blue = m.surging === true && !m.boosting
+                    if (fired) {
                         const burst = wasBoosting ? 0 : 36
                         for (let i = 0; i < burst; i++) {
                             const angle = (i / burst) * Math.PI * 2
@@ -269,7 +274,7 @@ export function createEffects(
                                 life: 0.35,
                                 size: 0.4,
                                 grow: 0.1,
-                                colour: 0xffc04d,
+                                colour: blue ? 0x67e8f9 : 0xffc04d,
                                 alpha: 1,
                                 drag: 3,
                             })
@@ -283,7 +288,7 @@ export function createEffects(
                                 life: 0.22,
                                 size: 0.55,
                                 grow: 0.1,
-                                colour: i % 3 ? 0xff8a1f : 0xffe08a,
+                                colour: blue ? (i % 3 ? 0x22d3ee : 0xe0f2fe) : i % 3 ? 0xff8a1f : 0xffe08a,
                                 alpha: 0.9,
                                 drag: 4,
                             })
@@ -305,7 +310,7 @@ export function createEffects(
                             })
                         }
                     }
-                    wasBoosting = m.boosting
+                    wasBoosting = fired
 
                     // Off a wall: speed gone in a frame that no brake can take (and not R putting you back).
                     const jumped = Math.hypot(m.x - lastX, m.z - lastZ) > 5

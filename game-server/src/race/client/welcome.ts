@@ -107,7 +107,8 @@ const CONTROLS = `
         <span><kbd>S</kbd> <kbd>↓</kbd></span><span>Brake, then reverse</span>
         <span><kbd>A</kbd> <kbd>D</kbd></span><span>Steer</span>
         <span><kbd>Space</kbd> <kbd>Shift</kbd></span><span>Drift: hold it while turning, let go for a boost. Sparks go white, then <b style="color:#4fa8ff">blue</b> (mini-turbo), then <b style="color:#ff8a1f">orange</b> (super)</span>
-        <span><kbd>R</kbd></span><span>Stuck? Back to your last checkpoint</span>
+        <span><kbd>E</kbd></span><span>Nitro: +20 km/h on the spot. It charges over 15 seconds (the blue ring round the speedometer) and says <b style="color:#22d3ee">NITRO · E</b> when it's ready</span>
+        <span><kbd>R</kbd></span><span>Stuck? Back to your last checkpoint (the nitro starts charging again)</span>
     </div>
     <p class="note">Yellow pads on long straights boost you too.</p>
 `

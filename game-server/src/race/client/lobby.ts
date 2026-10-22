@@ -217,7 +217,8 @@ export function joinLobby(options: LobbyOptions): Lobby {
             speed: round(forwardSpeed(kart), 2),
             drift: kart.drift,
             charge: round(kart.charge, 2),
-            boost: kart.boost > 0,
+            // A nitro shows to the others as a boost flame.
+            boost: kart.boost > 0 || kart.surge > 0,
             airborne: kart.airborne,
             steer: round(driver.steer, 2),
         }

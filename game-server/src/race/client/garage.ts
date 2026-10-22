@@ -98,6 +98,7 @@ scene.add(kart.root)
 const parked: KartState = {
     ...{ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, heading: 0, airborne: false },
     ...{ drift: 0, charge: 0, boost: 0, padCooldown: 0, sinking: 0, surface: 'road' },
+    ...{ nitro: 0, surge: 0 },
 }
 
 let angle = 0

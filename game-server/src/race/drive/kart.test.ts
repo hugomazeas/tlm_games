@@ -7,6 +7,8 @@ import {
     type KartInput,
     type KartState,
     MINI_TURBO,
+    NITRO_CHARGE,
+    NITRO_KICK,
     OFFROAD_SPEED,
     PACE,
     resetKart,
@@ -154,6 +156,73 @@ describe('drifting', () => {
     test('needs speed and a direction to start', () => {
         expect(drive(world, createKart(world, 0, 400, NORTH), 0.3, drifting).drift).toBe(0)
         expect(drive(world, fast(), 0.3, { throttle: 1, steer: 0, drift: true }).drift).toBe(0)
+    })
+})
+
+describe('nitro', () => {
+    const world = avenue()
+    const NITRO: KartInput = { ...GAS, nitro: true }
+    /** Cruising at 80 km/h for `seconds`, then: */
+    const cruising = (seconds: number) => {
+        let kart = createKart(world, -480, 0, EAST)
+        for (let t = 0; t < seconds; t += STEP) {
+            const tooFast = forwardSpeed(kart) * KMH > 80
+            kart = stepKart(world, kart, { throttle: tooFast ? 0 : 1, steer: 0, drift: false })
+        }
+        return kart
+    }
+
+    test('does nothing until it has charged for 15 seconds', () => {
+        const early = cruising(NITRO_CHARGE - 1)
+        expect(early.nitro).toBeLessThan(NITRO_CHARGE)
+        expect(forwardSpeed(stepKart(world, early, NITRO)) - forwardSpeed(early)).toBeLessThan(1)
+    })
+
+    test('charged, E adds 20 km/h to the current speed, then the charge starts over', () => {
+        const ready = cruising(NITRO_CHARGE + 0.1)
+        const before = forwardSpeed(ready)
+        const fired = stepKart(world, ready, NITRO)
+        expect((forwardSpeed(fired) - before) * KMH).toBeGreaterThan(19)
+        expect((forwardSpeed(fired) - before) * KMH).toBeLessThan(22)
+        expect(fired.nitro).toBeLessThan(0.1)
+        // Holding E doesn't fire it again.
+        expect(forwardSpeed(stepKart(world, fired, NITRO))).toBeLessThan(forwardSpeed(fired) + 0.5)
+    })
+
+    test('works past top speed, holds the gain a moment, then bleeds back down', () => {
+        let kart = drive(world, createKart(world, -480, 0, EAST), 25, GAS)
+        kart = { ...kart, nitro: NITRO_CHARGE }
+        const top = forwardSpeed(kart)
+        kart = stepKart(world, kart, NITRO)
+        expect((forwardSpeed(kart) - top) * KMH).toBeGreaterThan(19)
+        expect((forwardSpeed(drive(world, kart, 1.5, GAS)) - top) * KMH).toBeGreaterThan(15)
+        expect(forwardSpeed(drive(world, kart, 5, GAS))).toBeLessThanOrEqual(TOP_SPEED + 0.01)
+    })
+
+    test('stacks with a boost: past 185 km/h, whichever comes first', () => {
+        const flat = drive(world, createKart(world, -480, 0, EAST), 25, GAS)
+        const fastest = (kart: KartState) => {
+            let top = 0
+            for (let t = 0; t < 2; t += STEP) {
+                kart = stepKart(world, kart, GAS)
+                top = Math.max(top, forwardSpeed(kart))
+            }
+            return top * KMH
+        }
+        // Nitro on a boost…
+        const boosted = { ...flat, boost: 2, nitro: NITRO_CHARGE }
+        expect(fastest(stepKart(world, drive(world, boosted, 1, GAS), NITRO))).toBeGreaterThan(185)
+        // …and a boost during a nitro.
+        const surging = stepKart(world, { ...flat, nitro: NITRO_CHARGE }, NITRO)
+        expect(fastest({ ...surging, boost: 2 })).toBeGreaterThan(185)
+        expect(fastest({ ...surging, boost: 2 })).toBeLessThanOrEqual((BOOST_SPEED + NITRO_KICK) * KMH + 0.01)
+    })
+
+    test('on the grass it gives the 20 km/h, but no more than 20 over the grass limit', () => {
+        const grass = buildWorld(testMap({}, undefined, 2000))
+        let kart = drive(grass, createKart(grass, 0, 0, EAST), 5, GAS)
+        kart = stepKart(grass, { ...kart, nitro: NITRO_CHARGE }, NITRO)
+        expect(forwardSpeed(drive(grass, kart, 1, GAS))).toBeLessThanOrEqual(OFFROAD_SPEED + NITRO_KICK + 0.01)
     })
 })
 

@@ -107,6 +107,7 @@ export function createDriver(
             throttle: (held('KeyW', 'ArrowUp') ? 1 : 0) - (held('KeyS', 'ArrowDown') ? 1 : 0),
             steer,
             drift: held('Space', 'ShiftLeft', 'ShiftRight'),
+            nitro: held('KeyE'),
         }
     }
 
@@ -152,11 +153,12 @@ export function createDriver(
                     drift: current.drift,
                     charge: current.charge,
                     boosting: current.boost > 0,
+                    surging: current.surge > 0,
                     airborne: current.airborne,
                 },
                 dt
             )
-            effects?.speedLines(speed, current.boost > 0)
+            effects?.speedLines(speed, current.boost > 0 || current.surge > 0)
             const forward = new THREE.Vector3(-Math.sin(heading), 0, -Math.cos(heading))
             const ahead = Math.max(0, speed)
             const back = CHASE_DISTANCE + ahead * 0.04

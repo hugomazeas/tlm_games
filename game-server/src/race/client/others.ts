@@ -156,6 +156,8 @@ function asKart(pose: Pose): KartState {
         padCooldown: 0,
         sinking: 0,
         surface: 'road',
+        nitro: 0,
+        surge: 0,
     }
 }
 

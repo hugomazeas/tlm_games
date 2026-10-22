@@ -1,5 +1,5 @@
 import type * as THREE from 'three'
-import { forwardSpeed, STEP } from '../drive/kart.ts'
+import { forwardSpeed, NITRO_CHARGE, STEP } from '../drive/kart.ts'
 import { bestLap, gridSlot, isWrongWay, respawnPoint } from '../drive/laps.ts'
 import { courseRoute, locate, orientAlongRoute, pointAt, type Route } from '../drive/route.ts'
 import { ordinal } from '../drive/standings.ts'
@@ -155,6 +155,7 @@ export function createRace(options: RaceOptions): Race {
                     kmh: Math.max(0, forwardSpeed(kart)) * KMH,
                     boosting: kart.boost > 0,
                     charge: kart.drift !== 0 ? kart.charge : 0,
+                    nitro: kart.nitro / NITRO_CHARGE,
                 })
             }
 
