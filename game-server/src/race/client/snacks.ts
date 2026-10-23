@@ -189,8 +189,8 @@ const CSS = `
     #race-snack-banner small { display: block; font-size: 18px; font-weight: 700; margin-top: 4px; }
     #race-feed { position: fixed; top: 56px; left: 50%; transform: translateX(-50%); display: grid; gap: 4px; justify-items: center; pointer-events: none; }
     #race-feed div { padding: 4px 10px; border-radius: 999px; background: rgb(15 23 42 / 0.75); color: #f8fafc; font: 600 13px system-ui, sans-serif; transition: opacity 0.5s; }
-    #race-effects { position: fixed; left: calc(50% + 124px); bottom: 12px; display: flex; flex-direction: column-reverse; gap: 6px; pointer-events: none; }
-    #race-effects > div { display: flex; align-items: center; gap: 10px; width: clamp(200px, calc(50vw - 450px), 300px); box-sizing: border-box; padding: 8px 12px; border-radius: 10px; border: 2px solid; color: #f8fafc; font: 14px system-ui, sans-serif; box-shadow: 0 4px 14px rgb(15 23 42 / 0.5); }
+    #race-effects { position: fixed; left: calc(50% + 150px); bottom: 12px; display: flex; flex-direction: column-reverse; gap: 6px; pointer-events: none; }
+    #race-effects > div { display: flex; align-items: center; gap: 10px; width: clamp(190px, calc(50vw - 474px), 300px); box-sizing: border-box; padding: 8px 12px; border-radius: 10px; border: 2px solid; color: #f8fafc; font: 14px system-ui, sans-serif; box-shadow: 0 4px 14px rgb(15 23 42 / 0.5); }
     #race-effects > div.good { background: rgb(20 83 45 / 0.88); border-color: #4ade80; }
     #race-effects > div.bad { background: rgb(127 29 29 / 0.88); border-color: #f87171; }
     #race-effects .icon { font-size: 30px; line-height: 1; }

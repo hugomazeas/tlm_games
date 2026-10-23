@@ -9,6 +9,7 @@ import type { Course, Road } from '../map/format.ts'
 import { buildCourseView, type CourseView } from './course.ts'
 import type { Driver } from './drive.ts'
 import { createSpeedometer, pointArrow } from './hud.ts'
+import { buildRouteRibbon } from './route-ribbon.ts'
 import type { Minimap, MinimapKart } from './minimap.ts'
 
 /**
@@ -91,6 +92,9 @@ export function createRace(options: RaceOptions): Race {
         scene.add(view.group)
         view.setNext(0)
     }
+    // The way round, painted on the streets.
+    const ribbon = route ? buildRouteRibbon(route, world.ground) : null
+    if (ribbon) scene.add(ribbon.mesh)
     minimap.setCourse(course, route)
 
     const race: Race = {
@@ -158,6 +162,9 @@ export function createRace(options: RaceOptions): Race {
         update(driving, others) {
             const here = options.here()
             const kart = driver.kart
+            const now = performance.now() / 1000
+            // Out of a race, the whole way round glows the same; in one, the stretch to your next checkpoint lights up (below).
+            ribbon?.update(now, 0, 0)
             minimap.draw(
                 here,
                 [...others, ...(driving ? [{ x: kart.x, z: kart.z, heading: kart.heading, isYou: true }] : [])],
@@ -207,6 +214,7 @@ export function createRace(options: RaceOptions): Race {
                     route.gateAlong[(progress.next - 1 + gateCount) % gateCount]!,
                     route.gateAlong[progress.next]!
                 )
+                ribbon?.update(now, along, route.gateAlong[progress.next]!)
                 const ahead = pointAt(route, along + ARROW_AHEAD)
                 arrow.hidden = trial.phase !== 'racing'
                 pointArrow(arrow, Math.atan2(-(ahead.x - kart.x), -(ahead.z - kart.z)), kart.heading)

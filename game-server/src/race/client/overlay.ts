@@ -11,7 +11,7 @@ const CSS = `
     .race-root [hidden] { display: none !important; }
     #race-status { top: 12px; }
     #race-hud { top: 44px; font-variant-numeric: tabular-nums; }
-    #race-help { bottom: 12px; }
+    #race-help { bottom: 12px; max-width: calc(50% - 170px); box-sizing: border-box; }
     #race-credit { position: fixed; right: 8px; bottom: 6px; font-size: 11px; color: #334155; }
     #race-crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px #0f172a; pointer-events: none; }
     #race-identify { top: 76px; pointer-events: auto; display: grid; gap: 4px; max-width: 340px; }
@@ -25,7 +25,7 @@ const CSS = `
     #race-guide { font-weight: 800; min-width: 30px; }
     #race-stats { position: fixed; top: 46px; right: 12px; padding: 4px 8px; border-radius: 6px; background: rgb(15 23 42 / 0.7); color: #f8fafc; font: 12px ui-monospace, monospace; text-align: right; white-space: pre; pointer-events: none; }
     #race-minimap { position: fixed; right: 12px; bottom: 26px; width: 300px; height: 300px; pointer-events: none; }
-    #race-speedometer { position: fixed; left: 50%; bottom: 8px; width: 220px; height: 160px; margin-left: -110px; pointer-events: none; filter: drop-shadow(0 2px 6px rgb(15 23 42 / 0.6)); }
+    #race-speedometer { position: fixed; left: 50%; bottom: 0; width: 280px; height: 200px; margin-left: -140px; pointer-events: none; filter: drop-shadow(0 -2px 10px rgb(15 23 42 / 0.6)); }
     #race-standings { top: auto; bottom: 340px; left: auto; right: 12px; min-width: 120px; font-size: 14px; }
     #race-standings .position { font: 800 34px system-ui, sans-serif; }
     #race-standings .you { color: #ffd22e; font-weight: 700; }
@@ -77,7 +77,7 @@ const HTML = `
     <div id="race-stats"></div>
     <div id="race-banner"></div>
     <canvas id="race-minimap" width="300" height="300"></canvas>
-    <canvas id="race-speedometer" width="220" height="160" hidden></canvas>
+    <canvas id="race-speedometer" width="280" height="200" hidden></canvas>
     <div id="race-standings" class="panel" hidden></div>
     <div id="race-arrow" hidden><svg viewBox="0 0 56 56" width="56" height="56"><path d="M28 4 L50 30 L36 30 L36 52 L20 52 L20 30 L6 30 Z" fill="#ffd22e" stroke="#0f172a" stroke-width="2.5" stroke-linejoin="round"/></svg></div>
     <div id="race-crosshair"></div>
