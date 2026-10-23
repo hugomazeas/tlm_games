@@ -1,5 +1,6 @@
 import { forwardSpeed } from '../drive/kart.ts'
 import type { Sky } from '../drive/weather.ts'
+import type { SnackPlay } from './snacks.ts'
 import type { ClientMessage, ErrorCode, LobbyView, ServerMessage } from '../protocol.ts'
 import type { Driver } from './drive.ts'
 import { createLobbyPanel, type TrackRecords } from './lobby-panel.ts'
@@ -50,11 +51,18 @@ export interface LobbyOptions {
     setWatching(watching: boolean): void
     /** The lobby's sky for the next race, or the one under way: on arriving and whenever it changes. */
     setSky(sky: Sky): void
+    /** The race's snacks on this tab: told what the lobby says about them. */
+    snacks: SnackPlay
 }
 
 export interface Lobby {
     /** Whose kart a watcher's camera follows: the leader. */
     readonly leader: string | null
+    /** Your id in the lobby ('' until welcomed). */
+    readonly you: string
+    nameOf(id: string): string
+    /** You drove through snack `id`. */
+    eat(id: number): void
 }
 
 export function joinLobby(options: LobbyOptions): Lobby {
@@ -70,7 +78,8 @@ export function joinLobby(options: LobbyOptions): Lobby {
         options.laps,
         () => send({ type: 'start' }),
         () => send({ type: 'close' }),
-        time => send({ type: 'setTime', time })
+        time => send({ type: 'setTime', time }),
+        density => send({ type: 'setDensity', density })
     )
 
     let you = ''
@@ -129,6 +138,8 @@ export function joinLobby(options: LobbyOptions): Lobby {
 
         const wasLive = before?.phase === 'countdown' || before?.phase === 'racing'
         if (wasLive && !live) {
+            options.snacks.clear()
+            panel.setReceipt(options.snacks.receipt())
             race.end()
             setTimeout(loadRecords, RECORDS_DELAY_MS)
         }
@@ -161,6 +172,8 @@ export function joinLobby(options: LobbyOptions): Lobby {
                     onLobby(message.lobby)
                     break
                 case 'countdown': {
+                    options.snacks.setSnacks(message.snacks)
+                    panel.setReceipt([])
                     const slot = message.slots[you]
                     if (slot === undefined) break
                     if (watching) {
@@ -171,6 +184,19 @@ export function joinLobby(options: LobbyOptions): Lobby {
                     race.countdown(slot)
                     break
                 }
+                case 'snacks':
+                    options.snacks.setSnacks(message.snacks)
+                    break
+                case 'ate':
+                    options.snacks.ate(message.snack, message.kind, message.by)
+                    break
+                case 'respawn':
+                    options.snacks.respawn(message.snack)
+                    break
+                case 'teleport':
+                    options.snacks.teleport(message.x, message.z, message.heading)
+                    race.level({ lap: message.lap, next: message.next, lastGate: message.lastGate })
+                    break
                 case 'karts': {
                     others.receive(message.karts)
                     const names = new Map(current?.members.map(m => [m.id, m.name]))
@@ -234,6 +260,18 @@ export function joinLobby(options: LobbyOptions): Lobby {
     return {
         get leader() {
             return leader
+        },
+
+        get you() {
+            return you
+        },
+
+        nameOf(id) {
+            return current?.members.find(m => m.id === id)?.name ?? 'Someone'
+        },
+
+        eat(id) {
+            send({ type: 'eat', snack: id })
         },
     }
 }

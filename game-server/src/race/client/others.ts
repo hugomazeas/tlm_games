@@ -37,6 +37,10 @@ export interface Others {
     receive(karts: ReadonlyArray<{ id: string; pose: Pose }>): void
     update(dt: number): void
     minimapKarts(): MinimapKart[]
+    /** Where kart `id` is drawn now; null when it isn't on the track. */
+    positionOf(id: string): { x: number; y: number; z: number } | null
+    /** Chips: kart `id` bulges out (or back). */
+    setFat(id: string, fat: boolean): void
     /** Puts the camera behind kart `id`, easing towards it; false when it isn't on the track. */
     follow(id: string, camera: THREE.PerspectiveCamera, dt: number): boolean
 }
@@ -109,6 +113,15 @@ export function createOthers(world: DriveWorld, scene: THREE.Scene, effects: Eff
                 other.model.pose(shown.x, shown.y, shown.z, shown.heading, other.up, asKart(shown), shown.steer, dt)
                 other.fx?.update({ ...shown, vy: 0, boosting: shown.boost }, dt)
             }
+        },
+
+        positionOf(id) {
+            const shown = others.get(id)?.shown
+            return shown ? { x: shown.x, y: shown.y, z: shown.z } : null
+        },
+
+        setFat(id, fat) {
+            others.get(id)?.model.setFat(fat)
         },
 
         minimapKarts() {

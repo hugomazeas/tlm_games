@@ -1,4 +1,6 @@
+import { SNACK_ICONS, SNACK_KINDS, SNACKS, type SnackKind } from '../drive/snacks.ts'
 import type { Quality } from './atmosphere.ts'
+import { snackPictures } from './snack-models.ts'
 
 /**
  * The welcome screen over a race, for colleagues opening a shared link: pick
@@ -55,6 +57,12 @@ export interface Welcome {
 /** What this browser remembers: the Hub player (empty for a guest), and that it's been welcomed. */
 export const REMEMBER = { player: 'racing_player', welcomed: 'racing_welcomed' }
 
+/** The panels' widths: the snacks on the left, you and the guide on the right (main.ts centres the kart between). */
+export const SNACK_PANEL = 360
+export const GUIDE_PANEL = 420
+/** Under this window width the snacks panel hides. */
+export const SNACK_PANEL_FROM = 900
+
 /** Kart colours to start from: body, accent. */
 const PRESETS: Array<[string, string]> = [
     ['#d23c3c', '#2b5fa8'],
@@ -92,6 +100,17 @@ const CSS = `
     #race-welcome .tab.on { background: rgb(255 255 255 / 0.16); color: #f8fafc; font-weight: 700; }
     #race-welcome .guide { padding: 12px; border-radius: 0 0 8px 8px; background: rgb(255 255 255 / 0.08); line-height: 1.5; }
     #race-welcome .guide ul { margin: 0; padding-left: 18px; }
+    #race-welcome-snacks { position: fixed; top: 0; left: 0; bottom: 0; width: min(${SNACK_PANEL}px, 100vw); z-index: 60; box-sizing: border-box; overflow-y: auto; padding: 20px 16px; background: linear-gradient(270deg, rgb(15 23 42 / 0.72), rgb(15 23 42 / 0.92) 30%); color: #f8fafc; font: 14px system-ui, sans-serif; backdrop-filter: blur(4px); }
+    #race-welcome-snacks h1 { margin: 0 0 6px; font-size: 20px; font-weight: 800; }
+    #race-welcome-snacks .intro { margin: 0 0 12px; color: #cbd5e1; line-height: 1.4; }
+    #race-welcome-snacks .snacks { display: grid; gap: 8px; }
+    #race-welcome-snacks .snack { display: grid; grid-template-columns: 64px 1fr; gap: 10px; align-items: center; padding: 6px; border-radius: 8px; background: rgb(255 255 255 / 0.06); }
+    #race-welcome-snacks .snack img { width: 64px; height: 64px; object-fit: contain; filter: drop-shadow(0 3px 4px rgb(0 0 0 / 0.5)); }
+    #race-welcome-snacks .snack-name { font-weight: 700; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    #race-welcome-snacks .snack-effect { color: #cbd5e1; font-size: 13px; line-height: 1.35; }
+    #race-welcome-snacks .rarity { padding: 1px 6px; border-radius: 999px; background: #a855f7; color: #fff; font-size: 11px; }
+    /* Too narrow for three columns: the snacks give way. */
+    @media (max-width: ${SNACK_PANEL_FROM - 1}px) { #race-welcome-snacks { display: none; } }
     #race-welcome kbd { display: inline-block; min-width: 16px; padding: 1px 6px; border-radius: 4px; background: #f8fafc; color: #0f172a; font: 700 12px ui-monospace, monospace; text-align: center; box-shadow: 0 2px 0 #94a3b8; }
     #race-welcome .keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: center; }
     #race-welcome .go { position: sticky; bottom: 0; flex: none; margin-top: auto; box-shadow: 0 -10px 18px rgb(15 23 42 / 0.9); padding: 12px; border-radius: 10px; border: 0; background: #ea580c; color: #fff; font: 800 17px system-ui, sans-serif; cursor: pointer; }
@@ -120,7 +139,8 @@ const RULES = `
         <li>Drive anywhere: grass slows you down, water puts you back on a road, walls bounce you off. Karts go through each other.</li>
         <li>Every race has its own time of day and weather. Rain and snow make the road slippery: brake earlier, drifts slide wider.</li>
         <li>Once the winner finishes, the others have 30 seconds.</li>
-        <li>Your best time and fastest lap go in the track's 🏆 Records, if you race under your name (guests aren't recorded).</li>
+        <li>Your best time and fastest lap go in the track's 🏆 Records, if you race under your name (guests aren't recorded) in a clean race (snacks at 0): with snacks, it's just for fun.</li>
+        <li>After a race with snacks, the lobby shows the dépanneur bill: who ate what, at real prices. Nobody pays it.</li>
     </ul>
 `
 
@@ -132,12 +152,19 @@ export function createWelcome(parent: HTMLElement, options: WelcomeOptions): Wel
     root.id = 'race-welcome'
     root.hidden = true
     parent.appendChild(root)
+    // The snacks down the left side, the kart in the middle, you and the guide on the right.
+    const snackPanel = document.createElement('div')
+    snackPanel.id = 'race-welcome-snacks'
+    snackPanel.hidden = true
+    parent.appendChild(snackPanel)
 
     const drivers = [...options.drivers]
     let mode: 'full' | 'help' = 'full'
     let picked: DriverOption | 'guest' | null = null
     let colours = { ...options.guest }
     let tab: 'controls' | 'rules' | 'options' = 'controls'
+    /** The snacks' pictures, rendered the first time the screen opens. */
+    let pictures: Partial<Record<SnackKind, string>> | null = null
     let filter = ''
     let error = ''
     let busy = false
@@ -230,6 +257,7 @@ export function createWelcome(parent: HTMLElement, options: WelcomeOptions): Wel
     const close = () => {
         open = false
         root.hidden = true
+        snackPanel.hidden = true
     }
 
     const driverSection = () => {
@@ -339,6 +367,38 @@ export function createWelcome(parent: HTMLElement, options: WelcomeOptions): Wel
         return section
     }
 
+    /** Every snack from the dépanneur: its 3D model, what it does, how rare it is. Drawn once. */
+    const renderSnacks = () => {
+        if (snackPanel.childElementCount > 0) return
+        pictures ??= snackPictures()
+        const box = snackPanel
+        box.append(
+            el('h1', '', '🍫 Snacks on the track'),
+            el(
+                'p',
+                'intro',
+                "The office dépanneur's snacks lie on the streets. Drive through one and you eat it, right away: pick your line, dodge the bad ones. They come back a few seconds later, anywhere across the street. The host's slider sets how many, from 0 (a clean race, for the records) to 10 (total mayhem)."
+            )
+        )
+        const list = el('div', 'snacks')
+        for (const kind of SNACK_KINDS) {
+            const info = SNACKS[kind]
+            const card = el('div', 'snack')
+            const picture = el('img')
+            picture.alt = info.name
+            if (pictures[kind]) picture.src = pictures[kind]
+            const text = el('div')
+            const rarity =
+                info.stock <= 2 ? 'Legendary' : info.stock <= 6 ? 'Rare' : info.stock >= 50 ? 'Everywhere' : ''
+            const name = el('div', 'snack-name', `${SNACK_ICONS[kind]} ${info.name}`)
+            if (rarity) name.append(el('span', 'rarity', rarity))
+            text.append(name, el('div', 'snack-effect', info.effect))
+            card.append(picture, text)
+            list.append(card)
+        }
+        box.append(list)
+    }
+
     const guideSection = () => {
         const section = el('section')
         const tabs = el('div', 'tabs')
@@ -426,6 +486,8 @@ export function createWelcome(parent: HTMLElement, options: WelcomeOptions): Wel
             mode = next
             open = true
             root.hidden = false
+            renderSnacks()
+            snackPanel.hidden = false
             if (next === 'full') {
                 const known = current?.playerId != null ? drivers.find(d => d.id === current.playerId) : undefined
                 picked = known ?? (current && current.playerId === null ? 'guest' : null)

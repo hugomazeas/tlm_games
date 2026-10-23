@@ -16,7 +16,7 @@ const CSS = `
     #race-crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px #0f172a; pointer-events: none; }
     #race-identify { top: 76px; pointer-events: auto; display: grid; gap: 4px; max-width: 340px; }
     #race-identify button { justify-self: start; font: inherit; padding: 2px 8px; border-radius: 4px; border: 0; cursor: pointer; }
-    #race-panel { top: 12px; left: auto; right: 12px; white-space: pre; text-align: right; font-size: 15px; font-variant-numeric: tabular-nums; }
+    #race-panel { top: 92px; left: auto; right: 12px; white-space: pre; text-align: right; font-size: 15px; font-variant-numeric: tabular-nums; }
     #race-back { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); padding: 6px 12px; border-radius: 6px; background: rgb(15 23 42 / 0.7); color: #f8fafc; text-decoration: none; }
     #race-banner { position: fixed; top: 22%; left: 0; right: 0; text-align: center; font: 800 64px system-ui, sans-serif; color: #fff; text-shadow: 0 3px 12px rgb(15 23 42 / 0.8); pointer-events: none; }
     #race-corner { position: fixed; top: 12px; right: 12px; display: flex; gap: 6px; }
@@ -33,6 +33,12 @@ const CSS = `
     #race-lobby .title { font-weight: 700; font-size: 15px; }
     #race-lobby .phase { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; }
     #race-lobby .sky { font-size: 12px; color: #cbd5e1; }
+    #race-lobby .receipt { display: grid; gap: 3px; padding: 8px; border-radius: 6px; background: #fefce8; color: #1c1917; font: 12px ui-monospace, monospace; }
+    #race-lobby .receipt-title { font-weight: 800; border-bottom: 1px dashed #a8a29e; padding-bottom: 3px; }
+    #race-lobby .receipt-row { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; }
+    #race-lobby .receipt-row .total { font-weight: 800; }
+    #race-lobby .time input[type=range] { flex: 1; margin: 0 8px; accent-color: #ea580c; cursor: pointer; }
+    #race-lobby .time .density { min-width: 52px; text-align: right; color: #f8fafc; }
     #race-lobby .time { display: flex; align-items: center; justify-content: space-between; color: #cbd5e1; }
     #race-lobby select { font: inherit; padding: 3px 6px; border-radius: 6px; border: 0; background: rgb(255 255 255 / 0.12); color: #f8fafc; cursor: pointer; }
     #race-lobby select option { color: #0f172a; }

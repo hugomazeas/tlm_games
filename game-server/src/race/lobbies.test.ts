@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
+import { RESPAWN_MS } from './drive/snacks.ts'
 import { FINISH_GRACE_MS, type LoadedTrack, LobbyManager, type RaceResult } from './lobbies.ts'
 import type { Course } from './map/format.ts'
 import { type LobbyView, MAX_RACERS, parseClientMessage, type Pose, type ServerMessage } from './protocol.ts'
@@ -234,7 +235,8 @@ describe('races', () => {
         expect(last('b', 'error')).toEqual({ type: 'error', code: 'NOT_HOST' })
 
         manager.start('a')
-        expect(last('b', 'countdown')).toEqual({ type: 'countdown', slots: { a: 0, b: 1 }, seconds: 3 })
+        // The test track has no route: no snacks.
+        expect(last('b', 'countdown')).toEqual({ type: 'countdown', slots: { a: 0, b: 1 }, seconds: 3, snacks: [] })
         expect(lobbyOf('b').phase).toBe('countdown')
 
         now += 3000
@@ -279,6 +281,16 @@ describe('races', () => {
 
         manager.setTime('a', null)
         expect(lobbyOf('b').time).toBeNull()
+    })
+
+    test('setDensity only takes a whole number from 0 to 10', () => {
+        expect(parseClientMessage(JSON.stringify({ type: 'setDensity', density: 7 }))).toEqual({
+            type: 'setDensity',
+            density: 7,
+        })
+        for (const density of [-1, 11, 2.5, '3', null]) {
+            expect(parseClientMessage(JSON.stringify({ type: 'setDensity', density }))).toBeNull()
+        }
     })
 
     test('setTime only takes a time of day or null', () => {
@@ -411,5 +423,102 @@ describe('races', () => {
 
         expect(lobbyOf('b')).toMatchObject({ phase: 'waiting', hostId: 'b' })
         expect(results).toEqual([])
+    })
+})
+
+/** The square with its route: round the outside, through each gate, 800 m. */
+const corners = [0, -100, 100, -100, 100, 0, 100, 100, 0, 100, -100, 100, -100, 0, -100, -100, 0, -100]
+const routed: LoadedTrack = {
+    ...track,
+    route: {
+        points: corners,
+        along: [0, 100, 200, 300, 400, 500, 600, 700, 800],
+        length: 800,
+        gateAlong: [0, 200, 400, 600],
+    },
+}
+
+describe('snacks', () => {
+    const at = (id: string, x: number, z: number) => manager.pose(id, { ...POSE, x, z })
+
+    test('a race scatters snacks along the route, as many as the slider says; whoever drives through one first eats it', () => {
+        join('a', 1, null, routed)
+        join('b', 2, 'lobby1', routed)
+        expect(lobbyOf('a').density).toBe(3)
+        manager.setDensity('b', 10)
+        expect(last('b', 'error')).toEqual({ type: 'error', code: 'NOT_HOST' })
+        manager.setDensity('a', 10)
+        expect(lobbyOf('b').density).toBe(10)
+        startRace('a')
+        const snacks = last('a', 'countdown')!.snacks
+        expect(snacks.length).toBeGreaterThan(15)
+
+        const snack = snacks[3]!
+        at('b', snack.x + 40, snack.z)
+        manager.eat('b', snack.id)
+        expect(last('b', 'ate')).toBeUndefined()
+
+        at('a', snack.x + 1, snack.z)
+        manager.eat('a', snack.id)
+        expect(last('b', 'ate')).toEqual({ type: 'ate', snack: snack.id, kind: snack.kind, by: 'a' })
+        at('b', snack.x, snack.z)
+        manager.eat('b', snack.id)
+        expect(last('a', 'ate')!.by).toBe('a')
+
+        now += RESPAWN_MS
+        manager.tick()
+        expect(last('b', 'respawn')).toEqual({ type: 'respawn', snack: snack.id })
+    })
+
+    test('density 0 is a clean race; a race with snacks keeps its times out of the records', () => {
+        join('a', 1, null, routed)
+        startRace('a')
+        expect(last('a', 'countdown')!.snacks.length).toBeGreaterThan(3)
+        now += 60_000
+        lap('a', 1, 45)
+        expect(lobbyOf('a').phase).toBe('finished')
+        expect(results).toEqual([])
+
+        manager.setDensity('a', 0)
+        expect(lobbyOf('a').density).toBe(0)
+        startRace('a')
+        expect(last('a', 'countdown')!.snacks).toEqual([])
+        now += 60_000
+        lap('a', 1, 45)
+        expect(results).toHaveLength(1)
+    })
+
+    test('a Chipwich puts you just ahead of the kart in front, level with it in the race', () => {
+        // Rolls that land on the rarest end of the list: every snack is a Chipwich.
+        rolls = 0
+        manager = new LobbyManager({
+            now: () => now,
+            newId: () => `lobby${++ids}`,
+            random: () => 0.9999,
+            onResults: result => results.push(result),
+        })
+        join('a', 1, null, routed)
+        join('b', 2, 'lobby1', routed)
+        startRace('a')
+        const snack = last('b', 'countdown')!.snacks[0]!
+        expect(snack.kind).toBe('chipwich')
+        now += 60_000
+
+        // a is through gate 1 and on its way to gate 2; b is still before it.
+        through('a', 0, 1)
+        through('a', 1, 10)
+        manager.pose('a', { ...POSE, x: 100, z: 50, heading: Math.PI })
+        through('b', 0, 1.5)
+        at('b', snack.x, snack.z)
+        manager.eat('b', snack.id)
+
+        const jump = last('b', 'teleport')!
+        expect(jump).toMatchObject({ next: 2, lap: 1 })
+        expect(jump.z).toBeCloseTo(60)
+        // The jump there counts: b's next step from it is accepted.
+        manager.pose('b', POSE, [jump.x, jump.z, 12, jump.x, jump.z + 1, 12.05])
+        through('b', 2, 20)
+        manager.tick()
+        expect(last('b', 'karts')!.standings!.map(s => s.id)).toEqual(['b', 'a'])
     })
 })

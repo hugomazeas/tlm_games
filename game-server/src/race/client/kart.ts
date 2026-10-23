@@ -40,6 +40,8 @@ export interface KartModel {
     root: THREE.Group
     /** Repaints the kart (the garage does, as you pick). */
     paint(body: string, accent: string): void
+    /** Chips: the bodywork (and the driver) bulge out; false puts them back. */
+    setFat(fat: boolean): void
     pose(
         x: number,
         y: number,
@@ -200,6 +202,10 @@ export function buildKartModel(look: KartLook, withTag = true): KartModel {
         paint(bodyColour, accentColour) {
             bodyPaint.color.set(bodyColour)
             accentPaint.color.set(accentColour)
+        },
+
+        setFat(fat) {
+            body.scale.set(fat ? 1.45 : 1, fat ? 1.15 : 1, fat ? 1.08 : 1)
         },
 
         pose(x, y, z, heading, up, kart, steer, dt) {
