@@ -8,6 +8,7 @@ import {
     lasts,
     modsFor,
     SNACK_ICONS,
+    SNACK_KINDS,
     SNACKS,
     type SnackKind,
     type SnackSpot,
@@ -18,7 +19,7 @@ import type { Driver } from './drive.ts'
 import type { Effects } from './effects.ts'
 import type { Others } from './others.ts'
 import type { Race } from './race.ts'
-import { snackModel } from './snack-models.ts'
+import { GLOW, snackModel } from './snack-models.ts'
 
 /**
  * Snacks in a race, on this tab: the ones lying on the streets (spinning,
@@ -91,9 +92,87 @@ const TRAILS: Partial<Record<SnackKind, TrailKind>> = { fuze: 'frost', chips: 'c
 
 interface Laid {
     spot: SnackSpot
+    /** On the ground: the snack, its halo and its ring. */
     model: THREE.Group
+    snack: THREE.Group
+    halo: THREE.Sprite
     phase: number
     eaten: boolean
+}
+
+/** A line in the effects panel: what it is, what it does to you right now, good or bad. */
+interface LiveEffect {
+    icon: string
+    title: string
+    does: string
+    good: boolean
+}
+
+/** Every effect as the panel by the speedometer puts it (a Coke has two: the rush, then the crash). */
+const LIVE: Record<Effect['kind'] | 'crash' | 'onFrost' | 'onCrumbs' | 'onNuts', LiveEffect> = {
+    coke: { icon: '🥤', title: 'Sugar rush', does: '+35 km/h… the crash is coming', good: true },
+    crash: { icon: '🥤', title: 'Sugar crash', does: '−15 km/h', good: false },
+    bubly: { icon: '🫧', title: 'Bubly', does: '+10 km/h', good: true },
+    chips: { icon: '🥔', title: 'Chips', does: "You're fat: −15 km/h, dropping crumbs", good: false },
+    montellier: { icon: '💧', title: 'Montellier', does: 'Bad effects washed off, +8 km/h', good: true },
+    fuze: { icon: '🧊', title: 'Fuze', does: 'Leaving a frost trail: whoever follows slides', good: true },
+    kirkland: { icon: '🌾', title: 'Kirkland', does: '+5% top speed', good: true },
+    gokrisp: { icon: '💪', title: 'Go Krisp', does: 'Nitro charges 3× faster', good: true },
+    trailmix: { icon: '🥾', title: 'TrailMix', does: 'Full speed on the grass, dropping nuts', good: true },
+    frozen: { icon: '🥶', title: 'Brain freeze', does: "Frozen: someone's Drumsticks", good: false },
+    onFrost: { icon: '❄️', title: 'On frost', does: 'No grip: steer gently', good: false },
+    onCrumbs: { icon: '🥔', title: 'In crumbs', does: '−10 km/h', good: false },
+    onNuts: { icon: '🥜', title: 'On nuts', does: 'Bumpy: you hop', good: false },
+}
+
+/** The glow behind a snack: this big, this far above its middle, this bright (it pulses a little). */
+const HALO = { size: 3.4, lift: 0.9, opacity: 0.7 }
+const RING = new THREE.RingGeometry(1.1, 1.6, 32).rotateX(-Math.PI / 2)
+
+/** Per kind: a halo and a ground ring in the snack's colour, added light, untouched by fog. */
+function glowMaterials(): Map<SnackKind, { halo: THREE.SpriteMaterial; ring: THREE.MeshBasicMaterial }> {
+    const map = haloTexture()
+    return new Map(
+        SNACK_KINDS.map(kind => [
+            kind,
+            {
+                halo: new THREE.SpriteMaterial({
+                    map,
+                    color: GLOW[kind],
+                    transparent: true,
+                    opacity: HALO.opacity,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    fog: false,
+                }),
+                ring: new THREE.MeshBasicMaterial({
+                    color: GLOW[kind],
+                    transparent: true,
+                    opacity: 0.55,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    fog: false,
+                    side: THREE.DoubleSide,
+                }),
+            },
+        ])
+    )
+}
+
+/** A soft round glow, bright in the middle, gone at the edge. */
+function haloTexture(): THREE.Texture {
+    if (typeof document === 'undefined') return new THREE.Texture()
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = 128
+    const context = canvas.getContext('2d')!
+    const gradient = context.createRadialGradient(64, 64, 0, 64, 64, 64)
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)')
+    gradient.addColorStop(0.35, 'rgba(255, 255, 255, 0.35)')
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)')
+    context.fillStyle = gradient
+    context.fillRect(0, 0, 128, 128)
+
+    return new THREE.CanvasTexture(canvas)
 }
 
 interface Trail {
@@ -110,11 +189,18 @@ const CSS = `
     #race-snack-banner small { display: block; font-size: 18px; font-weight: 700; margin-top: 4px; }
     #race-feed { position: fixed; top: 56px; left: 50%; transform: translateX(-50%); display: grid; gap: 4px; justify-items: center; pointer-events: none; }
     #race-feed div { padding: 4px 10px; border-radius: 999px; background: rgb(15 23 42 / 0.75); color: #f8fafc; font: 600 13px system-ui, sans-serif; transition: opacity 0.5s; }
-    #race-effects { position: fixed; left: calc(50% + 120px); bottom: 14px; display: grid; gap: 4px; pointer-events: none; }
-    #race-effects div { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 6px; background: rgb(15 23 42 / 0.75); color: #f8fafc; font: 600 12px system-ui, sans-serif; min-width: 130px; }
-    #race-effects i { flex: 1; height: 4px; border-radius: 2px; background: rgb(255 255 255 / 0.2); overflow: hidden; }
-    #race-effects i b { display: block; height: 100%; background: #22d3ee; }
-    #race-effects div.bad i b { background: #f87171; }
+    #race-effects { position: fixed; left: calc(50% + 124px); bottom: 12px; display: flex; flex-direction: column-reverse; gap: 6px; pointer-events: none; }
+    #race-effects > div { display: flex; align-items: center; gap: 10px; width: clamp(200px, calc(50vw - 450px), 300px); box-sizing: border-box; padding: 8px 12px; border-radius: 10px; border: 2px solid; color: #f8fafc; font: 14px system-ui, sans-serif; box-shadow: 0 4px 14px rgb(15 23 42 / 0.5); }
+    #race-effects > div.good { background: rgb(20 83 45 / 0.88); border-color: #4ade80; }
+    #race-effects > div.bad { background: rgb(127 29 29 / 0.88); border-color: #f87171; }
+    #race-effects .icon { font-size: 30px; line-height: 1; }
+    #race-effects > div > div { flex: 1; display: grid; gap: 2px; }
+    #race-effects strong { font-size: 16px; font-weight: 800; }
+    #race-effects small { font-size: 13px; color: rgb(255 255 255 / 0.85); line-height: 1.25; }
+    #race-effects i { height: 5px; margin-top: 3px; border-radius: 3px; background: rgb(255 255 255 / 0.2); overflow: hidden; }
+    #race-effects i b { display: block; height: 100%; }
+    #race-effects .good i b { background: #4ade80; }
+    #race-effects .bad i b { background: #f87171; }
     #race-letterbox { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.3s; box-shadow: inset 0 11vh 0 #000, inset 0 -11vh 0 #000; }
     #race-letterbox.on { opacity: 1; }
     #race-letterbox span { position: absolute; bottom: 3vh; left: 0; right: 0; text-align: center; color: #fde68a; font: 800 18px system-ui, sans-serif; }
@@ -141,6 +227,7 @@ export function createSnackPlay(options: SnackOptions): SnackPlay {
     const frost = element('race-frost')
 
     const laid = new Map<number, Laid>()
+    const glows = glowMaterials()
     const pending = new Set<number>()
     let mine: Effect[] = []
     const trails: Trail[] = []
@@ -196,11 +283,19 @@ export function createSnackPlay(options: SnackOptions): SnackPlay {
             laid.clear()
             pending.clear()
             for (const spot of spots) {
-                const model = snackModel(spot.kind)
-                model.scale.setScalar(SCALE * (SMALL[spot.kind] ?? 1))
-                model.position.set(spot.x, world.ground(spot.x, spot.z) + FLOAT, spot.z)
+                const model = new THREE.Group()
+                model.position.set(spot.x, world.ground(spot.x, spot.z), spot.z)
+                const snack = snackModel(spot.kind)
+                snack.scale.setScalar(SCALE * (SMALL[spot.kind] ?? 1))
+                // A glow in the snack's colour behind it and a ring on the ground: you see it coming, day or night.
+                const glow = glows.get(spot.kind)!
+                const halo = new THREE.Sprite(glow.halo.clone())
+                halo.scale.setScalar(HALO.size)
+                const ring = new THREE.Mesh(RING, glow.ring)
+                ring.position.y = 0.06
+                model.add(snack, halo, ring)
                 scene.add(model)
-                laid.set(spot.id, { spot, model, phase: Math.random() * Math.PI * 2, eaten: false })
+                laid.set(spot.id, { spot, model, snack, halo, phase: Math.random() * Math.PI * 2, eaten: false })
             }
             tally = new Map()
         },
@@ -334,9 +429,12 @@ export function createSnackPlay(options: SnackOptions): SnackPlay {
                 item.model.visible = distance < DRAW_DISTANCE
                 if (!item.model.visible) continue
                 item.phase += dt
-                item.model.rotation.y = item.phase * SPIN
-                item.model.position.y =
-                    world.ground(item.spot.x, item.spot.z) + FLOAT + Math.sin(item.phase * 2.5) * 0.25
+                // The holder stays on the ground (its ring with it); the snack and its glow turn and bob above.
+                const bob = FLOAT + Math.sin(item.phase * 2.5) * 0.25
+                item.snack.rotation.y = item.phase * SPIN
+                item.snack.position.y = bob
+                item.halo.position.y = bob + HALO.lift
+                item.halo.material.opacity = HALO.opacity * (0.8 + 0.2 * Math.sin(item.phase * 4))
                 if (driving && race.racing && distance < EAT_REACH && !pending.has(id)) {
                     pending.add(id)
                     options.eat(id)
@@ -384,8 +482,10 @@ export function createSnackPlay(options: SnackOptions): SnackPlay {
             for (let i = trails.length - 1; i >= 0; i--) if (clock > trails[i]!.until) trails.splice(i, 1)
             points.update(clock)
 
+            // What you're driving on (others' trails), for the hops and the effects panel.
+            const ground = driving ? underfoot(kart.x, kart.z) : null
             // Nuts underfoot: hop.
-            if (driving && !kart.airborne && clock - lastHop > NUT_HOP.every && underfoot(kart.x, kart.z).nuts) {
+            if (ground?.nuts && !kart.airborne && clock - lastHop > NUT_HOP.every) {
                 lastHop = clock
                 driver.modify(k => ({ ...k, airborne: true, vy: NUT_HOP.speed, y: k.y + 0.05 }))
             }
@@ -397,7 +497,7 @@ export function createSnackPlay(options: SnackOptions): SnackPlay {
             letterbox.classList.toggle('on', subject !== null && driving)
 
             if (clock > bannerUntil) banner.classList.remove('on')
-            renderBar()
+            renderBar(ground)
         },
 
         receipt() {
@@ -405,29 +505,43 @@ export function createSnackPlay(options: SnackOptions): SnackPlay {
         },
     }
 
-    const renderBar = () => {
-        bar.replaceChildren(
-            ...mine.map(effect => {
-                const row = document.createElement('div')
-                if (BAD.has(effect.kind) || (effect.kind === 'coke' && effect.age >= 3)) row.className = 'bad'
-                const icon = effect.kind === 'frozen' ? '🥶' : SNACK_ICONS[effect.kind]
-                const name =
-                    effect.kind === 'coke'
-                        ? effect.age < 3
-                            ? 'Sugar rush'
-                            : 'Sugar crash'
-                        : effect.kind === 'frozen'
-                          ? 'Brain freeze'
-                          : SNACKS[effect.kind].name
-                row.textContent = `${icon} ${name}`
-                const track = document.createElement('i')
-                const fill = document.createElement('b')
-                fill.style.width = `${Math.max(0, 100 * (1 - effect.age / lasts(effect.kind)))}%`
-                track.append(fill)
-                row.append(track)
-                return row
-            })
-        )
+    /** The effects panel by the speedometer: what's on you, what it does, how long it has left; green good, red bad. */
+    const renderBar = (ground: Underfoot | null) => {
+        const rows: HTMLElement[] = mine.map(effect => {
+            const crash = effect.kind === 'coke' && effect.age >= 3
+            const live = crash ? LIVE.crash : LIVE[effect.kind]
+            // A Coke's two halves each count down on their own.
+            const left =
+                effect.kind === 'coke' ? 1 - (effect.age % 3) / 3 : 1 - effect.age / Math.max(0.001, lasts(effect.kind))
+            return effectRow(live, left)
+        })
+        if (ground?.frost) rows.push(effectRow(LIVE.onFrost, null))
+        if (ground?.crumbs) rows.push(effectRow(LIVE.onCrumbs, null))
+        if (ground?.nuts) rows.push(effectRow(LIVE.onNuts, null))
+        bar.replaceChildren(...rows)
+    }
+
+    const effectRow = (live: LiveEffect, left: number | null) => {
+        const row = document.createElement('div')
+        row.className = live.good ? 'good' : 'bad'
+        const icon = document.createElement('span')
+        icon.className = 'icon'
+        icon.textContent = live.icon
+        const text = document.createElement('div')
+        const title = document.createElement('strong')
+        title.textContent = live.title
+        const what = document.createElement('small')
+        what.textContent = live.does
+        text.append(title, what)
+        if (left !== null) {
+            const track = document.createElement('i')
+            const fill = document.createElement('b')
+            fill.style.width = `${Math.max(0, Math.min(100, left * 100))}%`
+            track.append(fill)
+            text.append(track)
+        }
+        row.append(icon, text)
+        return row
     }
 
     return play

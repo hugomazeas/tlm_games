@@ -17,10 +17,41 @@ export function snackModel(kind: SnackKind): THREE.Group {
     let model = cache.get(kind)
     if (!model) {
         model = BUILDERS[kind]()
+        selfLit(model)
         cache.set(kind, model)
     }
 
     return model.clone()
+}
+
+/** How bright a snack lights itself, so it reads at night and under clouds as well as by day. */
+const SELF_LIGHT = 0.45
+
+/** Makes every surface glow in its own colours (its label too): the snack shows whatever the sun does. */
+function selfLit(model: THREE.Object3D): void {
+    model.traverse(part => {
+        const material = (part as THREE.Mesh).material
+        if (!(material instanceof THREE.MeshStandardMaterial)) return
+        material.emissive.copy(material.map ? new THREE.Color(0xffffff) : material.color)
+        material.emissiveMap = material.map
+        material.emissiveIntensity = SELF_LIGHT
+    })
+}
+
+/** Each snack's glow colour: its can, bag or wrapper. */
+export const GLOW: Record<SnackKind, number> = {
+    coke: 0xff3b3b,
+    bubly: 0x7dd3fc,
+    chips: 0xfacc15,
+    montellier: 0x86efac,
+    fuze: 0xfbbf24,
+    chocolate: 0xfcd34d,
+    kirkland: 0xf59e0b,
+    gokrisp: 0xf97316,
+    trailmix: 0x4ade80,
+    popcorn: 0xfef08a,
+    drumsticks: 0xe0f2fe,
+    chipwich: 0xfde68a,
 }
 
 /** Each snack as a picture (a data URL), turned a little to show it's 3D. Empty without WebGL. */
