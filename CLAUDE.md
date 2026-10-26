@@ -405,15 +405,19 @@ built from OpenStreetMap and federal elevation data, drawn with Three.js.
   `drive/laps.ts` counts them only in order, crossed either way; the route between them
   decides the way round, and `orientAlongRoute` (`drive/route.ts`) turns a course to face
   it for the grid, resets and the wrong-way warning (client, server and the editor's
-  checks alike). A gate's stored `heading` only lays its line across the road.
-  `drive/trial.ts` is the step-counted clock.
-  A track must pass `drive/checks.ts` (streets join every gate, nothing built across
-  one, the 8-kart grid fits): the editor won't save one that doesn't, and
-  `pipeline.test.ts` holds the default tracks to it after a map refresh. The editor
-  (`client/track-editor.ts`): click a street to add a checkpoint, click the route to
-  insert, drag to move, right-click to remove (`drive/editing.ts`); checkpoints show as
-  bars across the road, without arrows. Laravel validates shape and that checkpoints are
-  on the map.
+  checks alike); a gate laid more than ~25° off square to the route (across a path where it
+  meets the street) is turned square across it. `drive/trial.ts` is the step-counted clock.
+  The grid (`gridSlot`): two abreast 2.4 m apart, rows 5.5 m; with `gridFits` a slot that
+  doesn't fit slides in towards the middle, then steps back. A track must pass
+  `drive/checks.ts` (streets join every gate, nothing built across one, the 8-kart grid
+  fits: grass or a sidewalk will do, not water, a wall or inside a building): the editor
+  won't save one that doesn't, and `pipeline.test.ts` holds the default tracks to it after
+  a map refresh. The editor (`client/track-editor.ts`): click a street to add a checkpoint,
+  click the route to insert, drag to move, right-click to remove (`drive/editing.ts`);
+  checkpoints show as bars across the road (as the race lays them, and saved that way); one
+  green arrow on the start line shows the way round, and "⇄ Reverse direction" (`reversed`:
+  the start kept, the others in the opposite order) flips it. Laravel validates shape and
+  that checkpoints are on the map.
 - **Snacks** (`drive/snacks.ts` pure and shared, `client/snacks.ts`, `client/snack-models.ts`):
   the office dépanneur's 12 real items lie along a race's route, anywhere across the
   street (up to 6.5 m off the route's line), as many as the host's slider says (`density`

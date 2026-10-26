@@ -101,4 +101,12 @@ describe('orientAlongRoute', () => {
         const oriented = orientAlongRoute(block, route)
         oriented.gates.forEach((gate, i) => expect(gate).toBe(block.gates[i]!))
     })
+
+    test('a gate laid across another road (a path crossing the street) is turned square across the route', () => {
+        // The first gate laid along the street, as if across a footpath meeting it there.
+        const askew = { ...block, gates: [{ ...block.gates[0]!, dx: 0, dz: 1 }, ...block.gates.slice(1)] }
+        const turned = orientAlongRoute(askew, route).gates[0]!
+        expect(turned.dx).toBeCloseTo(block.gates[0]!.dx)
+        expect(turned.dz).toBeCloseTo(block.gates[0]!.dz)
+    })
 })

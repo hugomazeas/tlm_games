@@ -1,6 +1,6 @@
 import { courseProblems } from '../drive/checks.ts'
-import { courseFile, gateAcrossRoad, insertionIndex } from '../drive/editing.ts'
-import { courseRoute, type Route } from '../drive/route.ts'
+import { courseFile, gateAcrossRoad, insertionIndex, reversed } from '../drive/editing.ts'
+import { courseRoute, orientAlongRoute, type Route } from '../drive/route.ts'
 import { buildWorld } from '../drive/world.ts'
 import { projectionAt } from '../map/convert.ts'
 import { type GateSpec, projectCourse } from '../map/courses.ts'
@@ -75,6 +75,7 @@ const CSS = `
     .track-editor .problems { font-size: 13px; color: #fca5a5; display: grid; gap: 4px; }
     .track-editor .ok { font-size: 13px; color: #86efac; }
     .track-editor .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
+    .track-editor .reverse { font: inherit; font-size: 14px; padding: 8px 12px; border-radius: 8px; border: 1px solid #16a34a; background: rgb(22 163 74 / 0.15); color: #f8fafc; cursor: pointer; }
     .track-editor .actions button, .track-editor .actions a { font: inherit; font-size: 14px; padding: 8px 12px; border-radius: 8px; border: 0; cursor: pointer; text-decoration: none; }
     .track-editor .primary { background: #ea580c; color: #fff; font-weight: 600; }
     .track-editor .secondary { background: rgb(255 255 255 / 0.1); color: #fff; }
@@ -96,9 +97,11 @@ container.innerHTML = `
         <label>Laps <select name="laps"></select></label>
         <div class="stats"><div><b data-stat="length">–</b>lap length</div><div><b data-stat="count">0</b>checkpoints</div></div>
         <ol></ol>
+        <button class="secondary reverse" data-action="reverse" title="Race the lap the other way round: the start line stays, the arrow on it flips">⇄ Reverse direction</button>
         <div class="status"></div>
         <p class="help">
             Click a street to add a checkpoint: the first one is the start line.
+            Its green arrow shows which way the race goes: "Reverse direction" flips it.
             Click on the orange route to put one between two.
             Drag a checkpoint to move it; right-click it to remove it.
             Scroll to zoom, drag the map to move around. Ctrl+Z undoes.
@@ -121,6 +124,7 @@ const buttons = {
     drive: container.querySelector<HTMLButtonElement>('[data-action=drive]')!,
     save: container.querySelector<HTMLButtonElement>('[data-action=save]')!,
     undo: container.querySelector<HTMLButtonElement>('[data-action=undo]')!,
+    reverse: container.querySelector<HTMLButtonElement>('[data-action=reverse]')!,
 }
 for (let laps = 1; laps <= MAX_LAPS; laps++) {
     lapsSelect.append(new Option(`${laps} lap${laps > 1 ? 's' : ''}`, String(laps)))
@@ -194,6 +198,7 @@ function renderSidebar(): void {
     buttons.drive.disabled = blocked
     buttons.save.disabled = blocked
     buttons.undo.disabled = history.length === 0
+    buttons.reverse.disabled = gates.length < 3
     if (nameInput.value.trim() === '' && gates.length >= 3 && problems.length === 0) {
         statusBox.className = 'problems'
         statusBox.textContent = 'Give the track a name.'
@@ -271,9 +276,13 @@ function draw(): void {
     }
 
     // Checkpoints in screen pixels, so they stay the same size at any zoom: a bar across the road, and its number.
-    // No arrow: a checkpoint is crossed either way, the route decides the way round.
+    // A checkpoint is crossed either way; the one arrow, on the start line, shows which way the route
+    // (and so the race) leaves it: "Reverse direction" flips it.
     context.setTransform(ratio, 0, 0, ratio, 0, 0)
-    gates.forEach((gate, i) => {
+    if (route && gates.length >= 3) drawStartArrow(route)
+    // Each bar as the race lays it: square across the route where the route goes through.
+    const raced = route ? orientAlongRoute(draft(), route).gates : gates
+    raced.forEach((gate, i) => {
         const [x, y] = toScreen(gate.x, gate.z)
         const colour = i === hovered ? COLOURS.hover : i === 0 ? COLOURS.start : COLOURS.gate
         const half = Math.max((gate.width / 2) * scale, 14)
@@ -309,6 +318,43 @@ function traceLine(flat: number[]): void {
 function tracePolygon(flat: number[]): void {
     traceLine(flat)
     context.closePath()
+}
+
+/**
+ * A big arrow off the start line, the way the race goes: the start gate as the
+ * race orients it (`orientAlongRoute`: the grid faces this way too).
+ */
+function drawStartArrow(route: Route): void {
+    const start = orientAlongRoute(draft(), route).gates[0]!
+    const [x1, y1] = toScreen(start.x, start.z)
+    const [x2, y2] = toScreen(start.x + start.dx * 25, start.z + start.dz * 25)
+    const length = Math.hypot(x2 - x1, y2 - y1)
+    if (length < 1) return
+    const ux = (x2 - x1) / length
+    const uy = (y2 - y1) / length
+    // From just past the start's circle, 46 px long, with a head.
+    const tailX = x1 + ux * 18
+    const tailY = y1 + uy * 18
+    const tipX = x1 + ux * 64
+    const tipY = y1 + uy * 64
+    context.strokeStyle = COLOURS.start
+    context.fillStyle = COLOURS.start
+    context.lineWidth = 6
+    context.lineCap = 'round'
+    context.beginPath()
+    context.moveTo(tailX, tailY)
+    context.lineTo(tipX - ux * 10, tipY - uy * 10)
+    context.stroke()
+    context.beginPath()
+    context.moveTo(tipX, tipY)
+    context.lineTo(tipX - ux * 18 - uy * 11, tipY - uy * 18 + ux * 11)
+    context.lineTo(tipX - ux * 18 + uy * 11, tipY - uy * 18 - ux * 11)
+    context.closePath()
+    context.fill()
+    context.lineWidth = 2
+    context.strokeStyle = '#ffffff'
+    context.stroke()
+    context.lineCap = 'butt'
 }
 
 function toScreen(x: number, z: number): [number, number] {
@@ -455,6 +501,7 @@ new ResizeObserver(() => draw()).observe(canvas)
 nameInput.addEventListener('input', () => renderSidebar())
 lapsSelect.addEventListener('change', () => renderSidebar())
 buttons.undo.addEventListener('click', undo)
+buttons.reverse.addEventListener('click', () => edit(reversed(gates)))
 buttons.save.addEventListener('click', () => void save(false))
 buttons.drive.addEventListener('click', () => void save(true))
 
@@ -471,7 +518,8 @@ async function save(thenDrive: boolean): Promise<void> {
     serverError = ''
     renderSidebar()
     try {
-        const file = courseFile(draft(), unproject)
+        // Saved as the race lays the checkpoints: their lines square across the route, facing the way round.
+        const file = courseFile(orientAlongRoute(draft(), route), unproject)
         const response = await fetch(config!.saveUrl, {
             method: config!.method,
             headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': config!.csrf },

@@ -16,6 +16,18 @@ export const GRID_SIZE = 8
 /** The middle of a gate, the carriageway, must be open; its ends may reach past the kerbs. */
 const OPEN_SHARE = 0.7
 
+/**
+ * Room for a kart on the grid: not in the river, not against a building or a
+ * wall, and a clear run to the start line (so not inside a building either).
+ * A sidewalk or the grass will do: it drives off from there.
+ */
+export function gridFits(world: DriveWorld, start: { x: number; z: number }): (x: number, z: number) => boolean {
+    return (x, z) =>
+        world.surface(x, z) !== 'water' &&
+        !blockedAt(world, x, z, KART_RADIUS * 0.8) &&
+        !solidAcross(world, { x1: x, z1: z, x2: start.x, z2: start.z })
+}
+
 /** What's wrong with a course, one line each; empty when it's fine. */
 export function courseProblems(course: Course, world: DriveWorld, roads: readonly Road[]): string[] {
     const problems: string[] = []
@@ -37,8 +49,7 @@ export function courseProblems(course: Course, world: DriveWorld, roads: readonl
     })
     if (course.gates.length > 0) {
         for (let slot = 0; slot < GRID_SIZE; slot++) {
-            const { x, z } = gridSlot(raced, slot)
-            if (world.surface(x, z) !== 'road' || blockedAt(world, x, z, KART_RADIUS)) {
+            if (!gridSlot(raced, slot, gridFits(world, raced.gates[0]!)).fits) {
                 problems.push(`no room on the grid for kart ${slot + 1}: move the start line further along a straight`)
                 break
             }

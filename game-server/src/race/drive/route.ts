@@ -22,6 +22,8 @@ export interface Route {
 const ROUTED: readonly RoadKind[] = ['major', 'street', 'service']
 /** A gate's way through is the route's from this far before it to this far after. */
 const THROUGH = 5
+/** A gate within about 25° of square across the route is left as laid (cos 25°). */
+const SQUARE_ENOUGH = 0.9
 
 /** The road network as a graph: points where roads meet or bend, joined by the stretches between. */
 export class RoadGraph {
@@ -173,7 +175,15 @@ export function orientAlongRoute(course: Course, route: Route): Course {
         gates: course.gates.map((gate, i) => {
             const before = pointAt(route, route.gateAlong[i]! - THROUGH)
             const after = pointAt(route, route.gateAlong[i]! + THROUGH)
-            const ahead = (after.x - before.x) * gate.dx + (after.z - before.z) * gate.dz
+            const wayX = after.x - before.x
+            const wayZ = after.z - before.z
+            const way = Math.hypot(wayX, wayZ)
+            const ahead = wayX * gate.dx + wayZ * gate.dz
+            // A gate laid across another road than the route takes (a path where it crosses the street):
+            // turn it square across the route, so the race crosses it and the grid lines up along the street.
+            if (way > THROUGH && Math.abs(ahead) < way * SQUARE_ENOUGH) {
+                return { ...gate, dx: wayX / way, dz: wayZ / way }
+            }
             // 0 - v rather than -v: a turned gate keeps +0, not −0.
             return ahead >= 0 ? gate : { ...gate, dx: 0 - gate.dx, dz: 0 - gate.dz }
         }),
