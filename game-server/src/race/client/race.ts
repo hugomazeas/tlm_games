@@ -6,6 +6,7 @@ import { ordinal } from '../drive/standings.ts'
 import {
     countdownLeft,
     formatTime,
+    FINAL_COUNT,
     INTRO,
     introLeft,
     raceClock,
@@ -74,7 +75,7 @@ export interface Race {
     /** Puts the kart on grid slot `slot`, stopped. */
     placeOnGrid(slot: number): void
     /** The race is on: on grid slot `slot`, held there through the countdown. */
-    countdown(slot: number): void
+    countdown(slot: number, seconds?: number): void
     /** The race is over: free driving again. */
     end(): void
     /** Each step of the race, where the kart got to and the race clock then (seconds). */
@@ -118,10 +119,11 @@ export function createRace(options: RaceOptions): Race {
             driver.place(at.x, at.z, at.heading)
         },
 
-        countdown(slot) {
+        countdown(slot, seconds) {
             if (!course) return
             race.placeOnGrid(slot)
-            trial = startTrial()
+            // The lobby says how long the countdown is: the drone's flight over this lap, then 3, 2, 1.
+            trial = startTrial(seconds === undefined ? INTRO : Math.max(0, seconds - FINAL_COUNT))
             lines = null
             driver.frozen = true
             driver.onStep = (before, after) => {
@@ -153,7 +155,7 @@ export function createRace(options: RaceOptions): Race {
         direct(camera) {
             if (!trial || !route) return
             const left = introLeft(trial)
-            if (left > 0) flyover(route, world, camera, 1 - left / INTRO)
+            if (left > 0) flyover(route, world, camera, 1 - left / trial.intro, trial.intro)
         },
 
         get racing() {

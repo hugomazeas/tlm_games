@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import type { KartState } from '../drive/kart.ts'
 import { pointAt, type Route } from '../drive/route.ts'
+import { INTRO } from '../drive/trial.ts'
 import type { DriveWorld } from '../drive/world.ts'
 import type { Pose } from '../protocol.ts'
 import { groundNormal } from './drive.ts'
@@ -19,8 +20,14 @@ import { buildKartModel, type KartLook, type KartModel } from './kart.ts'
  *   and bronze blocks by the start line, confetti, the camera circling them.
  */
 
-/** The drone: this high, looking this far ahead, and the last second blends into the chase camera. */
-const DRONE = { height: 45, ahead: 90, blend: 1 }
+/**
+ * The drone flies the whole lap, start line to start line, in the time the
+ * lobby gave it (drive/trial.ts introFor): at least this high, higher over a
+ * long lap (a metre per this many metres of lap, up to the ceiling) so it
+ * still glides; looking this far ahead; the last seconds blend into the chase
+ * camera.
+ */
+const DRONE = { height: 55, metresPerMetre: 25, ceiling: 140, ahead: 120, blend: 1.4 }
 /** Kept for the replay: this many seconds of every kart. */
 const KEEP = 8
 /** The replay: the last this-many seconds before your finish, at this speed, a new camera every so often. */
@@ -39,19 +46,30 @@ interface Frame {
     takes: Take[]
 }
 
-/** Puts the camera on the drone for progress `p` (0–1 of the intro), blending into the chase camera at the end. */
-export function flyover(route: Route, world: DriveWorld, camera: THREE.PerspectiveCamera, p: number): void {
-    const eased = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2
-    const along = eased * route.length
+/**
+ * Puts the camera on the drone for progress `p` (0–1 of a `seconds`-long
+ * intro), the whole lap round, blending into the chase camera at the end.
+ */
+export function flyover(
+    route: Route,
+    world: DriveWorld,
+    camera: THREE.PerspectiveCamera,
+    p: number,
+    seconds = INTRO
+): void {
+    // A steady glide with soft ends (half straight, half eased), the whole lap.
+    const eased = 0.5 * p + 0.5 * (0.5 - 0.5 * Math.cos(Math.PI * p))
+    const along = (eased * route.length) % route.length
     const here = pointAt(route, along)
     const ahead = pointAt(route, along + DRONE.ahead)
-    const drone = new THREE.Vector3(here.x, world.ground(here.x, here.z) + DRONE.height, here.z)
+    const height = Math.min(DRONE.ceiling, Math.max(DRONE.height, route.length / DRONE.metresPerMetre))
+    const drone = new THREE.Vector3(here.x, world.ground(here.x, here.z) + height, here.z)
     const target = new THREE.Vector3(ahead.x, world.ground(ahead.x, ahead.z), ahead.z)
 
     // The chase camera has already been placed this frame: the end of the flight comes down into it.
     const chase = camera.position.clone()
     const chaseLook = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).multiplyScalar(10).add(chase)
-    const k = THREE.MathUtils.smoothstep(p, 1 - DRONE.blend / 5, 1)
+    const k = THREE.MathUtils.smoothstep(p, 1 - DRONE.blend / seconds, 1)
     camera.position.lerpVectors(drone, chase, k)
     camera.lookAt(target.lerp(chaseLook, k))
 }

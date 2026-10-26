@@ -292,8 +292,10 @@ built from OpenStreetMap and federal elevation data, drawn with Three.js.
   back, and they punch the air on an overtake or at the finish. Name tag over other drivers'
   karts (not your own). It rides on springs (squat, dive, roll, landing bounce), brake lights
   glow when slowing, exhausts pop when lifting off.
-- **Cinema** (`client/cinema.ts`): the countdown is `INTRO` (5 s) of a drone flying the whole
-  lap then 3-2-1 (`COUNTDOWN` 8 s, server and client). Every racing frame of every kart is
+- **Cinema** (`client/cinema.ts`): the countdown is a drone flying the whole lap, start line to
+  start line (`introFor`: ~140 m/s, 6–14 s; higher over a long lap), then 3-2-1. The lobby
+  works it out per track (`countdownFor`) and sends it in `countdown.seconds`; the client's
+  trial counts that (`startTrial(intro)`). Every racing frame of every kart is
   kept 8 s; crossing the line replays your last 6 s at half speed from trackside cameras
   (letterbox, REPLAY), then when the race ends the top three stand on a podium at the start
   line with confetti. Any key skips or leaves. `client/effects.ts` gives every

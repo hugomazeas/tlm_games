@@ -189,7 +189,7 @@ export function joinLobby(options: LobbyOptions): Lobby {
                     }
                     samples = []
                     options.onCountdown()
-                    race.countdown(slot)
+                    race.countdown(slot, message.seconds)
                     break
                 }
                 case 'snacks':

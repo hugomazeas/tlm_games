@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { RESPAWN_MS } from './drive/snacks.ts'
-import { COUNTDOWN } from './drive/trial.ts'
+import { COUNTDOWN, introFor } from './drive/trial.ts'
 import { PLAIN } from './livery.ts'
 import { FINISH_GRACE_MS, type LoadedTrack, LobbyManager, type RaceResult } from './lobbies.ts'
 import type { Course } from './map/format.ts'
@@ -447,6 +447,19 @@ const routed: LoadedTrack = {
         gateAlong: [0, 200, 400, 600],
     },
 }
+
+test('the countdown is the drone over this lap, then 3, 2, 1: green light right after', () => {
+    join('a', 1, null, routed)
+    manager.start('a')
+    const seconds = introFor(800) + 3
+    expect(last('a', 'countdown')!.seconds).toBe(seconds)
+    now += seconds * 1000 - 1
+    manager.tick()
+    expect(lobbyOf('a').phase).toBe('countdown')
+    now += 1
+    manager.tick()
+    expect(lobbyOf('a').phase).toBe('racing')
+})
 
 describe('snacks', () => {
     const at = (id: string, x: number, z: number) => manager.pose(id, { ...POSE, x, z })
