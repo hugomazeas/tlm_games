@@ -11,6 +11,7 @@
  */
 
 import { MAX_DENSITY, type SnackKind, type SnackSpot } from './drive/snacks.ts'
+import type { Livery } from './livery.ts'
 import { type Sky, type TimeOfDay, TIMES_OF_DAY } from './drive/weather.ts'
 
 export const MAX_RACERS = 8
@@ -19,7 +20,7 @@ export const MAX_RACERS = 8
 export type LobbyPhase = 'waiting' | 'countdown' | 'racing' | 'finished'
 
 /** A driver as everyone sees them: their Hub name and garage colours, or a guest's. */
-export interface DriverInfo {
+export interface DriverInfo extends Livery {
     /** The connection's id in the lobby. */
     id: string
     /** The Hub player, null for a guest (guests race, but aren't recorded). */

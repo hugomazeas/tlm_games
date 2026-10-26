@@ -1,5 +1,6 @@
 import type { LaravelClient } from '../laravel.ts'
 import { courseRoute, orientAlongRoute } from './drive/route.ts'
+import { type Livery, PLAIN } from './livery.ts'
 import { type Connection, type LoadedTrack, LobbyManager } from './lobbies.ts'
 import { projectionAt } from './map/convert.ts'
 import { projectCourse } from './map/courses.ts'
@@ -15,7 +16,7 @@ import type { ClientMessage } from './protocol.ts'
 const MAP_FILE = `${import.meta.dir}/../../maps/quebec-plains/map.json`
 /** Tracks can be edited in the Hub: a lobby opened after this long fetches the track again. */
 const TRACK_CACHE_MS = 30_000
-const GUEST = { name: 'Guest', body: '#d23c3c', accent: '#2b5fa8' }
+const GUEST = { name: 'Guest', body: '#d23c3c', accent: '#2b5fa8', ...PLAIN }
 
 export interface RacingLive {
     manager: LobbyManager
@@ -60,7 +61,7 @@ export async function createRacingLive(laravel: LaravelClient): Promise<RacingLi
 
         async hello(conn, { trackId, lobby, playerId }) {
             let track: LoadedTrack | null
-            let driver: { name: string; body: string; accent: string } | null = GUEST
+            let driver: ({ name: string; body: string; accent: string } & Livery) | null = GUEST
             try {
                 track = await loadTrack(trackId)
                 if (playerId !== null) driver = await laravel.findDriver(playerId)
@@ -80,7 +81,7 @@ export async function createRacingLive(laravel: LaravelClient): Promise<RacingLi
             // The socket may have closed while the Hub answered.
             if (!conn.isOpen()) return false
 
-            manager.join(conn, { playerId, name: driver.name, body: driver.body, accent: driver.accent }, track, lobby)
+            manager.join(conn, { playerId, ...driver }, track, lobby)
             return true
         },
     }

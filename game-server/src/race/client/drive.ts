@@ -11,6 +11,7 @@ import {
     TOP_SPEED,
 } from '../drive/kart.ts'
 import type { DriveWorld, Pad } from '../drive/world.ts'
+import type { Livery } from '../livery.ts'
 import type { Effects } from './effects.ts'
 import { buildKartModel, DEFAULT_LOOK, type KartLook } from './kart.ts'
 
@@ -33,6 +34,19 @@ const FOV_PER_SPEED = 0.4
 const FOV_BOOST = 10
 /** Near top speed the camera shakes, this much at most (metres). */
 const SHAKE = 0.05
+/**
+ * Mouse steering: no steer in the middle this wide (fraction of the screen
+ * from its centre), full lock this far out, eased in this fast (per second).
+ */
+const MOUSE = { deadZone: 0.03, fullAt: 0.3, rate: 12 }
+/** Where this browser keeps how it steers. */
+export const STEERING_KEY = 'racing.steering'
+
+/** How this browser steers: the mouse unless it chose the keyboard. */
+export function savedSteering(): 'mouse' | 'keys' {
+    return localStorage.getItem(STEERING_KEY) === 'keys' ? 'keys' : 'mouse'
+}
+
 /** The welcome screen's camera: circling this far out and up, this many radians a second. */
 const SHOWCASE = { radius: 5.2, height: 1.8, turn: 0.35 }
 const PAD_LIFT = 0.14
@@ -49,10 +63,18 @@ export interface Driver {
     place(x: number, z: number, heading: number): void
     reset(): void
     setActive(active: boolean): void
+    /** Steering with the mouse (A/D still work and win while held) or with the keys only. */
+    steering: 'mouse' | 'keys'
     /** The kart parked where it is with the camera circling it: the welcome screen's view. */
     showcase(dt: number): void
+    /** Where round the kart the showcase camera is (radians from behind it). */
+    orbit: number
     /** Repaints your kart (the welcome screen's colour pickers). */
     paint(body: string, accent: string): void
+    /** Puts a livery on your kart (number, pattern, stickers). */
+    dress(livery: Livery): void
+    /** Your driver punches the air. */
+    celebrate(how: 'overtake' | 'finish'): void
     /** Held in place, ignoring the keys: on the grid before the green light. */
     frozen: boolean
     /** The tyres' grip under the race's weather (weather.ts GRIP): 1 when dry. */
@@ -91,7 +113,6 @@ export function createDriver(
     const up = new THREE.Vector3(0, 1, 0)
     const chase = new THREE.Vector3()
     let chaseReady = false
-    let orbit = Math.PI * 0.8
 
     document.addEventListener('keydown', event => {
         if (!active) return
@@ -106,15 +127,43 @@ export function createDriver(
 
     const held = (...codes: string[]) => codes.some(code => keys.has(code))
 
+    // The mouse steers: where it is across the screen (the middle is straight ahead), the left button
+    // drifts, the right one fires the nitro. Only over the 3D view, so the panels still take clicks.
+    let mouseSteer = 0
+    let mouseSeen = false
+    const buttons = new Set<number>()
+    const overView = (event: MouseEvent) =>
+        event.target instanceof HTMLCanvasElement && event.target.classList.contains('race-view')
+    window.addEventListener('mousemove', event => {
+        if (!active) return
+        mouseSeen = true
+        const offset = event.clientX / window.innerWidth - 0.5
+        const reach = Math.max(0, Math.abs(offset) - MOUSE.deadZone) / (MOUSE.fullAt - MOUSE.deadZone)
+        // Right of the middle steers right (negative).
+        mouseSteer = -Math.sign(offset) * Math.min(1, reach)
+    })
+    window.addEventListener('mousedown', event => {
+        if (active && overView(event)) buttons.add(event.button)
+    })
+    window.addEventListener('mouseup', event => buttons.delete(event.button))
+    window.addEventListener('contextmenu', event => {
+        if (active && overView(event)) event.preventDefault()
+    })
+    window.addEventListener('blur', () => buttons.clear())
+
     const read = (dt: number): KartInput => {
-        const wanted = (held('KeyA', 'ArrowLeft') ? 1 : 0) - (held('KeyD', 'ArrowRight') ? 1 : 0)
-        steer += THREE.MathUtils.clamp(wanted - steer, -STEER_RATE * dt, STEER_RATE * dt)
+        const keyed = held('KeyA', 'ArrowLeft', 'KeyD', 'ArrowRight')
+        const byMouse = driver.steering === 'mouse' && mouseSeen && !keyed
+        const wanted = byMouse ? mouseSteer : (held('KeyA', 'ArrowLeft') ? 1 : 0) - (held('KeyD', 'ArrowRight') ? 1 : 0)
+        const rate = (byMouse ? MOUSE.rate : STEER_RATE) * dt
+        steer += THREE.MathUtils.clamp(wanted - steer, -rate, rate)
+        const mouse = driver.steering === 'mouse'
 
         return {
             throttle: (held('KeyW', 'ArrowUp') ? 1 : 0) - (held('KeyS', 'ArrowDown') ? 1 : 0),
             steer,
-            drift: held('Space', 'ShiftLeft', 'ShiftRight'),
-            nitro: held('KeyE'),
+            drift: held('Space', 'ShiftLeft', 'ShiftRight') || (mouse && buttons.has(0)),
+            nitro: held('KeyE') || (mouse && buttons.has(2)),
         }
     }
 
@@ -222,10 +271,10 @@ export function createDriver(
 
         showcase(dt) {
             model.root.visible = true
-            orbit += dt * SHOWCASE.turn
+            driver.orbit += dt * SHOWCASE.turn
             const { x, y, z, heading } = current
             model.pose(x, y, z, heading, groundNormal(world, x, z), current, 0, dt)
-            const angle = heading + orbit
+            const angle = heading + driver.orbit
             camera.position.set(
                 x - Math.sin(angle) * SHOWCASE.radius,
                 Math.max(y, world.ground(x, z)) + SHOWCASE.height,
@@ -241,7 +290,17 @@ export function createDriver(
             model.paint(body, accent)
         },
 
+        dress(livery) {
+            model.dress(livery)
+        },
+
+        celebrate(how) {
+            model.celebrate(how)
+        },
+
         mods: null,
+        orbit: Math.PI * 0.8,
+        steering: typeof localStorage === 'undefined' ? 'mouse' : savedSteering(),
 
         modify(change) {
             const before = current

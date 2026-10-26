@@ -89,13 +89,13 @@ class RacingGarageTest extends TestCase
 
         $this->get("/games/racing/tracks/{$track->id}/play?player={$player->id}")
             ->assertOk()
-            ->assertSee('"driver":{"name":"Alice","body":"#22c55e","accent":"#8b5cf6"}', false);
+            ->assertSee('"driver":{"name":"Alice","body":"#22c55e","accent":"#8b5cf6","number":null,"pattern":"none","stickers":true,"sponsor":null}', false);
     }
 
     public function test_without_a_player_you_race_as_a_guest(): void
     {
         $track = $this->track();
-        $guest = '"driver":{"name":"Guest","body":"'.RacingKart::DEFAULT_BODY.'","accent":"'.RacingKart::DEFAULT_ACCENT.'"}';
+        $guest = '"driver":{"name":"Guest","body":"'.RacingKart::DEFAULT_BODY.'","accent":"'.RacingKart::DEFAULT_ACCENT.'","number":null';
 
         $this->get("/games/racing/tracks/{$track->id}/play")->assertOk()->assertSee($guest, false);
         $this->get("/games/racing/tracks/{$track->id}/play?player=999")->assertOk()->assertSee($guest, false);
@@ -107,9 +107,10 @@ class RacingGarageTest extends TestCase
         $bob = Player::create(['name' => 'Bob']);
         RacingKart::create(['player_id' => $bob->id, 'body' => '#22c55e', 'accent' => '#8b5cf6']);
 
+        $livery = ['number' => null, 'pattern' => 'none', 'stickers' => true, 'sponsor' => null];
         $this->assertSame([
-            ['id' => $alice->id, 'name' => 'Alice', 'body' => RacingKart::DEFAULT_BODY, 'accent' => RacingKart::DEFAULT_ACCENT],
-            ['id' => $bob->id, 'name' => 'Bob', 'body' => '#22c55e', 'accent' => '#8b5cf6'],
+            ['id' => $alice->id, 'name' => 'Alice', 'body' => RacingKart::DEFAULT_BODY, 'accent' => RacingKart::DEFAULT_ACCENT, ...$livery],
+            ['id' => $bob->id, 'name' => 'Bob', 'body' => '#22c55e', 'accent' => '#8b5cf6', ...$livery],
         ], RacingKart::drivers());
 
         $this->get("/games/racing/tracks/{$this->track()->id}/play")
@@ -134,6 +135,36 @@ class RacingGarageTest extends TestCase
         $this->postJson('/games/racing/drivers', ['name' => 'Alice'])->assertUnprocessable()->assertJsonValidationErrors('name');
         $this->postJson('/games/racing/drivers', ['name' => ''])->assertUnprocessable();
         $this->assertSame(1, Player::count());
+    }
+
+    public function test_the_livery_is_saved_and_a_colours_only_save_keeps_it(): void
+    {
+        $player = Player::create(['name' => 'Alice']);
+        $this->assertSame(['number' => null, 'pattern' => 'none', 'stickers' => true, 'sponsor' => null], array_intersect_key(
+            RacingKart::lookOf($player),
+            array_flip(['number', 'pattern', 'stickers', 'sponsor'])
+        ));
+
+        $this->putJson("/games/racing/garage/{$player->id}", [
+            'body' => '#22c55e', 'accent' => '#8b5cf6', 'number' => 42, 'pattern' => 'flames', 'stickers' => false,
+            'sponsor' => 'Poutine Co',
+        ])->assertOk()->assertJson(['number' => 42, 'pattern' => 'flames', 'stickers' => false, 'sponsor' => 'Poutine Co']);
+
+        $this->putJson("/games/racing/garage/{$player->id}", ['body' => '#facc15', 'accent' => '#8b5cf6'])
+            ->assertOk()
+            ->assertJson(['body' => '#facc15', 'number' => 42, 'pattern' => 'flames']);
+    }
+
+    public function test_the_livery_must_be_one_the_game_draws(): void
+    {
+        $player = Player::create(['name' => 'Alice']);
+
+        $this->putJson("/games/racing/garage/{$player->id}", ['body' => '#22c55e', 'accent' => '#8b5cf6', 'number' => 100])
+            ->assertUnprocessable()->assertJsonValidationErrors('number');
+        $this->putJson("/games/racing/garage/{$player->id}", ['body' => '#22c55e', 'accent' => '#8b5cf6', 'pattern' => 'polka'])
+            ->assertUnprocessable()->assertJsonValidationErrors('pattern');
+        $this->putJson("/games/racing/garage/{$player->id}", ['body' => '#22c55e', 'accent' => '#8b5cf6', 'sponsor' => 'Eleven chars'])
+            ->assertUnprocessable()->assertJsonValidationErrors('sponsor');
     }
 
     public function test_deleting_a_player_takes_their_kart_with_them(): void

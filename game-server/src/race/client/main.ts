@@ -4,10 +4,14 @@ import { heightAt } from '../map/convert.ts'
 import { type GateSpec, projectCourse } from '../map/courses.ts'
 import type { AreaKind, Course, RaceMap } from '../map/format.ts'
 import { CLEAR_NOON, GRIP, rollSky, type Sky, type TimeOfDay, type Weather } from '../drive/weather.ts'
+import { forwardSpeed } from '../drive/kart.ts'
+import type { Pose } from '../protocol.ts'
 import { createAtmosphere } from './atmosphere.ts'
-import { createDriver } from './drive.ts'
+import { createCinema } from './cinema.ts'
+import { createDriver, STEERING_KEY } from './drive.ts'
 import { createEffects } from './effects.ts'
 import type { Quality } from './atmosphere.ts'
+import { liveryFrom, PLAIN } from '../livery.ts'
 import { DEFAULT_LOOK, type KartLook } from './kart.ts'
 import { createSnackPlay, type SnackPlay } from './snacks.ts'
 import {
@@ -79,6 +83,8 @@ const MAX_TEXTURE = 4096
 const EYE_HEIGHT = 2
 /** Vertical field of view, in degrees, unless a view link asks for another. */
 const FOV = 70
+/** The kart a guest drives: the default colours, no livery. */
+const GUEST_STYLE = { body: DEFAULT_LOOK.body, accent: DEFAULT_LOOK.accent, ...PLAIN }
 const BASE_SPEED = 40
 const LANDMARK = { name: 'Hôtel du Parlement', lat: 46.80868, lon: -71.2142 }
 /** Free roam starts here, looking at the Parliament from above the Plains. */
@@ -86,7 +92,7 @@ const ROAM_VIEW = '#46.806500,-71.218500,80,-60,-15'
 
 const KMH = 3.6
 const DRIVE_KEYS =
-    'W/S gas · brake · A/D steer · Space or Shift drift (let go for a boost) · E nitro when charged · R back on track'
+    'W/S gas · brake · steer with the mouse (or A/D) · left click or Space drift (let go for a boost) · right click or E nitro · R back on track'
 const FLY_KEYS =
     'Click to look around · WASD move · Space / C up / down · Shift faster · wheel speed · I identify building · Esc release mouse'
 const HELP = {
@@ -145,8 +151,13 @@ const effects = createEffects(scene, world, renderer, overlay.root)
 effects.setQuality(atmosphere.quality)
 const driver = createDriver(world, scene, camera, config?.driver, effects)
 const others = createOthers(world, scene, effects)
-/** `welcome`: the welcome screen is up, the camera circles your parked kart. */
-type Mode = 'drive' | 'fly' | 'watch' | 'welcome'
+/** `welcome`: the welcome screen is up, the camera circles your parked kart. `cinema`: a replay or the podium. */
+type Mode = 'drive' | 'fly' | 'watch' | 'welcome' | 'cinema'
+const cinema = createCinema(scene, world, effects, overlay.root)
+/** How your kart looks in replays and on the podium (the lobby's driver once you're in). */
+let yourLook: KartLook = config?.driver ?? DEFAULT_LOOK
+/** The podium, when the race ends during your replay: shown right after it. */
+let podiumNext: (() => void) | null = null
 let mode: Mode = 'fly'
 const course: Course | null =
     racing && config.track
@@ -172,12 +183,51 @@ const race = createRace({
     standingsPanel: overlay.standings,
     arrow: overlay.arrow,
     speedometer: overlay.speedometer,
-    onFinish: (x, y, z) => effects.confetti(x, y, z),
+    onFinish: (x, y, z) => {
+        effects.confetti(x, y, z)
+        driver.celebrate('finish')
+        // A moment of confetti, then your finish again in slow motion.
+        setTimeout(() => {
+            if (mode !== 'drive') return
+            setMode('cinema')
+            others.setVisible(false)
+            cinema.replay(() => {
+                others.setVisible(true)
+                const podium = podiumNext
+                podiumNext = null
+                if (podium) podium()
+                else setMode('drive')
+            })
+        }, 1200)
+    },
+})
+
+// Any key skips the replay, or leaves the podium.
+document.addEventListener('keydown', event => {
+    // A key still held from driving repeats: only a fresh press skips.
+    if (mode !== 'cinema' || event.repeat) return
+    if (cinema.showing === 'podium') {
+        cinema.stop()
+        setMode('drive')
+    } else cinema.stop()
 })
 if (!racing) setupIdentify(camera, [buildings], overlay.identify, renderer.domElement)
 
 // A race's sky comes from its lobby. Otherwise the one in the URL (?sky=sunset,snow), else a random one in free roam, else noon.
 if (!racing) setSky(skyFromUrl() ?? (roaming ? rollSky(Math.random) : CLEAR_NOON))
+// The viewer can try a livery on its kart: ?livery=7,flames (number, pattern; stickers on).
+const tryLivery = config ? null : new URLSearchParams(location.search).get('livery')
+if (tryLivery !== null) {
+    const [number, pattern] = tryLivery.split(',')
+    driver.dress(liveryFrom({ number: number === '' ? null : Number(number), pattern, stickers: true }))
+}
+/** The viewer's ?showcase: the camera circles the parked kart, as on the welcome screen (for looking at karts). */
+const showcasing = !config && new URLSearchParams(location.search).has('showcase')
+// ?showcase=1.6: from that angle (radians round from behind the kart).
+const showcaseFrom = Number(new URLSearchParams(location.search).get('showcase'))
+if (showcasing && new URLSearchParams(location.search).get('showcase') !== '' && Number.isFinite(showcaseFrom)) {
+    driver.orbit = showcaseFrom
+}
 
 let lobby: Lobby | null = null
 /** Snacks on the track: a lobby's races only. */
@@ -189,7 +239,9 @@ if (racing && config.track) {
     let chosen = rememberedDriver(config)
     const enter = (choice: DriverChoice) => {
         chosen = choice
+        yourLook = { ...choice }
         driver.paint(choice.body, choice.accent)
+        driver.dress(choice)
         setMode('drive')
         lobby = joinLobby({
             trackId: track.id,
@@ -204,6 +256,28 @@ if (racing && config.track) {
             setWatching: watching => setMode(watching ? 'watch' : 'drive'),
             setSky,
             snacks: snackPlay!,
+            onCountdown: () => {
+                podiumNext = null
+                if (mode === 'cinema') cinema.stop()
+                others.setVisible(true)
+                if (mode === 'cinema') setMode('drive')
+            },
+            onRaceOver: view => {
+                const looks = new Map(view.members.map(m => [m.id, m as KartLook]))
+                const top = (view.results ?? []).slice(0, 3).map(row => ({
+                    id: row.id,
+                    look: row.id === lobby?.you ? yourLook : (looks.get(row.id) ?? DEFAULT_LOOK),
+                }))
+                const start = course?.gates[0]
+                if (!start || top.length === 0) return
+                const podium = () => {
+                    setMode('cinema')
+                    cinema.podium(top, { x: start.x, z: start.z, across: Math.atan2(start.dz, start.dx) })
+                }
+                // Watching or driving: straight to the podium; after your replay if it's on.
+                if (cinema.showing === 'replay') podiumNext = podium
+                else if (mode === 'drive' || mode === 'watch') podium()
+            },
         })
     }
     snackPlay = createSnackPlay({
@@ -227,21 +301,25 @@ if (racing && config.track) {
         newDriverUrl: config.newDriverUrl ?? '',
         garageUrl: config.garageUrl ?? '',
         csrf: config.csrf ?? '',
-        guest: DEFAULT_LOOK,
+        guest: GUEST_STYLE,
         quality: () => atmosphere.quality,
         setQuality,
-        onPaint: (body, accent) => driver.paint(body, accent),
+        steering: () => driver.steering,
+        setSteering: steering => {
+            driver.steering = steering
+            localStorage.setItem(STEERING_KEY, steering)
+        },
+        onStyle: style => {
+            driver.paint(style.body, style.accent)
+            driver.dress(style)
+        },
         onReady: choice => {
             if (!lobby) return enter(choice)
-            // Already in the lobby: it knows you by your old name and colours, so come back in as the new ones.
+            // Already in the lobby: it knows you by your old name and kart, so come back in as the new ones.
             const before = chosen
-            if (
-                before?.playerId === choice.playerId &&
-                before.body === choice.body &&
-                before.accent === choice.accent
-            ) {
+            const same = (keys: Array<keyof DriverChoice>) => keys.every(key => before?.[key] === choice[key])
+            if (same(['playerId', 'body', 'accent', 'number', 'pattern', 'stickers', 'sponsor']))
                 return setMode('drive')
-            }
             const url = new URL(location.href)
             if (choice.playerId === null) url.searchParams.delete('player')
             else url.searchParams.set('player', String(choice.playerId))
@@ -276,7 +354,7 @@ if (racing && config.track) {
     // The viewer: drive in front of the Parliament, or fly to the view in the URL.
     const target = toLocal(LANDMARK.lat, LANDMARK.lon)
     driver.placeAt(target.x - 120, target.z, Math.PI / 2)
-    setMode('drive')
+    setMode(showcasing ? 'welcome' : 'drive')
 } else {
     setMode('fly')
 }
@@ -334,7 +412,8 @@ overlay.quality.addEventListener('click', () => {
 
 /** With the welcome screen's panels on either side, shift the view so the kart sits in the gap between them. */
 function frameForWelcome(): void {
-    if (mode !== 'welcome') return camera.clearViewOffset()
+    // The viewer's showcase has no panels to frame around.
+    if (mode !== 'welcome' || !racing) return camera.clearViewOffset()
     const { innerWidth: width, innerHeight: height } = window
     const left = width >= SNACK_PANEL_FROM ? SNACK_PANEL : 0
     const right = Math.min(GUIDE_PANEL, width)
@@ -356,9 +435,9 @@ function rememberedDriver(config: RacingConfig): DriverChoice | null {
     const fromUrl = config.playerId != null ? drivers.find(d => d.id === config.playerId) : undefined
     const stored = localStorage.getItem(REMEMBER.player)
     const known = fromUrl ?? drivers.find(d => String(d.id) === stored)
-    if (known) return { playerId: known.id, name: known.name, body: known.body, accent: known.accent }
+    if (known) return { ...known, playerId: known.id }
     // Picked "guest" before (the track list's picker stores an empty id for that).
-    if (stored === '') return { playerId: null, ...DEFAULT_LOOK }
+    if (stored === '') return { playerId: null, name: 'Guest', ...GUEST_STYLE }
 
     return null
 }
@@ -384,11 +463,17 @@ renderer.setAnimationLoop(() => {
             (kart.drift !== 0 ? `  drift ${kart.charge.toFixed(1)} s` : '') +
             (kart.boost > 0 ? '  BOOST' : '') +
             (kart.airborne && kart.y - ground(kart.x, kart.z) > 0.5 ? '  airborne' : '')
+        // Before the green light, the drone flies the track.
+        race.direct(camera)
+        if (race.racing)
+            cinema.record(dt, [{ id: lobby?.you ?? 'you', look: yourLook, pose: yourPose() }, ...others.takes()])
     } else if (mode === 'watch') {
         const leader = lobby?.leader
         if (leader) others.follow(leader, camera, dt)
     } else if (mode === 'welcome') {
         driver.showcase(dt)
+    } else if (mode === 'cinema') {
+        cinema.update(dt, camera)
     } else {
         controls.update(dt, ground)
         const p = camera.position
@@ -397,6 +482,9 @@ renderer.setAnimationLoop(() => {
             `alt ${(p.y - ground(p.x, p.z)).toFixed(0)} m  speed ${controls.speed.toFixed(0)} m/s`
     }
     race.update(mode === 'drive', others.minimapKarts())
+    // Mouse steering's indicator: the dot sits where you're steering (left is left).
+    overlay.wheel.hidden = mode !== 'drive' || driver.steering !== 'mouse'
+    if (!overlay.wheel.hidden) overlay.wheel.querySelector('b')!.style.left = `${50 - driver.steer * 50}%`
     snackPlay?.update(dt, camera, mode === 'drive')
     effects.update(dt, camera)
     atmosphere.update(dt, focus())
@@ -434,6 +522,23 @@ function frameStats(element: HTMLElement) {
             slowest = 0
             since = now
         },
+    }
+}
+
+/** Your kart now, as the lobby would send it: for the replay's recording. */
+function yourPose(): Pose {
+    const kart = driver.kart
+    return {
+        x: kart.x,
+        y: kart.y,
+        z: kart.z,
+        heading: kart.heading,
+        speed: forwardSpeed(kart),
+        drift: kart.drift,
+        charge: kart.charge,
+        boost: kart.boost > 0 || kart.surge > 0,
+        airborne: kart.airborne,
+        steer: driver.steer,
     }
 }
 
@@ -484,7 +589,7 @@ function setMode(next: Mode): void {
     // The welcome screen has its own guide, and the lobby isn't joined yet.
     help.hidden = next === 'welcome'
     frameForWelcome()
-    overlay.minimap.hidden = next === 'welcome'
+    overlay.minimap.hidden = next === 'welcome' || next === 'cinema'
     if (racing) help.textContent = next === 'watch' ? HELP.watch : HELP.race
     else if (roaming) help.textContent = HELP.roam
     else help.textContent = next === 'fly' ? HELP.viewerFly : HELP.viewerDrive

@@ -3,13 +3,24 @@ import { forwardSpeed, NITRO_CHARGE, STEP } from '../drive/kart.ts'
 import { bestLap, gridSlot, isWrongWay, respawnPoint } from '../drive/laps.ts'
 import { courseRoute, locate, orientAlongRoute, pointAt, type Route } from '../drive/route.ts'
 import { ordinal } from '../drive/standings.ts'
-import { countdownLeft, formatTime, raceClock, startTrial, stepTrial, type Trial } from '../drive/trial.ts'
+import {
+    countdownLeft,
+    formatTime,
+    FINAL_COUNT,
+    INTRO,
+    introLeft,
+    raceClock,
+    startTrial,
+    stepTrial,
+    type Trial,
+} from '../drive/trial.ts'
 import type { DriveWorld } from '../drive/world.ts'
 import type { Course, Road } from '../map/format.ts'
 import { buildCourseView, type CourseView } from './course.ts'
 import type { Driver } from './drive.ts'
 import { createSpeedometer, pointArrow } from './hud.ts'
 import { buildRouteRibbon } from './route-ribbon.ts'
+import { flyover } from './cinema.ts'
 import type { Minimap, MinimapKart } from './minimap.ts'
 
 /**
@@ -64,7 +75,7 @@ export interface Race {
     /** Puts the kart on grid slot `slot`, stopped. */
     placeOnGrid(slot: number): void
     /** The race is on: on grid slot `slot`, held there through the countdown. */
-    countdown(slot: number): void
+    countdown(slot: number, seconds?: number): void
     /** The race is over: free driving again. */
     end(): void
     /** Each step of the race, where the kart got to and the race clock then (seconds). */
@@ -75,6 +86,8 @@ export interface Race {
     level(progress: { lap: number; next: number; lastGate: number }): void
     /** Racing now (green light given, not finished): when snacks can be eaten. */
     readonly racing: boolean
+    /** Before the green light, the drone flies the track: moves the camera, after the chase camera has. */
+    direct(camera: THREE.PerspectiveCamera): void
 }
 
 export function createRace(options: RaceOptions): Race {
@@ -106,10 +119,11 @@ export function createRace(options: RaceOptions): Race {
             driver.place(at.x, at.z, at.heading)
         },
 
-        countdown(slot) {
+        countdown(slot, seconds) {
             if (!course) return
             race.placeOnGrid(slot)
-            trial = startTrial()
+            // The lobby says how long the countdown is: the drone's flight over this lap, then 3, 2, 1.
+            trial = startTrial(seconds === undefined ? INTRO : Math.max(0, seconds - FINAL_COUNT))
             lines = null
             driver.frozen = true
             driver.onStep = (before, after) => {
@@ -136,6 +150,12 @@ export function createRace(options: RaceOptions): Race {
             if (!trial) return
             trial = { ...trial, progress: { ...trial.progress, ...progress } }
             view?.setNext(progress.next)
+        },
+
+        direct(camera) {
+            if (!trial || !route) return
+            const left = introLeft(trial)
+            if (left > 0) flyover(route, world, camera, 1 - left / trial.intro, trial.intro)
         },
 
         get racing() {
@@ -240,8 +260,10 @@ export function createRace(options: RaceOptions): Race {
                 )
             )
 
-            if (trial.phase === 'countdown') banner.textContent = String(countdownLeft(trial))
-            else if (trial.phase === 'finished') {
+            if (trial.phase === 'countdown') {
+                // The drone's flight first (the track's name), then 3, 2, 1.
+                banner.textContent = introLeft(trial) > 0 ? `🏁 ${course.name}` : String(countdownLeft(trial))
+            } else if (trial.phase === 'finished') {
                 const place = position > 0 && lines ? ` · ${ordinal(position)}` : ''
                 banner.textContent = `Finished ${formatTime(raceClock(trial))}${place}`
             } else if (raceClock(trial) < GO_SECONDS) banner.textContent = 'GO!'

@@ -260,7 +260,10 @@ built from OpenStreetMap and federal elevation data, drawn with Three.js.
   winner (DNF). Results go to `/internal/racing/*` (`RacingInternalController`, same
   `HOT_POTATO_INTERNAL_SECRET`: racing lobbies need it set too) → `racing_results`.
   No kart-to-kart collisions; a reconnect mid-race comes back as a watcher.
-- **Keys:** racing is drive-only (W/S, A/D, Space/Shift drift, E nitro, R back on track). The
+- **Keys:** racing is drive-only (W/S, steer with the mouse or A/D, left click or Space/Shift
+  drift, right click or E nitro, R back on track). Mouse steering (`drive.ts`, default; Options
+  can switch to keyboard only, `racing.steering` in localStorage): the cursor's offset from the
+  screen's middle is the steer, A/D win while held, a bar over the speedometer shows it. The
   nitro (`kart.ts`: `NITRO_CHARGE` 15 s, `NITRO_KICK` +20 km/h on the current speed, and every
   limit 20 higher for 2.5 s, so it stacks with a drift or pad boost: ~190 km/h) shows as the speedometer's outer ring and a blue
   flame; R starts its charge over. Flying
@@ -276,9 +279,26 @@ built from OpenStreetMap and federal elevation data, drawn with Three.js.
   Options (graphics). Ready remembers the choice (`racing_player`, shared with the track list)
   and joins. "Driver & kart" reopens it (a change reloads into the same lobby as the new
   driver); "?" opens only the guide. The kart (`client/kart.ts`) is painted body
-  (chassis, nose, pods) + accent (wings, suit, helmet stripe), with a name tag sprite over other
-  drivers' karts (not your own). It rides on springs (squat, dive, roll, landing bounce), the
-  driver's head and wheel turn, brake lights glow when slowing. `client/effects.ts` gives every
+  (chassis, nose, pods) + accent (wings, suit, helmet stripe) in clear-coated paint reflecting
+  the race's sky (`setKartEnvironment`, rendered by the atmosphere per sky; the garage uses a
+  studio), carbon floor, wings with endplates, engine with fins and glowing exhaust tips, a roll
+  hoop; wheels with tread, rims, brake discs that glow after hard braking, callipers, wishbones
+  and coil springs. Static parts are merged per material (one draw each). The livery
+  (`race/livery.ts`, `racing_karts.number/pattern/stickers/sponsor`, edited in the welcome
+  screen): race number on the pods and nose, a pattern (stripes, flames, maple, checker,
+  lightning), stickers, and a sponsor of up to 10 characters on the rear wing (the dépanneur's
+  by default). The viewer tries one with `?livery=7,flames` and circles the kart with
+  `?showcase[=angle]`. The driver's arms really turn the wheel, the head leans and glances
+  back, and they punch the air on an overtake or at the finish. Name tag over other drivers'
+  karts (not your own). It rides on springs (squat, dive, roll, landing bounce), brake lights
+  glow when slowing, exhausts pop when lifting off.
+- **Cinema** (`client/cinema.ts`): the countdown is a drone flying the whole lap, start line to
+  start line (`introFor`: ~140 m/s, 6–14 s; higher over a long lap), then 3-2-1. The lobby
+  works it out per track (`countdownFor`) and sends it in `countdown.seconds`; the client's
+  trial counts that (`startTrial(intro)`). Every racing frame of every kart is
+  kept 8 s; crossing the line replays your last 6 s at half speed from trackside cameras
+  (letterbox, REPLAY), then when the race ends the top three stand on a podium at the start
+  line with confetti. Any key skips or leaves. `client/effects.ts` gives every
   kart (yours and the lobby's) its dust, spray, drift smoke and sparks, skid marks, splashes,
   wall sparks, landing dust, boost fire and exhaust puffs, from two fixed particle pools (fewer
   alive on Low); plus speed lines near top speed and confetti at your finish.

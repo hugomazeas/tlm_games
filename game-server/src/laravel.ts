@@ -3,6 +3,7 @@ import { lookFrom } from './cosmetics.ts'
 import type { PlayerInfo } from './protocol.ts'
 import type { GateSpec } from './race/map/courses.ts'
 import type { RaceResult } from './race/lobbies.ts'
+import { type Livery, liveryFrom } from './race/livery.ts'
 import type { GameResult } from './sessions.ts'
 
 /**
@@ -123,13 +124,14 @@ export class LaravelClient {
         if (!response.ok) throw new Error(`Saving the chat failed with ${response.status}`)
     }
 
-    /** A racing driver's name and garage colours; null when Laravel says the player doesn't exist. */
-    async findDriver(playerId: number): Promise<{ name: string; body: string; accent: string } | null> {
+    /** A racing driver's name, garage colours and livery; null when Laravel says the player doesn't exist. */
+    async findDriver(playerId: number): Promise<({ name: string; body: string; accent: string } & Livery) | null> {
         const response = await this.request('GET', `/internal/racing/drivers/${playerId}`)
         if (response.status === 404) return null
         if (!response.ok) throw new Error(`Driver lookup failed with ${response.status}`)
+        const found = (await response.json()) as { name: string; body: string; accent: string } & Partial<Livery>
 
-        return (await response.json()) as { name: string; body: string; accent: string }
+        return { name: found.name, body: found.body, accent: found.accent, ...liveryFrom(found) }
     }
 
     /** A racing track's checkpoints; null when it doesn't exist (any more). */

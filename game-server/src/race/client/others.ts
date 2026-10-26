@@ -3,6 +3,7 @@ import type { KartState } from '../drive/kart.ts'
 import type { DriveWorld } from '../drive/world.ts'
 import type { DriverInfo, Pose } from '../protocol.ts'
 import { groundNormal } from './drive.ts'
+import type { Take } from './cinema.ts'
 import type { Effects, KartEffects } from './effects.ts'
 import { buildKartModel, type KartModel } from './kart.ts'
 import type { MinimapKart } from './minimap.ts'
@@ -39,6 +40,10 @@ export interface Others {
     minimapKarts(): MinimapKart[]
     /** Where kart `id` is drawn now; null when it isn't on the track. */
     positionOf(id: string): { x: number; y: number; z: number } | null
+    /** Everyone else as drawn now, with their looks: for the replay's recording. */
+    takes(): Take[]
+    /** Hides (or shows again) everyone else's karts: the replay draws its own. */
+    setVisible(visible: boolean): void
     /** Chips: kart `id` bulges out (or back). */
     setFat(id: string, fat: boolean): void
     /** Puts the camera behind kart `id`, easing towards it; false when it isn't on the track. */
@@ -113,6 +118,14 @@ export function createOthers(world: DriveWorld, scene: THREE.Scene, effects: Eff
                 other.model.pose(shown.x, shown.y, shown.z, shown.heading, other.up, asKart(shown), shown.steer, dt)
                 other.fx?.update({ ...shown, vy: 0, boosting: shown.boost }, dt)
             }
+        },
+
+        takes() {
+            return [...others.entries()].map(([id, other]) => ({ id, look: other.look, pose: { ...other.shown } }))
+        },
+
+        setVisible(visible) {
+            for (const other of others.values()) other.model.root.visible = visible
         },
 
         positionOf(id) {

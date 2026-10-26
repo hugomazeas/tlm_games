@@ -2,7 +2,7 @@ import { advance, bestLap, type Point, type Progress, respawnPoint, startProgres
 import { toGate, type Route } from './drive/route.ts'
 import { standings } from './drive/standings.ts'
 import { PACE } from './drive/kart.ts'
-import { COUNTDOWN } from './drive/trial.ts'
+import { COUNTDOWN, FINAL_COUNT, introFor } from './drive/trial.ts'
 import { DEFAULT_DENSITY, EAT_REACH, MAX_DENSITY, placeSnacks, RESPAWN_MS, type SnackSpot } from './drive/snacks.ts'
 import { rollSky, type Sky, type TimeOfDay } from './drive/weather.ts'
 import type { Course } from './map/format.ts'
@@ -118,6 +118,8 @@ interface Lobby {
     snacks: Array<SnackSpot & { eatenAt: number | null }>
     /** Whether the race under way (or just finished) had snacks. */
     raceChaos: boolean
+    /** Seconds from Start to the green light for the race under way (countdownFor). */
+    countdown: number
 }
 
 export class LobbyManager {
@@ -167,6 +169,7 @@ export class LobbyManager {
                 density: DEFAULT_DENSITY,
                 snacks: [],
                 raceChaos: false,
+                countdown: COUNTDOWN,
             }
             this.lobbies.set(lobby.id, lobby)
         }
@@ -321,7 +324,10 @@ export class LobbyManager {
             ? placeSnacks(lobby.track.route!, this.hooks.random, lobby.density).map(s => ({ ...s, eatenAt: null }))
             : []
         const snacks = onTrack(lobby)
-        for (const m of lobby.members) m.conn.send({ type: 'countdown', slots, seconds: COUNTDOWN, snacks })
+        // The drone's flight takes as long as this lap needs, then 3, 2, 1.
+        lobby.countdown = countdownFor(lobby.track)
+        const seconds = lobby.countdown
+        for (const m of lobby.members) m.conn.send({ type: 'countdown', slots, seconds, snacks })
         this.broadcastLobby(lobby)
     }
 
@@ -368,8 +374,8 @@ export class LobbyManager {
     tick(): void {
         const now = this.hooks.now()
         for (const lobby of this.lobbies.values()) {
-            if (lobby.phase === 'countdown' && now >= lobby.phaseAt + COUNTDOWN * 1000) {
-                this.setPhase(lobby, 'racing', lobby.phaseAt + COUNTDOWN * 1000)
+            if (lobby.phase === 'countdown' && now >= lobby.phaseAt + lobby.countdown * 1000) {
+                this.setPhase(lobby, 'racing', lobby.phaseAt + lobby.countdown * 1000)
                 this.broadcastLobby(lobby)
             }
             this.checkFinish(lobby)
@@ -545,6 +551,11 @@ export class LobbyManager {
 
         return id
     }
+}
+
+/** Start to green light: the drone over the whole lap (a fixed flight without a route), then 3, 2, 1. */
+export function countdownFor(track: LoadedTrack): number {
+    return track.route ? introFor(track.route.length) + FINAL_COUNT : COUNTDOWN
 }
 
 /** The snacks lying on the track now. */

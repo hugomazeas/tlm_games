@@ -99,7 +99,10 @@ class RacingLobbyTest extends TestCase
 
         $this->getJson("/internal/racing/drivers/{$player->id}", $this->internal())
             ->assertOk()
-            ->assertExactJson(['id' => $player->id, 'name' => 'Alice', 'body' => '#112233', 'accent' => '#445566']);
+            ->assertExactJson([
+                'id' => $player->id, 'name' => 'Alice', 'body' => '#112233', 'accent' => '#445566',
+                'number' => null, 'pattern' => 'none', 'stickers' => true, 'sponsor' => null,
+            ]);
 
         $this->getJson('/internal/racing/drivers/999', $this->internal())->assertNotFound();
     }

@@ -25,6 +25,9 @@ const CSS = `
     #race-guide { font-weight: 800; min-width: 30px; }
     #race-stats { position: fixed; top: 46px; right: 12px; padding: 4px 8px; border-radius: 6px; background: rgb(15 23 42 / 0.7); color: #f8fafc; font: 12px ui-monospace, monospace; text-align: right; white-space: pre; pointer-events: none; }
     #race-minimap { position: fixed; right: 12px; bottom: 26px; width: 300px; height: 300px; pointer-events: none; }
+    #race-wheel { position: fixed; left: 50%; bottom: 206px; width: 240px; height: 10px; margin-left: -120px; border-radius: 5px; background: linear-gradient(90deg, rgb(34 211 238 / 0.5), rgb(15 23 42 / 0.55) 40%, rgb(15 23 42 / 0.55) 60%, rgb(34 211 238 / 0.5)); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.25); pointer-events: none; }
+    #race-wheel::after { content: ''; position: absolute; left: 50%; top: -3px; width: 2px; height: 16px; margin-left: -1px; background: rgb(255 255 255 / 0.4); }
+    #race-wheel b { position: absolute; top: -4px; width: 18px; height: 18px; margin-left: -9px; border-radius: 50%; background: #f8fafc; box-shadow: 0 0 8px #22d3ee; }
     #race-speedometer { position: fixed; left: 50%; bottom: 0; width: 280px; height: 200px; margin-left: -140px; pointer-events: none; filter: drop-shadow(0 -2px 10px rgb(15 23 42 / 0.6)); }
     #race-standings { top: auto; bottom: 340px; left: auto; right: 12px; min-width: 120px; font-size: 14px; }
     #race-standings .position { font: 800 34px system-ui, sans-serif; }
@@ -78,6 +81,7 @@ const HTML = `
     <div id="race-banner"></div>
     <canvas id="race-minimap" width="300" height="300"></canvas>
     <canvas id="race-speedometer" width="280" height="200" hidden></canvas>
+    <div id="race-wheel" hidden><b></b></div>
     <div id="race-standings" class="panel" hidden></div>
     <div id="race-arrow" hidden><svg viewBox="0 0 56 56" width="56" height="56"><path d="M28 4 L50 30 L36 30 L36 52 L20 52 L20 30 L6 30 Z" fill="#ffd22e" stroke="#0f172a" stroke-width="2.5" stroke-linejoin="round"/></svg></div>
     <div id="race-crosshair"></div>
@@ -103,6 +107,8 @@ export interface Overlay {
     banner: HTMLElement
     minimap: HTMLCanvasElement
     speedometer: HTMLCanvasElement
+    /** Mouse steering's indicator: where the mouse has you steering. */
+    wheel: HTMLElement
     standings: HTMLElement
     arrow: HTMLElement
     help: HTMLElement
@@ -136,6 +142,7 @@ export function createOverlay(parent: HTMLElement = document.body): Overlay {
         banner: find('banner'),
         minimap: find<HTMLCanvasElement>('minimap'),
         speedometer: find<HTMLCanvasElement>('speedometer'),
+        wheel: find('wheel'),
         standings: find('standings'),
         arrow: find('arrow'),
         help: find('help'),

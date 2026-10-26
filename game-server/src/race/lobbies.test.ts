@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { RESPAWN_MS } from './drive/snacks.ts'
+import { COUNTDOWN, introFor } from './drive/trial.ts'
+import { PLAIN } from './livery.ts'
 import { FINISH_GRACE_MS, type LoadedTrack, LobbyManager, type RaceResult } from './lobbies.ts'
 import type { Course } from './map/format.ts'
 import { type LobbyView, MAX_RACERS, parseClientMessage, type Pose, type ServerMessage } from './protocol.ts'
@@ -46,7 +48,7 @@ function connect(id: string) {
 }
 
 function join(id: string, playerId: number | null, lobby: string | null = null, onTrack = track): void {
-    manager.join(connect(id), { playerId, name: id, body: '#ff0000', accent: '#0000ff' }, onTrack, lobby)
+    manager.join(connect(id), { playerId, name: id, body: '#ff0000', accent: '#0000ff', ...PLAIN }, onTrack, lobby)
 }
 
 function last<T extends ServerMessage['type']>(id: string, type: T): Extract<ServerMessage, { type: T }> | undefined {
@@ -79,7 +81,7 @@ function lap(id: string, startAt: number, finishAt: number): void {
 
 function startRace(host: string): void {
     manager.start(host)
-    now += 3000
+    now += COUNTDOWN * 1000
     manager.tick()
 }
 
@@ -236,10 +238,18 @@ describe('races', () => {
 
         manager.start('a')
         // The test track has no route: no snacks.
-        expect(last('b', 'countdown')).toEqual({ type: 'countdown', slots: { a: 0, b: 1 }, seconds: 3, snacks: [] })
+        expect(last('b', 'countdown')).toEqual({
+            type: 'countdown',
+            slots: { a: 0, b: 1 },
+            seconds: COUNTDOWN,
+            snacks: [],
+        })
         expect(lobbyOf('b').phase).toBe('countdown')
 
-        now += 3000
+        now += COUNTDOWN * 1000 - 1
+        manager.tick()
+        expect(lobbyOf('b').phase).toBe('countdown')
+        now += 1
         manager.tick()
         expect(lobbyOf('b').phase).toBe('racing')
         expect(manager.summaries()[0]!.phase).toBe('racing')
@@ -437,6 +447,19 @@ const routed: LoadedTrack = {
         gateAlong: [0, 200, 400, 600],
     },
 }
+
+test('the countdown is the drone over this lap, then 3, 2, 1: green light right after', () => {
+    join('a', 1, null, routed)
+    manager.start('a')
+    const seconds = introFor(800) + 3
+    expect(last('a', 'countdown')!.seconds).toBe(seconds)
+    now += seconds * 1000 - 1
+    manager.tick()
+    expect(lobbyOf('a').phase).toBe('countdown')
+    now += 1
+    manager.tick()
+    expect(lobbyOf('a').phase).toBe('racing')
+})
 
 describe('snacks', () => {
     const at = (id: string, x: number, z: number) => manager.pose(id, { ...POSE, x, z })
