@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Player;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 /**
@@ -29,14 +30,25 @@ class RacingGarageController extends Controller
         $validated = $request->validate([
             'body' => ['required', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'accent' => ['required', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            // The livery is optional: a save that leaves it out keeps what was there.
+            'number' => ['sometimes', 'nullable', 'integer', 'between:0,99'],
+            'pattern' => ['sometimes', 'string', Rule::in(RacingKart::PATTERNS)],
+            'stickers' => ['sometimes', 'boolean'],
+            'sponsor' => ['sometimes', 'nullable', 'string', 'max:'.RacingKart::SPONSOR_LENGTH],
         ], [
             'body.regex' => 'The body colour must look like #a1b2c3.',
             'accent.regex' => 'The accent colour must look like #a1b2c3.',
+            'number.between' => 'The race number goes from 0 to 99.',
+            'sponsor.max' => 'The sponsor fits '.RacingKart::SPONSOR_LENGTH.' characters at most.',
         ]);
 
         RacingKart::updateOrCreate(
             ['player_id' => $player->id],
-            ['body' => strtolower($validated['body']), 'accent' => strtolower($validated['accent'])],
+            [
+                'body' => strtolower($validated['body']),
+                'accent' => strtolower($validated['accent']),
+                ...array_intersect_key($validated, array_flip(['number', 'pattern', 'stickers', 'sponsor'])),
+            ],
         );
 
         return response()->json(RacingKart::lookOf($player));

@@ -8,8 +8,17 @@ import { advance, type Point, type Progress, startProgress } from './laps.ts'
  * until the last one is done.
  */
 
-/** Seconds of countdown before the green light. */
-export const COUNTDOWN = 3
+/**
+ * Seconds of countdown before the green light: first INTRO seconds of the
+ * drone flying the track (client/cinema.ts), then 3, 2, 1.
+ */
+export const INTRO = 5
+export const COUNTDOWN = INTRO + 3
+
+/** Seconds of the intro still to go (0 once the 3-2-1 starts, or racing). */
+export function introLeft(trial: Trial): number {
+    return trial.phase === 'countdown' ? Math.max(0, INTRO - trial.steps * STEP) : 0
+}
 
 export interface Trial {
     phase: 'countdown' | 'racing' | 'finished'

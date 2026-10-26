@@ -5,6 +5,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import type { Sky, TimeOfDay } from '../drive/weather.ts'
+import { setKartEnvironment } from './kart.ts'
 import { WINDOWS_LIT } from './landmarks.ts'
 
 /**
@@ -211,6 +212,17 @@ export function createAtmosphere(
         depthWrite: false,
         fog: false,
     })
+    // What the karts' paint and chrome reflect: this sky, rendered once into a reflection map whenever it changes.
+    const pmrem = new THREE.PMREMGenerator(renderer)
+    const reflection = new THREE.Scene()
+    reflection.add(new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), skyMaterial))
+    let reflected: THREE.WebGLRenderTarget | null = null
+    const reflectSky = () => {
+        const next = pmrem.fromScene(reflection, 0, 0.1, 200)
+        setKartEnvironment(next.texture)
+        reflected?.dispose()
+        reflected = next
+    }
     const dome = new THREE.Mesh(new THREE.SphereGeometry(SKY_RADIUS, 32, 16), skyMaterial)
     dome.frustumCulled = false
     dome.renderOrder = -1
@@ -291,6 +303,7 @@ export function createAtmosphere(
             uniforms.disc!.value = overcast ? 0 : light.disc
             uniforms.halo!.value = overcast ? light.halo * 0.3 : light.halo
             uniforms.stars!.value = overcast ? 0 : light.stars
+            reflectSky()
 
             const fog = scene.fog as THREE.Fog
             fog.color.copy(wash(light.fog, 0.9))

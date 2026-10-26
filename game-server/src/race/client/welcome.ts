@@ -1,4 +1,5 @@
 import { SNACK_ICONS, SNACK_KINDS, SNACKS, type SnackKind } from '../drive/snacks.ts'
+import { DEFAULT_SPONSOR, type Livery, PATTERN_LABELS, PATTERNS, SPONSOR_LENGTH, sponsorFrom } from '../livery.ts'
 import type { Quality } from './atmosphere.ts'
 import { snackPictures } from './snack-models.ts'
 
@@ -12,20 +13,22 @@ import { snackPictures } from './snack-models.ts'
  * the "?" button (help only) and "Driver & kart" (everything) open it again.
  */
 
-/** A Hub player and their kart, as the play page lists them. */
-export interface DriverOption {
-    id: number
-    name: string
+/** A kart's colours and livery: what the garage keeps. */
+export interface KartStyle extends Livery {
     body: string
     accent: string
 }
 
+/** A Hub player and their kart, as the play page lists them. */
+export interface DriverOption extends KartStyle {
+    id: number
+    name: string
+}
+
 /** Who you race as: a Hub player, or a guest (id null) in the default kart. */
-export interface DriverChoice {
+export interface DriverChoice extends KartStyle {
     playerId: number | null
     name: string
-    body: string
-    accent: string
 }
 
 export interface WelcomeOptions {
@@ -37,11 +40,13 @@ export interface WelcomeOptions {
     /** PUT {garageUrl}/{id} { body, accent } saves a kart. */
     garageUrl: string
     csrf: string
-    guest: { body: string; accent: string }
+    guest: KartStyle
     quality(): Quality
     setQuality(quality: Quality): void
-    /** Live, as you pick colours or a driver. */
-    onPaint(body: string, accent: string): void
+    steering(): 'mouse' | 'keys'
+    setSteering(steering: 'mouse' | 'keys'): void
+    /** Live, as you pick colours, a livery or a driver. */
+    onStyle(style: KartStyle): void
     /** Ready: saved, remembered, off you go. */
     onReady(choice: DriverChoice): void
     /** The help-only view was closed. */
@@ -93,6 +98,14 @@ const CSS = `
     #race-welcome .colours label { display: flex; align-items: center; gap: 6px; color: #cbd5e1; }
     #race-welcome input[type=color] { width: 40px; height: 30px; padding: 0; border: 0; border-radius: 6px; background: none; cursor: pointer; }
     #race-welcome .presets { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    #race-welcome .livery { display: grid; gap: 8px; margin-top: 10px; }
+    #race-welcome .livery-row { display: flex; align-items: center; justify-content: space-between; color: #cbd5e1; }
+    #race-welcome .livery-row input[type=number] { width: 70px; padding: 5px 8px; border-radius: 6px; border: 1px solid rgb(255 255 255 / 0.15); background: rgb(255 255 255 / 0.08); color: #f8fafc; font: inherit; }
+    #race-welcome .livery-row input[type=checkbox] { width: 18px; height: 18px; cursor: pointer; }
+    #race-welcome .livery-row input.sponsor { width: 140px; padding: 5px 8px; border-radius: 6px; border: 1px solid rgb(255 255 255 / 0.15); background: rgb(255 255 255 / 0.08); color: #f8fafc; font: 700 13px system-ui, sans-serif; }
+    #race-welcome .patterns { display: flex; flex-wrap: wrap; gap: 6px; }
+    #race-welcome .pattern { padding: 5px 10px; border-radius: 999px; border: 1px solid rgb(255 255 255 / 0.15); background: rgb(255 255 255 / 0.06); color: inherit; font: 13px system-ui, sans-serif; cursor: pointer; }
+    #race-welcome .pattern.on { background: #ea580c; border-color: #fb923c; font-weight: 700; }
     #race-welcome .preset { width: 30px; height: 30px; border-radius: 8px; border: 2px solid rgb(255 255 255 / 0.3); cursor: pointer; }
     #race-welcome .note { color: #94a3b8; font-size: 12px; margin-top: 6px; }
     #race-welcome .tabs { display: flex; gap: 4px; }
@@ -124,9 +137,9 @@ const CONTROLS = `
     <div class="keys">
         <span><kbd>W</kbd> <kbd>↑</kbd></span><span>Gas</span>
         <span><kbd>S</kbd> <kbd>↓</kbd></span><span>Brake, then reverse</span>
-        <span><kbd>A</kbd> <kbd>D</kbd></span><span>Steer</span>
-        <span><kbd>Space</kbd> <kbd>Shift</kbd></span><span>Drift: hold it while turning, let go for a boost. Sparks go white, then <b style="color:#4fa8ff">blue</b> (mini-turbo), then <b style="color:#ff8a1f">orange</b> (super)</span>
-        <span><kbd>E</kbd></span><span>Nitro: +20 km/h on the spot. It charges over 15 seconds (the blue ring round the speedometer) and says <b style="color:#22d3ee">NITRO · E</b> when it's ready</span>
+        <span><kbd>🖱 Mouse</kbd></span><span><b>Steer with the mouse</b>: move it left or right of the middle of the screen (the bar over the speedometer shows where you're steering). <kbd>A</kbd> <kbd>D</kbd> work too</span>
+        <span><kbd>Left click</kbd> <kbd>Space</kbd></span><span>Drift: hold it while turning, let go for a boost. Sparks go white, then <b style="color:#4fa8ff">blue</b> (mini-turbo), then <b style="color:#ff8a1f">orange</b> (super)</span>
+        <span><kbd>Right click</kbd> <kbd>E</kbd></span><span>Nitro: +20 km/h on the spot. It charges over 15 seconds (the blue ring round the speedometer) and says <b style="color:#22d3ee">NITRO · E</b> when it's ready</span>
         <span><kbd>R</kbd></span><span>Stuck? Back to your last checkpoint (the nitro starts charging again)</span>
     </div>
     <p class="note">Yellow pads on long straights boost you too.</p>
@@ -161,7 +174,23 @@ export function createWelcome(parent: HTMLElement, options: WelcomeOptions): Wel
     const drivers = [...options.drivers]
     let mode: 'full' | 'help' = 'full'
     let picked: DriverOption | 'guest' | null = null
-    let colours = { ...options.guest }
+    let colours: KartStyle = { ...options.guest }
+    const styleOf = (from: KartStyle): KartStyle => ({
+        body: from.body,
+        accent: from.accent,
+        number: from.number,
+        pattern: from.pattern,
+        stickers: from.stickers,
+        sponsor: from.sponsor,
+    })
+    const restyle = () => options.onStyle({ ...colours })
+    const changed = (a: KartStyle, b: KartStyle) =>
+        a.body !== b.body ||
+        a.accent !== b.accent ||
+        a.number !== b.number ||
+        a.pattern !== b.pattern ||
+        a.stickers !== b.stickers ||
+        a.sponsor !== b.sponsor
     let tab: 'controls' | 'rules' | 'options' = 'controls'
     /** The snacks' pictures, rendered the first time the screen opens. */
     let pictures: Partial<Record<SnackKind, string>> | null = null
@@ -184,9 +213,9 @@ export function createWelcome(parent: HTMLElement, options: WelcomeOptions): Wel
 
     const pick = (choice: DriverOption | 'guest') => {
         picked = choice
-        colours = choice === 'guest' ? { ...options.guest } : { body: choice.body, accent: choice.accent }
+        colours = choice === 'guest' ? { ...options.guest } : styleOf(choice)
         error = ''
-        options.onPaint(colours.body, colours.accent)
+        restyle()
         render()
     }
 
@@ -223,7 +252,7 @@ export function createWelcome(parent: HTMLElement, options: WelcomeOptions): Wel
     const ready = async () => {
         if (!picked || busy) return
         busy = true
-        if (picked !== 'guest' && (colours.body !== picked.body || colours.accent !== picked.accent)) {
+        if (picked !== 'guest' && changed(colours, picked)) {
             try {
                 const response = await fetch(`${options.garageUrl}/${picked.id}`, {
                     method: 'PUT',
@@ -235,11 +264,10 @@ export function createWelcome(parent: HTMLElement, options: WelcomeOptions): Wel
                     body: JSON.stringify(colours),
                 })
                 if (!response.ok) throw new Error(String(response.status))
-                picked.body = colours.body
-                picked.accent = colours.accent
+                Object.assign(picked, colours)
             } catch {
                 busy = false
-                error = 'Your colours could not be saved. Try again.'
+                error = 'Your kart could not be saved. Try again.'
                 return render()
             }
         }
@@ -320,6 +348,60 @@ export function createWelcome(parent: HTMLElement, options: WelcomeOptions): Wel
         return section
     }
 
+    /** The livery: race number, pattern (in the accent colour), sponsor stickers. */
+    const liveryControls = () => {
+        const box = el('div', 'livery')
+        const numberRow = el('label', 'livery-row', 'Race number')
+        const number = el('input')
+        number.type = 'number'
+        number.min = '0'
+        number.max = '99'
+        number.placeholder = 'none'
+        number.value = colours.number === null ? '' : String(colours.number)
+        number.addEventListener('input', () => {
+            const value = number.value === '' ? null : Math.round(Number(number.value))
+            colours.number = value === null || Number.isNaN(value) ? null : Math.max(0, Math.min(99, value))
+            restyle()
+        })
+        numberRow.append(number)
+
+        const patterns = el('div', 'patterns')
+        for (const pattern of PATTERNS) {
+            const choice = button(PATTERN_LABELS[pattern], `pattern${colours.pattern === pattern ? ' on' : ''}`, () => {
+                colours.pattern = pattern
+                restyle()
+                render()
+            })
+            patterns.append(choice)
+        }
+
+        const stickers = el('label', 'livery-row', 'Sponsor stickers')
+        const box2 = el('input')
+        box2.type = 'checkbox'
+        box2.checked = colours.stickers
+        box2.addEventListener('change', () => {
+            box2.blur()
+            colours.stickers = box2.checked
+            restyle()
+        })
+        stickers.append(box2)
+
+        const sponsorRow = el('label', 'livery-row', 'Sponsor on the wing')
+        const sponsor = el('input')
+        sponsor.type = 'text'
+        sponsor.maxLength = SPONSOR_LENGTH
+        sponsor.placeholder = DEFAULT_SPONSOR
+        sponsor.value = colours.sponsor ?? ''
+        sponsor.className = 'sponsor'
+        sponsor.addEventListener('input', () => {
+            colours.sponsor = sponsorFrom(sponsor.value)
+            restyle()
+        })
+        sponsorRow.append(sponsor)
+        box.append(numberRow, patterns, stickers, sponsorRow)
+        return box
+    }
+
     const kartSection = () => {
         const section = el('section')
         section.append(el('h2', '', 'Your kart'))
@@ -332,7 +414,7 @@ export function createWelcome(parent: HTMLElement, options: WelcomeOptions): Wel
             input.disabled = guest || !picked
             input.addEventListener('input', () => {
                 colours[key] = input.value
-                options.onPaint(colours.body, colours.accent)
+                restyle()
             })
             wrap.append(input)
             return wrap
@@ -344,14 +426,14 @@ export function createWelcome(parent: HTMLElement, options: WelcomeOptions): Wel
             const presets = el('div', 'presets')
             for (const [body, accent] of PRESETS) {
                 const swatch = button('', 'preset', () => {
-                    colours = { body, accent }
-                    options.onPaint(body, accent)
+                    colours = { ...colours, body, accent }
+                    restyle()
                     render()
                 })
                 swatch.style.background = `linear-gradient(135deg, ${body} 55%, ${accent} 55%)`
                 presets.append(swatch)
             }
-            section.append(presets)
+            section.append(presets, liveryControls())
         }
         section.append(
             el(
@@ -418,7 +500,20 @@ export function createWelcome(parent: HTMLElement, options: WelcomeOptions): Wel
         if (tab === 'controls') guide.innerHTML = CONTROLS
         else if (tab === 'rules') guide.innerHTML = RULES
         else {
-            guide.append(el('h2', '', 'Graphics'))
+            guide.append(el('h2', '', 'Steer with'))
+            const steering = el('div', 'quality')
+            for (const [how, label] of [
+                ['mouse', '🖱 Mouse (and A/D)'],
+                ['keys', '⌨ Keyboard only'],
+            ] as const) {
+                steering.append(
+                    button(label, options.steering() === how ? 'on' : '', () => {
+                        options.setSteering(how)
+                        render()
+                    })
+                )
+            }
+            guide.append(steering, el('h2', '', 'Graphics'))
             const choice = el('div', 'quality')
             for (const [quality, label] of [
                 ['high', 'High: shadows, glow'],
@@ -491,9 +586,7 @@ export function createWelcome(parent: HTMLElement, options: WelcomeOptions): Wel
             if (next === 'full') {
                 const known = current?.playerId != null ? drivers.find(d => d.id === current.playerId) : undefined
                 picked = known ?? (current && current.playerId === null ? 'guest' : null)
-                colours = known
-                    ? { body: known.body, accent: known.accent }
-                    : { body: current?.body ?? options.guest.body, accent: current?.accent ?? options.guest.accent }
+                colours = known ? styleOf(known) : current ? styleOf(current) : { ...options.guest }
                 filter = ''
                 error = ''
             }

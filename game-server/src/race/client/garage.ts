@@ -1,6 +1,8 @@
 import * as THREE from 'three'
 import type { KartState } from '../drive/kart.ts'
-import { buildKartModel } from './kart.ts'
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
+import type { Livery } from '../livery.ts'
+import { buildKartModel, setKartEnvironment } from './kart.ts'
 
 /**
  * The Hub's garage: a player's kart turning on a turntable, and two colour
@@ -10,7 +12,7 @@ import { buildKartModel } from './kart.ts'
  * to turn it.
  */
 
-interface GarageConfig {
+interface GarageConfig extends Partial<Livery> {
     name: string
     body: string
     accent: string
@@ -92,7 +94,12 @@ const turntable = new THREE.Mesh(
 )
 turntable.position.y = -0.05
 scene.add(turntable)
-const kart = buildKartModel({ name: config.name, ...colours }, false)
+// A soft studio for the paint and chrome to reflect.
+setKartEnvironment(new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture)
+const kart = buildKartModel(
+    { name: config.name, ...colours, number: config.number, pattern: config.pattern, stickers: config.stickers },
+    false
+)
 scene.add(kart.root)
 /** Standing still: no drift sparks, no boost flame. */
 const parked: KartState = {

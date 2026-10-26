@@ -53,6 +53,10 @@ export interface LobbyOptions {
     setSky(sky: Sky): void
     /** The race's snacks on this tab: told what the lobby says about them. */
     snacks: SnackPlay
+    /** A race is about to start (you're on the grid): the cinema stops. */
+    onCountdown(): void
+    /** The race just ended, results in: the podium. */
+    onRaceOver(lobby: LobbyView): void
 }
 
 export interface Lobby {
@@ -86,6 +90,8 @@ export function joinLobby(options: LobbyOptions): Lobby {
     let current: LobbyView | null = null
     let watching = false
     let leader: string | null = null
+    /** Your place in the last standings (−1 before any), to spot an overtake. */
+    let lastPlace = -1
     let failed = false
     let samples: number[] = []
 
@@ -139,6 +145,7 @@ export function joinLobby(options: LobbyOptions): Lobby {
         const wasLive = before?.phase === 'countdown' || before?.phase === 'racing'
         if (wasLive && !live) {
             options.snacks.clear()
+            options.onRaceOver(lobby)
             panel.setReceipt(options.snacks.receipt())
             race.end()
             setTimeout(loadRecords, RECORDS_DELAY_MS)
@@ -181,6 +188,7 @@ export function joinLobby(options: LobbyOptions): Lobby {
                         options.setWatching(false)
                     }
                     samples = []
+                    options.onCountdown()
                     race.countdown(slot)
                     break
                 }
@@ -204,6 +212,10 @@ export function joinLobby(options: LobbyOptions): Lobby {
                     race.setStandings(
                         message.standings?.map(s => ({ name: names.get(s.id) ?? '?', isYou: s.id === you })) ?? null
                     )
+                    // Passed someone: your driver punches the air.
+                    const place = message.standings?.findIndex(s => s.id === you) ?? -1
+                    if (place >= 0 && lastPlace >= 0 && place < lastPlace && race.racing) driver.celebrate('overtake')
+                    lastPlace = place
                     break
                 }
                 case 'closed':
