@@ -58,7 +58,8 @@ class EloService
                     ->orWhere('team_left_player2_id', $playerId)
                     ->orWhere('team_right_player2_id', $playerId);
             })
-            ->orderBy('ended_at', 'desc');
+            ->orderBy('ended_at', 'desc')
+            ->orderBy('id', 'desc');
 
         if ($excludeMatchId) {
             $query->where('id', '!=', $excludeMatchId);
@@ -157,6 +158,23 @@ class EloService
         }
 
         return $this->applySinglesResult($match);
+    }
+
+    /**
+     * Take back everything applyMatchResult gave or took for this match (the base
+     * change and any streak bonuses). Exact only while it is each player's latest
+     * ranked match in its mode: a later one built its streaks on this one.
+     */
+    public function revertMatchResult(PingPongMatch $match): void
+    {
+        $changes = PingPongRatingChange::where('match_id', $match->id)->get();
+
+        foreach ($changes->groupBy('player_id') as $playerId => $playerChanges) {
+            $rating = $this->getOrCreateRating((int) $playerId, $match->mode);
+            $rating->update(['elo_rating' => $rating->elo_rating - $playerChanges->sum('rating_change')]);
+        }
+
+        PingPongRatingChange::where('match_id', $match->id)->delete();
     }
 
     /**

@@ -268,6 +268,8 @@
                                    class="px-3 py-1.5 rounded-full border border-[#f5ecd6]/15 text-[#f5ecd6]/80 no-underline text-xs font-semibold transition hover:text-[#f5ecd6] hover:border-[#f5ecd6]/30 hover:bg-[#f5ecd6]/[0.04]">Recordings</a>
                                 <a href="/games/ping-pong/tournaments"
                                    class="px-3 py-1.5 rounded-full border border-[#f5ecd6]/15 text-[#f5ecd6]/80 no-underline text-xs font-semibold transition hover:text-[#f5ecd6] hover:border-[#f5ecd6]/30 hover:bg-[#f5ecd6]/[0.04]">Tournaments</a>
+                                <a href="/games/ping-pong/log" title="No scoring screen? Type in your final scores"
+                                   class="px-3 py-1.5 rounded-full border border-[#f5ecd6]/15 text-[#f5ecd6]/80 no-underline text-xs font-semibold transition hover:text-[#f5ecd6] hover:border-[#f5ecd6]/30 hover:bg-[#f5ecd6]/[0.04]">Log results</a>
                             </div>
                         </div>
 

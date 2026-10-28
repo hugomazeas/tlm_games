@@ -235,6 +235,19 @@
         white-space: nowrap;
     }
 
+    .pps .match-logged {
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: rgba(245, 236, 214, 0.06);
+        border: 1px solid rgba(245, 236, 214, 0.2);
+        color: rgba(245, 236, 214, 0.6);
+        white-space: nowrap;
+    }
+
     .pps .match-score {
         font-weight: 700;
         font-family: monospace;
@@ -987,6 +1000,7 @@
                     <div class="match-score" x-text="m.player_score + ' - ' + m.opponent_score"></div>
                     <div class="match-duration" x-text="m.duration_formatted || '-'"></div>
                     <div class="match-free-play" x-show="m.free_play">Free play</div>
+                    <div class="match-logged" x-show="m.logged" title="Final score typed in after the game">Logged</div>
                     <div class="match-time" x-text="m.ended_at_human"></div>
                     <div class="match-arrow">&rsaquo;</div>
                 </a>

@@ -562,6 +562,10 @@
                  class="inline-flex items-center gap-2 mb-4 px-3 py-1.5 rounded-full border border-[#ffd166]/35 bg-[#ffd166]/10 text-[#ffd166] pph-mono text-[10px] tracking-[0.18em] uppercase">
                 Free play · no ELO change · not in streaks
             </div>
+            <div x-show="match.logged_at"
+                 class="inline-flex items-center gap-2 mb-4 px-3 py-1.5 rounded-full border border-[#f5ecd6]/20 bg-[#f5ecd6]/[0.06] text-[#f5ecd6]/70 pph-mono text-[10px] tracking-[0.18em] uppercase">
+                Logged after the game · final score only, no point-by-point stats
+            </div>
             {{-- ====== After-game Hero ====== --}}
             <section class="relative overflow-hidden rounded-2xl border border-[#f5ecd6]/15 bg-gradient-to-b from-[#f5ecd6]/[0.04] to-[#f5ecd6]/[0.01] px-3 md:px-10 py-6 md:py-10 mb-6">
 
@@ -872,8 +876,8 @@
                 </div>
             </template>
 
-            <!-- Score Progression Chart -->
-            <div class="section">
+            <!-- Score Progression Chart (a logged match has no points to chart) -->
+            <div class="section" x-show="!match.logged_at">
                 <h2>Score Progression</h2>
                 <div class="chart-container" x-init="requestAnimationFrame(() => renderScoreChart())">
                     <canvas id="scoreChart"></canvas>
@@ -881,7 +885,7 @@
             </div>
 
             <!-- Key Stats -->
-            <div class="section">
+            <div class="section" x-show="!match.logged_at">
                 <h2>Key Stats</h2>
                 <div class="stats-grid">
                     <div class="stat-card">
