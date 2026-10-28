@@ -184,9 +184,14 @@ export const RESPAWN_MS = 12_000
 export const EAT_REACH = 2.6
 
 /** One race's snacks along its route at `density` (0–10), from `random` (0 ≤ x < 1). */
-export function placeSnacks(route: Route, random: () => number, density: number): SnackSpot[] {
+export function placeSnacks(
+    route: Route,
+    random: () => number,
+    density: number,
+    kinds: readonly SnackKind[] = SNACK_KINDS
+): SnackSpot[] {
     const spots: SnackSpot[] = []
-    if (density <= 0) return spots
+    if (density <= 0 || kinds.length === 0) return spots
     const spacing = SPACING_AT_ONE / Math.min(MAX_DENSITY, density)
     const first = CLEAR_START + random() * spacing
     for (let along = first; along < route.length - spacing / 3; along += spacing * (0.6 + random() * 0.8)) {
@@ -194,7 +199,7 @@ export function placeSnacks(route: Route, random: () => number, density: number)
         const side = (random() * 2 - 1) * SPREAD
         spots.push({
             id: spots.length,
-            kind: pickKind(random()),
+            kind: pickKind(random(), kinds),
             x: x + Math.cos(heading) * side,
             z: z - Math.sin(heading) * side,
         })
@@ -204,15 +209,15 @@ export function placeSnacks(route: Route, random: () => number, density: number)
 }
 
 /** A kind, as often as the fridge's stock says (square-rooted). */
-export function pickKind(roll: number): SnackKind {
-    const weights = SNACK_KINDS.map(kind => Math.sqrt(SNACKS[kind].stock))
+export function pickKind(roll: number, kinds: readonly SnackKind[] = SNACK_KINDS): SnackKind {
+    const weights = kinds.map(kind => Math.sqrt(SNACKS[kind].stock))
     let left = roll * weights.reduce((a, b) => a + b, 0)
-    for (let i = 0; i < SNACK_KINDS.length; i++) {
+    for (let i = 0; i < kinds.length; i++) {
         left -= weights[i]!
-        if (left < 0) return SNACK_KINDS[i]!
+        if (left < 0) return kinds[i]!
     }
 
-    return SNACK_KINDS[SNACK_KINDS.length - 1]!
+    return kinds[kinds.length - 1]!
 }
 
 /** What is acting on your kart: snacks you ate, and what others did to you. */

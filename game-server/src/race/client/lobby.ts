@@ -83,7 +83,8 @@ export function joinLobby(options: LobbyOptions): Lobby {
         () => send({ type: 'start' }),
         () => send({ type: 'close' }),
         time => send({ type: 'setTime', time }),
-        density => send({ type: 'setDensity', density })
+        density => send({ type: 'setDensity', density }),
+        kinds => send({ type: 'setKinds', kinds })
     )
 
     let you = ''

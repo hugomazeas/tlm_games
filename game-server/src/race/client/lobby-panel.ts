@@ -1,4 +1,4 @@
-import { MAX_DENSITY, SNACK_ICONS } from '../drive/snacks.ts'
+import { MAX_DENSITY, SNACK_ICONS, SNACK_KINDS, SNACKS, type SnackKind } from '../drive/snacks.ts'
 import { formatTime } from '../drive/trial.ts'
 import { describeSky, type TimeOfDay, TIMES_OF_DAY } from '../drive/weather.ts'
 import type { LobbyPhase, LobbyView } from '../protocol.ts'
@@ -12,6 +12,22 @@ import type { ReceiptLine } from './snacks.ts'
  */
 
 const TIME_LABELS: Record<TimeOfDay, string> = { morning: 'Morning', noon: 'Noon', sunset: 'Sunset', night: 'Night' }
+
+/** The snacks' names, short enough for two to a row in the lobby panel. */
+const SHORT_NAMES: Record<SnackKind, string> = {
+    coke: 'Coke',
+    bubly: 'Bubly',
+    chips: 'Chips',
+    montellier: 'Montellier',
+    fuze: 'Fuze',
+    chocolate: 'Chocolat',
+    kirkland: 'Kirkland',
+    gokrisp: 'Go Krisp',
+    trailmix: 'TrailMix',
+    popcorn: 'Popcorn',
+    drumsticks: 'Drumsticks',
+    chipwich: 'Chipwich',
+}
 
 /** "3 / 10", "off", "10 / 10 🔥". */
 function densityLabel(density: number): string {
@@ -53,7 +69,8 @@ export function createLobbyPanel(
     onStart: () => void,
     onClose: () => void,
     onTime: (time: TimeOfDay | null) => void,
-    onDensity: (density: number) => void
+    onDensity: (density: number) => void,
+    onKinds: (kinds: SnackKind[]) => void
 ): LobbyPanel {
     let receipt: readonly ReceiptLine[] = []
     let lobby: LobbyView | null = null
@@ -107,6 +124,33 @@ export function createLobbyPanel(
         const wrap = el('div')
         wrap.append(label, el('div', 'note', densityNote(density)))
         return wrap
+    }
+
+    /** The host's pick of the dépanneur's snacks: a checkbox each, with All and None. */
+    const snackPicker = (kinds: readonly SnackKind[]) => {
+        const box = el('div', 'kinds')
+        const head = el('div', 'kinds-head', 'On the track')
+        const all = button('All', () => onKinds([...SNACK_KINDS]), 'mini')
+        const none = button('None', () => onKinds([]), 'mini')
+        head.append(all, none)
+        box.append(head)
+        const grid = el('div', 'kinds-grid')
+        for (const kind of SNACK_KINDS) {
+            const label = el('label', 'kind')
+            label.title = `${SNACKS[kind].name}: ${SNACKS[kind].effect}`
+            const tick = el('input')
+            tick.type = 'checkbox'
+            tick.checked = kinds.includes(kind)
+            tick.addEventListener('change', () => {
+                tick.blur()
+                onKinds(tick.checked ? [...kinds, kind] : kinds.filter(k => k !== kind))
+            })
+            label.append(tick, el('span', '', `${SNACK_ICONS[kind]} ${SHORT_NAMES[kind]}`))
+            grid.append(label)
+        }
+        box.append(grid)
+        if (kinds.length === 0) box.append(el('div', 'note', 'None ticked: a clean race.'))
+        return box
     }
 
     /** Who ate what from the dépanneur this race, at real prices. */
@@ -177,9 +221,17 @@ export function createLobbyPanel(
         }
         children.push(members)
 
-        if (!live && lobby.hostId === you) children.push(timePicker(lobby.time), densitySlider(lobby.density))
-        else if (!live)
+        if (!live && lobby.hostId === you) {
+            children.push(timePicker(lobby.time), densitySlider(lobby.density))
+            if (lobby.density > 0) children.push(snackPicker(lobby.kinds))
+        } else if (!live) {
             children.push(el('div', 'sky', `🍫 Snacks: ${densityLabel(lobby.density)}. ${densityNote(lobby.density)}`))
+            if (lobby.density > 0 && lobby.kinds.length < SNACK_KINDS.length) {
+                children.push(
+                    el('div', 'sky', `On the track: ${lobby.kinds.map(kind => SNACK_ICONS[kind]).join(' ') || 'none'}`)
+                )
+            }
+        }
 
         if (!live) {
             if (lobby.hostId === you) {

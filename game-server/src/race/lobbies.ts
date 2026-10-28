@@ -3,7 +3,16 @@ import { toGate, type Route } from './drive/route.ts'
 import { standings } from './drive/standings.ts'
 import { PACE } from './drive/kart.ts'
 import { COUNTDOWN, FINAL_COUNT, introFor } from './drive/trial.ts'
-import { DEFAULT_DENSITY, EAT_REACH, MAX_DENSITY, placeSnacks, RESPAWN_MS, type SnackSpot } from './drive/snacks.ts'
+import {
+    DEFAULT_DENSITY,
+    EAT_REACH,
+    MAX_DENSITY,
+    placeSnacks,
+    RESPAWN_MS,
+    SNACK_KINDS,
+    type SnackKind,
+    type SnackSpot,
+} from './drive/snacks.ts'
 import { rollSky, type Sky, type TimeOfDay } from './drive/weather.ts'
 import type { Course } from './map/format.ts'
 import {
@@ -114,6 +123,8 @@ interface Lobby {
     time: TimeOfDay | null
     /** How many snacks, 0–10 (the host's slider). A race with snacks isn't sent to the Hub's records. */
     density: number
+    /** Which snacks (the host's checkboxes); none is a clean race. */
+    kinds: SnackKind[]
     /** This race's snacks; `eatenAt` set while one is gone. */
     snacks: Array<SnackSpot & { eatenAt: number | null }>
     /** Whether the race under way (or just finished) had snacks. */
@@ -167,6 +178,7 @@ export class LobbyManager {
                 sky: rollSky(this.hooks.random),
                 time: null,
                 density: DEFAULT_DENSITY,
+                kinds: [...SNACK_KINDS],
                 snacks: [],
                 raceChaos: false,
                 countdown: COUNTDOWN,
@@ -217,6 +229,18 @@ export class LobbyManager {
         }
         if (lobby.phase === 'countdown' || lobby.phase === 'racing') return
         lobby.density = Math.max(0, Math.min(MAX_DENSITY, Math.round(density)))
+        this.broadcastLobby(lobby)
+    }
+
+    /** The host picks which of the dépanneur's snacks the next races have (none ticked: a clean race). */
+    setKinds(connId: string, kinds: readonly SnackKind[]): void {
+        const lobby = this.lobbyOf(connId)
+        if (!lobby) return
+        if (lobby.hostId !== connId) {
+            return lobby.members.find(m => m.conn.id === connId)!.conn.send({ type: 'error', code: 'NOT_HOST' })
+        }
+        if (lobby.phase === 'countdown' || lobby.phase === 'racing') return
+        lobby.kinds = SNACK_KINDS.filter(kind => kinds.includes(kind))
         this.broadcastLobby(lobby)
     }
 
@@ -319,9 +343,12 @@ export class LobbyManager {
         lobby.results = null
         lobby.firstFinishAt = null
         this.setPhase(lobby, 'countdown')
-        lobby.raceChaos = lobby.density > 0 && lobby.track.route !== null
+        lobby.raceChaos = lobby.density > 0 && lobby.kinds.length > 0 && lobby.track.route !== null
         lobby.snacks = lobby.raceChaos
-            ? placeSnacks(lobby.track.route!, this.hooks.random, lobby.density).map(s => ({ ...s, eatenAt: null }))
+            ? placeSnacks(lobby.track.route!, this.hooks.random, lobby.density, lobby.kinds).map(s => ({
+                  ...s,
+                  eatenAt: null,
+              }))
             : []
         const snacks = onTrack(lobby)
         // The drone's flight takes as long as this lap needs, then 3, 2, 1.
@@ -575,5 +602,6 @@ function view(lobby: Lobby): LobbyView {
         sky: lobby.sky,
         time: lobby.time,
         density: lobby.density,
+        kinds: [...lobby.kinds],
     }
 }

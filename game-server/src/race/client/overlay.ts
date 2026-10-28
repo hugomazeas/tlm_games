@@ -32,7 +32,8 @@ const CSS = `
     #race-standings { top: auto; bottom: 340px; left: auto; right: 12px; min-width: 120px; font-size: 14px; }
     #race-standings .position { font: 800 34px system-ui, sans-serif; }
     #race-standings .you { color: #ffd22e; font-weight: 700; }
-    #race-lobby { top: 12px; pointer-events: auto; width: 250px; max-height: calc(100vh - 360px); overflow-y: auto; display: grid; gap: 6px; font-size: 14px; }
+    #race-lobby { top: 12px; pointer-events: auto; width: 290px; box-sizing: border-box; max-height: calc(100vh - 360px); overflow-y: auto; overflow-x: hidden; display: grid; gap: 6px; font-size: 14px; }
+    #race-lobby .time { white-space: nowrap; gap: 6px; }
     #race-lobby .title { font-weight: 700; font-size: 15px; }
     #race-lobby .phase { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; }
     #race-lobby .sky { font-size: 12px; color: #cbd5e1; }
@@ -40,8 +41,15 @@ const CSS = `
     #race-lobby .receipt-title { font-weight: 800; border-bottom: 1px dashed #a8a29e; padding-bottom: 3px; }
     #race-lobby .receipt-row { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; }
     #race-lobby .receipt-row .total { font-weight: 800; }
-    #race-lobby .time input[type=range] { flex: 1; margin: 0 8px; accent-color: #ea580c; cursor: pointer; }
+    #race-lobby .time input[type=range] { flex: 1; min-width: 0; margin: 0 4px; accent-color: #ea580c; cursor: pointer; }
     #race-lobby .time .density { min-width: 52px; text-align: right; color: #f8fafc; }
+    #race-lobby .kinds { display: grid; gap: 4px; padding: 6px; border-radius: 6px; background: rgb(255 255 255 / 0.06); }
+    #race-lobby .kinds-head { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+    #race-lobby .kinds-head button.mini { margin-left: auto; padding: 1px 8px; font-size: 11px; text-transform: none; letter-spacing: 0; }
+    #race-lobby .kinds-head button.mini + button.mini { margin-left: 0; }
+    #race-lobby .kinds-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
+    #race-lobby .kind { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #e2e8f0; cursor: pointer; white-space: nowrap; }
+    #race-lobby .kind input { margin: 0; cursor: pointer; }
     #race-lobby .time { display: flex; align-items: center; justify-content: space-between; color: #cbd5e1; }
     #race-lobby select { font: inherit; padding: 3px 6px; border-radius: 6px; border: 0; background: rgb(255 255 255 / 0.12); color: #f8fafc; cursor: pointer; }
     #race-lobby select option { color: #0f172a; }

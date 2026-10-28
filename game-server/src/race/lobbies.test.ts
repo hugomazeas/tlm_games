@@ -293,6 +293,19 @@ describe('races', () => {
         expect(lobbyOf('b').time).toBeNull()
     })
 
+    test('setKinds takes snacks from the catalogue, in its order, each once', () => {
+        expect(parseClientMessage(JSON.stringify({ type: 'setKinds', kinds: ['popcorn', 'coke', 'coke'] }))).toEqual({
+            type: 'setKinds',
+            kinds: ['coke', 'popcorn'],
+        })
+        expect(parseClientMessage(JSON.stringify({ type: 'setKinds', kinds: [] }))).toEqual({
+            type: 'setKinds',
+            kinds: [],
+        })
+        expect(parseClientMessage(JSON.stringify({ type: 'setKinds', kinds: ['beer'] }))).toBeNull()
+        expect(parseClientMessage(JSON.stringify({ type: 'setKinds', kinds: 'coke' }))).toBeNull()
+    })
+
     test('setDensity only takes a whole number from 0 to 10', () => {
         expect(parseClientMessage(JSON.stringify({ type: 'setDensity', density: 7 }))).toEqual({
             type: 'setDensity',
@@ -491,6 +504,33 @@ describe('snacks', () => {
         now += RESPAWN_MS
         manager.tick()
         expect(last('b', 'respawn')).toEqual({ type: 'respawn', snack: snack.id })
+    })
+
+    test("the host picks which snacks: only those are placed; none ticked is a clean race that's recorded", () => {
+        join('a', 1, null, routed)
+        join('b', 2, 'lobby1', routed)
+        expect(lobbyOf('a').kinds).toHaveLength(12)
+        manager.setKinds('b', ['coke'])
+        expect(last('b', 'error')).toEqual({ type: 'error', code: 'NOT_HOST' })
+        manager.setDensity('a', 10)
+        manager.setKinds('a', ['coke', 'bubly'])
+        expect(lobbyOf('b').kinds).toEqual(['coke', 'bubly'])
+        startRace('a')
+        const snacks = last('a', 'countdown')!.snacks
+        expect(snacks.length).toBeGreaterThan(10)
+        expect(new Set(snacks.map(s => s.kind))).toEqual(new Set(['coke', 'bubly']))
+        now += 60_000
+        lap('a', 1, 45)
+        lap('b', 1, 50)
+        expect(results).toEqual([])
+
+        manager.setKinds('a', [])
+        startRace('a')
+        expect(last('a', 'countdown')!.snacks).toEqual([])
+        now += 60_000
+        lap('a', 1, 45)
+        lap('b', 1, 50)
+        expect(results).toHaveLength(1)
     })
 
     test('density 0 is a clean race; a race with snacks keeps its times out of the records', () => {
