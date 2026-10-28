@@ -10,7 +10,7 @@
  * the end of the race, and the results it posts to the Hub.
  */
 
-import { MAX_DENSITY, type SnackKind, type SnackSpot } from './drive/snacks.ts'
+import { MAX_DENSITY, SNACK_KINDS, type SnackKind, type SnackSpot } from './drive/snacks.ts'
 import type { Livery } from './livery.ts'
 import { type Sky, type TimeOfDay, TIMES_OF_DAY } from './drive/weather.ts'
 
@@ -55,6 +55,8 @@ export interface LobbyView {
     time: TimeOfDay | null
     /** How many snacks on the track, 0 (none: a clean race) to 10 (mayhem): the host's slider. */
     density: number
+    /** Which of the dépanneur's snacks are on the track (the host's checkboxes). */
+    kinds: SnackKind[]
 }
 
 /** One row of the lobby list on the Hub's racing page. */
@@ -101,6 +103,8 @@ export type ClientMessage =
     | { type: 'setTime'; time: TimeOfDay | null }
     /** The host sets how many snacks (0–10), between races. */
     | { type: 'setDensity'; density: number }
+    /** The host picks which snacks are on the track, between races. */
+    | { type: 'setKinds'; kinds: SnackKind[] }
     /** I drove through snack `snack`. */
     | { type: 'eat'; snack: number }
     /**
@@ -173,6 +177,12 @@ export function parseClientMessage(raw: string): ClientMessage | null {
         return Number.isInteger(density) && (density as number) >= 0 && (density as number) <= MAX_DENSITY
             ? { type: 'setDensity', density: density as number }
             : null
+    }
+    if (message.type === 'setKinds') {
+        const { kinds } = message
+        if (!Array.isArray(kinds) || !kinds.every(kind => SNACK_KINDS.includes(kind as SnackKind))) return null
+        // In the catalogue's order, each once.
+        return { type: 'setKinds', kinds: SNACK_KINDS.filter(kind => kinds.includes(kind)) }
     }
     if (message.type === 'eat') {
         const { snack } = message

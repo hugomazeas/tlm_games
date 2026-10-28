@@ -258,6 +258,7 @@ async function raceMessage(ws: ServerWebSocket<SocketData>, raw: string): Promis
     else if (message.type === 'close') racing.manager.close(ws.data.id)
     else if (message.type === 'setTime') racing.manager.setTime(ws.data.id, message.time)
     else if (message.type === 'setDensity') racing.manager.setDensity(ws.data.id, message.density)
+    else if (message.type === 'setKinds') racing.manager.setKinds(ws.data.id, message.kinds)
     else if (message.type === 'eat') racing.manager.eat(ws.data.id, message.snack)
     else racing.manager.pose(ws.data.id, message.pose, message.samples)
 }

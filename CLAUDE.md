@@ -416,8 +416,10 @@ built from OpenStreetMap and federal elevation data, drawn with Three.js.
   click the route to insert, drag to move, right-click to remove (`drive/editing.ts`);
   checkpoints show as bars across the road (as the race lays them, and saved that way); one
   green arrow on the start line shows the way round, and "⇄ Reverse direction" (`reversed`:
-  the start kept, the others in the opposite order) flips it. Laravel validates shape and
-  that checkpoints are on the map.
+  the start kept, the others in the opposite order) flips it. Street names label the map
+  (`Road.name`, OSM's, kept for drivable roads by `map/streets.ts`): major roads from any
+  zoom, streets from 0.45 px/m, service roads from 1.5, each along its straightest run,
+  never overlapping. Laravel validates shape and that checkpoints are on the map.
 - **Snacks** (`drive/snacks.ts` pure and shared, `client/snacks.ts`, `client/snack-models.ts`):
   the office dépanneur's 12 real items lie along a race's route, anywhere across the
   street (up to 6.5 m off the route's line), as many as the host's slider says (`density`
@@ -431,7 +433,8 @@ built from OpenStreetMap and federal elevation data, drawn with Three.js.
   Popcorn turns everyone else's camera to the eater, a Drumsticks freezes the others 2 s,
   a Chipwich is the server's (`sandwich`: just ahead of the kart in front, level with it in
   the race, the jump allowed). Trails come from the eater's poses on every tab. The host's
-  Snacks slider (`setDensity`): a race with any snacks isn't sent to the Hub's records.
+  Snacks slider (`setDensity`) and a checkbox per snack (`setKinds`, `LobbyView.kinds`, all on
+  by default; only the ticked are placed): a race with any snacks isn't sent to the Hub's records.
   After a race the lobby panel shows the joke dépanneur bill (nothing is charged; never
   `dep log`). The welcome screen lists them down its left side (a panel of its own, under
   900 px wide it hides): each model rendered to a picture, its effect, how rare it is.
