@@ -58,6 +58,15 @@ export function insertionIndex(
     return leg + 1
 }
 
+/**
+ * The same circuit the other way round: the start line stays put, the other
+ * checkpoints come in the opposite order, so the route (and the race) leaves
+ * the start line the other way.
+ */
+export function reversed<T>(gates: readonly T[]): T[] {
+    return gates.length < 3 ? [...gates] : [gates[0]!, ...gates.slice(1).reverse()]
+}
+
 /** A course as a course file, in latitude/longitude. */
 export function courseFile(course: Omit<Course, 'slug'>, unproject: (point: [number, number]) => LatLon): CourseSpec {
     return {

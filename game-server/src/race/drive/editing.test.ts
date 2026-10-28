@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { parseCourse, projectCourse } from '../map/courses.ts'
 import { projector } from '../map/convert.ts'
 import type { Gate } from '../map/format.ts'
-import { courseFile, gateAcrossRoad, insertionIndex } from './editing.ts'
+import { courseFile, gateAcrossRoad, insertionIndex, reversed } from './editing.ts'
 import { courseRoute } from './route.ts'
 import { testMap } from './fixtures.ts'
 import { buildWorld } from './world.ts'
@@ -21,6 +21,29 @@ describe('gateAcrossRoad', () => {
 
     test('none without a road in reach', () => {
         expect(gateAcrossRoad(buildWorld(testMap()), 0, 0, 0)).toBeNull()
+    })
+})
+
+describe('reversed', () => {
+    const roads = [
+        { kind: 'street' as const, width: 10, points: [0, 0, 200, 0] },
+        { kind: 'street' as const, width: 10, points: [200, 0, 200, 200] },
+        { kind: 'street' as const, width: 10, points: [200, 200, 0, 200] },
+        { kind: 'street' as const, width: 10, points: [0, 200, 0, 0] },
+    ]
+    const gates = [gate(100, 0), gate(200, 100), gate(100, 200), gate(0, 100)]
+
+    test('keeps the start line, and sends the race off from it the other way', () => {
+        const back = reversed(gates)
+        expect(back[0]).toBe(gates[0])
+        expect(back.slice(1)).toEqual([gates[3]!, gates[2]!, gates[1]!])
+        const course = (g: Gate[]) => ({ slug: 'block', name: 'Block', laps: 1, gates: g })
+        // Clockwise heads east from the start (x grows); reversed, west.
+        const east = courseRoute(course(gates), roads)!
+        const west = courseRoute(course(back), roads)!
+        expect(east.points[2]! - east.points[0]!).toBeGreaterThan(0)
+        expect(west.points[2]! - west.points[0]!).toBeLessThan(0)
+        expect(reversed(reversed(gates))).toEqual(gates)
     })
 })
 

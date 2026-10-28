@@ -35,9 +35,19 @@ export interface Point {
     z: number
 }
 
-/** Grid slots: two abreast, this far apart across the road and between rows. */
-const GRID_ACROSS = 3
-const GRID_ROW = 7
+/**
+ * Grid slots: two abreast, each this far off the middle of the start line
+ * (2.4 m apart: karts drive through each other, they can sit close), rows
+ * this far apart.
+ */
+const GRID_ACROSS = 1.2
+const GRID_ROW = 5.5
+/**
+ * A slot that doesn't fit (a kerb, a wall) slides in towards the middle of the
+ * line, these shares of the way, then steps back this far, before giving up.
+ */
+const SQUEEZE = [1, 0.5, 0]
+const STEP_BACK = [0, 1.5, 3]
 /** The front row's distance behind the start line. */
 const GRID_LEAD = 6
 /** How far off its next gate's direction a kart can point before it's going the wrong way. */
@@ -107,23 +117,44 @@ export function isWrongWay(course: Course, progress: Progress, kart: Point, head
 }
 
 /** Grid slot `index` behind the start line, facing through it: two abreast, rows going back. */
-export function gridSlot(course: Course, index: number): { x: number; z: number; heading: number } {
+/**
+ * Where kart `index` waits for the green light. With `fits` (is there room
+ * for a kart here?), a slot that doesn't fit is squeezed in towards the middle
+ * and stepped back until it does; `fits` in the answer says whether it did.
+ */
+export function gridSlot(
+    course: Course,
+    index: number,
+    fits?: (x: number, z: number) => boolean
+): { x: number; z: number; heading: number; fits: boolean } {
     const start = course.gates[0]!
     const row = Math.floor(index / 2)
     const side = index % 2 === 0 ? -1 : 1
-    const back = GRID_LEAD + row * GRID_ROW
-    const across = side * GRID_ACROSS
-
-    return {
-        x: start.x - start.dx * back - start.dz * across,
-        z: start.z - start.dz * back + start.dx * across,
-        heading: Math.atan2(-start.dx, -start.dz),
+    const heading = Math.atan2(-start.dx, -start.dz)
+    const at = (squeeze: number, stepBack: number) => {
+        const back = GRID_LEAD + row * GRID_ROW + stepBack
+        const across = side * GRID_ACROSS * squeeze
+        return { x: start.x - start.dx * back - start.dz * across, z: start.z - start.dz * back + start.dx * across }
     }
+    if (fits) {
+        for (const stepBack of STEP_BACK) {
+            for (const squeeze of SQUEEZE) {
+                const spot = at(squeeze, stepBack)
+                if (fits(spot.x, spot.z)) return { ...spot, heading, fits: true }
+            }
+        }
+        return { ...at(1, 0), heading, fits: false }
+    }
+
+    return { ...at(1, 0), heading, fits: true }
 }
 
 /** Where a reset puts the kart: on the last gate it crossed, facing through it; on the grid before any. */
 export function respawnPoint(course: Course, progress: Progress): { x: number; z: number; heading: number } {
-    if (progress.lastGate < 0) return gridSlot(course, 0)
+    if (progress.lastGate < 0) {
+        const { x, z, heading } = gridSlot(course, 0)
+        return { x, z, heading }
+    }
     const gate = course.gates[progress.lastGate]!
 
     return { x: gate.x, z: gate.z, heading: Math.atan2(-gate.dx, -gate.dz) }

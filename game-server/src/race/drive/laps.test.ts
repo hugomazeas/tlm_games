@@ -143,13 +143,27 @@ describe('the grid and resets', () => {
         const [a, b, c] = [0, 1, 2].map(index => gridSlot(square, index))
         expect(a!.x).toBeCloseTo(-6)
         expect(b!.x).toBeCloseTo(-6)
-        expect(Math.abs(a!.z - b!.z)).toBeCloseTo(6)
-        expect(c!.x).toBeCloseTo(-13)
+        // Close together: karts drive through each other.
+        expect(Math.abs(a!.z - b!.z)).toBeCloseTo(2.4)
+        expect(c!.x).toBeCloseTo(-11.5)
         expect(a!.heading).toBeCloseTo(-Math.PI / 2)
     })
 
+    test("a slot that doesn't fit squeezes in to the middle, then steps back; or says it can't", () => {
+        // Nothing fits more than 0.5 m off the line's middle.
+        const middle = gridSlot(square, 1, (_x, z) => Math.abs(z - -100) < 0.5)
+        expect(middle).toMatchObject({ x: -6, fits: true })
+        expect(middle.z).toBeCloseTo(-100)
+        // Only from 1 m further back.
+        const back = gridSlot(square, 1, x => x < -7)
+        expect(back.fits).toBe(true)
+        expect(back.x).toBeCloseTo(-7.5)
+        expect(gridSlot(square, 1, () => false).fits).toBe(false)
+    })
+
     test('a reset puts you on your last gate, or the grid before any', () => {
-        expect(respawnPoint(square, startProgress())).toEqual(gridSlot(square, 0))
+        const { x, z, heading } = gridSlot(square, 0)
+        expect(respawnPoint(square, startProgress())).toEqual({ x, z, heading })
         const atGate1 = respawnPoint(square, through(through(startProgress(), 0, 2), 1, 20))
         expect(atGate1).toMatchObject({ x: 100, z: 0 })
         expect(Math.abs(atGate1.heading)).toBeCloseTo(Math.PI)

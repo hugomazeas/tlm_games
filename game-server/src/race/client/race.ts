@@ -1,5 +1,6 @@
 import type * as THREE from 'three'
 import { forwardSpeed, NITRO_CHARGE, STEP } from '../drive/kart.ts'
+import { gridFits } from '../drive/checks.ts'
 import { bestLap, gridSlot, isWrongWay, respawnPoint } from '../drive/laps.ts'
 import { courseRoute, locate, orientAlongRoute, pointAt, type Route } from '../drive/route.ts'
 import { ordinal } from '../drive/standings.ts'
@@ -115,7 +116,8 @@ export function createRace(options: RaceOptions): Race {
 
         placeOnGrid(slot) {
             if (!course) return
-            const at = gridSlot(course, slot)
+            // Squeezed in where the street is narrow, as the track check allowed it.
+            const at = gridSlot(course, slot, gridFits(world, course.gates[0]!))
             driver.place(at.x, at.z, at.heading)
         },
 

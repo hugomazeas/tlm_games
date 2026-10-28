@@ -39,9 +39,18 @@ test('a checkpoint off the streets, or with a building across it', () => {
     expect(courseProblems(course, world, roads)).toContain('a building stands in checkpoint 2')
 })
 
-test('a start line too close to a corner leaves no room for the grid', () => {
-    const cramped: Course = { ...course, gates: [{ ...course.gates[0]!, x: -185 }, ...course.gates.slice(1)] }
-    expect(courseProblems(cramped, buildWorld(testMap({ roads })), roads).join()).toMatch(/no room on the grid/)
+test('a building right behind the start line leaves no room for the grid', () => {
+    const blocked = buildWorld(testMap({ roads, buildings: [box(1, -26, -200, 11)] }))
+    expect(courseProblems(course, blocked, roads).join()).toMatch(/no room on the grid/)
+})
+
+test('a narrow street or grass behind the line is fine: the grid squeezes in', () => {
+    // A start line just past the corner: the back rows sit on the grass beyond the street's end.
+    const nearCorner: Course = { ...course, gates: [{ ...course.gates[0]!, x: -185 }, ...course.gates.slice(1)] }
+    expect(courseProblems(nearCorner, buildWorld(testMap({ roads })), roads)).toEqual([])
+    // A wall along one kerb: the karts on that side slide in towards the middle.
+    const kerb = buildWorld(testMap({ roads, buildings: [box(2, -15, -205.5, 2.5), box(3, -26, -205.5, 2.5)] }))
+    expect(courseProblems(course, kerb, roads)).toEqual([])
 })
 
 test('checkpoints no street joins', () => {
