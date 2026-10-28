@@ -93,6 +93,7 @@
                             <span class="pph-mono font-bold text-[15px] text-[#f5ecd6] tracking-tight tabular-nums" x-text="g.player_left_score + ' · ' + g.player_right_score"></span>
                             <span :class="g.left_won ? 'text-[#ff5a4a]/70' : 'text-[#9be7c4]'" x-text="g.right_label"></span>
                             <span x-show="g.free_play" class="pph-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#ffd166] bg-[#ffd166]/15 border border-[#ffd166]/40 px-2 py-0.5 rounded-md shrink-0">Free play</span>
+                            <span x-show="g.logged" title="Final score typed in after the game" class="pph-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#f5ecd6]/60 bg-[#f5ecd6]/[0.06] border border-[#f5ecd6]/20 px-2 py-0.5 rounded-md shrink-0">Logged</span>
                         </div>
                         <span class="ml-auto pph-mono text-[11px] tracking-[0.06em] text-[#f5ecd6]/45 shrink-0" x-text="g.ended_at_human"></span>
                         <span class="text-[#3ec8ff]/70 text-lg shrink-0">›</span>

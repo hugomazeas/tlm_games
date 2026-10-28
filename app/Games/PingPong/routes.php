@@ -4,6 +4,7 @@ use App\Games\PingPong\Controllers\PingPongApiController;
 use App\Games\PingPong\Controllers\PingPongChatController;
 use App\Games\PingPong\Controllers\PingPongController;
 use App\Games\PingPong\Controllers\PingPongLobbyApiController;
+use App\Games\PingPong\Controllers\PingPongLogController;
 use App\Games\PingPong\Controllers\PingPongTournamentController;
 use App\Games\PingPong\Controllers\PingPongViewerController;
 use Illuminate\Support\Facades\Route;
@@ -14,6 +15,11 @@ Route::get('/games/ping-pong/awards/{key}', [PingPongController::class, 'awardDe
 Route::get('/games/ping-pong/players/{id}', [PingPongController::class, 'playerStats']);
 Route::get('/games/ping-pong/matchup/{playerA}/{playerB}', [PingPongController::class, 'matchup']);
 Route::get('/games/ping-pong/lobby/{code}', [PingPongController::class, 'lobbyJoin']);
+
+// Logged results: final scores typed in after the games (offices without a scoring screen).
+Route::get('/games/ping-pong/log', [PingPongLogController::class, 'create']);
+Route::post('/games/ping-pong/api/logged-results', [PingPongLogController::class, 'store']);
+Route::delete('/games/ping-pong/api/logged-results/{id}', [PingPongLogController::class, 'destroy']);
 
 // Tournaments (single elimination, off the books: no ELO, no official stats).
 // Plain HTML forms, so they need the session + CSRF from the web group.

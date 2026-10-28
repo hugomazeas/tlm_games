@@ -30,6 +30,7 @@ class PingPongMatch extends Model
         'started_at',
         'last_score_activity_at',
         'ended_at',
+        'logged_at',
         'player_left_elo_before',
         'player_right_elo_before',
         'player_left_elo_after',
@@ -49,6 +50,7 @@ class PingPongMatch extends Model
             'started_at' => 'datetime',
             'last_score_activity_at' => 'datetime',
             'ended_at' => 'datetime',
+            'logged_at' => 'datetime',
             'left_remote_connected_at' => 'datetime',
             'right_remote_connected_at' => 'datetime',
             'player_left_score' => 'integer',
@@ -150,11 +152,36 @@ class PingPongMatch extends Model
         return $this->mode === '2v2';
     }
 
+    /**
+     * Typed in after it was played (final score only): no points, no serve, no duration.
+     */
+    public function isLogged(): bool
+    {
+        return $this->logged_at !== null;
+    }
+
+    /**
+     * Whether a typed-in score is one a game can end on: 11 with the loser on 9 or
+     * less, or past 10–10 won by exactly two.
+     */
+    public static function isFinalScore(int $left, int $right): bool
+    {
+        $winner = max($left, $right);
+        $loser = min($left, $right);
+
+        if ($winner === 11) {
+            return $loser <= 9;
+        }
+
+        return $winner > 11 && $winner - $loser === 2;
+    }
+
     public function getDurationAttribute(): ?int
     {
-        if (!$this->ended_at) {
+        if (! $this->ended_at || $this->isLogged()) {
             return null;
         }
+
         return $this->started_at->diffInSeconds($this->ended_at);
     }
 
@@ -166,6 +193,7 @@ class PingPongMatch extends Model
         }
         $minutes = floor($duration / 60);
         $seconds = $duration % 60;
+
         return sprintf('%02d:%02d', $minutes, $seconds);
     }
 
@@ -176,9 +204,10 @@ class PingPongMatch extends Model
 
     public function getLoserAttribute(): ?Player
     {
-        if (!$this->winner_id) {
+        if (! $this->winner_id) {
             return null;
         }
+
         return $this->winner_id === $this->player_left_id ? $this->playerRight : $this->playerLeft;
     }
 
@@ -201,7 +230,7 @@ class PingPongMatch extends Model
         $earnedP75 = 0.46;
         $giftP75 = 0.80;
 
-        if (!$this->winner_id || $this->isDoubles()) {
+        if (! $this->winner_id || $this->isDoubles()) {
             return null;
         }
 

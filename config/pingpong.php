@@ -65,4 +65,20 @@ return [
 
     'video_upload_url' => env('VIDEO_UPLOAD_URL', 'http://192.168.1.141:8000/api/videos'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Logged Results
+    |--------------------------------------------------------------------------
+    |
+    | Offices without a scoring screen type their final scores in afterwards
+    | (/games/ping-pong/log). A result can be logged for earlier the same day
+    | in the offices' timezone, and undone for `logged_undo_minutes` after,
+    | as long as nobody in it has played a ranked match since.
+    |
+    */
+
+    'offices_timezone' => env('PINGPONG_OFFICES_TIMEZONE', 'America/Toronto'),
+
+    'logged_undo_minutes' => (int) env('PINGPONG_LOGGED_UNDO_MINUTES', 15),
+
 ];
