@@ -71,6 +71,14 @@ class PingPongLoggedResultsTest extends TestCase
             ->assertSee('Ada');
     }
 
+    public function test_the_ping_pong_home_links_to_the_log_page(): void
+    {
+        $this->get('/games/ping-pong')
+            ->assertOk()
+            ->assertSee('href="/games/ping-pong/log"', false)
+            ->assertSee('No screen? Log final scores');
+    }
+
     public function test_a_logged_game_is_a_finished_ranked_match_that_moves_elo(): void
     {
         $this->logSingles([[11, 7]])

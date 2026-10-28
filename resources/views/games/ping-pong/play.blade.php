@@ -23,16 +23,26 @@
                     <span class="hidden md:inline-block ml-3 pph-mono text-[10px] tracking-[0.28em] uppercase text-[#f5ecd6]/40">TLM Office League</span>
                 </div>
 
-                <div class="inline-flex items-center gap-2 pph-mono text-[11px] uppercase tracking-[0.12em] text-[#f5ecd6]/80">
-                    <span class="w-2 h-2 rounded-full"
-                          :class="{
-                              'bg-[#9be7c4] shadow-[0_0_10px_#9be7c4]': wsStatus === 'connected',
-                              'bg-[#ffd166] pph-flicker': wsStatus === 'connecting',
-                              'bg-[#ff5a4a]': wsStatus === 'error' || wsStatus === 'disconnected',
-                          }"></span>
-                    <span x-show="wsStatus === 'connected'">Live</span>
-                    <span x-show="wsStatus === 'connecting'">Syncing…</span>
-                    <span x-show="wsStatus === 'error' || wsStatus === 'disconnected'">Offline</span>
+                <div class="flex items-center gap-4 md:gap-6 min-w-0">
+                    {{-- Played without a screen: type the final scores in afterwards --}}
+                    <a href="/games/ping-pong/log"
+                       class="inline-flex items-center gap-2 px-3.5 py-2 rounded-full border border-[#f5ecd6]/20 bg-[#f5ecd6]/[0.04] text-[#f5ecd6] no-underline text-[13px] font-semibold whitespace-nowrap transition hover:border-[#f5ecd6]/45 hover:bg-[#f5ecd6]/[0.08]">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                        <span class="hidden sm:inline">No screen? Log final scores</span>
+                        <span class="sm:hidden">Log scores</span>
+                    </a>
+
+                    <div class="inline-flex items-center gap-2 pph-mono text-[11px] uppercase tracking-[0.12em] text-[#f5ecd6]/80">
+                        <span class="w-2 h-2 rounded-full"
+                              :class="{
+                                  'bg-[#9be7c4] shadow-[0_0_10px_#9be7c4]': wsStatus === 'connected',
+                                  'bg-[#ffd166] pph-flicker': wsStatus === 'connecting',
+                                  'bg-[#ff5a4a]': wsStatus === 'error' || wsStatus === 'disconnected',
+                              }"></span>
+                        <span x-show="wsStatus === 'connected'">Live</span>
+                        <span x-show="wsStatus === 'connecting'">Syncing…</span>
+                        <span x-show="wsStatus === 'error' || wsStatus === 'disconnected'">Offline</span>
+                    </div>
                 </div>
             </header>
 
@@ -267,10 +277,7 @@
                                 <a href="/games/ping-pong/recordings"
                                    class="px-3 py-1.5 rounded-full border border-[#f5ecd6]/15 text-[#f5ecd6]/80 no-underline text-xs font-semibold transition hover:text-[#f5ecd6] hover:border-[#f5ecd6]/30 hover:bg-[#f5ecd6]/[0.04]">Recordings</a>
                                 <a href="/games/ping-pong/tournaments"
-                                   class="px-3 py-1.5 rounded-full border border-[#f5ecd6]/15 text-[#f5ecd6]/80 no-underline text-xs font-semibold transition hover:text-[#f5ecd6] hover:border-[#f5ecd6]/30 hover:bg-[#f5ecd6]/[0.04]">Tournaments</a>
-                                <a href="/games/ping-pong/log" title="No scoring screen? Type in your final scores"
-                                   class="px-3 py-1.5 rounded-full border border-[#f5ecd6]/15 text-[#f5ecd6]/80 no-underline text-xs font-semibold transition hover:text-[#f5ecd6] hover:border-[#f5ecd6]/30 hover:bg-[#f5ecd6]/[0.04]">Log results</a>
-                            </div>
+                                   class="px-3 py-1.5 rounded-full border border-[#f5ecd6]/15 text-[#f5ecd6]/80 no-underline text-xs font-semibold transition hover:text-[#f5ecd6] hover:border-[#f5ecd6]/30 hover:bg-[#f5ecd6]/[0.04]">Tournaments</a>                            </div>
                         </div>
 
                         <div class="overflow-y-auto overflow-x-auto flex-1 min-h-0 pb-3 -mx-1 px-1">
