@@ -16,6 +16,12 @@ function road(points: number[], width = 8): Road {
 }
 
 describe('roadProfile', () => {
+    test("a drivable street keeps its name (for the track editor's labels); paths and sidewalks don't", () => {
+        expect(roadProfile('street', { name: ' Grande Allée Est ' }).name).toBe('Grande Allée Est')
+        expect(roadProfile('street', {}).name).toBeUndefined()
+        expect(roadProfile('path', { name: 'Promenade des Gouverneurs' }).name).toBeUndefined()
+    })
+
     test('uses tagged lanes and width', () => {
         expect(roadProfile('major', { lanes: '3', width: '12' })).toMatchObject({ lanes: 3, width: 12 })
     })

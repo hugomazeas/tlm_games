@@ -222,6 +222,8 @@ export interface Road {
     oneway?: boolean
     sidewalks?: Sides
     bikeLanes?: Sides
+    /** The street's name, from OSM (drivable roads only): the track editor labels the map with it. */
+    name?: string
 }
 
 /** Street furniture, each kind a flat list. */

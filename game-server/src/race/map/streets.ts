@@ -56,6 +56,7 @@ export function roadProfile(kind: RoadKind, tags: Record<string, string>): Omit<
 
     const sidewalks = sides(tags, 'sidewalk', ['yes'], kind === 'service' ? undefined : 'both')
     const bikeLanes = sides(tags, 'cycleway', ['lane'], undefined)
+    const name = tags.name?.trim()
 
     return {
         width,
@@ -63,6 +64,7 @@ export function roadProfile(kind: RoadKind, tags: Record<string, string>): Omit<
         ...(oneway ? { oneway } : {}),
         ...(sidewalks ? { sidewalks } : {}),
         ...(bikeLanes ? { bikeLanes } : {}),
+        ...(name ? { name } : {}),
     }
 }
 

@@ -4,7 +4,7 @@ import { courseRoute, orientAlongRoute, type Route } from '../drive/route.ts'
 import { buildWorld } from '../drive/world.ts'
 import { projectionAt } from '../map/convert.ts'
 import { type GateSpec, projectCourse } from '../map/courses.ts'
-import type { Course, Gate, RaceMap } from '../map/format.ts'
+import type { Course, Gate, RaceMap, RoadKind } from '../map/format.ts'
 
 /**
  * The Hub's track editor: the city from above, to pan and zoom like an
@@ -34,6 +34,21 @@ const DEFAULT_LAPS = 3
 const START_VIEW = { lat: 46.80868, lon: -71.2142 }
 /** Pixels per metre: the zoom range, and where a new track starts. */
 const ZOOM = { min: 0.15, max: 6, start: 1 }
+/**
+ * Street names: which kinds of road get one from which zoom (pixels a metre),
+ * in what lettering. Big streets show from far out; smaller ones as you zoom in.
+ */
+const LABELS: Partial<Record<RoadKind, { from: number; font: string; size: number; colour: string }>> = {
+    major: { from: 0.15, font: '700 13px system-ui, sans-serif', size: 13, colour: '#1f2937' },
+    street: { from: 0.45, font: '600 12px system-ui, sans-serif', size: 12, colour: '#374151' },
+    service: { from: 1.5, font: 'italic 500 11px system-ui, sans-serif', size: 11, colour: '#4b5563' },
+}
+const RANK: Record<RoadKind, number> = { major: 0, street: 1, service: 2, path: 3, sidewalk: 4 }
+/** A name needs this many spare pixels along its street, and the same name isn't repeated within this many. */
+const LABEL_ROOM = 16
+const LABEL_REPEAT = 320
+/** A name lies along a run of segments that turns no more than this (radians, ~17°). */
+const LABEL_BEND = 0.3
 /** A click within this many pixels of a checkpoint picks it; of the route, inserts there. */
 const PICK_RADIUS = 14
 /** A press that moves further than this is a drag, not a click. */
@@ -267,6 +282,18 @@ function draw(): void {
         context.fill()
     })
 
+    // Street names over the streets (in screen pixels): the big ones from far out, smaller streets as you zoom in.
+    context.setTransform(ratio, 0, 0, ratio, 0, 0)
+    drawStreetNames(onScreen)
+    context.setTransform(
+        ratio * scale,
+        0,
+        0,
+        ratio * scale,
+        ratio * (width / 2 - view.cx * scale),
+        ratio * (height / 2 - view.cz * scale)
+    )
+
     if (route) {
         context.strokeStyle = COLOURS.route
         context.lineWidth = 5 / scale
@@ -355,6 +382,94 @@ function drawStartArrow(route: Route): void {
     context.strokeStyle = '#ffffff'
     context.stroke()
     context.lineCap = 'butt'
+}
+
+/**
+ * Street names, each along the longest straight stretch of its street that
+ * fits it, kept upright, never over another name, and not again close to
+ * where the same name already is. Which streets get one depends on the zoom.
+ */
+function drawStreetNames(onScreen: (box: Box) => boolean): void {
+    const placed: Array<{ left: number; right: number; top: number; bottom: number }> = []
+    const lastAt = new Map<string, Array<[number, number]>>()
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    context.lineJoin = 'round'
+    // Big streets first: they win the space.
+    const order = [...map.roads.keys()]
+        .filter(i => map.roads[i]!.name)
+        .sort((a, b) => RANK[map.roads[a]!.kind] - RANK[map.roads[b]!.kind])
+    for (const i of order) {
+        const road = map.roads[i]!
+        const style = LABELS[road.kind]
+        if (!style || view.scale < style.from || !onScreen(roadBoxes[i]!)) continue
+        context.font = style.font
+        const text = road.name!
+        const textWidth = context.measureText(text).width
+        const best = straightestRun(road.points)
+        if (!best || best.length < textWidth + LABEL_ROOM) continue
+        const at = best
+        if (at.x < 0 || at.y < 0 || at.x > canvas.clientWidth || at.y > canvas.clientHeight) continue
+        const same = lastAt.get(text) ?? []
+        if (same.some(([x, y]) => Math.hypot(x - at.x, y - at.y) < LABEL_REPEAT)) continue
+        // The label's box, turned with it (its corners' extent).
+        const halfW = textWidth / 2 + 4
+        const halfH = style.size / 2 + 3
+        const cos = Math.abs(Math.cos(at.angle))
+        const sin = Math.abs(Math.sin(at.angle))
+        const box = {
+            left: at.x - (halfW * cos + halfH * sin),
+            right: at.x + (halfW * cos + halfH * sin),
+            top: at.y - (halfW * sin + halfH * cos),
+            bottom: at.y + (halfW * sin + halfH * cos),
+        }
+        if (placed.some(b => b.left < box.right && box.left < b.right && b.top < box.bottom && box.top < b.bottom))
+            continue
+        placed.push(box)
+        lastAt.set(text, [...same, [at.x, at.y]])
+        context.save()
+        context.translate(at.x, at.y)
+        context.rotate(at.angle)
+        context.lineWidth = 3
+        context.strokeStyle = 'rgba(255, 255, 255, 0.95)'
+        context.strokeText(text, 0, 0.5)
+        context.fillStyle = style.colour
+        context.fillText(text, 0, 0.5)
+        context.restore()
+    }
+}
+
+/**
+ * The longest run of a street's segments (on screen) that keeps to one
+ * direction, within LABEL_BEND: where its name can lie straight. Its middle,
+ * its angle (turned upright) and its length in pixels.
+ */
+function straightestRun(points: number[]): { x: number; y: number; angle: number; length: number } | null {
+    const screen: Array<[number, number]> = []
+    for (let p = 0; p + 1 < points.length; p += 2) screen.push(toScreen(points[p]!, points[p + 1]!))
+    let best: { from: number; to: number; length: number } | null = null
+    for (let i = 0; i + 1 < screen.length; i++) {
+        const heading = Math.atan2(screen[i + 1]![1] - screen[i]![1], screen[i + 1]![0] - screen[i]![0])
+        let length = 0
+        let j = i
+        while (j + 1 < screen.length) {
+            const [ax, ay] = screen[j]!
+            const [bx, by] = screen[j + 1]!
+            const turn = Math.atan2(by - ay, bx - ax) - heading
+            if (Math.abs(Math.atan2(Math.sin(turn), Math.cos(turn))) > LABEL_BEND) break
+            length += Math.hypot(bx - ax, by - ay)
+            j++
+        }
+        if (j > i && (!best || length > best.length)) best = { from: i, to: j, length }
+    }
+    if (!best) return null
+    const [x1, y1] = screen[best.from]!
+    const [x2, y2] = screen[best.to]!
+    let angle = Math.atan2(y2 - y1, x2 - x1)
+    if (angle > Math.PI / 2) angle -= Math.PI
+    if (angle < -Math.PI / 2) angle += Math.PI
+
+    return { x: (x1 + x2) / 2, y: (y1 + y2) / 2, angle, length: best.length }
 }
 
 function toScreen(x: number, z: number): [number, number] {
