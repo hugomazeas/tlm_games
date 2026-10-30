@@ -809,6 +809,7 @@
             errorTitle: '',
             errorMessage: '',
             starting: false,
+            leaving: false,
             swapping: false,
             freePlay: false,
 
@@ -920,7 +921,7 @@
                     })
                     .listen('.lobby.match-started', (e) => {
                         if (this.mySide) {
-                            window.location.href = `${this.remoteUrl}/games/ping-pong/remote/${e.matchId}/${this.mySide}`;
+                            this.goToRemote(e.matchId);
                         }
                     });
             },
@@ -1120,12 +1121,25 @@
                     if (!res.ok) {
                         const err = await res.json();
                         alert(err.error || 'Could not start game');
+                    } else {
+                        const data = await res.json();
+                        this.goToRemote(data.match.id);
+                        return;
                     }
-                    // The LobbyMatchStarted WebSocket event will redirect us
                 } catch (err) {
-                    alert('Error starting game');
+                    // The LobbyMatchStarted WebSocket event can redirect us before this
+                    // response lands, and leaving the page aborts the request
+                    if (!this.leaving) {
+                        alert('Error starting game');
+                    }
                 }
                 this.starting = false;
+            },
+
+            goToRemote(matchId) {
+                if (this.leaving) return;
+                this.leaving = true;
+                window.location.href = `${this.remoteUrl}/games/ping-pong/remote/${matchId}/${this.mySide}`;
             },
 
             saveSession() {
