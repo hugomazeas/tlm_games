@@ -76,7 +76,8 @@ POST /push/hot-potato/subscribe     Opt a player's browser into "a hot potato op
 POST /push/hot-potato/unsubscribe   Opt out of those pushes
 GET  /push/config                   VAPID public key + whether push is set up
 POST /push/subscribe                Register a browser against a player
-POST /push/unsubscribe              Drop a browser registration
+POST /push/unsubscribe              Unlink a browser from its player (the row stays while it has match alerts)
+POST /push/status                   What the server holds for a browser endpoint (player, match alerts)
 POST /push/test                     Send yourself a test notification
 POST /push/match-starts/subscribe   Opt a browser (no player needed) into "match started" alerts
 POST /push/match-starts/unsubscribe Opt a browser out of "match started" alerts

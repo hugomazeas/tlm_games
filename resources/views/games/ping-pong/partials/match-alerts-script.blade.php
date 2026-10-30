@@ -33,11 +33,16 @@ window.pingPongMatchAlerts = () => ({
             this.matchAlertsVapidKey = config.public_key;
 
             // A browser subscription alone doesn't mean match alerts are on —
-            // it may only be registered to a player at /notifications — so
-            // the local flag says which of the two this browser opted into.
+            // it may only be registered to a player at /notifications — and a
+            // local flag can't see the server drop or replace the row, so ask.
             const registration = await navigator.serviceWorker.ready;
             const existing = await registration.pushManager.getSubscription();
-            this.matchAlertsOn = Boolean(existing) && localStorage.getItem('ping_pong_match_alerts') === '1';
+            if (existing) {
+                const status = await this.postMatchAlerts('{{ url('/push/status') }}', {
+                    endpoint: existing.endpoint,
+                });
+                this.matchAlertsOn = status.notify_match_starts === true;
+            }
             this.matchAlertsAvailable = true;
         } catch (err) {
             console.warn('Match alerts unavailable:', err);
@@ -69,7 +74,6 @@ window.pingPongMatchAlerts = () => ({
                 keys: payload.keys,
             });
 
-            localStorage.setItem('ping_pong_match_alerts', '1');
             this.matchAlertsOn = true;
         } catch (err) {
             this.matchAlertsMessage = err.name === 'AbortError'
@@ -99,7 +103,6 @@ window.pingPongMatchAlerts = () => ({
                 if (result.deleted) await subscription.unsubscribe();
             }
 
-            localStorage.removeItem('ping_pong_match_alerts');
             this.matchAlertsOn = false;
         } catch (err) {
             this.matchAlertsMessage = err.message || 'Could not turn off match alerts.';

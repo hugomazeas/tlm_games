@@ -43,6 +43,8 @@ Route::post('/push/test', [PushSubscriptionController::class, 'test']);
 // Match-start alerts are opted into from the watch page, a game route that
 // runs without the session middleware and so has no CSRF token to send. They
 // are anonymous and only ever touch the caller's own browser endpoint.
+Route::post('/push/status', [PushSubscriptionController::class, 'status'])
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class]);
 Route::post('/push/match-starts/subscribe', [PushSubscriptionController::class, 'subscribeToMatchStarts'])
     ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class]);
 Route::post('/push/match-starts/unsubscribe', [PushSubscriptionController::class, 'unsubscribeFromMatchStarts'])
