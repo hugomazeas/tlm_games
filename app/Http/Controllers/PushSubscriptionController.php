@@ -58,18 +58,53 @@ class PushSubscriptionController extends Controller
         ], 201);
     }
 
+    /**
+     * Unlinks a browser from its player.
+     *
+     * A browser also opted into match-start alerts keeps its row, minus the
+     * player and what only made sense for one. `deleted` tells the browser
+     * whether it may drop its own push subscription too.
+     */
     public function destroy(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'endpoint' => 'required|string|max:2048',
         ]);
 
-        $deleted = PushSubscription::where(
+        $subscription = PushSubscription::where(
             'endpoint_hash',
             PushSubscription::hashEndpoint($validated['endpoint'])
-        )->delete();
+        )->first();
 
-        return response()->json(['deleted' => $deleted]);
+        if ($subscription?->notify_match_starts) {
+            $subscription->update(['player_id' => null, 'notify_hot_potato' => false]);
+
+            return response()->json(['deleted' => false]);
+        }
+
+        return response()->json(['deleted' => (bool) $subscription?->delete()]);
+    }
+
+    /**
+     * What the server holds for a browser. Pages ask rather than trusting
+     * local storage, which can't see a row deleted or moved elsewhere.
+     */
+    public function status(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'endpoint' => 'required|string|max:2048',
+        ]);
+
+        $subscription = PushSubscription::where(
+            'endpoint_hash',
+            PushSubscription::hashEndpoint($validated['endpoint'])
+        )->first();
+
+        return response()->json([
+            'registered' => $subscription !== null,
+            'player_id' => $subscription?->player_id,
+            'notify_match_starts' => (bool) $subscription?->notify_match_starts,
+        ]);
     }
 
     /**

@@ -32,6 +32,20 @@ class PingPongWatchPageTest extends TestCase
         $response->assertDontSee('get showMatchAlertsBanner()', false);
     }
 
+    /**
+     * Whether alerts are on is the server's call: a local flag stayed set
+     * after the row behind it was deleted, so the page claimed alerts it
+     * would never get.
+     */
+    public function test_watch_page_asks_the_server_whether_match_alerts_are_on(): void
+    {
+        $response = $this->get('/games/ping-pong/watch');
+
+        $response->assertOk();
+        $response->assertSee('/push/status', false);
+        $response->assertDontSee("localStorage.getItem('ping_pong_match_alerts')", false);
+    }
+
     public function test_watch_page_renders_the_chat_sidebar(): void
     {
         $response = $this->get('/games/ping-pong/watch');

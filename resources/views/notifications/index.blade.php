@@ -105,13 +105,19 @@
                     // down, leaving a page that can neither explain itself nor
                     // let anyone retry. Failing to read existing state must
                     // never be worse than having no state.
+                    //
+                    // The browser may hold a subscription for match-start
+                    // alerts alone, so only the server can say whether it is
+                    // registered to a player, and to which one.
                     try {
                         const registration = await navigator.serviceWorker.ready;
                         const existing = await registration.pushManager.getSubscription();
                         if (existing) {
-                            this.subscribed = true;
-                            const stored = localStorage.getItem('pingpong-player-id');
-                            if (stored) this.playerId = stored;
+                            const status = await this.post('{{ url('/push/status') }}', { endpoint: existing.endpoint });
+                            if (status.player_id) {
+                                this.subscribed = true;
+                                this.playerId = String(status.player_id);
+                            }
                         }
                     } catch (err) {
                         this.pushServiceBroken = err.name === 'AbortError';
@@ -144,7 +150,6 @@
                             keys: payload.keys,
                         });
 
-                        localStorage.setItem('pingpong-player-id', this.playerId);
                         this.subscribed = true;
                         this.pushServiceBroken = false;
                         this.message = "You're in. We'll ping you when you're drawn.";
@@ -177,8 +182,11 @@
                         const subscription = await registration.pushManager.getSubscription();
 
                         if (subscription) {
-                            await this.post('{{ url('/push/unsubscribe') }}', { endpoint: subscription.endpoint });
-                            await subscription.unsubscribe();
+                            const result = await this.post('{{ url('/push/unsubscribe') }}', { endpoint: subscription.endpoint });
+
+                            // Keep the browser's subscription when match-start
+                            // alerts still ride on it.
+                            if (result.deleted) await subscription.unsubscribe();
                         }
 
                         this.subscribed = false;

@@ -95,9 +95,88 @@ class PushSubscriptionTest extends TestCase
 
         $this->postJson('/push/unsubscribe', ['endpoint' => self::ENDPOINT])
             ->assertOk()
-            ->assertJsonPath('deleted', 1);
+            ->assertJsonPath('deleted', true);
 
         $this->assertDatabaseCount('push_subscriptions', 0);
+    }
+
+    /**
+     * Turning player notifications off used to delete the row outright, and
+     * the browser's match-start alerts went with it while the watch page
+     * still claimed they were on.
+     */
+    public function test_a_player_unregistering_keeps_the_browser_s_match_alerts(): void
+    {
+        $player = Player::create(['name' => 'Ada']);
+        $this->postJson('/push/match-starts/subscribe', $this->matchStartPayload())->assertCreated();
+        $this->postJson('/push/subscribe', $this->subscribePayload($player->id))->assertCreated();
+
+        $this->postJson('/push/unsubscribe', ['endpoint' => self::ENDPOINT])
+            ->assertOk()
+            ->assertJsonPath('deleted', false);
+
+        $this->assertDatabaseCount('push_subscriptions', 1);
+        $this->assertDatabaseHas('push_subscriptions', [
+            'player_id' => null,
+            'notify_match_starts' => true,
+        ]);
+    }
+
+    public function test_a_player_unregistering_turns_off_their_hot_potato_invites(): void
+    {
+        $player = Player::create(['name' => 'Ada']);
+        $this->postJson('/push/match-starts/subscribe', $this->matchStartPayload())->assertCreated();
+        $this->postJson('/push/subscribe', $this->subscribePayload($player->id))->assertCreated();
+        PushSubscription::query()->update(['notify_hot_potato' => true]);
+
+        $this->postJson('/push/unsubscribe', ['endpoint' => self::ENDPOINT])->assertOk();
+
+        $this->assertDatabaseHas('push_subscriptions', ['notify_hot_potato' => false]);
+    }
+
+    public function test_unregistering_an_unknown_browser_reports_nothing_deleted(): void
+    {
+        $this->postJson('/push/unsubscribe', ['endpoint' => self::ENDPOINT])
+            ->assertOk()
+            ->assertJsonPath('deleted', false);
+    }
+
+    public function test_the_status_endpoint_reports_an_unknown_browser_as_unregistered(): void
+    {
+        $this->postJson('/push/status', ['endpoint' => self::ENDPOINT])
+            ->assertOk()
+            ->assertExactJson([
+                'registered' => false,
+                'player_id' => null,
+                'notify_match_starts' => false,
+            ]);
+    }
+
+    public function test_the_status_endpoint_reports_what_a_browser_is_signed_up_for(): void
+    {
+        $player = Player::create(['name' => 'Ada']);
+        $this->postJson('/push/subscribe', $this->subscribePayload($player->id))->assertCreated();
+
+        $this->postJson('/push/status', ['endpoint' => self::ENDPOINT])
+            ->assertOk()
+            ->assertExactJson([
+                'registered' => true,
+                'player_id' => $player->id,
+                'notify_match_starts' => false,
+            ]);
+
+        $this->postJson('/push/match-starts/subscribe', $this->matchStartPayload())->assertCreated();
+
+        $this->postJson('/push/status', ['endpoint' => self::ENDPOINT])
+            ->assertOk()
+            ->assertJsonPath('notify_match_starts', true);
+    }
+
+    public function test_the_status_endpoint_needs_an_endpoint(): void
+    {
+        $this->postJson('/push/status', [])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('endpoint');
     }
 
     public function test_deleting_a_player_takes_their_subscriptions_with_them(): void
@@ -187,7 +266,7 @@ class PushSubscriptionTest extends TestCase
      */
     public function test_match_alert_routes_are_exempt_from_csrf(): void
     {
-        foreach (['/push/match-starts/subscribe', '/push/match-starts/unsubscribe'] as $uri) {
+        foreach (['/push/status', '/push/match-starts/subscribe', '/push/match-starts/unsubscribe'] as $uri) {
             $route = Route::getRoutes()->match(Request::create($uri, 'POST'));
 
             $this->assertContains(VerifyCsrfToken::class, $route->excludedMiddleware(), $uri);
@@ -229,5 +308,13 @@ class PushSubscriptionTest extends TestCase
             ->assertOk()
             ->assertSee('Match notifications')
             ->assertSee('Ada');
+    }
+
+    public function test_the_notifications_page_asks_the_server_which_player_a_browser_belongs_to(): void
+    {
+        $this->get('/notifications')
+            ->assertOk()
+            ->assertSee('/push/status', false)
+            ->assertDontSee("localStorage.getItem('pingpong-player-id')", false);
     }
 }
