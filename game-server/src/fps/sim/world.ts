@@ -1,5 +1,5 @@
 import { Box3, DoubleSide, Line3, Ray, Vector3 } from 'three'
-import { buildOfficeGeometry, type CollisionMesh, type SpawnPoint } from '../map/office.js'
+import { buildOfficeGeometry, type CollisionMesh, type OfficeCollision, type SpawnPoint } from '../map/office.js'
 
 /**
  * What the game needs of the office: its exact collision triangles (with their BVH) and where
@@ -16,12 +16,16 @@ let office: FpsWorld | null = null
 
 /** The office, built once (about a second) and shared: it never changes. */
 export function officeWorld(): FpsWorld {
-    if (office) return office
-    const built = buildOfficeGeometry({ outside: false })
-    if (!built.collision) throw new Error('The office was built without its collision meshes')
-    office = { meshes: [built.collision.solid, built.collision.glass], spawnPoints: built.spawnPoints }
+    office ??= worldFrom(buildOfficeGeometry({ outside: false }))
 
     return office
+}
+
+/** The world of an office already built (the browser's, drawn and collided with alike). */
+export function worldFrom(built: { collision: OfficeCollision | null; spawnPoints: readonly SpawnPoint[] }): FpsWorld {
+    if (!built.collision) throw new Error('The office was built without its collision meshes')
+
+    return { meshes: [built.collision.solid, built.collision.glass], spawnPoints: built.spawnPoints }
 }
 
 const box = new Box3()
