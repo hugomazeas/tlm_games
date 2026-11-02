@@ -259,6 +259,10 @@ Laravel module yet.
   Fewer than two calls a match off. Results (people only) go out through `onResults`.
 - **Protocol** (`fps/protocol.ts`): input frames as arrays `[seq, forward, strafe, yaw, pitch,
   buttons, view]`; snapshots at 20 Hz with your full state and `ack` (your last frame used).
+  A snapshot's `players` lists everyone seated, you included: draw others from it, yourself
+  from your prediction.
+- `fps/map/office.js` no longer carries the viewer's `collideCapsule`/`createCapsulePlayer`
+  (they live in `fps/sim/`), so it isn't a drop-in for `~/office-map/office.html`.
 - Tests: `bun test src/fps` (the office builds without a DOM, spawns are clear, nobody tunnels
   out in 20 s of wild flying; matches run in `sim/testing.ts`'s open test room).
 
