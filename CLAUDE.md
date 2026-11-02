@@ -233,6 +233,35 @@ that is played live, in real time, rather than scored afterwards.
 - Tests: `cd game-server && bun test` (sim, arenas, sessions);
   `bun run typecheck`; `bun run format`. Laravel side: `tests/Feature/HotPotatoTest.php`.
 
+### Office FPS (in progress, `game-server/src/fps/`)
+
+Minis (40 cm) with blasters and jetpacks in the office (3rd floor), server-authoritative.
+Built so far: the map and the pure game; not yet wired to the socket server, no client or
+Laravel module yet.
+
+- **The map** (`fps/map/office.js`, typed by `office.d.ts`; brought over from `~/office-map`,
+  this copy is the source): `buildOfficeGeometry()` runs anywhere (no DOM) and gives the exact
+  collision triangles with their BVH (`three-mesh-bvh`), coarse colliders, doors, spawn points;
+  `buildOffice(scene, renderer)` adds the browser's canvas textures, sky, sun and baking on top.
+  Both place everything from the same seeded random numbers: keep anything that calls `R()` in
+  the geometry, never in the materials, or the server's collision drifts from what's drawn.
+- **Sim** (`fps/sim/`, pure): `movement.ts` steps a body at 60 Hz (4 collision sub-steps;
+  walk/run/jetpack tuning at the top), shared with the browser for prediction; `combat.ts` is
+  the hitscan blaster (walls and glass stop shots, headshots on the top of the capsule);
+  `arena.ts` runs everyone: one input frame per step (the last one repeated, without firing,
+  when none came), shots judged where the shooter saw the target (up to 200 ms back), respawns
+  at the spawn point furthest from everyone with a short shield.
+- **One game** (`fps/lobby.ts`, pure, like racing's lobbies): always open, everyone who connects
+  is in it. Warmup alone; two in starts a countdown, then a match (first to 15 or 5 min), a
+  scoreboard, and the next match by itself. Joining mid-match drops you straight in at 0; who
+  leaves keeps their kills in the results; rejoining the same match gets your score back; a
+  second tab of the same player replaces the first; past 12 seated you watch until a seat frees.
+  Fewer than two calls a match off. Results (people only) go out through `onResults`.
+- **Protocol** (`fps/protocol.ts`): input frames as arrays `[seq, forward, strafe, yaw, pitch,
+  buttons, view]`; snapshots at 20 Hz with your full state and `ack` (your last frame used).
+- Tests: `bun test src/fps` (the office builds without a DOM, spawns are clear, nobody tunnels
+  out in 20 s of wild flying; matches run in `sim/testing.ts`'s open test room).
+
 ### Racing map (POC, `game-server/src/race/`)
 
 A kart racing game on a 3D city map of Québec (Plains of Abraham to Old Québec),
