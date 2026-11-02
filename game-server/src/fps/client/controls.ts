@@ -19,8 +19,9 @@ export class Controls {
         private readonly canvas: HTMLCanvasElement,
         private readonly onLockChange: (locked: boolean) => void
     ) {
-        canvas.addEventListener('click', () => {
-            if (!this.locked) void canvas.requestPointerLock()
+        // Anywhere on the page, the "Click to play" card included (it sits over the canvas); not its links.
+        document.addEventListener('click', e => {
+            if (!this.locked && !(e.target as Element | null)?.closest('a')) void canvas.requestPointerLock()
         })
         document.addEventListener('pointerlockchange', () => {
             if (!this.locked) this.release()
