@@ -17,14 +17,15 @@ import { Controls } from './controls.ts'
 import { Effects, Viewmodel } from './effects.ts'
 import { escape, Hud } from './hud.ts'
 import { Prediction } from './prediction.ts'
-import { Interpolator, ServerClock } from './timeline.ts'
+import { Interpolator, type Pose, ServerClock } from './timeline.ts'
+import { aimFromCamera, thirdPersonCamera } from './view.ts'
 
 /**
  * The office FPS in the browser. The Hub's page sets window.officeFpsConfig and loads this module
  * (from the game server, /games/office-fps/live/play.js).
  *
  * Every 60 Hz step: read the keys and the mouse into a frame, move yourself with it at once
- * (prediction), and send it (two at a time). Every snapshot: take the server's word for where
+ * (prediction), and send it. Every snapshot: take the server's word for where
  * you are and replay what it hasn't seen yet; draw the others a little in the past, smoothly.
  */
 
@@ -40,8 +41,8 @@ declare global {
 }
 
 const config: Config = window.officeFpsConfig ?? { playerId: null, name: 'Guest', backUrl: '/' }
-/** Frames per message: 30 messages a second. */
-const SEND_EVERY = 2
+/** Frames per message: each frame goes out as soon as it's made (60 messages a second, ~60 bytes each). */
+const SEND_EVERY = 1
 /** A correction this big is a teleport (a respawn): jump, don't glide. */
 const SNAP_DISTANCE = 1
 
@@ -91,6 +92,29 @@ let others = new Interpolator()
 const smoothing = new Vector3()
 let nextLocalShot = 0
 let closedForGood = false
+/** Your jetpack burning on your last frame (drawn on your own trooper in third person). */
+let jetting = false
+
+/** First or third person (V), remembered in this browser. */
+let thirdPerson = remembered('officeFps.view') === 'third'
+controls.onToggleView = () => {
+    thirdPerson = !thirdPerson
+    remember('officeFps.view', thirdPerson ? 'third' : 'first')
+}
+function remembered(key: string): string | null {
+    try {
+        return localStorage.getItem(key)
+    } catch {
+        return null
+    }
+}
+function remember(key: string, value: string): void {
+    try {
+        localStorage.setItem(key, value)
+    } catch {
+        // Private window: the choice lasts this visit.
+    }
+}
 
 connect()
 
@@ -175,6 +199,7 @@ function onEvent(event: GameEvent, now: number): void {
     const colored = (id: string | null) =>
         `<span style="color:${(id && roster.get(id)?.color) || '#fff'}">${escape(name(id))}</span>`
     if (event.type === 'shot') {
+        if (event.hit) avatars.flash(event.hit, now)
         if (event.by === me) {
             // Drawn already when fired; the server says whether it hit.
             if (event.hit) hud.hitMarker(event.headshot)
@@ -186,6 +211,9 @@ function onEvent(event: GameEvent, now: number): void {
     if (event.type === 'kill') {
         const how = `<span style="opacity:.7">${event.headshot ? '⌖' : '→'}</span>`
         hud.killFeed(`${colored(event.killer)} ${how} ${colored(event.victim)}`)
+        // Still drawn where they fell (they disappear on the next frame).
+        const fell = avatars.centerOf(event.victim)
+        if (fell) effects.burst(fell, roster.get(event.victim)?.color ?? '#ffffff', now)
         if (event.victim === me) killer = event.killer ? name(event.killer) : null
     }
 }
@@ -210,15 +238,19 @@ requestAnimationFrame(frame)
 function step(now: number): void {
     if (!socket || socket.readyState !== WebSocket.OPEN || !me || !self) return
     const keys = controls.locked ? controls.read() : { forward: 0, strafe: 0, buttons: 0 }
+    const body = prediction.body
+    const aim =
+        thirdPerson && body && self.alive ? aimThirdPerson(eyeOf(body)) : { yaw: controls.yaw, pitch: controls.pitch }
     const input: InputFrame = {
         seq: ++seq,
         forward: keys.forward,
         strafe: keys.strafe,
-        yaw: controls.yaw,
-        pitch: controls.pitch,
+        yaw: aim.yaw,
+        pitch: aim.pitch,
         buttons: keys.buttons,
         view: Math.max(0, Math.floor(clock.renderStep(now) ?? 0)),
     }
+    jetting = Boolean(input.buttons & BUTTON.jet) && (body?.fuel ?? 0) > 0
     prediction.apply(input, self.alive)
     outbox.push(input)
     if (outbox.length >= SEND_EVERY) flush()
@@ -226,13 +258,18 @@ function step(now: number): void {
     // Your own shot shows at once: the server's answer only says whether it hit.
     if (input.buttons & BUTTON.fire && self.alive && !self.reloading && self.ammo > 0 && now >= nextLocalShot) {
         nextLocalShot = now + WEAPON.intervalMs
-        const body = prediction.body!
-        const eye = eyeOf(body)
+        const eye = eyeOf(prediction.body!)
         const direction = aimDirection(input.yaw, input.pitch)
         const end = eye.clone().addScaledVector(direction, rayDistance(world, eye, direction, WEAPON.range))
         viewmodel?.fire(now)
-        effects.tracer(viewmodel ? viewmodel.muzzleIn(camera) : eye, end, 0xffd080, now, false)
+        effects.tracer(viewmodel && !thirdPerson ? viewmodel.muzzleIn(camera) : eye, end, 0xffd080, now, false)
     }
+}
+
+/** In third person the camera isn't at your eyes: aim them at what the crosshair is on. */
+function aimThirdPerson(eye: Vector3): { yaw: number; pitch: number } {
+    const { yaw, pitch } = controls
+    return aimFromCamera(world, eye, thirdPersonCamera(world, eye, yaw, pitch), yaw, pitch)
 }
 
 function flush(): void {
@@ -261,8 +298,10 @@ function draw(now: number): void {
 
     const body = prediction.body
     office.ceiling.visible = Boolean(self)
+    const third = thirdPerson && Boolean(self?.alive)
     if (self && body) {
-        camera.position.set(body.x, body.y + PLAYER.eye, body.z).add(smoothing)
+        const eye = new Vector3(body.x, body.y + PLAYER.eye, body.z).add(smoothing)
+        camera.position.copy(third ? thirdPersonCamera(world, eye, controls.yaw, controls.pitch) : eye)
         camera.rotation.set(self.alive ? controls.pitch : -0.5, controls.yaw, 0)
         if (!self.alive) camera.position.y += 0.4
     } else if (me) {
@@ -272,13 +311,21 @@ function draw(now: number): void {
         camera.lookAt(0, 0, 0)
     }
     if (viewmodel) {
-        viewmodel.visible = Boolean(self?.alive)
+        viewmodel.visible = Boolean(self?.alive) && !third
         const moving = Boolean(body && body.onGround && Math.hypot(body.vx, body.vz) > 0.5)
         viewmodel.update(now, moving)
     }
 
     const at = clock.renderStep(now)
-    avatars.update(at === null ? new Map() : others.sample(at), roster, me, now)
+    const poses = at === null ? new Map<string, Pose>() : others.sample(at)
+    // In third person you see your own trooper, where you are now (not the server's past).
+    if (third && me && self && body) {
+        const where = { x: body.x + smoothing.x, y: body.y + smoothing.y, z: body.z + smoothing.z }
+        const facing = { yaw: controls.yaw, pitch: controls.pitch }
+        const state = { id: me, ...where, ...facing, alive: true, jet: jetting, shielded: self.shielded }
+        poses.set(me, { ...where, ...facing, state })
+    }
+    avatars.update(poses, roster, third ? null : me, now)
     effects.update(now)
     hud.update(now, { me, self, killer, tab: controls.scoreboardHeld, roster })
     renderer.render(scene, camera)

@@ -250,7 +250,7 @@ no leaderboard or dashboard card yet.
 - **The browser** (`fps/client/`): builds the office with `buildOffice` and collides with that
   same build (`worldFrom`). `prediction.ts` applies each frame at once and replays the
   unacknowledged ones on every snapshot (small corrections glide, a respawn jumps);
-  `timeline.ts` draws the others 6 steps (100 ms) in the past between snapshots, and that step
+  `timeline.ts` draws the others 4 steps (67 ms) in the past between snapshots, and that step
   is each frame's `view`. Your shot's tracer is drawn at once; the server's event only adds the
   hit marker. A hidden tab sends one idle frame first (the server repeats your last frame).
 
@@ -273,7 +273,11 @@ no leaderboard or dashboard card yet.
   second tab of the same player replaces the first; past 12 seated you watch until a seat frees.
   Fewer than two calls a match off. Results (people only) go out through `onResults`.
 - **Protocol** (`fps/protocol.ts`): input frames as arrays `[seq, forward, strafe, yaw, pitch,
-  buttons, view]`; snapshots at 20 Hz with your full state and `ack` (your last frame used).
+  buttons, view]`, each sent as soon as it's made; snapshots at 30 Hz with your full state and
+  `ack` (your last frame used). The server uses every frame of yours that has arrived each step
+  (never a queue: that once held input 500 ms behind), within a budget of one a step banked up to
+  `MAX_BURST` (no faster than real time), and the blaster's timings run on your frames' clock;
+  no frames for 0.5 s and gravity takes over.
   A snapshot's `players` lists everyone seated, you included: draw others from it, yourself
   from your prediction.
 - `fps/map/office.js` no longer carries the viewer's `collideCapsule`/`createCapsulePlayer`

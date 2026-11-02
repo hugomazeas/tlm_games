@@ -1,4 +1,5 @@
 import { Line3, Vector3 } from 'three'
+import { BUTTON } from '../protocol.ts'
 import { collideCapsule, type FpsWorld } from './world.ts'
 
 /**
@@ -51,6 +52,17 @@ export interface MoveInput {
     yaw: number
     run: boolean
     jet: boolean
+}
+
+/** An input frame's movement (the same on the server and in your browser). */
+export function moveOf(frame: { forward: number; strafe: number; yaw: number; buttons: number }): MoveInput {
+    return {
+        forward: frame.forward,
+        strafe: frame.strafe,
+        yaw: frame.yaw,
+        run: (frame.buttons & BUTTON.run) !== 0,
+        jet: (frame.buttons & BUTTON.jet) !== 0,
+    }
 }
 
 export function bodyAt(x: number, y: number, z: number): Body {

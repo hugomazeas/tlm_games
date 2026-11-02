@@ -317,7 +317,11 @@ describe('shots are judged where the shooter saw the target', () => {
         expect(shotsAfter(from)).toEqual([expect.objectContaining({ by: 'a1', hit: 'b2' })])
 
         // Long gone (more than 200 ms ago): judged where b is now, a miss.
-        play(400, () => [[b, { forward: 0, strafe: 1, yaw: 0, pitch: 0, buttons: BUTTON.run, view: 0 }]])
+        // The shooter's browser keeps sending frames (the blaster's cooldown counts them).
+        play(400, () => [
+            [b, { forward: 0, strafe: 1, yaw: 0, pitch: 0, buttons: BUTTON.run, view: 0 }],
+            [a, { ...aim, buttons: 0 }],
+        ])
         from = a.inbox.length
         play(STEP_MS, step => [[a, { ...aim, view: step - 40 }]])
         play(STEP_MS * 3)

@@ -22,6 +22,7 @@ const PUFF_MS = 250
 const tracerGeometry = new CylinderGeometry(0.004, 0.004, 1, 6, 1, true)
 tracerGeometry.translate(0, 0.5, 0)
 const puffGeometry = new SphereGeometry(0.02, 8, 6)
+const bitGeometry = new BoxGeometry(0.018, 0.018, 0.018)
 
 interface Fading {
     mesh: Mesh
@@ -29,6 +30,9 @@ interface Fading {
     born: number
     life: number
     grow: number
+    /** Flying bits: their velocity (m/s), under gravity. */
+    velocity?: Vector3
+    at: number
 }
 
 export class Effects {
@@ -64,6 +68,19 @@ export class Effects {
         this.add(puff, material, now, PUFF_MS, 3)
     }
 
+    /** Someone fragged: a burst of bits in their colour where they stood. */
+    burst(at: { x: number; y: number; z: number }, color: string, now: number): void {
+        for (let i = 0; i < 14; i++) {
+            const material = new MeshBasicMaterial({ color: i % 3 ? color : 0xffffff, transparent: true, opacity: 0.9 })
+            const bit = new Mesh(bitGeometry, material)
+            bit.position.set(at.x, at.y, at.z)
+            const a = Math.random() * Math.PI * 2
+            const up = 0.6 + Math.random() * 1.2
+            const out = 0.4 + Math.random() * 0.8
+            this.add(bit, material, now, 600, 0, new Vector3(Math.cos(a) * out, up, Math.sin(a) * out))
+        }
+    }
+
     update(now: number): void {
         for (let i = this.fading.length - 1; i >= 0; i--) {
             const f = this.fading[i]!
@@ -76,12 +93,19 @@ export class Effects {
             }
             f.material.opacity = 0.9 * (1 - t)
             if (f.grow) f.mesh.scale.setScalar(1 + t * f.grow)
+            if (f.velocity) {
+                const dt = Math.min(0.05, (now - f.at) / 1000)
+                f.velocity.y -= 9.8 * dt
+                f.mesh.position.addScaledVector(f.velocity, dt)
+                f.mesh.rotation.x += dt * 8
+                f.at = now
+            }
         }
     }
 
-    private add(mesh: Mesh, material: MeshBasicMaterial, now: number, life: number, grow: number): void {
+    private add(mesh: Mesh, material: MeshBasicMaterial, now: number, life: number, grow: number, v?: Vector3): void {
         this.scene.add(mesh)
-        this.fading.push({ mesh, material, born: now, life, grow })
+        this.fading.push({ mesh, material, born: now, life, grow, velocity: v, at: now })
     }
 }
 

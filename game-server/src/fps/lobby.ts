@@ -29,8 +29,8 @@ export const FRAG_LIMIT = 15
 export const MATCH_MS = 5 * 60_000
 export const COUNTDOWN_MS = 5_000
 export const INTERMISSION_MS = 10_000
-/** A snapshot every this many steps (20 Hz). */
-export const SNAPSHOT_EVERY = 3
+/** A snapshot every this many steps (30 Hz). */
+export const SNAPSHOT_EVERY = 2
 /** Behind by more than this many steps (the process stalled), skip ahead rather than catch up. */
 const MAX_CATCH_UP = 10
 
@@ -187,8 +187,11 @@ export class FpsLobby {
         const now = this.hooks.now()
         let due = Math.floor((now - this.clockStart) / STEP_MS)
         if (due - this.arena.step > MAX_CATCH_UP) {
-            this.clockStart += (due - this.arena.step - MAX_CATCH_UP) * STEP_MS
+            const skipped = due - this.arena.step - MAX_CATCH_UP
+            this.clockStart += skipped * STEP_MS
             due = this.arena.step + MAX_CATCH_UP
+            // The browsers didn't stop: their frames for the skipped time are coming, and may all be used.
+            this.arena.grant(skipped)
         }
         while (this.arena.step < due) {
             this.record(this.arena.advance())

@@ -90,7 +90,8 @@ export class Hud {
             connecting: `<h1>Office FPS</h1><p>Connecting…</p>`,
             paused: `<h1>Office FPS</h1><p><b>Click to play</b></p>
                 <p><kbd>WASD</kbd> move · <kbd>Shift</kbd> run · <kbd>Space</kbd> jetpack<br>
-                <kbd>Click</kbd> fire · <kbd>R</kbd> reload · <kbd>Tab</kbd> scores · <kbd>Esc</kbd> free the mouse</p>${back}`,
+                <kbd>Click</kbd> fire · <kbd>R</kbd> reload · <kbd>V</kbd> 1st / 3rd person<br>
+                <kbd>Tab</kbd> scores · <kbd>Esc</kbd> free the mouse</p>${back}`,
             playing: '',
             replaced: `<h1>Playing in another tab</h1><p>This one let go.</p>${back}`,
             unavailable: `<h1>The game server is unavailable</h1><p>Retrying…</p>${back}`,

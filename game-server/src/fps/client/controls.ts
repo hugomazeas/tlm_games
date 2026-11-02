@@ -14,6 +14,8 @@ export class Controls {
     private readonly keys = new Set<string>()
     private firing = false
     private reloadAsked = false
+    /** V: first / third person. */
+    onToggleView: (() => void) | null = null
 
     constructor(
         private readonly canvas: HTMLCanvasElement,
@@ -44,6 +46,7 @@ export class Controls {
             if (e.code === 'Space') e.preventDefault()
             this.keys.add(e.code)
             if (e.code === 'KeyR') this.reloadAsked = true
+            if (e.code === 'KeyV' && !e.repeat) this.onToggleView?.()
         })
         document.addEventListener('keyup', e => this.keys.delete(e.code))
         window.addEventListener('blur', () => this.release())

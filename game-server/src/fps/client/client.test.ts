@@ -1,10 +1,52 @@
 import { describe, expect, test } from 'bun:test'
 import type { InputFrame, PlayerState } from '../protocol.ts'
 import { BUTTON } from '../protocol.ts'
-import { bodyAt, STEP_MS, stepBody } from '../sim/movement.ts'
+import { bodyAt, moveOf, STEP_MS, stepBody } from '../sim/movement.ts'
 import { testWorld } from '../sim/testing.ts'
-import { moveOf, Prediction } from './prediction.ts'
+import { Prediction } from './prediction.ts'
 import { INTERP_STEPS, Interpolator, ServerClock } from './timeline.ts'
+import { aimFromCamera, THIRD_PERSON, thirdPersonCamera } from './view.ts'
+import { Vector3 } from 'three'
+import { aimDirection, fireShot } from '../sim/combat.ts'
+
+describe('third person', () => {
+    // A wall 1 m behind (at z = +1), one 3 m ahead (at z = -3), looking toward -Z.
+    const room = testWorld(
+        [],
+        [
+            { min: [-5, 0, 1], max: [5, 3, 1.2] },
+            { min: [-5, 0, -3.2], max: [5, 3, -3] },
+        ]
+    )
+    const eye = new Vector3(0, 0.34, 0)
+
+    test('sits behind and over the right shoulder', () => {
+        const camera = thirdPersonCamera(room, eye, 0, 0)
+
+        expect(camera.z).toBeCloseTo(THIRD_PERSON.back, 5)
+        expect(camera.x).toBeCloseTo(THIRD_PERSON.shoulder, 5)
+        expect(camera.y).toBeCloseTo(eye.y + THIRD_PERSON.up, 5)
+    })
+
+    test('pulls in before a wall behind, never through it', () => {
+        const camera = thirdPersonCamera(room, new Vector3(0, 0.34, 0.6), 0, 0)
+
+        expect(camera.z).toBeLessThan(1)
+        expect(camera.z).toBeGreaterThan(0.6)
+    })
+
+    test('the shot from the eyes lands where the crosshair is', () => {
+        const target = { id: 't', x: 0.14, y: 0, z: -2.5 }
+        const camera = thirdPersonCamera(room, eye, 0, 0)
+        // Looking down the camera's centre at the target's middle.
+        const look = new Vector3(target.x, 0.2, target.z).sub(camera).normalize()
+        const yaw = Math.atan2(-look.x, -look.z)
+        const pitch = Math.asin(look.y)
+        const aim = aimFromCamera(room, eye, camera, yaw, pitch)
+
+        expect(fireShot(room, eye, aimDirection(aim.yaw, aim.pitch), [target]).hit?.id).toBe('t')
+    })
+})
 
 const world = testWorld([{ name: 'here', position: [0, 0, 0], yaw: 0 }])
 

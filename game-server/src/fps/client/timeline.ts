@@ -3,12 +3,12 @@ import { STEP_MS } from '../sim/movement.ts'
 
 /**
  * The other players are drawn a little in the past (INTERP_STEPS), between two snapshots, so they
- * move smoothly at 60 fps from 20 Hz updates. Which step that is also travels with every frame
+ * move smoothly at 60 fps from 30 Hz updates. Which step that is also travels with every frame
  * you send (`view`): the server judges your shots against the same moment.
  */
 
-/** 100 ms: two snapshots' worth, so there's nearly always one on each side. */
-export const INTERP_STEPS = 6
+/** 67 ms: two snapshots' worth (30 Hz), so there's nearly always one on each side. */
+export const INTERP_STEPS = 4
 
 /** The server's step, read off its snapshots and run forward between them on the local clock. */
 export class ServerClock {

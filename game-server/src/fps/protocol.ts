@@ -4,8 +4,8 @@ import type { Body } from './sim/movement.ts'
  * The office FPS's messages, over /games/office-fps/live/ws. There is one game: everyone who
  * connects is in it (up to MAX_PLAYERS seated, the rest watch until a seat frees).
  *
- * Players send their inputs, one frame per 60 Hz step, a few frames a message; the server steps
- * everyone and sends a snapshot 20 times a second with the last frame it used of yours (`ack`),
+ * Players send their inputs, one frame per 60 Hz step, each as soon as it's made; the server uses
+ * every frame that has arrived each step and sends a snapshot 30 times a second with the last frame it used of yours (`ack`),
  * so your browser can replay the ones after it on top of the server's body.
  */
 

@@ -1,7 +1,7 @@
 import type { Rng } from '../../sim/rng.ts'
 import { BUTTON, type GameEvent, type InputFrame, type PlayerState, type SelfState } from '../protocol.ts'
 import { aimDirection, eyeOf, fireShot, MAX_HEALTH, type Target, WEAPON } from './combat.ts'
-import { type Body, bodyAt, isJetting, type MoveInput, STEP_MS, stepBody } from './movement.ts'
+import { type Body, bodyAt, isJetting, moveOf, STEP_MS, stepBody } from './movement.ts'
 import type { FpsWorld } from './world.ts'
 
 /**
@@ -17,8 +17,17 @@ export const SHIELD_STEPS = steps(1500)
 export const MAX_REWIND_STEPS = steps(200)
 /** Inputs waiting per player (half a second); a flood drops the oldest. */
 const MAX_QUEUED = 30
+/**
+ * Frames a player may have used ahead of the clock: a late batch (network jitter, a slow
+ * browser frame, a server hiccup) is caught up at once, but nobody moves faster than real time
+ * for longer than this.
+ */
+export const MAX_BURST = 30
+/** No frames for this long (a frozen tab): gravity takes over until they're back. */
+const STARVED_STEPS = steps(500)
 const SHOT_STEPS = steps(WEAPON.intervalMs)
 const RELOAD_STEPS = steps(WEAPON.reloadMs)
+const IDLE: InputFrame = { seq: 0, forward: 0, strafe: 0, yaw: 0, pitch: 0, buttons: 0, view: 0 }
 /** Under the floor (somehow): back to a spawn. */
 const LOST_BELOW = -2
 
@@ -34,14 +43,22 @@ interface Fighter {
     respawnAt: number
     shieldUntil: number
     ammo: number
+    /**
+     * Frames of theirs used so far: their own clock. The blaster's timings count in it, so a
+     * batch caught up in one server step fires exactly as it did in their browser.
+     */
+    clock: number
     nextShotAt: number
-    /** Reloading until this step (0: not). */
+    /** Reloading until this frame of theirs (0: not). */
     reloadUntil: number
     queue: InputFrame[]
     /** The last frame queued (seq), and the last one used. */
     queuedSeq: number
     ackSeq: number
-    last: InputFrame | null
+    /** Frames they may still use ahead of the clock (one more each step, up to MAX_BURST). */
+    budget: number
+    /** Steps since their last frame. */
+    starved: number
 }
 
 export type ArenaEvent = GameEvent | { type: 'damage'; by: string; target: string; amount: number; headshot: boolean }
@@ -80,12 +97,14 @@ export class Arena {
             respawnAt: 0,
             shieldUntil: 0,
             ammo: WEAPON.magazine,
+            clock: 0,
             nextShotAt: 0,
             reloadUntil: 0,
             queue: [],
             queuedSeq: 0,
             ackSeq: 0,
-            last: null,
+            budget: 0,
+            starved: 0,
         }
         this.fighters.set(id, fighter)
 
@@ -117,33 +136,30 @@ export class Arena {
         if (fighter.queue.length > MAX_QUEUED) fighter.queue.splice(0, fighter.queue.length - MAX_QUEUED)
     }
 
-    /** One step: each player uses one frame (or keeps moving on their last), then the dead come back. */
+    /**
+     * One step: each player uses every frame of theirs that has arrived (within their budget),
+     * each one exactly as their browser did, so the server lands where they predicted and
+     * nothing waits in a queue. Then the dead come back.
+     */
     advance(): ArenaEvent[] {
         this.step++
         const events: ArenaEvent[] = []
         for (const fighter of this.fighters.values()) {
-            const fresh = fighter.queue.shift()
-            if (fresh) fighter.ackSeq = fresh.seq
-            // Nothing new from them this step: keep going the way they were, without firing again.
-            const frame =
-                fresh ??
-                (fighter.last
-                    ? { ...fighter.last, buttons: fighter.last.buttons & ~(BUTTON.fire | BUTTON.reload) }
-                    : null)
-            if (frame) fighter.last = frame
-            if (!fighter.alive) continue
-            if (frame) {
-                fighter.yaw = frame.yaw
-                fighter.pitch = frame.pitch
+            fighter.budget = Math.min(MAX_BURST, fighter.budget + 1)
+            let used = 0
+            while (fighter.queue.length > 0 && fighter.budget >= 1) {
+                const frame = fighter.queue.shift()!
+                fighter.budget--
+                fighter.ackSeq = frame.seq
+                this.play(fighter, frame, events)
+                used++
             }
-            const input = moveInput(frame, fighter.yaw)
-            fighter.jetting = isJetting(fighter.body, input)
-            fighter.body = stepBody(this.world, fighter.body, input)
-            if (fighter.body.y < LOST_BELOW) {
-                events.push(this.spawn(fighter))
-                continue
+            fighter.starved = used > 0 ? 0 : fighter.starved + 1
+            // A frozen tab: they don't hang in the air forever. Their frames, when they come back, carry on from here.
+            if (fighter.starved > STARVED_STEPS && fighter.alive) {
+                fighter.body = stepBody(this.world, fighter.body, moveOf({ ...IDLE, yaw: fighter.yaw }))
+                fighter.jetting = false
             }
-            if (frame) this.weapon(fighter, frame, events)
         }
         for (const fighter of this.fighters.values()) {
             if (!fighter.alive && this.step >= fighter.respawnAt) events.push(this.spawn(fighter))
@@ -151,6 +167,14 @@ export class Arena {
         this.remember()
 
         return events
+    }
+
+    /**
+     * Steps the server skipped (it stalled): everyone may catch up that much more, since their
+     * browsers kept making frames meanwhile.
+     */
+    grant(steps: number): void {
+        for (const fighter of this.fighters.values()) fighter.budget = Math.min(MAX_BURST, fighter.budget + steps)
     }
 
     /** Everyone, as the others see them. */
@@ -178,7 +202,7 @@ export class Arena {
             alive: f.alive,
             health: f.health,
             ammo: f.ammo,
-            reloading: f.reloadUntil > this.step,
+            reloading: f.reloadUntil > f.clock,
             shielded: this.shielded(f),
             respawnInMs: f.alive ? null : Math.max(0, Math.round((f.respawnAt - this.step) * STEP_MS)),
         }
@@ -189,22 +213,39 @@ export class Arena {
         return this.fighters.get(id)?.ackSeq ?? 0
     }
 
+    /** One of a player's frames: they turn, move and fire with it (frames from the dead only count). */
+    private play(fighter: Fighter, frame: InputFrame, events: ArenaEvent[]): void {
+        fighter.clock++
+        if (!fighter.alive) return
+        fighter.yaw = frame.yaw
+        fighter.pitch = frame.pitch
+        const input = moveOf(frame)
+        fighter.jetting = isJetting(fighter.body, input)
+        fighter.body = stepBody(this.world, fighter.body, input)
+        if (fighter.body.y < LOST_BELOW) {
+            events.push(this.spawn(fighter))
+            return
+        }
+        this.weapon(fighter, frame, events)
+    }
+
     private weapon(fighter: Fighter, frame: InputFrame, events: ArenaEvent[]): void {
-        if (fighter.reloadUntil > 0 && this.step >= fighter.reloadUntil) {
+        const now = fighter.clock
+        if (fighter.reloadUntil > 0 && now >= fighter.reloadUntil) {
             fighter.reloadUntil = 0
             fighter.ammo = WEAPON.magazine
         }
         const reloading = fighter.reloadUntil > 0
         if (frame.buttons & BUTTON.reload && !reloading && fighter.ammo < WEAPON.magazine) {
-            fighter.reloadUntil = this.step + RELOAD_STEPS
+            fighter.reloadUntil = now + RELOAD_STEPS
             return
         }
-        if (!(frame.buttons & BUTTON.fire) || reloading || this.step < fighter.nextShotAt) return
+        if (!(frame.buttons & BUTTON.fire) || reloading || now < fighter.nextShotAt) return
 
-        fighter.nextShotAt = this.step + SHOT_STEPS
+        fighter.nextShotAt = now + SHOT_STEPS
         fighter.shieldUntil = 0
         fighter.ammo--
-        if (fighter.ammo === 0) fighter.reloadUntil = this.step + RELOAD_STEPS
+        if (fighter.ammo === 0) fighter.reloadUntil = now + RELOAD_STEPS
 
         const origin = eyeOf(fighter.body)
         const direction = aimDirection(frame.yaw, frame.pitch)
@@ -295,18 +336,6 @@ export class Arena {
 
     private shielded(fighter: Fighter): boolean {
         return fighter.alive && this.step < fighter.shieldUntil
-    }
-}
-
-function moveInput(frame: InputFrame | null, yaw: number): MoveInput {
-    if (!frame) return { forward: 0, strafe: 0, yaw, run: false, jet: false }
-
-    return {
-        forward: frame.forward,
-        strafe: frame.strafe,
-        yaw: frame.yaw,
-        run: (frame.buttons & BUTTON.run) !== 0,
-        jet: (frame.buttons & BUTTON.jet) !== 0,
     }
 }
 

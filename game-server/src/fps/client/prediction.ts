@@ -1,5 +1,5 @@
-import { BUTTON, type InputFrame } from '../protocol.ts'
-import { type Body, type MoveInput, stepBody } from '../sim/movement.ts'
+import type { InputFrame } from '../protocol.ts'
+import { type Body, moveOf, stepBody } from '../sim/movement.ts'
 import type { FpsWorld } from '../sim/world.ts'
 
 /**
@@ -40,15 +40,5 @@ export class Prediction {
 
     get unacknowledged(): number {
         return this.pending.length
-    }
-}
-
-export function moveOf(frame: InputFrame): MoveInput {
-    return {
-        forward: frame.forward,
-        strafe: frame.strafe,
-        yaw: frame.yaw,
-        run: (frame.buttons & BUTTON.run) !== 0,
-        jet: (frame.buttons & BUTTON.jet) !== 0,
     }
 }
