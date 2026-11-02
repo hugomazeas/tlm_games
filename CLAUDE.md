@@ -70,6 +70,7 @@ DELETE /games/racing/tracks/{track} Delete a track
 GET  /games/racing/tracks/{track}/play  Race a track in a lobby (?lobby= joins one, none opens one; ?player= drives as them)
 GET  /games/racing/tracks/{track}/records  The track's records (JSON): each player's best time, the fastest lap
 POST /games/racing/drivers          Add yourself as a player from the game's welcome screen (JSON)
+GET  /games/office-fps              Office FPS: pick who's playing, then the one always-open game (?player= or ?guest=1)
 GET  /games/racing/garage/{player}  Garage: paint a player's kart (body + accent)
 PUT  /games/racing/garage/{player}  Save a player's kart colours
 POST /push/hot-potato/subscribe     Opt a player's browser into "a hot potato opened" pushes
@@ -232,6 +233,58 @@ that is played live, in real time, rather than scored afterwards.
   `/internal/hot-potato/offices/{id}/chat`.
 - Tests: `cd game-server && bun test` (sim, arenas, sessions);
   `bun run typecheck`; `bun run format`. Laravel side: `tests/Feature/HotPotatoTest.php`.
+
+### Office FPS (in progress, `game-server/src/fps/`)
+
+Minis (40 cm) with blasters and jetpacks in the office (3rd floor), server-authoritative.
+Playable at `/games/office-fps`; results aren't saved yet (logged by the game server) and there's
+no leaderboard or dashboard card yet.
+
+- **In the Hub:** `app/Games/OfficeFps/` serves one page: without `?player=` / `?guest=1` it asks
+  who's playing (and shows who's in, from the game server's `/games/office-fps/live/state`),
+  with them it loads `play.js?v=…` (`BundleVersion`) with `window.officeFpsConfig`.
+- **In the game server:** `fps/live.ts` (the one `FpsLobby`, players looked up with
+  `findPlayer`, ticked every 4 ms: steps run on their own 60 Hz clock), `fps/serve.ts` (the
+  bundle), wired into `server.ts` at `/games/office-fps/live/ws`; nginx proxies the prefix to the
+  game server like racing's.
+- **The browser** (`fps/client/`): builds the office with `buildOffice` and collides with that
+  same build (`worldFrom`). `prediction.ts` applies each frame at once and replays the
+  unacknowledged ones on every snapshot (small corrections glide, a respawn jumps);
+  `timeline.ts` draws the others 4 steps (67 ms) in the past between snapshots, and that step
+  is each frame's `view`. Your shot's tracer is drawn at once; the server's event only adds the
+  hit marker. A hidden tab sends one idle frame first (the server repeats your last frame).
+
+- **The map** (`fps/map/office.js`, typed by `office.d.ts`; brought over from `~/office-map`,
+  this copy is the source): `buildOfficeGeometry()` runs anywhere (no DOM) and gives the exact
+  collision triangles with their BVH (`three-mesh-bvh`), coarse colliders, doors, spawn points;
+  `buildOffice(scene, renderer)` adds the browser's canvas textures, sky, sun and baking on top.
+  Both place everything from the same seeded random numbers: keep anything that calls `R()` in
+  the geometry, never in the materials, or the server's collision drifts from what's drawn.
+- **Sim** (`fps/sim/`, pure): `movement.ts` steps a body at 60 Hz (4 collision sub-steps;
+  walk/run/jetpack tuning at the top), shared with the browser for prediction; `combat.ts` is
+  the hitscan blaster (walls and glass stop shots, headshots on the top of the capsule);
+  `arena.ts` runs everyone: one input frame per step (the last one repeated, without firing,
+  when none came), shots judged where the shooter saw the target (up to 200 ms back), respawns
+  at the spawn point furthest from everyone with a short shield.
+- **One game** (`fps/lobby.ts`, pure, like racing's lobbies): always open, everyone who connects
+  is in it. Warmup alone; two in starts a countdown, then a match (first to 15 or 5 min), a
+  scoreboard, and the next match by itself. Joining mid-match drops you straight in at 0; who
+  leaves keeps their kills in the results; rejoining the same match gets your score back; a
+  second tab of the same player replaces the first; past 12 seated you watch until a seat frees.
+  Fewer than two calls a match off. Results (people only) go out through `onResults`.
+- **Protocol** (`fps/protocol.ts`): input frames as arrays `[seq, forward, strafe, yaw, pitch,
+  buttons, view]`, each sent as soon as it's made; snapshots at 30 Hz with your full state and
+  `ack` (your last frame used). The server uses every frame of yours that has arrived each step
+  (never a queue: that once held input 500 ms behind), within a budget of one a step banked up to
+  `MAX_BURST` (no faster than real time), and the blaster's timings run on your frames' clock;
+  no frames for 0.5 s and gravity takes over.
+  A snapshot's `players` lists everyone seated, you included: draw others from it, yourself
+  from your prediction.
+- `fps/map/office.js` no longer carries the viewer's `collideCapsule`/`createCapsulePlayer`
+  (they live in `fps/sim/`), so it isn't a drop-in for `~/office-map/office.html`.
+- Tests: `bun test src/fps` (the office builds without a DOM, spawns are clear, nobody tunnels
+  out in 20 s of wild flying; matches run in `sim/testing.ts`'s open test room; prediction and
+  interpolation in `client/client.test.ts`). Laravel side: `tests/Feature/OfficeFpsTest.php`.
 
 ### Racing map (POC, `game-server/src/race/`)
 

@@ -3,6 +3,9 @@ import { checkPolicy, decodePolicy, type TrainedPolicy } from './ai/policy.ts'
 import { LaravelClient } from './laravel.ts'
 import { type AiLevel, parseClientMessage, type ServerMessage } from './protocol.ts'
 import { BUILD_PLACEHOLDER } from './client/build.ts'
+import { createFpsLive } from './fps/live.ts'
+import { parseClientMessage as parseFpsMessage, type ServerMessage as FpsServerMessage } from './fps/protocol.ts'
+import { buildFpsBundle, FPS_PREFIX, serveFpsBundle } from './fps/serve.ts'
 import { createRacingLive } from './race/live.ts'
 import { parseClientMessage as parseRaceMessage, type ServerMessage as RaceServerMessage } from './race/protocol.ts'
 import { buildRacingAssets, RACING_PREFIX, serveRacing } from './race/serve.ts'
@@ -127,9 +130,28 @@ const racing = await createRacingLive(laravel).catch(error => {
 })
 if (racing) setInterval(() => racing.manager.tick(), TICK_MS)
 
+// The office FPS: one always-open game at /games/office-fps/live/ws. Its steps run on its own
+// clock (60 Hz), so it's ticked often; a failure closes the FPS, not the server.
+const fpsBundle = await buildFpsBundle().catch(error => {
+    console.error('The office FPS is unavailable, its bundle did not build:', (error as Error).message)
+    return null
+})
+const fps = (() => {
+    try {
+        return createFpsLive(laravel, result => {
+            // Saved to the Hub once its tables exist (phase 5); until then, the log keeps them.
+            console.log('Office FPS match over:', JSON.stringify(result))
+        })
+    } catch (error) {
+        console.error('The office FPS is unavailable:', (error as Error).message)
+        return null
+    }
+})()
+if (fps) setInterval(() => fps.lobby.tick(), 4)
+
 interface SocketData {
     id: string
-    game: 'hot-potato' | 'racing'
+    game: 'hot-potato' | 'racing' | 'fps'
     /**
      * Settles once `hello` has been answered: true when the connection is
      * registered. Later messages wait on it, in order, so nothing sent while
@@ -163,6 +185,18 @@ const server = Bun.serve<SocketData>({
         const racingAsset = serveRacing(racingAssets, request)
         if (racingAsset) return racingAsset
 
+        if (pathname === `${FPS_PREFIX}/ws`) {
+            if (!fps) return new Response('The office FPS is unavailable', { status: 503 })
+            const upgraded = server.upgrade(request, { data: { id: `fps${++nextId}`, game: 'fps', ready: null } })
+            return upgraded ? undefined : new Response('Expected a WebSocket', { status: 426 })
+        }
+        // Who's in, for the Hub's page.
+        if (pathname === `${FPS_PREFIX}/state`) {
+            return Response.json(fps?.lobby.summary() ?? null, { headers: { 'Cache-Control': 'no-store' } })
+        }
+        const fpsAsset = serveFpsBundle(fpsBundle, request)
+        if (fpsAsset) return fpsAsset
+
         if (pathname === `${PREFIX}/ws`) {
             const upgraded = server.upgrade(request, { data: { id: `ws${++nextId}`, game: 'hot-potato', ready: null } })
             return upgraded ? undefined : new Response('Expected a WebSocket', { status: 426 })
@@ -194,6 +228,7 @@ const server = Bun.serve<SocketData>({
 
         async message(ws, raw) {
             if (ws.data.game === 'racing') return raceMessage(ws, typeof raw === 'string' ? raw : raw.toString())
+            if (ws.data.game === 'fps') return fpsMessage(ws, typeof raw === 'string' ? raw : raw.toString())
             const message = parseClientMessage(typeof raw === 'string' ? raw : raw.toString())
             if (!message) return send(ws, { type: 'error', code: 'BAD_MESSAGE' })
 
@@ -209,6 +244,7 @@ const server = Bun.serve<SocketData>({
 
         close(ws) {
             if (ws.data.game === 'racing') return racing?.manager.leave(ws.data.id)
+            if (ws.data.game === 'fps') return fps?.lobby.leave(ws.data.id)
             manager.disconnect(ws.data.id)
         },
     },
@@ -261,6 +297,27 @@ async function raceMessage(ws: ServerWebSocket<SocketData>, raw: string): Promis
     else if (message.type === 'setKinds') racing.manager.setKinds(ws.data.id, message.kinds)
     else if (message.type === 'eat') racing.manager.eat(ws.data.id, message.snack)
     else racing.manager.pose(ws.data.id, message.pose, message.samples)
+}
+
+/** An office FPS tab's message: hello first, then inputs, once hello is answered. */
+async function fpsMessage(ws: ServerWebSocket<SocketData>, raw: string): Promise<void> {
+    if (!fps) return
+    const message = parseFpsMessage(raw)
+    const reply = (m: FpsServerMessage) => {
+        ws.send(JSON.stringify(m))
+    }
+    if (!message) return reply({ type: 'error', code: 'BAD_MESSAGE' })
+
+    if (message.type === 'hello') {
+        if (ws.data.ready) return reply({ type: 'error', code: 'BAD_MESSAGE' })
+        ws.data.ready = fps.hello(
+            { id: ws.data.id, send: reply, close: () => ws.close(4000, 'Replaced'), isOpen: () => ws.readyState === 1 },
+            message.playerId
+        )
+        return
+    }
+    if (!ws.data.ready) return reply({ type: 'error', code: 'NOT_JOINED' })
+    if (await ws.data.ready) fps.lobby.input(ws.data.id, message.frames)
 }
 
 function send(ws: ServerWebSocket<SocketData>, message: ServerMessage) {

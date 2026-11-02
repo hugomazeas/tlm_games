@@ -20,6 +20,7 @@ return [
         App\Games\HotPotato\Providers\HotPotatoServiceProvider::class,
         App\Games\Typing\Providers\TypingServiceProvider::class,
         App\Games\Racing\Providers\RacingServiceProvider::class,
+        App\Games\OfficeFps\Providers\OfficeFpsServiceProvider::class,
     ],
 
     /*
