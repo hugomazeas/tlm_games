@@ -3,7 +3,6 @@ import { checkPolicy, decodePolicy, type TrainedPolicy } from './ai/policy.ts'
 import { LaravelClient } from './laravel.ts'
 import { type AiLevel, parseClientMessage, type ServerMessage } from './protocol.ts'
 import { BUILD_PLACEHOLDER } from './client/build.ts'
-import { createFpsLive } from './fps/live.ts'
 import { parseClientMessage as parseFpsMessage, type ServerMessage as FpsServerMessage } from './fps/protocol.ts'
 import { buildFpsBundle, FPS_PREFIX, serveFpsBundle } from './fps/serve.ts'
 import { createRacingLive } from './race/live.ts'
@@ -131,23 +130,36 @@ const racing = await createRacingLive(laravel).catch(error => {
 if (racing) setInterval(() => racing.manager.tick(), TICK_MS)
 
 // The office FPS: one always-open game at /games/office-fps/live/ws. Its steps run on its own
-// clock (60 Hz), so it's ticked often; a failure closes the FPS, not the server.
+// clock (60 Hz), so it's ticked often. A failure closes the FPS, never the server: it's loaded
+// on its own (its map and three-mesh-bvh come with it), and an error in a tick is logged, not thrown.
 const fpsBundle = await buildFpsBundle().catch(error => {
     console.error('The office FPS is unavailable, its bundle did not build:', (error as Error).message)
     return null
 })
-const fps = (() => {
-    try {
-        return createFpsLive(laravel, result => {
-            // Saved to the Hub once its tables exist (phase 5); until then, the log keeps them.
+const fps = await import('./fps/live.ts')
+    .then(({ createFpsLive }) =>
+        createFpsLive(laravel, result => {
+            // Saved to the Hub once its tables exist; until then, the log keeps them.
             console.log('Office FPS match over:', JSON.stringify(result))
         })
-    } catch (error) {
-        console.error('The office FPS is unavailable:', (error as Error).message)
+    )
+    .catch(error => {
+        console.error('The office FPS is unavailable:', error instanceof Error ? (error.stack ?? error.message) : error)
         return null
-    }
-})()
-if (fps) setInterval(() => fps.lobby.tick(), 4)
+    })
+if (fps) {
+    let lastTickError = 0
+    setInterval(() => {
+        try {
+            fps.lobby.tick()
+        } catch (error) {
+            // At most one a second in the log; the game carries on with the next tick.
+            if (Date.now() - lastTickError > 1000) console.error('Office FPS tick failed:', error)
+            lastTickError = Date.now()
+        }
+    }, 4)
+}
+console.log(fps ? 'Office FPS ready' : 'Office FPS closed')
 
 interface SocketData {
     id: string
@@ -228,7 +240,11 @@ const server = Bun.serve<SocketData>({
 
         async message(ws, raw) {
             if (ws.data.game === 'racing') return raceMessage(ws, typeof raw === 'string' ? raw : raw.toString())
-            if (ws.data.game === 'fps') return fpsMessage(ws, typeof raw === 'string' ? raw : raw.toString())
+            if (ws.data.game === 'fps') {
+                return fpsMessage(ws, typeof raw === 'string' ? raw : raw.toString()).catch(error =>
+                    console.error('Office FPS message failed:', error)
+                )
+            }
             const message = parseClientMessage(typeof raw === 'string' ? raw : raw.toString())
             if (!message) return send(ws, { type: 'error', code: 'BAD_MESSAGE' })
 
@@ -244,7 +260,14 @@ const server = Bun.serve<SocketData>({
 
         close(ws) {
             if (ws.data.game === 'racing') return racing?.manager.leave(ws.data.id)
-            if (ws.data.game === 'fps') return fps?.lobby.leave(ws.data.id)
+            if (ws.data.game === 'fps') {
+                try {
+                    fps?.lobby.leave(ws.data.id)
+                } catch (error) {
+                    console.error('Office FPS leave failed:', error)
+                }
+                return
+            }
             manager.disconnect(ws.data.id)
         },
     },
@@ -310,10 +333,17 @@ async function fpsMessage(ws: ServerWebSocket<SocketData>, raw: string): Promise
 
     if (message.type === 'hello') {
         if (ws.data.ready) return reply({ type: 'error', code: 'BAD_MESSAGE' })
-        ws.data.ready = fps.hello(
-            { id: ws.data.id, send: reply, close: () => ws.close(4000, 'Replaced'), isOpen: () => ws.readyState === 1 },
-            message.playerId
-        )
+        const conn = {
+            id: ws.data.id,
+            send: reply,
+            close: () => ws.close(4000, 'Replaced'),
+            isOpen: () => ws.readyState === 1,
+        }
+        // Settles to false on any error: nothing waiting on it is left with a rejection.
+        ws.data.ready = fps.hello(conn, message.playerId).catch(error => {
+            console.error('Office FPS join failed:', error)
+            return false
+        })
         return
     }
     if (!ws.data.ready) return reply({ type: 'error', code: 'NOT_JOINED' })

@@ -80,7 +80,9 @@ services:
       - BUN_INSTALL_CACHE_DIR=/tmp/bun-cache
     # Packages first: the racing bundles it builds at start need three.js, and
     # node_modules isn't in git. Frozen: installs exactly what bun.lock says.
-    command: sh -c "cd game-server && bun install --frozen-lockfile && cd .. && exec bun game-server/src/server.ts"
+    # A failed install still starts the server on the packages it has: a game
+    # whose package is missing closes (and says why in the log), the rest keep running.
+    command: sh -c "cd game-server && (bun install --frozen-lockfile || echo 'bun install failed: starting with the packages already there') && cd .. && exec bun game-server/src/server.ts"
     user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
 
 networks:

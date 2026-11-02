@@ -221,6 +221,21 @@ class GameTypeSeeder extends Seeder
             ]
         );
 
+        // Also added by a migration (deploys don't seed).
+        GameType::updateOrCreate(
+            ['slug' => 'office-fps'],
+            [
+                'name' => 'Office FPS',
+                'description' => 'Jetpack troopers with blasters, all over the office. One game, always on.',
+                'icon' => "\u{1F52B}",
+                'color' => '#e4572e',
+                'is_active' => true,
+                'min_players' => 2,
+                'max_players' => 12,
+                'leaderboard_columns' => null,
+            ]
+        );
+
         GameMode::updateOrCreate(
             ['game_type_id' => $typing->id, 'slug' => 'average-wpm'],
             [

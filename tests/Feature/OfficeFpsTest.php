@@ -47,6 +47,16 @@ class OfficeFpsTest extends TestCase
             ->assertSee('/games/office-fps/live/play.js?v=', false);
     }
 
+    public function test_the_home_page_has_its_card_from_the_migration(): void
+    {
+        $this->assertDatabaseHas('game_types', ['slug' => 'office-fps', 'is_active' => true]);
+
+        $this->get('/')
+            ->assertOk()
+            ->assertSee('Office FPS')
+            ->assertSee(url('/games/office-fps'), false);
+    }
+
     public function test_an_unknown_player_is_asked_to_pick_again(): void
     {
         $this->get('/games/office-fps?player=999')
