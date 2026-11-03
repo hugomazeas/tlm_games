@@ -17,6 +17,7 @@ import { Controls } from './controls.ts'
 import { Effects, Viewmodel } from './effects.ts'
 import { escape, Hud } from './hud.ts'
 import { Prediction } from './prediction.ts'
+import { targetUnderCrosshair } from './targeting.ts'
 import { Interpolator, type Pose, ServerClock } from './timeline.ts'
 import { aimFromCamera, thirdPersonCamera } from './view.ts'
 
@@ -199,14 +200,20 @@ function onEvent(event: GameEvent, now: number): void {
     const colored = (id: string | null) =>
         `<span style="color:${(id && roster.get(id)?.color) || '#fff'}">${escape(name(id))}</span>`
     if (event.type === 'shot') {
-        if (event.hit) avatars.flash(event.hit, now)
+        if (event.hit && event.damage > 0) avatars.flash(event.hit, now)
         if (event.by === me) {
-            // Drawn already when fired; the server says whether it hit.
-            if (event.hit) hud.hitMarker(event.headshot)
+            // Drawn already when fired; the server says whether it hit, and for how much.
+            if (event.hit) {
+                if (event.damage > 0) hud.hitMarker(event.headshot)
+                const at = toScreen(new Vector3(...event.to))
+                if (at) hud.damageNumber(event.damage, event.headshot, at.x, at.y)
+            }
             return
         }
         const color = parseInt((roster.get(event.by)?.color ?? '#ffffff').slice(1), 16)
         effects.tracer(new Vector3(...event.from), new Vector3(...event.to), color, now, event.hit !== null)
+        // Hit: which way it came from.
+        if (event.hit === me && event.damage > 0) hud.damageFrom(bearingTo(event.from))
     }
     if (event.type === 'kill') {
         const how = `<span style="opacity:.7">${event.headshot ? '⌖' : '→'}</span>`
@@ -215,7 +222,31 @@ function onEvent(event: GameEvent, now: number): void {
         const fell = avatars.centerOf(event.victim)
         if (fell) effects.burst(fell, roster.get(event.victim)?.color ?? '#ffffff', now)
         if (event.victim === me) killer = event.killer ? name(event.killer) : null
+        if (event.killer === me && event.victim !== me) {
+            hud.hitMarker(event.headshot, true)
+            hud.eliminated(name(event.victim))
+        }
     }
+}
+
+/** A point in the world on screen (px), or null when it's behind the camera. */
+function toScreen(point: Vector3): { x: number; y: number } | null {
+    const p = point.clone().project(camera)
+    if (p.z > 1) return null
+    return { x: (p.x * 0.5 + 0.5) * innerWidth, y: (-p.y * 0.5 + 0.5) * innerHeight }
+}
+
+/** Which way a point is from where you look: radians, 0 ahead, π/2 to your right. */
+function bearingTo([x, , z]: [number, number, number]): number {
+    const body = prediction.body
+    if (!body) return 0
+    const dx = x - body.x
+    const dz = z - body.z
+    const yaw = controls.yaw
+    // Ahead is (-sin yaw, -cos yaw), right is (cos yaw, -sin yaw).
+    const ahead = -dx * Math.sin(yaw) - dz * Math.cos(yaw)
+    const right = dx * Math.cos(yaw) - dz * Math.sin(yaw)
+    return Math.atan2(right, ahead)
 }
 
 // --- The loop ---------------------------------------------------------------------------------
@@ -290,6 +321,11 @@ function sendIdle(): void {
 }
 
 let lastDraw = performance.now()
+/** Field of view (degrees): from the hip, and aiming down the sights. */
+const HIP_FOV = 78
+const AIM_FOV = 45
+/** 0 at the hip … 1 aiming, eased. */
+let aimBlend = 0
 
 function draw(now: number): void {
     const dt = Math.min(0.1, (now - lastDraw) / 1000)
@@ -310,10 +346,20 @@ function draw(now: number): void {
         camera.position.set(Math.sin(a) * 14, 16, Math.cos(a) * 9)
         camera.lookAt(0, 0, 0)
     }
+    // Aiming (right mouse): the view zooms in, the mouse slows to match, the blaster centres.
+    const aimingNow = controls.aiming && Boolean(self?.alive)
+    aimBlend += ((aimingNow ? 1 : 0) - aimBlend) * Math.min(1, dt * 14)
+    const fov = HIP_FOV + (AIM_FOV - HIP_FOV) * aimBlend
+    if (Math.abs(camera.fov - fov) > 0.01) {
+        camera.fov = fov
+        camera.updateProjectionMatrix()
+    }
+    controls.sensitivityScale = fov / HIP_FOV
+    hud.aiming = aimingNow
     if (viewmodel) {
         viewmodel.visible = Boolean(self?.alive) && !third
         const moving = Boolean(body && body.onGround && Math.hypot(body.vx, body.vz) > 0.5)
-        viewmodel.update(now, moving)
+        viewmodel.update(now, moving, aimBlend)
     }
 
     const at = clock.renderStep(now)
@@ -322,11 +368,36 @@ function draw(now: number): void {
     if (third && me && self && body) {
         const where = { x: body.x + smoothing.x, y: body.y + smoothing.y, z: body.z + smoothing.z }
         const facing = { yaw: controls.yaw, pitch: controls.pitch }
-        const state = { id: me, ...where, ...facing, alive: true, jet: jetting, shielded: self.shielded }
+        const state = {
+            id: me,
+            ...where,
+            ...facing,
+            alive: true,
+            health: self.health,
+            jet: jetting,
+            shielded: self.shielded,
+        }
         poses.set(me, { ...where, ...facing, state })
     }
     avatars.update(poses, roster, third ? null : me, now)
     effects.update(now)
+    showTarget(poses)
     hud.update(now, { me, self, killer, tab: controls.scoreboardHeld, roster })
     renderer.render(scene, camera)
+}
+
+/** The name and health of whoever the crosshair is on, over their head. */
+function showTarget(poses: Map<string, Pose>): void {
+    if (!self?.alive) return hud.target(null)
+    camera.updateMatrixWorld()
+    const look = camera.getWorldDirection(new Vector3())
+    const candidates = [...poses.values()]
+        .filter(p => p.state.id !== me)
+        .map(p => ({ ...p, id: p.state.id, alive: p.state.alive }))
+    const id = targetUnderCrosshair(world, camera.position, look, candidates)
+    const pose = id ? poses.get(id) : undefined
+    const at = pose ? toScreen(new Vector3(pose.x, pose.y + PLAYER.height + 0.08, pose.z)) : null
+    if (!id || !pose || !at) return hud.target(null)
+    const info = roster.get(id)
+    hud.target({ name: info?.name ?? '?', color: info?.color ?? '#ffffff', health: pose.state.health }, at.x, at.y)
 }

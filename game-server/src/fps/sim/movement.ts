@@ -18,8 +18,16 @@ const SUBSTEPS = 4
 export const PLAYER = { radius: 0.12, height: 0.4, eye: 0.34 } as const
 
 export const MOVE = {
-    walk: 2.2,
-    run: 3.6,
+    walk: 2.8,
+    /** The dodge (Shift + a direction): a jetpack burst that way. */
+    dashSpeed: 7,
+    /** How long the burst carries you before the keys take over again. */
+    dashSteps: 12,
+    /** Steps before the next dodge (0.75 s), and the fuel each one burns. */
+    dashCooldown: 45,
+    dashFuel: 0.2,
+    /** A little lift, so a dodge clears a cable or a chair leg. */
+    dashLift: 1.2,
     /** How fast velocity follows the keys: snappy on the ground, floaty in the air. */
     groundResponse: 14,
     airResponse: 3,
@@ -41,6 +49,10 @@ export interface Body {
     onGround: boolean
     /** 0–1. */
     fuel: number
+    /** Steps left of a dodge's burst (0: none). */
+    dashLeft: number
+    /** Steps until the next dodge is ready. */
+    dashCooldown: number
 }
 
 export interface MoveInput {
@@ -50,7 +62,8 @@ export interface MoveInput {
     strafe: number
     /** Radians around +Y; 0 looks toward -Z (three.js cameras). */
     yaw: number
-    run: boolean
+    /** Dodge now (sent on the one frame Shift went down). */
+    dash: boolean
     jet: boolean
 }
 
@@ -60,18 +73,18 @@ export function moveOf(frame: { forward: number; strafe: number; yaw: number; bu
         forward: frame.forward,
         strafe: frame.strafe,
         yaw: frame.yaw,
-        run: (frame.buttons & BUTTON.run) !== 0,
+        dash: (frame.buttons & BUTTON.dash) !== 0,
         jet: (frame.buttons & BUTTON.jet) !== 0,
     }
 }
 
 export function bodyAt(x: number, y: number, z: number): Body {
-    return { x, y, z, vx: 0, vy: 0, vz: 0, onGround: false, fuel: 1 }
+    return { x, y, z, vx: 0, vy: 0, vz: 0, onGround: false, fuel: 1, dashLeft: 0, dashCooldown: 0 }
 }
 
-/** Is the jetpack burning this step? Held, with fuel left. */
+/** Is the jetpack burning this step? Held with fuel left, or in a dodge's burst. */
 export function isJetting(body: Body, input: MoveInput): boolean {
-    return input.jet && body.fuel > 0
+    return (input.jet && body.fuel > 0) || body.dashLeft > 0
 }
 
 const seg = new Line3()
@@ -88,18 +101,31 @@ export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
     let wx = fx * clampUnit(input.forward) - fz * clampUnit(input.strafe)
     let wz = fz * clampUnit(input.forward) + fx * clampUnit(input.strafe)
     const length = Math.hypot(wx, wz)
-    if (length > 0) {
-        const speed = input.run ? MOVE.run : MOVE.walk
-        wx = (wx / length) * speed
-        wz = (wz / length) * speed
+    // The dodge: a burst the keys' way (forward when none are held), if it's ready and there's fuel.
+    next.dashCooldown = Math.max(0, body.dashCooldown - 1)
+    next.dashLeft = Math.max(0, body.dashLeft - 1)
+    if (input.dash && body.dashCooldown === 0 && body.fuel >= MOVE.dashFuel) {
+        const [dx, dz] = length > 0 ? [wx / length, wz / length] : [fx, fz]
+        next.vx = dx * MOVE.dashSpeed
+        next.vz = dz * MOVE.dashSpeed
+        next.vy = Math.max(next.vy, MOVE.dashLift)
+        next.fuel -= MOVE.dashFuel
+        next.dashLeft = MOVE.dashSteps
+        next.dashCooldown = MOVE.dashCooldown
+    } else if (body.dashLeft === 0) {
+        // The keys steer, unless a dodge is carrying you.
+        if (length > 0) {
+            wx = (wx / length) * MOVE.walk
+            wz = (wz / length) * MOVE.walk
+        }
+        const follow = 1 - Math.exp(-(body.onGround ? MOVE.groundResponse : MOVE.airResponse) * STEP_S)
+        next.vx += (wx - next.vx) * follow
+        next.vz += (wz - next.vz) * follow
     }
-    const follow = 1 - Math.exp(-(body.onGround ? MOVE.groundResponse : MOVE.airResponse) * STEP_S)
-    next.vx += (wx - next.vx) * follow
-    next.vz += (wz - next.vz) * follow
 
-    const jetting = isJetting(body, input)
-    const fuelRate = jetting ? -MOVE.fuelUse : body.onGround ? MOVE.fuelRegen : 0
-    next.fuel = Math.max(0, Math.min(1, body.fuel + fuelRate * STEP_S))
+    const jetting = input.jet && next.fuel > 0
+    const fuelRate = jetting ? -MOVE.fuelUse : body.onGround && next.dashLeft === 0 ? MOVE.fuelRegen : 0
+    next.fuel = Math.max(0, Math.min(1, next.fuel + fuelRate * STEP_S))
 
     const h = STEP_S / SUBSTEPS
     next.onGround = false

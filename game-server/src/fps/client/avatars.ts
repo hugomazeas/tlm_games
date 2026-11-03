@@ -1,6 +1,5 @@
 import {
     BoxGeometry,
-    CanvasTexture,
     CapsuleGeometry,
     Color,
     ConeGeometry,
@@ -11,8 +10,6 @@ import {
     MeshStandardMaterial,
     type Scene,
     SphereGeometry,
-    Sprite,
-    SpriteMaterial,
     TorusGeometry,
 } from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
@@ -54,6 +51,9 @@ const shape = {
     flame: new ConeGeometry(0.022, 0.12, 10).rotateX(Math.PI).translate(0, -0.06, 0),
     core: new ConeGeometry(0.011, 0.07, 8).rotateX(Math.PI).translate(0, -0.035, 0),
     gun: new RoundedBoxGeometry(0.032, 0.04, 0.13, 2, 0.008),
+    // Iron sights on top: a notched rear block, a thin front post.
+    rearSight: new BoxGeometry(0.018, 0.009, 0.01),
+    frontSight: new BoxGeometry(0.004, 0.012, 0.005),
     barrel: new CylinderGeometry(0.009, 0.009, 0.06, 10).rotateX(Math.PI / 2),
     muzzle: new CylinderGeometry(0.012, 0.012, 0.012, 10).rotateX(Math.PI / 2),
     shield: new SphereGeometry(0.29, 24, 16),
@@ -82,7 +82,6 @@ interface Avatar {
     head: Group
     flames: Group[]
     shield: Mesh
-    tag: Sprite
     suit: MeshStandardMaterial
     trim: MeshStandardMaterial
     name: string
@@ -235,6 +234,7 @@ export class Avatars {
         gun.position.set(0.03, -0.035, -0.11)
         gun.add(part(shape.gun, metal))
         gun.add(part(shape.barrel, dark, 0, 0.006, -0.09), part(shape.muzzle, glow, 0, 0.006, -0.12))
+        gun.add(part(shape.rearSight, dark, 0, 0.024, 0.045), part(shape.frontSight, dark, 0, 0.026, -0.05))
         aim.add(gun)
         body.add(aim)
 
@@ -260,10 +260,6 @@ export class Avatars {
         shield.position.y = PLAYER.height / 2
         root.add(shield)
 
-        const tag = nameTag(name, color)
-        tag.position.y = PLAYER.height + 0.09
-        root.add(tag)
-
         this.scene.add(root)
         const avatar: Avatar = {
             root,
@@ -274,7 +270,6 @@ export class Avatars {
             head,
             flames,
             shield,
-            tag,
             suit,
             trim,
             name,
@@ -293,32 +288,6 @@ export class Avatars {
         this.scene.remove(avatar.root)
         avatar.suit.dispose()
         avatar.trim.dispose()
-        const tagMaterial = avatar.tag.material as SpriteMaterial
-        tagMaterial.map?.dispose()
-        tagMaterial.dispose()
         this.avatars.delete(id)
     }
-}
-
-function nameTag(name: string, color: string): Sprite {
-    const canvas = document.createElement('canvas')
-    canvas.width = 256
-    canvas.height = 64
-    const g = canvas.getContext('2d')!
-    g.font = 'bold 30px system-ui, sans-serif'
-    g.textAlign = 'center'
-    g.textBaseline = 'middle'
-    const width = Math.min(250, g.measureText(name).width + 28)
-    g.fillStyle = 'rgba(12,14,18,0.72)'
-    g.beginPath()
-    g.roundRect((256 - width) / 2, 10, width, 44, 12)
-    g.fill()
-    g.fillStyle = color
-    g.fillRect((256 - width) / 2 + 10, 50, width - 20, 3)
-    g.fillStyle = '#ffffff'
-    g.fillText(name, 128, 33)
-    const sprite = new Sprite(new SpriteMaterial({ map: new CanvasTexture(canvas), depthWrite: false }))
-    sprite.scale.set(0.32, 0.08, 1)
-
-    return sprite
 }

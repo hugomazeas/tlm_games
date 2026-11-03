@@ -301,7 +301,7 @@ describe('shots are judged where the shooter saw the target', () => {
         const seenAt = a.last('snap')!.step
 
         // 200 ms: out of the line of fire (past the capsule's 12 cm), still within the rewind.
-        play(200, () => [[b, { forward: 0, strafe: 1, yaw: 0, pitch: 0, buttons: BUTTON.run, view: 0 }]])
+        play(200, () => [[b, { forward: 0, strafe: 1, yaw: 0, pitch: 0, buttons: 0, view: 0 }]])
         expect(Math.abs(where(a, b.id).x)).toBeGreaterThan(0.2)
 
         const shotsAfter = (from: number) =>
@@ -319,7 +319,7 @@ describe('shots are judged where the shooter saw the target', () => {
         // Long gone (more than 200 ms ago): judged where b is now, a miss.
         // The shooter's browser keeps sending frames (the blaster's cooldown counts them).
         play(400, () => [
-            [b, { forward: 0, strafe: 1, yaw: 0, pitch: 0, buttons: BUTTON.run, view: 0 }],
+            [b, { forward: 0, strafe: 1, yaw: 0, pitch: 0, buttons: 0, view: 0 }],
             [a, { ...aim, buttons: 0 }],
         ])
         from = a.inbox.length
