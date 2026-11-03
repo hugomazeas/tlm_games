@@ -3,6 +3,7 @@ import { BUTTON } from '../protocol.ts'
 /** Radians per pixel of mouse movement. */
 const SENSITIVITY = 0.0022
 const MAX_PITCH = 1.5
+const DIRECTIONS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'])
 
 /**
  * Keyboard and mouse, read once a step. The mouse is captured (pointer lock) by a click on the
@@ -14,6 +15,11 @@ export class Controls {
     private readonly keys = new Set<string>()
     private firing = false
     private reloadAsked = false
+    private dashAsked = false
+    /** Right mouse button held: aiming (zoomed in). */
+    aiming = false
+    /** Mouse speed multiplier: the game lowers it while zoomed so the aim moves the same on screen. */
+    sensitivityScale = 1
     /** V: first / third person. */
     onToggleView: (() => void) | null = null
 
@@ -31,19 +37,28 @@ export class Controls {
         })
         document.addEventListener('mousemove', e => {
             if (!this.locked) return
-            this.yaw -= e.movementX * SENSITIVITY
-            this.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.pitch - e.movementY * SENSITIVITY))
+            const speed = SENSITIVITY * this.sensitivityScale
+            this.yaw -= e.movementX * speed
+            this.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.pitch - e.movementY * speed))
         })
         document.addEventListener('mousedown', e => {
-            if (this.locked && e.button === 0) this.firing = true
+            if (!this.locked) return
+            if (e.button === 0) this.firing = true
+            if (e.button === 2) this.aiming = true
         })
         document.addEventListener('mouseup', e => {
             if (e.button === 0) this.firing = false
+            if (e.button === 2) this.aiming = false
         })
+        document.addEventListener('contextmenu', e => e.preventDefault())
         document.addEventListener('keydown', e => {
             if (e.code === 'Tab') e.preventDefault()
             if (!this.locked && e.code !== 'Tab') return
             if (e.code === 'Space') e.preventDefault()
+            const shift = e.code === 'ShiftLeft' || e.code === 'ShiftRight'
+            // A dodge is Shift + a direction, in either order: whichever key completes the pair fires it.
+            const pair = shift ? this.directionHeld : DIRECTIONS.has(e.code) && this.shiftHeld
+            if (!e.repeat && pair) this.dashAsked = true
             this.keys.add(e.code)
             if (e.code === 'KeyR') this.reloadAsked = true
             if (e.code === 'KeyV' && !e.repeat) this.onToggleView?.()
@@ -68,11 +83,12 @@ export class Controls {
         const forward = (held('KeyW') || held('ArrowUp') ? 1 : 0) - (held('KeyS') || held('ArrowDown') ? 1 : 0)
         const strafe = (held('KeyD') || held('ArrowRight') ? 1 : 0) - (held('KeyA') || held('ArrowLeft') ? 1 : 0)
         let buttons = 0
-        if (held('ShiftLeft') || held('ShiftRight')) buttons |= BUTTON.run
+        if (this.dashAsked) buttons |= BUTTON.dash
         if (held('Space')) buttons |= BUTTON.jet
         if (this.firing) buttons |= BUTTON.fire
         if (this.reloadAsked) buttons |= BUTTON.reload
         this.reloadAsked = false
+        this.dashAsked = false
 
         return { forward, strafe, buttons }
     }
@@ -81,8 +97,17 @@ export class Controls {
         return this.keys.has('Tab')
     }
 
+    private get directionHeld(): boolean {
+        return [...DIRECTIONS].some(code => this.keys.has(code))
+    }
+
+    private get shiftHeld(): boolean {
+        return this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')
+    }
+
     private release(): void {
         this.keys.clear()
         this.firing = false
+        this.aiming = false
     }
 }

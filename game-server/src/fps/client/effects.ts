@@ -157,10 +157,15 @@ export class Viewmodel {
         this.root.visible = on
     }
 
-    update(now: number, moving: boolean): void {
+    /**
+     * `aim` 0–1: how far into aiming down the sights (the blaster slides to the middle, under the
+     * crosshair, and stops bobbing).
+     */
+    update(now: number, moving: boolean, aim = 0): void {
         const since = now - this.kickAt
-        const kick = Math.max(0, 1 - since / 90)
-        this.root.position.set(0, moving ? Math.sin(now * 0.012) * 0.003 : 0, kick * 0.02)
+        const kick = Math.max(0, 1 - since / 90) * (1 - aim * 0.6)
+        const bob = moving ? Math.sin(now * 0.012) * 0.003 * (1 - aim) : 0
+        this.root.position.set(-this.muzzle.x * aim, bob + aim * 0.012, kick * 0.02)
         this.root.rotation.x = kick * 0.12
         this.flash.visible = since < 45
         this.light.intensity = since < 45 ? 0.6 : 0
@@ -168,6 +173,8 @@ export class Viewmodel {
 
     /** The muzzle in the world. */
     muzzleIn(camera: Camera): Vector3 {
-        return camera.localToWorld(this.muzzle.clone())
+        camera.updateMatrixWorld()
+        // Through the blaster's own frame: it slides over while aiming.
+        return this.root.localToWorld(this.muzzle.clone())
     }
 }

@@ -187,6 +187,7 @@ export class Arena {
             yaw: round(f.yaw, 3),
             pitch: round(f.pitch, 3),
             alive: f.alive,
+            health: f.alive ? f.health : 0,
             jet: f.alive && f.jetting,
             shielded: this.shielded(f),
         }))
@@ -252,6 +253,9 @@ export class Arena {
         const shot = fireShot(this.world, origin, direction, this.targetsAt(frame.view, fighter.id))
         const victim = shot.hit ? this.fighters.get(shot.hit.id) : undefined
         const headshot = shot.hit?.headshot ?? false
+        // A hit on the spawn-shielded (or someone already down) does nothing.
+        const hurts = victim !== undefined && victim.alive && !this.shielded(victim)
+        const amount = hurts ? WEAPON.damage * (headshot ? WEAPON.headshot : 1) : 0
         events.push({
             type: 'shot',
             by: fighter.id,
@@ -259,10 +263,10 @@ export class Arena {
             to: [round(shot.end.x, 3), round(shot.end.y, 3), round(shot.end.z, 3)],
             hit: victim?.id ?? null,
             headshot,
+            damage: amount,
         })
-        if (!victim || !victim.alive || this.shielded(victim)) return
+        if (!victim || !hurts) return
 
-        const amount = WEAPON.damage * (headshot ? WEAPON.headshot : 1)
         victim.health = Math.max(0, victim.health - amount)
         events.push({ type: 'damage', by: fighter.id, target: victim.id, amount, headshot })
         if (victim.health > 0) return

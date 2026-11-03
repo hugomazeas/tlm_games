@@ -16,7 +16,7 @@ export const MAX_FRAMES = 30
 export type Phase = 'warmup' | 'countdown' | 'playing' | 'intermission'
 
 /** Bits of an input frame's buttons. */
-export const BUTTON = { run: 1, jet: 2, fire: 4, reload: 8 } as const
+export const BUTTON = { dash: 1, jet: 2, fire: 4, reload: 8 } as const
 
 /** One step's input: what the keys and the mouse said, and which server step the shooter was looking at. */
 export interface InputFrame {
@@ -49,6 +49,8 @@ export interface PlayerState {
     yaw: number
     pitch: number
     alive: boolean
+    /** 0–MAX_HEALTH, shown over them when someone's crosshair is on them. */
+    health: number
     jet: boolean
     /** Just spawned: can't be hurt until it runs out or they fire. */
     shielded: boolean
@@ -74,6 +76,8 @@ export type GameEvent =
           to: [number, number, number]
           hit: string | null
           headshot: boolean
+          /** Health it took (0: a miss, or a spawn-shielded target). */
+          damage: number
       }
     | { type: 'kill'; killer: string | null; victim: string; headshot: boolean }
     | { type: 'spawn'; id: string }

@@ -11,10 +11,24 @@ const CSS = `
 #fps-hud { position: fixed; inset: 0; pointer-events: none; font: 600 14px/1.3 system-ui, sans-serif; color: #f4f6f8; z-index: 20; user-select: none; }
 #fps-hud .panel { background: rgba(12,14,18,.62); border-radius: 10px; padding: 8px 12px; backdrop-filter: blur(6px); }
 #fps-hud .cross { position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px; border-radius: 50%; background: rgba(255,255,255,.9); box-shadow: 0 0 0 1px rgba(0,0,0,.55); }
-#fps-hud .hit { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px; opacity: 0; transition: opacity .15s; }
-#fps-hud .hit::before, #fps-hud .hit::after { content: ''; position: absolute; left: 12px; top: 0; width: 2px; height: 26px; background: #fff; transform: rotate(45deg); }
+#fps-hud .hit { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px; opacity: 0; }
+#fps-hud .hit::before, #fps-hud .hit::after { content: ''; position: absolute; left: 13px; top: 0; width: 4px; height: 30px; border-radius: 2px; background: #fff; box-shadow: 0 0 3px rgba(0,0,0,.7); transform: rotate(45deg); clip-path: polygon(0 0,100% 0,100% 36%,0 36%,0 64%,100% 64%,100% 100%,0 100%); }
 #fps-hud .hit::after { transform: rotate(-45deg); }
-#fps-hud .hit.head::before, #fps-hud .hit.head::after { background: #ff4d4d; }
+#fps-hud .hit.head::before, #fps-hud .hit.head::after { background: #ffb020; }
+#fps-hud .hit.kill { width: 44px; height: 44px; margin: -22px; }
+#fps-hud .hit.kill::before, #fps-hud .hit.kill::after { left: 19px; height: 44px; width: 6px; background: #ff3b3b; }
+#fps-hud .pop { position: absolute; transform: translate(-50%,-50%); font: 800 18px system-ui, sans-serif; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,.8); pointer-events: none; transition: transform .7s ease-out, opacity .7s ease-in; }
+#fps-hud .pop.head { color: #ffb020; font-size: 22px; }
+#fps-hud .pop.none { color: rgba(255,255,255,.55); font-size: 14px; }
+#fps-hud .elim { position: absolute; left: 50%; top: calc(50% + 46px); transform: translateX(-50%); font-size: 15px; letter-spacing: .14em; text-transform: uppercase; color: #ff6b6b; text-shadow: 0 2px 4px rgba(0,0,0,.8); opacity: 0; transition: opacity .4s; }
+#fps-hud .elim b { color: #fff; }
+#fps-hud .from { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transition: opacity .9s ease-in; }
+#fps-hud .from::before { content: ''; position: absolute; left: -70px; top: -190px; width: 140px; height: 34px; border-radius: 50% 50% 0 0 / 100% 100% 0 0; background: radial-gradient(ellipse at 50% 100%, rgba(255,40,40,.0) 40%, rgba(255,40,40,.85) 72%, rgba(255,40,40,0) 74%); }
+#fps-hud .target { position: absolute; transform: translate(-50%,-100%); text-align: center; pointer-events: none; transition: opacity .15s; }
+#fps-hud .target .name { font-size: 13px; padding: 2px 8px; border-radius: 6px; background: rgba(12,14,18,.7); white-space: nowrap; }
+#fps-hud .target .bar { width: 70px; height: 5px; margin: 4px auto 0; border-radius: 3px; background: rgba(0,0,0,.55); overflow: hidden; }
+#fps-hud .target .bar div { height: 100%; transition: width .15s; }
+#fps-hud.aiming .cross { width: 3px; height: 3px; margin: -1.5px; }
 #fps-hud .health { position: absolute; left: 20px; bottom: 20px; font-size: 30px; min-width: 120px; }
 #fps-hud .health small, #fps-hud .ammo small { display: block; font-size: 11px; opacity: .65; letter-spacing: .12em; text-transform: uppercase; }
 #fps-hud .ammo { position: absolute; right: 20px; bottom: 20px; font-size: 30px; text-align: right; min-width: 120px; }
@@ -68,6 +82,8 @@ export class Hud {
         this.root.innerHTML = `
             <div class="hurt" data-el="hurt"></div>
             <div class="cross" data-el="cross"></div><div class="hit" data-el="hit"></div>
+            <div class="elim" data-el="elim"></div>
+            <div class="target hidden" data-el="target"><div class="name"></div><div class="bar"><div></div></div></div>
             <div class="panel top" data-el="top"></div>
             <div class="feed" data-el="feed"></div>
             <div class="middle" data-el="middle"></div>
@@ -89,8 +105,8 @@ export class Hud {
         card.innerHTML = {
             connecting: `<h1>Office FPS</h1><p>Connecting…</p>`,
             paused: `<h1>Office FPS</h1><p><b>Click to play</b></p>
-                <p><kbd>WASD</kbd> move · <kbd>Shift</kbd> run · <kbd>Space</kbd> jetpack<br>
-                <kbd>Click</kbd> fire · <kbd>R</kbd> reload · <kbd>V</kbd> 1st / 3rd person<br>
+                <p><kbd>WASD</kbd> move · <kbd>Shift</kbd> + direction dodge · <kbd>Space</kbd> jetpack<br>
+                <kbd>Click</kbd> fire · <kbd>Right-click</kbd> aim · <kbd>R</kbd> reload · <kbd>V</kbd> 1st / 3rd person<br>
                 <kbd>Tab</kbd> scores · <kbd>Esc</kbd> free the mouse</p>${back}`,
             playing: '',
             replaced: `<h1>Playing in another tab</h1><p>This one let go.</p>${back}`,
@@ -117,15 +133,67 @@ export class Hud {
         this.lastHealth = self.alive ? self.health : MAX_HEALTH
     }
 
-    hitMarker(headshot: boolean): void {
+    /** Your shot landed: a marker on the crosshair (gold for a headshot, big and red for a kill). */
+    hitMarker(headshot: boolean, kill = false): void {
         const hit = this.el.hit!
-        hit.classList.toggle('head', headshot)
-        hit.style.transition = 'none'
-        hit.style.opacity = '1'
+        hit.classList.toggle('head', headshot && !kill)
+        hit.classList.toggle('kill', kill)
+        fadeOut(hit, kill ? 600 : 260)
+    }
+
+    /** The damage you did, popping up where it landed (screen px), rising as it fades. */
+    damageNumber(amount: number, headshot: boolean, x: number, y: number): void {
+        const pop = document.createElement('div')
+        pop.className = `pop${headshot ? ' head' : ''}${amount === 0 ? ' none' : ''}`
+        pop.textContent = amount === 0 ? 'shielded' : String(amount)
+        pop.style.left = `${x + (Math.random() - 0.5) * 24}px`
+        pop.style.top = `${y}px`
+        this.root.append(pop)
         requestAnimationFrame(() => {
-            hit.style.transition = 'opacity .25s'
-            hit.style.opacity = '0'
+            pop.style.transform = 'translate(-50%,-50%) translateY(-46px)'
+            pop.style.opacity = '0'
         })
+        setTimeout(() => pop.remove(), 750)
+    }
+
+    /** You took someone down. */
+    eliminated(name: string): void {
+        const elim = this.el.elim!
+        elim.innerHTML = `Eliminated <b>${escape(name)}</b>`
+        fadeOut(elim, 1600)
+    }
+
+    /**
+     * You were hit from this direction: radians from where you look (0 ahead, π/2 to your right).
+     * A red arc on that side of the crosshair.
+     */
+    damageFrom(angle: number): void {
+        const arc = document.createElement('div')
+        arc.className = 'from'
+        arc.style.transform = `rotate(${angle}rad)`
+        this.root.append(arc)
+        requestAnimationFrame(() => requestAnimationFrame(() => (arc.style.opacity = '0')))
+        setTimeout(() => arc.remove(), 1000)
+    }
+
+    /** Over the player your crosshair is on (screen px of the top of their head), or hidden. */
+    target(who: { name: string; color: string; health: number } | null, x = 0, y = 0): void {
+        const target = this.el.target!
+        target.classList.toggle('hidden', who === null)
+        if (!who) return
+        target.style.left = `${x}px`
+        target.style.top = `${y}px`
+        const name = target.querySelector<HTMLElement>('.name')!
+        if (name.textContent !== who.name) name.textContent = who.name
+        name.style.boxShadow = `inset 0 -2px 0 ${who.color}`
+        const bar = target.querySelector<HTMLElement>('.bar div')!
+        const share = Math.max(0, Math.min(1, who.health / MAX_HEALTH))
+        bar.style.width = `${share * 100}%`
+        bar.style.background = share > 0.6 ? '#5ad16b' : share > 0.3 ? '#f2b134' : '#ff4d4d'
+    }
+
+    set aiming(on: boolean) {
+        this.root.classList.toggle('aiming', on)
     }
 
     killFeed(html: string): void {
@@ -206,6 +274,18 @@ export class Hud {
 function clock(ms: number): string {
     const s = Math.ceil(ms / 1000)
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
+/** Shows an element at once, then fades it out over `ms`. */
+function fadeOut(element: HTMLElement, ms: number): void {
+    element.style.transition = 'none'
+    element.style.opacity = '1'
+    requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+            element.style.transition = `opacity ${ms}ms ease-in`
+            element.style.opacity = '0'
+        })
+    )
 }
 
 export function escape(text: string): string {

@@ -3,7 +3,7 @@ import { createRng } from '../../sim/rng.ts'
 import { type Body, bodyAt, MOVE, type MoveInput, PLAYER, stepBody } from './movement.ts'
 import { officeWorld } from './world.ts'
 
-const IDLE: MoveInput = { forward: 0, strafe: 0, yaw: 0, run: false, jet: false }
+const IDLE: MoveInput = { forward: 0, strafe: 0, yaw: 0, dash: false, jet: false }
 
 function run(body: Body, input: MoveInput, steps: number): Body {
     const world = officeWorld()
@@ -36,6 +36,35 @@ describe('a mini in the office', () => {
         expect(Math.abs(end.z - start.z)).toBeLessThan(0.01)
     })
 
+    test('a dodge bursts the way the keys say, burns fuel, and needs its cooldown', () => {
+        const start = standing()
+        // Yaw π/2 looks toward -X, so strafing right (D) goes toward -Z.
+        const right = { ...IDLE, strafe: 1, yaw: Math.PI / 2 }
+        const dodged = run(stepBody(officeWorld(), start, { ...right, dash: true }), right, 11)
+        const walked = run(start, right, 12)
+
+        expect(start.z - dodged.z).toBeGreaterThan(1.1)
+        expect(start.z - dodged.z).toBeGreaterThan(2 * (start.z - walked.z))
+        expect(Math.abs(dodged.x - start.x)).toBeLessThan(0.05)
+        expect(dodged.fuel).toBeCloseTo(1 - MOVE.dashFuel, 2)
+
+        // Again at once: nothing, until the cooldown is over.
+        const again = stepBody(officeWorld(), dodged, { ...right, dash: true })
+        expect(again.fuel).toBeCloseTo(dodged.fuel, 2)
+        const ready = run(dodged, right, MOVE.dashCooldown)
+        expect(stepBody(officeWorld(), ready, { ...right, dash: true }).dashLeft).toBe(MOVE.dashSteps)
+    })
+
+    test('a dodge with no direction held goes forward; without fuel there is none', () => {
+        const start = standing()
+        const forward = run(stepBody(officeWorld(), start, { ...IDLE, yaw: Math.PI / 2, dash: true }), IDLE, 5)
+        expect(start.x - forward.x).toBeGreaterThan(0.5)
+
+        const empty = stepBody(officeWorld(), { ...start, fuel: MOVE.dashFuel / 2 }, { ...IDLE, dash: true })
+        expect(empty.dashLeft).toBe(0)
+        expect(Math.hypot(empty.vx, empty.vz)).toBeLessThan(0.1)
+    })
+
     test('the jetpack lifts off, burns fuel and stops at the ceiling', () => {
         const start = standing()
         const second = run(start, { ...IDLE, jet: true }, 60)
@@ -66,7 +95,7 @@ describe('a mini in the office', () => {
                 forward: rng() * 2 - 1,
                 strafe: rng() * 2 - 1,
                 yaw: rng() * 6,
-                run: rng() < 0.5,
+                dash: rng() < 0.05,
                 jet: rng() < 0.3,
             })
         }
@@ -87,7 +116,7 @@ describe('a mini in the office', () => {
                         forward: rng() * 2 - 1,
                         strafe: rng() * 2 - 1,
                         yaw: rng() * 6.3,
-                        run: rng() < 0.7,
+                        dash: rng() < 0.3,
                         jet: rng() < 0.5,
                     }
                 }

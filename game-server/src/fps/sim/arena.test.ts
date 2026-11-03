@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { createRng } from '../../sim/rng.ts'
 import { BUTTON, type InputFrame } from '../protocol.ts'
-import { Arena, MAX_BURST } from './arena.ts'
+import { Arena, MAX_BURST, SHIELD_STEPS } from './arena.ts'
 import { type Body, bodyAt, MOVE, moveOf, stepBody } from './movement.ts'
 import { testWorld } from './testing.ts'
 
@@ -13,7 +13,7 @@ function arena(): Arena {
     return a
 }
 
-function frames(from: number, n: number, buttons: number = BUTTON.run): InputFrame[] {
+function frames(from: number, n: number, buttons: number = 0): InputFrame[] {
     return Array.from({ length: n }, (_, i) => ({
         seq: from + i,
         forward: 1,
@@ -60,7 +60,7 @@ describe('inputs are used as they arrive, never queued', () => {
             a.advance()
         }
         const end = a.self('me')!.body
-        const allowed = (MOVE.run * (steps + MAX_BURST)) / 60
+        const allowed = (MOVE.walk * (steps + MAX_BURST)) / 60
 
         expect(Math.hypot(end.x - start.x, end.z - start.z)).toBeLessThan(allowed + 0.01)
     })
@@ -76,6 +76,42 @@ describe('inputs are used as they arrive, never queued', () => {
         expect(a.self('me')!.body.y).toBe(up)
         for (let i = 0; i < 120; i++) a.advance()
         expect(a.self('me')!.body.y).toBeLessThan(0.05)
+    })
+
+    test('a shot says what it did: nothing on a spawn shield, then the damage once it is down', () => {
+        // Two spawns 4 m apart on the Z axis: whoever is at one can shoot the other.
+        const pair = testWorld([
+            { name: 'north', position: [0, 0, -2], yaw: Math.PI },
+            { name: 'south', position: [0, 0, 2], yaw: 0 },
+        ])
+        const a = new Arena(pair, createRng(1))
+        a.add('a')
+        a.add('b')
+        const me = a.self('a')!.body
+        const them = a.states().find(s => s.id === 'b')!
+        const dz = them.z - me.z
+        // Aim at their chest.
+        const aim = {
+            forward: 0,
+            strafe: 0,
+            yaw: dz < 0 ? 0 : Math.PI,
+            pitch: Math.atan2(0.2 - 0.34, Math.abs(dz)),
+            buttons: BUTTON.fire,
+            view: 0,
+        }
+        const fire = (seq: number) => {
+            a.queue('a', [{ ...aim, seq, view: a.step }])
+            return a.advance().find(e => e.type === 'shot')
+        }
+
+        expect(fire(1)).toMatchObject({ hit: 'b', damage: 0 })
+        let seq = 2
+        for (let i = 0; i < SHIELD_STEPS; i++) {
+            a.queue('a', [{ ...aim, seq: seq++, buttons: 0 }])
+            a.advance()
+        }
+        expect(fire(seq)).toMatchObject({ hit: 'b', damage: 20 })
+        expect(a.states().find(s => s.id === 'b')!.health).toBe(80)
     })
 
     test("the blaster's cadence follows the player's frames, even caught up in one step", () => {

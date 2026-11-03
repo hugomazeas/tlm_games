@@ -253,6 +253,16 @@ no leaderboard or dashboard card yet.
   `timeline.ts` draws the others 4 steps (67 ms) in the past between snapshots, and that step
   is each frame's `view`. Your shot's tracer is drawn at once; the server's event only adds the
   hit marker. A hidden tab sends one idle frame first (the server repeats your last frame).
+- **Controls:** WASD walk, Space jetpack, Shift + a direction (either order: the key that
+  completes the pair fires it) dodges (`BUTTON.dash`: a 7 m/s burst for 12 steps that way,
+  20% fuel, 0.75 s cooldown, in `stepBody` so it's predicted and checked), click fires,
+  right-click aims (field of view 78° → 45°, mouse slowed to match, blaster centred), V
+  first/third person.
+- **Feedback:** shot events carry the `damage` they did (0 on a spawn shield). Your hits: a
+  marker (gold on a headshot), the number where it landed, a big red marker and "Eliminated"
+  on a kill. Hits on you: a red arc toward the shooter. Names and health show only over the
+  player under your crosshair (`client/targeting.ts`: nearest the view's centre within a body's
+  width, not through walls); `PlayerState.health` is sent for it.
 
 - **The map** (`fps/map/office.js`, typed by `office.d.ts`; brought over from `~/office-map`,
   this copy is the source): `buildOfficeGeometry()` runs anywhere (no DOM) and gives the exact

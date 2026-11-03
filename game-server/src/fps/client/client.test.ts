@@ -6,8 +6,36 @@ import { testWorld } from '../sim/testing.ts'
 import { Prediction } from './prediction.ts'
 import { INTERP_STEPS, Interpolator, ServerClock } from './timeline.ts'
 import { aimFromCamera, THIRD_PERSON, thirdPersonCamera } from './view.ts'
+import { targetUnderCrosshair } from './targeting.ts'
 import { Vector3 } from 'three'
 import { aimDirection, fireShot } from '../sim/combat.ts'
+
+describe('who the crosshair is on', () => {
+    // A wall across x = 2, nothing else.
+    const room = testWorld([], [{ min: [2, 0, -5], max: [2.2, 3, 5] }])
+    const eye = new Vector3(0, 0.34, 0)
+    const at = (id: string, x: number, z: number, alive = true) => ({ id, x, y: 0, z, alive })
+    // Looking toward -Z.
+    const ahead = new Vector3(0, 0, -1)
+
+    test('the player in the middle of the view, a little off-centre still counts', () => {
+        expect(targetUnderCrosshair(room, eye, ahead, [at('a', 0, -3)])).toBe('a')
+        expect(targetUnderCrosshair(room, eye, ahead, [at('a', 0.2, -3)])).toBe('a')
+        expect(targetUnderCrosshair(room, eye, ahead, [at('a', 1, -3)])).toBeNull()
+    })
+
+    test('the nearest to the centre line wins; the dead and the far away do not count', () => {
+        expect(targetUnderCrosshair(room, eye, ahead, [at('off', 0.15, -3), at('dead on', 0, -5)])).toBe('dead on')
+        expect(targetUnderCrosshair(room, eye, ahead, [at('a', 0, -3, false)])).toBeNull()
+        expect(targetUnderCrosshair(room, eye, ahead, [at('a', 0, -40)])).toBeNull()
+    })
+
+    test('not through a wall', () => {
+        const east = new Vector3(1, 0, 0)
+        expect(targetUnderCrosshair(room, eye, east, [at('behind', 4, 0)])).toBeNull()
+        expect(targetUnderCrosshair(room, eye, east, [at('before', 1.5, 0)])).toBe('before')
+    })
+})
 
 describe('third person', () => {
     // A wall 1 m behind (at z = +1), one 3 m ahead (at z = -3), looking toward -Z.
@@ -130,6 +158,7 @@ describe('drawing the others', () => {
         yaw: 0,
         pitch: 0,
         alive,
+        health: 100,
         jet: false,
         shielded: false,
     })
