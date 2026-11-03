@@ -1,4 +1,4 @@
-import { BUTTON } from '../protocol.ts'
+import { BUTTON, type Weapon } from '../protocol.ts'
 
 /** Radians per pixel of mouse movement. */
 const SENSITIVITY = 0.0022
@@ -18,8 +18,11 @@ export class Controls {
     private dashAsked = false
     /** Right mouse button held: aiming (zoomed in). */
     aiming = false
-    /** Mouse speed multiplier: the game lowers it while zoomed so the aim moves the same on screen. */
+    /** Mouse speed multiplier: your setting, lowered while zoomed so the aim moves the same on screen. */
     sensitivityScale = 1
+    invertY = false
+    /** The weapon in hand: 1 or 2, or the scroll wheel. */
+    weapon: Weapon = 'blaster'
     /** V: first / third person. */
     onToggleView: (() => void) | null = null
 
@@ -27,9 +30,11 @@ export class Controls {
         private readonly canvas: HTMLCanvasElement,
         private readonly onLockChange: (locked: boolean) => void
     ) {
-        // Anywhere on the page, the "Click to play" card included (it sits over the canvas); not its links.
+        // Anywhere on the page, the "Click to play" card included (it sits over the canvas); not
+        // its links, buttons and settings.
         document.addEventListener('click', e => {
-            if (!this.locked && !(e.target as Element | null)?.closest('a')) void canvas.requestPointerLock()
+            const target = e.target as Element | null
+            if (!this.locked && !target?.closest('a, button, input, select, label')) void canvas.requestPointerLock()
         })
         document.addEventListener('pointerlockchange', () => {
             if (!this.locked) this.release()
@@ -39,8 +44,18 @@ export class Controls {
             if (!this.locked) return
             const speed = SENSITIVITY * this.sensitivityScale
             this.yaw -= e.movementX * speed
-            this.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.pitch - e.movementY * speed))
+            const vertical = e.movementY * speed * (this.invertY ? -1 : 1)
+            this.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.pitch - vertical))
         })
+        document.addEventListener(
+            'wheel',
+            e => {
+                if (!this.locked || e.deltaY === 0) return
+                e.preventDefault()
+                this.weapon = this.weapon === 'blaster' ? 'stapler' : 'blaster'
+            },
+            { passive: false }
+        )
         document.addEventListener('mousedown', e => {
             if (!this.locked) return
             if (e.button === 0) this.firing = true
@@ -62,6 +77,8 @@ export class Controls {
             this.keys.add(e.code)
             if (e.code === 'KeyR') this.reloadAsked = true
             if (e.code === 'KeyV' && !e.repeat) this.onToggleView?.()
+            if (e.code === 'Digit1') this.weapon = 'blaster'
+            if (e.code === 'Digit2') this.weapon = 'stapler'
         })
         document.addEventListener('keyup', e => this.keys.delete(e.code))
         window.addEventListener('blur', () => this.release())

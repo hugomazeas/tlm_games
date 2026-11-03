@@ -36,16 +36,23 @@
         <h2 class="text-sm uppercase tracking-wider text-white/50 mb-3">Who's playing?</h2>
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mb-6">
             @foreach ($players as $player)
-                <a href="{{ url('/games/office-fps?player='.$player->id) }}"
-                   @click="localStorage.setItem('officeFps.player', '{{ $player->id }}')"
-                   class="bg-white/5 hover:bg-white/15 rounded-lg px-4 py-3 transition"
-                   :class="remembered === '{{ $player->id }}' ? 'ring-2 ring-amber-300/70' : ''">
-                    {{ $player->name }}
-                </a>
+                <div class="relative">
+                    <a href="{{ url('/games/office-fps?player='.$player->id) }}"
+                       @click="localStorage.setItem('officeFps.player', '{{ $player->id }}')"
+                       class="block bg-white/5 hover:bg-white/15 rounded-lg px-4 py-3 pr-10 transition"
+                       :class="remembered === '{{ $player->id }}' ? 'ring-2 ring-amber-300/70' : ''">
+                        {{ $player->name }}
+                    </a>
+                    <a href="{{ url('/games/office-fps/players/'.$player->id) }}" title="{{ $player->name }}'s stats"
+                       class="absolute right-2 top-1/2 -translate-y-1/2 text-white/40 hover:text-white text-sm px-1">📊</a>
+                </div>
             @endforeach
         </div>
-        <a href="{{ url('/games/office-fps?guest=1') }}" class="text-sm text-white/60 hover:text-white underline">
-            Play as a guest (not recorded)
-        </a>
+        <div class="flex flex-wrap gap-4 text-sm">
+            <a href="{{ url('/games/office-fps?guest=1') }}" class="text-white/60 hover:text-white underline">
+                Play as a guest (not recorded)
+            </a>
+            <a href="{{ url('/leaderboards/office-fps/kills') }}" class="text-white/60 hover:text-white underline">Leaderboard</a>
+        </div>
     </div>
 @endsection

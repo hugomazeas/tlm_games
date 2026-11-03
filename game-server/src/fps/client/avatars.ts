@@ -51,6 +51,8 @@ const shape = {
     flame: new ConeGeometry(0.022, 0.12, 10).rotateX(Math.PI).translate(0, -0.06, 0),
     core: new ConeGeometry(0.011, 0.07, 8).rotateX(Math.PI).translate(0, -0.035, 0),
     gun: new RoundedBoxGeometry(0.032, 0.04, 0.13, 2, 0.008),
+    staplerBase: new BoxGeometry(0.03, 0.012, 0.11),
+    staplerArm: new BoxGeometry(0.026, 0.018, 0.1),
     // Iron sights on top: a notched rear block, a thin front post.
     rearSight: new BoxGeometry(0.018, 0.009, 0.01),
     frontSight: new BoxGeometry(0.004, 0.012, 0.005),
@@ -79,6 +81,9 @@ interface Avatar {
     shoulders: [Group, Group]
     /** The blaster and the arms holding it: pitched with their aim. */
     aim: Group
+    gun: Group
+    stapler: Group
+    swingAt: number
     head: Group
     flames: Group[]
     shield: Mesh
@@ -117,6 +122,12 @@ export class Avatars {
     }
 
     /** They were hit: a white flash. */
+    /** They swung their stapler. */
+    swing(id: string, now: number): void {
+        const avatar = this.avatars.get(id)
+        if (avatar) avatar.swingAt = now
+    }
+
     flash(id: string, now: number): void {
         const avatar = this.avatars.get(id)
         if (avatar) avatar.flashUntil = now + 90
@@ -157,6 +168,11 @@ export class Avatars {
 
         // Arms and blaster follow the aim; the head follows it half way.
         avatar.aim.rotation.x = pose.pitch
+        avatar.gun.visible = pose.state.weapon === 'blaster'
+        avatar.stapler.visible = pose.state.weapon === 'stapler'
+        // A swing: a quick chop down and back.
+        const swung = (now - avatar.swingAt) / 300
+        avatar.stapler.rotation.x = swung < 1 ? -Math.sin(swung * Math.PI) * 1.1 : 0
         avatar.head.rotation.x = pose.pitch * 0.5
 
         for (const [i, flame] of avatar.flames.entries()) {
@@ -235,7 +251,12 @@ export class Avatars {
         gun.add(part(shape.gun, metal))
         gun.add(part(shape.barrel, dark, 0, 0.006, -0.09), part(shape.muzzle, glow, 0, 0.006, -0.12))
         gun.add(part(shape.rearSight, dark, 0, 0.024, 0.045), part(shape.frontSight, dark, 0, 0.026, -0.05))
-        aim.add(gun)
+        // The stapler, held the same way, pivoting at its back for the chop.
+        const stapler = new Group()
+        stapler.position.set(0.03, -0.03, -0.06)
+        stapler.add(part(shape.staplerBase, dark, 0, -0.008, -0.05), part(shape.staplerArm, suit, 0, 0.008, -0.048))
+        stapler.visible = false
+        aim.add(gun, stapler)
         body.add(aim)
 
         // Jetpack on the back (+Z): two tanks, nozzles with rings, a flame under each.
@@ -278,6 +299,9 @@ export class Avatars {
             speed: 0,
             stride: 0,
             flashUntil: 0,
+            gun,
+            stapler,
+            swingAt: -1e9,
         }
         this.avatars.set(id, avatar)
 

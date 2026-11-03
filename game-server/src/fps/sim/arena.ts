@@ -1,11 +1,21 @@
 import type { Rng } from '../../sim/rng.ts'
-import { BUTTON, type GameEvent, type InputFrame, type PlayerState, type SelfState } from '../protocol.ts'
-import { aimDirection, eyeOf, fireShot, MAX_HEALTH, type Target, WEAPON } from './combat.ts'
+import { BUTTON, type GameEvent, type InputFrame, type PlayerState, type SelfState, type Weapon } from '../protocol.ts'
+import {
+    aimDirection,
+    eyeOf,
+    fireShot,
+    MAX_HEALTH,
+    STAPLER,
+    SWITCH_MS,
+    swingStapler,
+    type Target,
+    WEAPON,
+} from './combat.ts'
 import { type Body, bodyAt, isJetting, moveOf, STEP_MS, stepBody } from './movement.ts'
 import type { FpsWorld } from './world.ts'
 
 /**
- * The game itself, one 60 Hz step at a time: bodies, inputs, the blaster, deaths and respawns.
+ * The game itself, one 60 Hz step at a time: bodies, inputs, the blaster and the stapler, deaths and respawns.
  * Pure (seeded random, no clock): the lobby around it decides what a kill is worth.
  */
 
@@ -27,6 +37,8 @@ export const MAX_BURST = 30
 const STARVED_STEPS = steps(500)
 const SHOT_STEPS = steps(WEAPON.intervalMs)
 const RELOAD_STEPS = steps(WEAPON.reloadMs)
+const SWING_STEPS = steps(STAPLER.intervalMs)
+const SWITCH_STEPS = steps(SWITCH_MS)
 const IDLE: InputFrame = { seq: 0, forward: 0, strafe: 0, yaw: 0, pitch: 0, buttons: 0, view: 0 }
 /** Under the floor (somehow): back to a spawn. */
 const LOST_BELOW = -2
@@ -48,7 +60,11 @@ interface Fighter {
      * batch caught up in one server step fires exactly as it did in their browser.
      */
     clock: number
+    /** In hand, and usable from this frame of theirs (switching takes a moment). */
+    weapon: Weapon
+    readyAt: number
     nextShotAt: number
+    nextSwingAt: number
     /** Reloading until this frame of theirs (0: not). */
     reloadUntil: number
     queue: InputFrame[]
@@ -98,7 +114,10 @@ export class Arena {
             shieldUntil: 0,
             ammo: WEAPON.magazine,
             clock: 0,
+            weapon: 'blaster',
+            readyAt: 0,
             nextShotAt: 0,
+            nextSwingAt: 0,
             reloadUntil: 0,
             queue: [],
             queuedSeq: 0,
@@ -190,6 +209,7 @@ export class Arena {
             health: f.alive ? f.health : 0,
             jet: f.alive && f.jetting,
             shielded: this.shielded(f),
+            weapon: f.weapon,
         }))
     }
 
@@ -205,6 +225,7 @@ export class Arena {
             ammo: f.ammo,
             reloading: f.reloadUntil > f.clock,
             shielded: this.shielded(f),
+            weapon: f.weapon,
             respawnInMs: f.alive ? null : Math.max(0, Math.round((f.respawnAt - this.step) * STEP_MS)),
         }
     }
@@ -227,15 +248,26 @@ export class Arena {
             events.push(this.spawn(fighter))
             return
         }
-        this.weapon(fighter, frame, events)
+        // A different weapon in hand: it takes a moment before it can be used.
+        const wanted = frame.weapon ?? 'blaster'
+        if (wanted !== fighter.weapon) {
+            fighter.weapon = wanted
+            fighter.readyAt = fighter.clock + SWITCH_STEPS
+            fighter.reloadUntil = 0
+        }
+        if (fighter.clock < fighter.readyAt) return
+        if (fighter.weapon === 'stapler') this.stapler(fighter, frame, events)
+        else this.blaster(fighter, frame, events)
     }
 
-    private weapon(fighter: Fighter, frame: InputFrame, events: ArenaEvent[]): void {
+    private blaster(fighter: Fighter, frame: InputFrame, events: ArenaEvent[]): void {
         const now = fighter.clock
         if (fighter.reloadUntil > 0 && now >= fighter.reloadUntil) {
             fighter.reloadUntil = 0
             fighter.ammo = WEAPON.magazine
         }
+        // Empty (a reload cut short by a switch, say): it reloads by itself.
+        if (fighter.ammo === 0 && fighter.reloadUntil === 0) fighter.reloadUntil = now + RELOAD_STEPS
         const reloading = fighter.reloadUntil > 0
         if (frame.buttons & BUTTON.reload && !reloading && fighter.ammo < WEAPON.magazine) {
             fighter.reloadUntil = now + RELOAD_STEPS
@@ -253,9 +285,7 @@ export class Arena {
         const shot = fireShot(this.world, origin, direction, this.targetsAt(frame.view, fighter.id))
         const victim = shot.hit ? this.fighters.get(shot.hit.id) : undefined
         const headshot = shot.hit?.headshot ?? false
-        // A hit on the spawn-shielded (or someone already down) does nothing.
-        const hurts = victim !== undefined && victim.alive && !this.shielded(victim)
-        const amount = hurts ? WEAPON.damage * (headshot ? WEAPON.headshot : 1) : 0
+        const amount = this.hurts(victim) ? WEAPON.damage * (headshot ? WEAPON.headshot : 1) : 0
         events.push({
             type: 'shot',
             by: fighter.id,
@@ -265,16 +295,48 @@ export class Arena {
             headshot,
             damage: amount,
         })
-        if (!victim || !hurts) return
+        if (victim && amount > 0) {
+            this.damage(fighter, victim, amount, { headshot, weapon: 'blaster', backstab: false }, events)
+        }
+    }
 
+    private stapler(fighter: Fighter, frame: InputFrame, events: ArenaEvent[]): void {
+        if (!(frame.buttons & BUTTON.fire) || fighter.clock < fighter.nextSwingAt) return
+        fighter.nextSwingAt = fighter.clock + SWING_STEPS
+        fighter.shieldUntil = 0
+
+        const eye = eyeOf(fighter.body)
+        const direction = aimDirection(frame.yaw, frame.pitch)
+        const reached = swingStapler(this.world, eye, direction, this.targetsAt(frame.view, fighter.id))
+        const victim = reached ? this.fighters.get(reached.id) : undefined
+        const backstab = reached?.backstab ?? false
+        const amount = this.hurts(victim) ? (backstab ? STAPLER.backstab : STAPLER.damage) : 0
+        events.push({ type: 'swing', by: fighter.id, hit: victim?.id ?? null, damage: amount, backstab })
+        if (victim && amount > 0) {
+            this.damage(fighter, victim, amount, { headshot: false, weapon: 'stapler', backstab }, events)
+        }
+    }
+
+    /** Can they be hurt now? Not when down, or still spawn-shielded. */
+    private hurts(victim: Fighter | undefined): victim is Fighter {
+        return victim !== undefined && victim.alive && !this.shielded(victim)
+    }
+
+    private damage(
+        by: Fighter,
+        victim: Fighter,
+        amount: number,
+        how: { headshot: boolean; weapon: Weapon; backstab: boolean },
+        events: ArenaEvent[]
+    ): void {
         victim.health = Math.max(0, victim.health - amount)
-        events.push({ type: 'damage', by: fighter.id, target: victim.id, amount, headshot })
+        events.push({ type: 'damage', by: by.id, target: victim.id, amount, headshot: how.headshot })
         if (victim.health > 0) return
 
         victim.alive = false
         victim.jetting = false
         victim.respawnAt = this.step + RESPAWN_STEPS
-        events.push({ type: 'kill', killer: fighter.id, victim: victim.id, headshot })
+        events.push({ type: 'kill', killer: by.id, victim: victim.id, ...how })
     }
 
     /** The others where the shooter saw them: `view` steps back, at most MAX_REWIND_STEPS, alive then and now. */
@@ -293,7 +355,7 @@ export class Arena {
     private remember(): void {
         const at = new Map<string, Target>()
         for (const f of this.fighters.values()) {
-            if (f.alive) at.set(f.id, { id: f.id, x: f.body.x, y: f.body.y, z: f.body.z })
+            if (f.alive) at.set(f.id, { id: f.id, x: f.body.x, y: f.body.y, z: f.body.z, yaw: f.yaw })
         }
         this.history.push({ step: this.step, at })
         while (this.history.length > MAX_REWIND_STEPS + 1) this.history.shift()
@@ -311,6 +373,8 @@ export class Arena {
         fighter.ammo = WEAPON.magazine
         fighter.reloadUntil = 0
         fighter.nextShotAt = 0
+        fighter.nextSwingAt = 0
+        fighter.readyAt = 0
 
         return { type: 'spawn', id: fighter.id }
     }

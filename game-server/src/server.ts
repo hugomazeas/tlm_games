@@ -139,8 +139,10 @@ const fpsBundle = await buildFpsBundle().catch(error => {
 const fps = await import('./fps/live.ts')
     .then(({ createFpsLive }) =>
         createFpsLive(laravel, result => {
-            // Saved to the Hub once its tables exist; until then, the log keeps them.
-            console.log('Office FPS match over:', JSON.stringify(result))
+            laravel.postFpsResults(result).catch(error => {
+                // Not lost for good: the log keeps it, to be posted by hand.
+                console.error('Office FPS match not saved:', error.message, JSON.stringify(result))
+            })
         })
     )
     .catch(error => {
@@ -347,7 +349,9 @@ async function fpsMessage(ws: ServerWebSocket<SocketData>, raw: string): Promise
         return
     }
     if (!ws.data.ready) return reply({ type: 'error', code: 'NOT_JOINED' })
-    if (await ws.data.ready) fps.lobby.input(ws.data.id, message.frames)
+    if (!(await ws.data.ready)) return
+    if (message.type === 'start') fps.lobby.start(ws.data.id, message.rules)
+    else fps.lobby.input(ws.data.id, message.frames)
 }
 
 function send(ws: ServerWebSocket<SocketData>, message: ServerMessage) {

@@ -221,8 +221,8 @@ class GameTypeSeeder extends Seeder
             ]
         );
 
-        // Also added by a migration (deploys don't seed).
-        GameType::updateOrCreate(
+        // Also added by migrations (deploys don't seed).
+        $officeFps = GameType::updateOrCreate(
             ['slug' => 'office-fps'],
             [
                 'name' => 'Office FPS',
@@ -233,6 +233,23 @@ class GameTypeSeeder extends Seeder
                 'min_players' => 2,
                 'max_players' => 12,
                 'leaderboard_columns' => null,
+            ]
+        );
+
+        GameMode::updateOrCreate(
+            ['game_type_id' => $officeFps->id, 'slug' => 'kills'],
+            [
+                'name' => 'Kills',
+                'description' => 'Kills, then K/D.',
+                'is_active' => true,
+                'sort_order' => 0,
+                'leaderboard_columns' => [
+                    ['key' => 'kills', 'label' => 'Kills', 'sortable' => true],
+                    ['key' => 'kd', 'label' => 'K/D', 'sortable' => true],
+                    ['key' => 'wins', 'label' => 'Wins', 'sortable' => true],
+                    ['key' => 'matches', 'label' => 'Matches', 'sortable' => true],
+                    ['key' => 'accuracy', 'label' => 'Accuracy %', 'sortable' => true],
+                ],
             ]
         );
 

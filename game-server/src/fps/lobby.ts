@@ -1,13 +1,17 @@
 import type { Rng } from '../sim/rng.ts'
 import {
+    DEFAULT_RULES,
+    type ErrorCode,
     type GameEvent,
     type InputFrame,
     MAX_PLAYERS,
     type MatchView,
     type Phase,
     type PlayerInfo,
+    type Rules,
     type Score,
     type ServerMessage,
+    type Weapon,
 } from './protocol.ts'
 import { Arena, type ArenaEvent } from './sim/arena.ts'
 import { STEP_MS } from './sim/movement.ts'
@@ -17,16 +21,15 @@ import type { FpsWorld } from './sim/world.ts'
  * The office FPS's one game. Pure (clock and randomness come in through the hooks), like the
  * racing lobbies: the socket server feeds it connections and inputs and calls tick().
  *
- * There is only ever one game, always open. People join on the fly: in warmup, during the
- * countdown, mid-match (straight in, 0 kills, the safest spawn) or at the scoreboard. Once two
- * are in, a countdown starts the match: first to FRAG_LIMIT kills, or the most when the time runs
- * out. A scoreboard, then the next match starts by itself. Fewer than two left calls a match off.
- * Seats are capped at MAX_PLAYERS: later arrivals watch, and take the first seat that frees.
+ * There is only ever one game, always open, and people join on the fly: in warmup, during the
+ * countdown, mid-match (straight in, 0 kills, the safest spawn) or at the scoreboard. Between
+ * matches everyone warms up (nothing counts) until the host, the longest seated, picks the rules
+ * (a kill limit, a length) and starts one: a countdown, then the match, then a scoreboard, then
+ * warmup again. Fewer than two left calls a match off. Seats are capped at MAX_PLAYERS: later
+ * arrivals watch, and take the first seat that frees.
  */
 
 export const MIN_PLAYERS = 2
-export const FRAG_LIMIT = 15
-export const MATCH_MS = 5 * 60_000
 export const COUNTDOWN_MS = 5_000
 export const INTERMISSION_MS = 10_000
 /** A snapshot every this many steps (30 Hz). */
@@ -48,12 +51,6 @@ const COLORS = [
     '#8d6e63',
     '#ef476f',
 ]
-const PHASE_MS: Record<Phase, number | null> = {
-    warmup: null,
-    countdown: COUNTDOWN_MS,
-    playing: MATCH_MS,
-    intermission: INTERMISSION_MS,
-}
 
 export interface Connection {
     id: string
@@ -68,19 +65,44 @@ export interface Joiner {
     color?: string
 }
 
+/** One person's match. */
+export interface PlayerResult {
+    playerId: number
+    name: string
+    place: number
+    kills: number
+    deaths: number
+    headshots: number
+    damage: number
+    /** Blaster shots fired, and those that hurt someone. */
+    shots: number
+    hits: number
+    meleeKills: number
+    backstabs: number
+    /** Most kills in one life. */
+    bestStreak: number
+    /** Time in the match (ms), across reconnects. */
+    playedMs: number
+    left: boolean
+}
+
 export interface MatchResult {
     startedAt: number
     endedAt: number
-    /** Best first. People only (guests played but aren't recorded); everyone who played, including who left. */
-    players: Array<{
-        playerId: number
-        name: string
-        place: number
-        kills: number
-        deaths: number
-        headshots: number
-        damage: number
-        left: boolean
+    rules: Rules
+    /** Everyone who played, guests included (for the size of the match). */
+    playerCount: number
+    /** Best first. People only (guests played but aren't recorded); including who left. */
+    players: PlayerResult[]
+    /** Every kill, in order. A guest is null. */
+    kills: Array<{
+        killerId: number | null
+        victimId: number | null
+        weapon: Weapon
+        headshot: boolean
+        backstab: boolean
+        /** Since the match started. */
+        atMs: number
     }>
 }
 
@@ -106,6 +128,15 @@ interface Tally {
     deaths: number
     headshots: number
     damage: number
+    shots: number
+    hits: number
+    meleeKills: number
+    backstabs: number
+    streak: number
+    bestStreak: number
+    playedMs: number
+    /** In the match since (ms), while they're connected. */
+    since: number | null
 }
 
 export class FpsLobby {
@@ -115,8 +146,10 @@ export class FpsLobby {
     private readonly arena: Arena
     private phase: Phase = 'warmup'
     private phaseEndsAt: number | null = null
+    private rules: Rules = DEFAULT_RULES
     private matchStartedAt = 0
     private tallies = new Map<string, Tally>()
+    private kills: MatchResult['kills'] = []
     /** The clock the steps run on: step n is due at clockStart + n × STEP_MS. */
     private clockStart: number
     private events: GameEvent[] = []
@@ -156,7 +189,8 @@ export class FpsLobby {
 
         conn.send({ type: 'welcome', you: conn.id, step: this.arena.step, players: this.roster(), match: this.view() })
         this.broadcast({ type: 'roster', players: this.roster() }, conn.id)
-        this.checkPlayers()
+        // The first one in becomes host: everyone's view says so.
+        this.broadcast({ type: 'match', match: this.view() }, conn.id)
     }
 
     leave(connId: string): void {
@@ -168,18 +202,36 @@ export class FpsLobby {
         if (!member.info.watching) {
             this.arena.remove(connId)
             const tally = this.tallies.get(member.key)
-            if (tally) tally.connId = null
+            if (tally) {
+                tally.connId = null
+                this.clockOut(tally)
+            }
             this.seatNextWaiting()
         }
         this.broadcast({ type: 'roster', players: this.roster() })
-        this.checkPlayers()
-        this.broadcast({ type: 'match', match: this.view() })
+        // Too few to go on: called off.
+        if ((this.phase === 'countdown' || this.phase === 'playing') && this.seatedCount() < MIN_PLAYERS) {
+            this.setPhase('warmup')
+        } else {
+            this.broadcast({ type: 'match', match: this.view() })
+        }
     }
 
     input(connId: string, frames: readonly InputFrame[]): void {
         const member = this.members.get(connId)
         if (!member || member.info.watching) return
         this.arena.queue(connId, frames)
+    }
+
+    /** The host starts a match with these rules (from warmup, with someone to play). */
+    start(connId: string, rules: Rules): void {
+        const member = this.members.get(connId)
+        if (!member) return
+        if (this.host() !== connId) return this.refuse(member, 'NOT_HOST')
+        if (this.phase !== 'warmup') return
+        if (this.seatedCount() < MIN_PLAYERS) return this.refuse(member, 'NOT_ENOUGH')
+        this.rules = { ...rules }
+        this.setPhase('countdown')
     }
 
     /** Runs the steps that are due, moves the phases on and sends the snapshots. Call it often (every few ms). */
@@ -195,17 +247,14 @@ export class FpsLobby {
         }
         while (this.arena.step < due) {
             this.record(this.arena.advance())
-            if (this.phase === 'playing' && this.leaderKills() >= FRAG_LIMIT) this.endMatch()
+            if (this.phase === 'playing' && this.leaderKills() >= this.rules.fragLimit) this.endMatch()
             if (this.arena.step % SNAPSHOT_EVERY === 0) this.snapshot()
         }
 
         if (this.phaseEndsAt !== null && now >= this.phaseEndsAt) {
             if (this.phase === 'countdown') this.startMatch()
             else if (this.phase === 'playing') this.endMatch()
-            else if (this.phase === 'intermission') {
-                if (this.seatedCount() >= MIN_PLAYERS) this.startMatch()
-                else this.setPhase('warmup')
-            }
+            else if (this.phase === 'intermission') this.setPhase('warmup')
         }
     }
 
@@ -214,13 +263,22 @@ export class FpsLobby {
         return { phase: this.phase, players: this.seatedCount(), watching: this.waiting.length }
     }
 
+    /** The longest seated: they start matches and pick the rules. */
+    private host(): string | null {
+        return this.seatedMembers()[0]?.conn.id ?? null
+    }
+
     private seat(member: Member): void {
         member.info.watching = false
         this.record(this.arena.add(member.conn.id))
         const tally = this.tallies.get(member.key)
         // Back in the same match (a dropped connection, a reload): their score is still theirs.
-        if (tally) tally.connId = member.conn.id
-        else if (this.phase === 'playing') this.tallies.set(member.key, this.newTally(member))
+        if (tally) {
+            tally.connId = member.conn.id
+            tally.since = this.hooks.now()
+        } else if (this.phase === 'playing') {
+            this.tallies.set(member.key, this.newTally(member))
+        }
     }
 
     private seatNextWaiting(): void {
@@ -230,15 +288,9 @@ export class FpsLobby {
         }
     }
 
-    /** Enough people for a match? Count down to one; too few to go on, call it off. */
-    private checkPlayers(): void {
-        const enough = this.seatedCount() >= MIN_PLAYERS
-        if (this.phase === 'warmup' && enough) this.setPhase('countdown')
-        else if ((this.phase === 'countdown' || this.phase === 'playing') && !enough) this.setPhase('warmup')
-    }
-
     private startMatch(): void {
         this.tallies = new Map()
+        this.kills = []
         for (const member of this.seatedMembers()) this.tallies.set(member.key, this.newTally(member))
         this.matchStartedAt = this.hooks.now()
         this.record(this.arena.respawnAll())
@@ -246,12 +298,15 @@ export class FpsLobby {
     }
 
     private endMatch(): void {
+        for (const tally of this.tallies.values()) this.clockOut(tally)
         const ranked = this.ranked()
         const people = ranked.filter(t => t.playerId !== null)
         if (ranked.length >= MIN_PLAYERS && people.length > 0) {
             this.hooks.onResults({
                 startedAt: this.matchStartedAt,
                 endedAt: this.hooks.now(),
+                rules: { ...this.rules },
+                playerCount: ranked.length,
                 players: people.map(t => ({
                     playerId: t.playerId!,
                     name: t.name,
@@ -260,8 +315,15 @@ export class FpsLobby {
                     deaths: t.deaths,
                     headshots: t.headshots,
                     damage: t.damage,
+                    shots: t.shots,
+                    hits: t.hits,
+                    meleeKills: t.meleeKills,
+                    backstabs: t.backstabs,
+                    bestStreak: t.bestStreak,
+                    playedMs: t.playedMs,
                     left: t.connId === null,
                 })),
+                kills: this.kills,
             })
         }
         this.setPhase('intermission')
@@ -269,7 +331,12 @@ export class FpsLobby {
 
     private setPhase(phase: Phase): void {
         this.phase = phase
-        const length = PHASE_MS[phase]
+        const length = {
+            warmup: null,
+            countdown: COUNTDOWN_MS,
+            playing: this.rules.minutes * 60_000,
+            intermission: INTERMISSION_MS,
+        }[phase]
         this.phaseEndsAt = length === null ? null : this.hooks.now() + length
         // Warmup and the countdown are for practice: nobody's counted.
         if (phase === 'warmup' || phase === 'countdown') this.tallies = new Map()
@@ -280,25 +347,51 @@ export class FpsLobby {
     private record(events: readonly ArenaEvent[]): void {
         let scored = false
         for (const event of events) {
-            if (this.phase === 'playing') {
-                if (event.type === 'damage') {
-                    const by = this.tallyOf(event.by)
-                    if (by) by.damage += event.amount
-                }
-                if (event.type === 'kill') {
-                    const victim = this.tallyOf(event.victim)
-                    const killer = event.killer ? this.tallyOf(event.killer) : undefined
-                    if (victim) victim.deaths++
-                    if (killer) {
-                        killer.kills++
-                        if (event.headshot) killer.headshots++
-                    }
-                    scored = true
-                }
-            }
+            if (this.phase === 'playing') scored = this.count(event) || scored
             if (event.type !== 'damage') this.events.push(event)
         }
         if (scored) this.broadcast({ type: 'match', match: this.view() })
+    }
+
+    /** One event into the match's tallies. True when the scoreboard changed. */
+    private count(event: ArenaEvent): boolean {
+        if (event.type === 'damage') {
+            const by = this.tallyOf(event.by)
+            if (by) by.damage += event.amount
+        }
+        if (event.type === 'shot') {
+            const by = this.tallyOf(event.by)
+            if (by) {
+                by.shots++
+                if (event.damage > 0) by.hits++
+            }
+        }
+        if (event.type !== 'kill') return false
+
+        const victim = this.tallyOf(event.victim)
+        const killer = event.killer ? this.tallyOf(event.killer) : undefined
+        if (victim) {
+            victim.deaths++
+            victim.streak = 0
+        }
+        if (killer) {
+            killer.kills++
+            killer.streak++
+            killer.bestStreak = Math.max(killer.bestStreak, killer.streak)
+            if (event.headshot) killer.headshots++
+            if (event.weapon === 'stapler') killer.meleeKills++
+            if (event.backstab) killer.backstabs++
+        }
+        this.kills.push({
+            killerId: killer?.playerId ?? null,
+            victimId: victim?.playerId ?? null,
+            weapon: event.weapon,
+            headshot: event.headshot,
+            backstab: event.backstab,
+            atMs: this.hooks.now() - this.matchStartedAt,
+        })
+
+        return true
     }
 
     private snapshot(): void {
@@ -324,7 +417,9 @@ export class FpsLobby {
         return {
             phase: this.phase,
             remainingMs: this.phaseEndsAt === null ? null : Math.max(0, this.phaseEndsAt - now),
-            fragLimit: FRAG_LIMIT,
+            fragLimit: this.rules.fragLimit,
+            minutes: this.rules.minutes,
+            host: this.host(),
             scores: this.ranked().map(
                 (t): Score => ({ id: t.connId, name: t.name, color: t.color, kills: t.kills, deaths: t.deaths })
             ),
@@ -345,6 +440,13 @@ export class FpsLobby {
         return member ? this.tallies.get(member.key) : undefined
     }
 
+    /** Adds their time in the match since they (re)joined it. */
+    private clockOut(tally: Tally): void {
+        if (tally.since === null) return
+        tally.playedMs += this.hooks.now() - tally.since
+        tally.since = null
+    }
+
     private newTally(member: Member): Tally {
         return {
             name: member.info.name,
@@ -355,6 +457,14 @@ export class FpsLobby {
             deaths: 0,
             headshots: 0,
             damage: 0,
+            shots: 0,
+            hits: 0,
+            meleeKills: 0,
+            backstabs: 0,
+            streak: 0,
+            bestStreak: 0,
+            playedMs: 0,
+            since: this.hooks.now(),
         }
     }
 
@@ -373,6 +483,10 @@ export class FpsLobby {
     private freeColor(): string {
         const used = new Set([...this.members.values()].map(m => m.info.color))
         return COLORS.find(c => !used.has(c)) ?? COLORS[Math.floor(this.hooks.random() * COLORS.length)]!
+    }
+
+    private refuse(member: Member, code: ErrorCode): void {
+        member.conn.send({ type: 'error', code })
     }
 
     private broadcast(message: ServerMessage, except?: string): void {

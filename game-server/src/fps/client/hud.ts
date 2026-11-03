@@ -1,5 +1,6 @@
-import type { MatchView, PlayerInfo, SelfState } from '../protocol.ts'
+import { FRAG_LIMITS, MATCH_MINUTES, type MatchView, type PlayerInfo, type Rules, type SelfState } from '../protocol.ts'
 import { MAX_HEALTH, WEAPON } from '../sim/combat.ts'
+import { DEFAULT_SETTINGS, LIMITS, type Settings } from './settings.ts'
 
 /**
  * Everything drawn over the game, in plain DOM: crosshair and hit marker, health, ammo, fuel,
@@ -53,6 +54,21 @@ const CSS = `
 #fps-hud .card p { margin: 6px 0; opacity: .85; font-weight: 500; }
 #fps-hud .card kbd { background: rgba(255,255,255,.12); border-radius: 4px; padding: 1px 6px; font: inherit; font-size: 12px; }
 #fps-hud .card a { color: #ffd166; }
+#fps-hud .card { max-height: calc(100vh - 40px); overflow-y: auto; }
+#fps-hud .card .section { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.12); text-align: left; }
+#fps-hud .card h2 { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; opacity: .6; margin: 0 0 8px; }
+#fps-hud .card .row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+#fps-hud .card select, #fps-hud .card button { font: inherit; font-size: 13px; color: #f4f6f8; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18); border-radius: 7px; padding: 4px 8px; }
+#fps-hud .card button { cursor: pointer; padding: 6px 14px; }
+#fps-hud .card button[data-start] { background: #e4572e; border-color: #e4572e; font-weight: 700; }
+#fps-hud .card button:disabled { opacity: .45; cursor: default; }
+#fps-hud .card .hint { font-size: 12px; opacity: .7; min-height: 1em; }
+#fps-hud .card .slider { display: block; font-size: 13px; margin-bottom: 8px; }
+#fps-hud .card .slider output { float: right; opacity: .8; font-variant-numeric: tabular-nums; }
+#fps-hud .card .slider input { display: block; width: 100%; accent-color: #ffd166; }
+#fps-hud .card .check { display: block; font-size: 13px; margin: 4px 0 10px; }
+#fps-hud .slots b { display: inline-block; min-width: 14px; margin-left: 4px; padding: 0 3px; border-radius: 3px; text-align: center; background: rgba(255,255,255,.12); font-size: 10px; }
+#fps-hud .slots b.on { background: #ffd166; color: #1a1206; }
 #fps-hud .hidden { display: none !important; }
 `
 
@@ -73,7 +89,18 @@ export class Hud {
     private lastHealth = MAX_HEALTH
     private boardForced = false
 
-    constructor(private readonly backUrl: string) {
+    private cardState = 'connecting'
+    private host: { isHost: boolean; name: string | null; seated: number } = { isHost: false, name: null, seated: 0 }
+    private hostNotice: string | null = null
+
+    constructor(
+        private readonly backUrl: string,
+        private readonly hooks: {
+            settings: Settings
+            onSettings(settings: Settings): void
+            onStart(rules: Rules): void
+        }
+    ) {
         const style = document.createElement('style')
         style.textContent = CSS
         document.head.append(style)
@@ -91,23 +118,31 @@ export class Hud {
             <div class="panel ammo" data-el="ammo"></div>
             <div class="fuel" data-el="fuelBar"><div data-el="fuel"></div></div>
             <div class="panel board hidden" data-el="board"></div>
-            <div class="panel card" data-el="card"></div>`
+            <div class="panel card" data-el="card">
+                <div data-el="cardMain"></div>
+                <div class="section hidden" data-el="host"></div>
+                <div class="section hidden" data-el="settings"></div>
+            </div>`
         for (const node of this.root.querySelectorAll<HTMLElement>('[data-el]')) this.el[node.dataset.el!] = node
         document.body.append(this.root)
+        this.buildSettings()
         this.card('connecting')
     }
 
-    /** The middle card: while connecting, while the mouse is free, or when the game is closed to you. */
+    /** The middle card: while connecting, while the mouse is free (with the host's controls and the settings), or when the game is closed to you. */
     card(state: 'connecting' | 'paused' | 'playing' | 'replaced' | 'unavailable' | 'unknown'): void {
-        const card = this.el.card!
-        card.classList.toggle('hidden', state === 'playing')
+        this.cardState = state
+        this.el.card!.classList.toggle('hidden', state === 'playing')
+        this.el.settings!.classList.toggle('hidden', state !== 'paused')
+        this.renderHost()
         const back = `<p><a href="${this.backUrl}">Back to the Hub</a></p>`
-        card.innerHTML = {
+        this.el.cardMain!.innerHTML = {
             connecting: `<h1>Office FPS</h1><p>Connecting…</p>`,
             paused: `<h1>Office FPS</h1><p><b>Click to play</b></p>
                 <p><kbd>WASD</kbd> move · <kbd>Shift</kbd> + direction dodge · <kbd>Space</kbd> jetpack<br>
-                <kbd>Click</kbd> fire · <kbd>Right-click</kbd> aim · <kbd>R</kbd> reload · <kbd>V</kbd> 1st / 3rd person<br>
-                <kbd>Tab</kbd> scores · <kbd>Esc</kbd> free the mouse</p>${back}`,
+                <kbd>Click</kbd> fire · <kbd>Right-click</kbd> aim · <kbd>R</kbd> reload<br>
+                <kbd>1</kbd> blaster · <kbd>2</kbd> stapler (or the wheel) · <kbd>V</kbd> 1st / 3rd person<br>
+                <kbd>Tab</kbd> scores · <kbd>Esc</kbd> this menu</p>${back}`,
             playing: '',
             replaced: `<h1>Playing in another tab</h1><p>This one let go.</p>${back}`,
             unavailable: `<h1>The game server is unavailable</h1><p>Retrying…</p>${back}`,
@@ -115,10 +150,100 @@ export class Hud {
         }[state]
     }
 
+    /** Who hosts, and whether it's you: the host's controls show on your menu in warmup. */
+    setHost(host: { isHost: boolean; name: string | null; seated: number }): void {
+        this.host = host
+        this.renderHost()
+    }
+
+    /** A refusal from the server, shown on the menu (the host's start, mostly). */
+    notice(text: string): void {
+        this.hostNotice = text
+        this.renderHost()
+    }
+
+    /** The host's controls (warmup, your menu): the rules and Start. Others see who they wait for. */
+    private renderHost(): void {
+        const panel = this.el.host!
+        const match = this.match
+        const show = this.cardState === 'paused' && match?.phase === 'warmup'
+        panel.classList.toggle('hidden', !show)
+        if (!show || !match) return
+        if (!this.host.isHost) {
+            panel.innerHTML = `<p>Waiting for <b>${escape(this.host.name ?? 'the host')}</b> to start the next match.</p>`
+            return
+        }
+        const options = (values: readonly number[], chosen: number, unit: string) =>
+            values.map(v => `<option value="${v}"${v === chosen ? ' selected' : ''}>${v} ${unit}</option>`).join('')
+        const enough = this.host.seated >= 2
+        panel.innerHTML = `
+            <h2>You're the host</h2>
+            <div class="row">
+                <label>First to <select data-rule="fragLimit">${options(FRAG_LIMITS, match.fragLimit, 'kills')}</select></label>
+                <label>or <select data-rule="minutes">${options(MATCH_MINUTES, match.minutes, 'min')}</select></label>
+            </div>
+            <button type="button" data-start ${enough ? '' : 'disabled'}>Start match</button>
+            <p class="hint">${enough ? (this.hostNotice ?? '') : 'Needs a second player.'}</p>`
+        panel.querySelector('[data-start]')!.addEventListener('click', () => {
+            const value = (rule: string) =>
+                Number(panel.querySelector<HTMLSelectElement>(`[data-rule="${rule}"]`)!.value)
+            this.hostNotice = null
+            this.hooks.onStart({ fragLimit: value('fragLimit'), minutes: value('minutes') })
+        })
+    }
+
+    /** The settings: built once (the sliders keep their place), saved on every change. */
+    private buildSettings(): void {
+        const panel = this.el.settings!
+        const s = this.hooks.settings
+        const slider = (key: keyof typeof LIMITS, label: string, format: (v: number) => string) => {
+            const { min, max, step } = LIMITS[key]
+            return `<label class="slider">${label} <output data-out="${key}">${format(s[key])}</output>
+                <input type="range" data-setting="${key}" min="${min}" max="${max}" step="${step}" value="${s[key]}"></label>`
+        }
+        const times = (v: number) => `${v.toFixed(2)}×`
+        panel.innerHTML = `
+            <h2>Settings</h2>
+            ${slider('sensitivity', 'Mouse sensitivity', times)}
+            ${slider('aimSensitivity', 'While aiming', times)}
+            ${slider('fov', 'Field of view', v => `${v}°`)}
+            <label class="check"><input type="checkbox" data-setting="invertY" ${s.invertY ? 'checked' : ''}> Invert mouse Y</label>
+            <button type="button" data-reset>Defaults</button>`
+        const show = (key: keyof typeof LIMITS, text: string) => {
+            panel.querySelector(`[data-out="${key}"]`)!.textContent = text
+        }
+        const read = (): Settings => {
+            const value = (key: string) =>
+                Number(panel.querySelector<HTMLInputElement>(`[data-setting="${key}"]`)!.value)
+            return {
+                sensitivity: value('sensitivity'),
+                aimSensitivity: value('aimSensitivity'),
+                fov: value('fov'),
+                invertY: panel.querySelector<HTMLInputElement>('[data-setting="invertY"]')!.checked,
+            }
+        }
+        panel.addEventListener('input', () => {
+            const settings = read()
+            show('sensitivity', times(settings.sensitivity))
+            show('aimSensitivity', times(settings.aimSensitivity))
+            show('fov', `${settings.fov}°`)
+            this.hooks.onSettings(settings)
+        })
+        panel.querySelector('[data-reset]')!.addEventListener('click', () => {
+            for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
+                const input = panel.querySelector<HTMLInputElement>(`[data-setting="${key}"]`)!
+                if (typeof value === 'boolean') input.checked = value
+                else input.value = String(value)
+            }
+            panel.dispatchEvent(new Event('input'))
+        })
+    }
+
     setMatch(match: MatchView, at: number): void {
         this.match = match
         this.matchAt = at
         this.boardForced = match.phase === 'intermission'
+        this.renderHost()
     }
 
     /** Your state from the latest snapshot (null: watching). */
@@ -127,7 +252,14 @@ export class Hud {
         for (const name of ['health', 'ammo', 'fuelBar', 'cross']) this.el[name]!.classList.toggle('hidden', hide)
         if (!self) return
         this.el.health!.innerHTML = `<small>Health</small>${self.alive ? self.health : 0}`
-        this.el.ammo!.innerHTML = `<small>Blaster</small>${self.reloading ? '<span style="opacity:.6">reloading</span>' : `${self.ammo}<span style="opacity:.5;font-size:16px"> / ${WEAPON.magazine}</span>`}`
+        const slots = `<span class="slots"><b class="${self.weapon === 'blaster' ? 'on' : ''}">1</b><b class="${self.weapon === 'stapler' ? 'on' : ''}">2</b></span>`
+        const blaster = self.reloading
+            ? '<span style="opacity:.6">reloading</span>'
+            : `${self.ammo}<span style="opacity:.5;font-size:16px"> / ${WEAPON.magazine}</span>`
+        this.el.ammo!.innerHTML =
+            self.weapon === 'stapler'
+                ? `<small>Stapler ${slots}</small><span style="font-size:22px">📎 swing</span>`
+                : `<small>Blaster ${slots}</small>${blaster}`
         this.el.fuel!.style.width = `${Math.round(self.body.fuel * 100)}%`
         if (self.alive && self.health < this.lastHealth) this.flashHurt()
         this.lastHealth = self.alive ? self.health : MAX_HEALTH
@@ -212,10 +344,16 @@ export class Hud {
         const left = match.remainingMs === null ? null : Math.max(0, match.remainingMs - (now - this.matchAt))
         const leader = match.scores[0]
         this.el.top!.innerHTML = {
-            warmup: `Warmup <small style="opacity:.7">· waiting for a second player</small>`,
+            warmup: `Warmup <small style="opacity:.7">· ${
+                this.host.isHost
+                    ? this.host.seated >= 2
+                        ? "you're the host: Esc to start a match"
+                        : 'waiting for a second player'
+                    : `${escape(this.host.name ?? 'the host')} starts the next match`
+            }</small>`,
             countdown: `Match in <b>${Math.ceil((left ?? 0) / 1000)}</b>`,
             playing: `<b>${clock(left ?? 0)}</b> <small style="opacity:.7">· first to ${match.fragLimit}${leader ? ` · ${escape(leader.name)} ${leader.kills}` : ''}</small>`,
-            intermission: `Next match in <b>${Math.ceil((left ?? 0) / 1000)}</b>`,
+            intermission: `Match over <small style="opacity:.7">· back to warmup in ${Math.ceil((left ?? 0) / 1000)}</small>`,
         }[match.phase]
 
         let middle = ''
