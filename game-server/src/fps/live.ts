@@ -1,6 +1,6 @@
 import type { LaravelClient } from '../laravel.ts'
 import { type Connection, FpsLobby, type Joiner, type MatchResult } from './lobby.ts'
-import type { ErrorCode } from './protocol.ts'
+import type { ErrorCode, Loadout } from './protocol.ts'
 import { officeWorld } from './sim/world.ts'
 
 /**
@@ -11,7 +11,7 @@ import { officeWorld } from './sim/world.ts'
 export interface FpsLive {
     lobby: FpsLobby
     /** Looks the player up, then puts the connection in the game. False when it couldn't be. */
-    hello(conn: Connection & { isOpen(): boolean }, playerId: number | null): Promise<boolean>
+    hello(conn: Connection & { isOpen(): boolean }, playerId: number | null, loadout?: Loadout): Promise<boolean>
 }
 
 export function createFpsLive(laravel: LaravelClient, onResults: (result: MatchResult) => void): FpsLive {
@@ -23,8 +23,8 @@ export function createFpsLive(laravel: LaravelClient, onResults: (result: MatchR
     return {
         lobby,
 
-        async hello(conn, playerId) {
-            let joiner: Joiner = { playerId: null, name: `Guest ${++guests}` }
+        async hello(conn, playerId, loadout) {
+            let joiner: Joiner = { playerId: null, name: `Guest ${++guests}`, loadout }
             if (playerId !== null) {
                 try {
                     const player = await laravel.findPlayer(playerId)
@@ -32,7 +32,7 @@ export function createFpsLive(laravel: LaravelClient, onResults: (result: MatchR
                         refuse(conn, 'UNKNOWN_PLAYER')
                         return false
                     }
-                    joiner = { playerId, name: player.name }
+                    joiner = { playerId, name: player.name, loadout }
                 } catch (error) {
                     console.error('Office FPS player lookup failed:', (error as Error).message)
                     refuse(conn, 'UNAVAILABLE')

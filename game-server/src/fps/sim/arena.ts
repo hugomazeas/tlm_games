@@ -1,32 +1,46 @@
+import { Vector3 } from 'three'
 import type { Rng } from '../../sim/rng.ts'
 import {
     type BuffKind,
     BUTTON,
+    DEFAULT_LOADOUT,
     type GameEvent,
+    type Gun,
     type InputFrame,
+    type Loadout,
     type PlayerState,
+    type RocketState,
     type SelfState,
+    type Slot,
     type Team,
     type Weapon,
+    weaponIn,
 } from '../protocol.ts'
 import { HEALTH_PACK, MAGAZINE_FACTOR, PICKUP_HEIGHT, PICKUP_REACH, PICKUPS } from './places.ts'
 import {
     aimDirection,
+    damageAt,
     eyeOf,
     fireShot,
+    GUNS,
+    LAUNCHER,
+    magazineOf,
     MAX_HEALTH,
+    rayCapsule,
+    reloadMsOf,
+    spreadDirection,
+    spreadOf,
     STAPLER,
     SWITCH_MS,
     swingStapler,
     type Target,
-    WEAPON,
 } from './combat.ts'
-import { type Body, bodyAt, isJetting, moveOf, STEP_MS, stepBody } from './movement.ts'
-import type { FpsWorld } from './world.ts'
+import { type Body, bodyAt, isJetting, moveOf, PLAYER, STEP_MS, stepBody } from './movement.ts'
+import { type FpsWorld, rayDistance } from './world.ts'
 
 /**
- * The game itself, one 60 Hz step at a time: bodies, inputs, the blaster and the stapler, deaths and respawns.
- * Pure (seeded random, no clock): the lobby around it decides what a kill is worth.
+ * The game itself, one 60 Hz step at a time: bodies, inputs, the guns, rockets and the stapler,
+ * deaths and respawns. Pure (seeded random, no clock): the lobby around it decides what a kill is worth.
  */
 
 const steps = (ms: number): number => Math.round(ms / STEP_MS)
@@ -45,13 +59,31 @@ const MAX_QUEUED = 30
 export const MAX_BURST = 30
 /** No frames for this long (a frozen tab): gravity takes over until they're back. */
 const STARVED_STEPS = steps(500)
-const SHOT_STEPS = steps(WEAPON.intervalMs)
-const RELOAD_STEPS = steps(WEAPON.reloadMs)
 const SWING_STEPS = steps(STAPLER.intervalMs)
 const SWITCH_STEPS = steps(SWITCH_MS)
+const ROCKET_STEPS = steps(LAUNCHER.lifeMs)
+/** A rocket can't hit whoever fired it for this long (it starts inside their reach). */
+const ROCKET_ARMED_STEPS = steps(150)
 const IDLE: InputFrame = { seq: 0, forward: 0, strafe: 0, yaw: 0, pitch: 0, buttons: 0, view: 0 }
 /** Under the floor (somehow): back to a spawn. */
 const LOST_BELOW = -2
+
+/** A gun's state: kept while it's holstered, so switching back finds its rounds. */
+interface GunState {
+    ammo: number
+    /** Reloading until this frame of theirs (0: not). */
+    reloadUntil: number
+    nextShotAt: number
+}
+
+interface Rocket {
+    id: number
+    by: string
+    team: Team | null
+    position: Vector3
+    velocity: Vector3
+    born: number
+}
 
 interface Fighter {
     id: string
@@ -64,19 +96,23 @@ interface Fighter {
     /** Down until this step. */
     respawnAt: number
     shieldUntil: number
-    ammo: number
     /**
-     * Frames of theirs used so far: their own clock. The blaster's timings count in it, so a
+     * Frames of theirs used so far: their own clock. The guns' timings count in it, so a
      * batch caught up in one server step fires exactly as it did in their browser.
      */
     clock: number
+    /** What they carry, and what they'll carry from their next spawn. */
+    loadout: Loadout
+    nextLoadout: Loadout
     /** In hand, and usable from this frame of theirs (switching takes a moment). */
-    weapon: Weapon
+    slot: Slot
     readyAt: number
-    nextShotAt: number
+    guns: Record<'primary' | 'secondary', GunState>
     nextSwingAt: number
-    /** Reloading until this frame of theirs (0: not). */
-    reloadUntil: number
+    /** Fire was held in their last frame (a click-a-shot gun waits for a new click). */
+    wasFiring: boolean
+    /** A click not yet used by a click-a-shot gun. */
+    clicked: boolean
     queue: InputFrame[]
     /** The last frame queued (seq), and the last one used. */
     queuedSeq: number
@@ -102,6 +138,8 @@ export class Arena {
     private readonly fighters = new Map<string, Fighter>()
     /** Everyone's feet at each of the last steps, for rewinding shots. */
     private readonly history: Array<{ step: number; at: Map<string, Target> }> = []
+    private rockets: Rocket[] = []
+    private nextRocketId = 1
     /** Each pickup spot: there to take from this step on. */
     private readonly pickupAt: number[]
 
@@ -121,7 +159,7 @@ export class Arena {
     }
 
     /** In (on a side, in team deathmatch), at the spawn point furthest from the enemy. */
-    add(id: string, team: Team | null = null): ArenaEvent[] {
+    add(id: string, team: Team | null = null, loadout: Loadout = DEFAULT_LOADOUT): ArenaEvent[] {
         if (this.fighters.has(id)) return []
         const fighter: Fighter = {
             id,
@@ -133,13 +171,15 @@ export class Arena {
             alive: false,
             respawnAt: 0,
             shieldUntil: 0,
-            ammo: WEAPON.magazine,
             clock: 0,
-            weapon: 'blaster',
+            loadout,
+            nextLoadout: loadout,
+            slot: 'primary',
             readyAt: 0,
-            nextShotAt: 0,
+            guns: { primary: freshGun(0), secondary: freshGun(0) },
             nextSwingAt: 0,
-            reloadUntil: 0,
+            wasFiring: false,
+            clicked: false,
             queue: [],
             queuedSeq: 0,
             ackSeq: 0,
@@ -159,6 +199,31 @@ export class Arena {
         this.fighters.delete(id)
     }
 
+    /**
+     * The guns for their next spawn; right away while they're still spawn-shielded (they've just
+     * come in and haven't fired), so picking at the spawn doesn't cost a life.
+     */
+    setLoadout(id: string, loadout: Loadout): void {
+        const fighter = this.fighters.get(id)
+        if (!fighter) return
+        fighter.nextLoadout = loadout
+        if (this.shielded(fighter)) this.arm(fighter)
+    }
+
+    /** Rockets in flight. */
+    rocketStates(): RocketState[] {
+        return this.rockets.map(r => ({
+            id: r.id,
+            by: r.by,
+            x: round(r.position.x, 3),
+            y: round(r.position.y, 3),
+            z: round(r.position.z, 3),
+            vx: round(r.velocity.x, 3),
+            vy: round(r.velocity.y, 3),
+            vz: round(r.velocity.z, 3),
+        }))
+    }
+
     /** Puts someone on a side (team deathmatch), or on none. */
     setTeam(id: string, team: Team | null): void {
         const fighter = this.fighters.get(id)
@@ -173,6 +238,7 @@ export class Arena {
     respawnAll(): ArenaEvent[] {
         const events: ArenaEvent[] = []
         this.pickupAt.fill(0)
+        this.rockets = []
         for (const fighter of this.fighters.values()) fighter.alive = false
         for (const fighter of this.fighters.values()) events.push(this.spawn(fighter))
 
@@ -224,9 +290,13 @@ export class Arena {
             // A big magazine running out: back to the usual size.
             if (fighter.magazineUntil > 0 && this.step >= fighter.magazineUntil) {
                 fighter.magazineUntil = 0
-                fighter.ammo = Math.min(fighter.ammo, WEAPON.magazine)
+                for (const slot of ['primary', 'secondary'] as const) {
+                    const gun = fighter.guns[slot]
+                    gun.ammo = Math.min(gun.ammo, magazineOf(gunIn(fighter, slot)))
+                }
             }
         }
+        this.flyRockets(events)
         for (const fighter of this.fighters.values()) {
             if (!fighter.alive && this.step >= fighter.respawnAt) events.push(this.spawn(fighter))
         }
@@ -256,7 +326,7 @@ export class Arena {
             health: f.alive ? f.health : 0,
             jet: f.alive && f.jetting,
             shielded: this.shielded(f),
-            weapon: f.weapon,
+            weapon: weaponIn(f.slot, f.loadout),
             team: f.team,
             buffs: f.alive ? this.buffsOf(f).map(b => b.kind) : [],
         }))
@@ -266,18 +336,25 @@ export class Arena {
     self(id: string): SelfState | null {
         const f = this.fighters.get(id)
         if (!f) return null
+        // The gun in hand (the primary's numbers while holding the stapler).
+        const slot = f.slot === 'melee' ? 'primary' : f.slot
+        const gun = f.guns[slot]
+        const other = f.slot === 'melee' ? null : f.guns[f.slot === 'primary' ? 'secondary' : 'primary']
 
         return {
             body: { ...f.body },
             alive: f.alive,
             health: f.health,
-            ammo: f.ammo,
-            reloading: f.reloadUntil > f.clock,
-            reloadLeftMs: f.reloadUntil > f.clock ? Math.round((f.reloadUntil - f.clock) * STEP_MS) : null,
+            ammo: gun.ammo,
+            reloading: gun.reloadUntil > f.clock,
+            reloadLeftMs: gun.reloadUntil > f.clock ? Math.round((gun.reloadUntil - f.clock) * STEP_MS) : null,
             shielded: this.shielded(f),
-            weapon: f.weapon,
+            weapon: weaponIn(f.slot, f.loadout),
+            loadout: f.loadout,
+            nextLoadout: f.nextLoadout,
+            otherAmmo: other?.ammo ?? null,
             respawnInMs: f.alive ? null : Math.max(0, Math.round((f.respawnAt - this.step) * STEP_MS)),
-            magazine: this.magazineOf(f),
+            magazine: this.magazineOf(f, gunIn(f, slot)),
             buffs: f.alive ? this.buffsOf(f) : [],
         }
     }
@@ -292,8 +369,8 @@ export class Arena {
         return buffs
     }
 
-    private magazineOf(f: Fighter): number {
-        return f.magazineUntil > this.step ? Math.round(WEAPON.magazine * MAGAZINE_FACTOR) : WEAPON.magazine
+    private magazineOf(f: Fighter, gun: Gun): number {
+        return magazineOf(gun, f.magazineUntil > this.step ? MAGAZINE_FACTOR : 1)
     }
 
     /** Takes any pickup they're standing on (health only when hurt), and sets it to come back later. */
@@ -309,8 +386,10 @@ export class Arena {
             if (spot.kind === 'health') f.health = Math.min(MAX_HEALTH, f.health + HEALTH_PACK)
             if (spot.kind === 'magazine') {
                 f.magazineUntil = until
-                f.ammo = this.magazineOf(f)
-                f.reloadUntil = 0
+                for (const slot of ['primary', 'secondary'] as const) {
+                    f.guns[slot].ammo = this.magazineOf(f, gunIn(f, slot))
+                    f.guns[slot].reloadUntil = 0
+                }
             }
             if (spot.kind === 'jetpack') f.body = { ...f.body, jetBoost: steps(info.durationMs ?? 0), fuel: 1 }
             if (spot.kind === 'headshot') f.headshotUntil = until
@@ -337,62 +416,202 @@ export class Arena {
             events.push(this.spawn(fighter))
             return
         }
-        // A different weapon in hand: it takes a moment before it can be used.
-        const wanted = frame.weapon ?? 'blaster'
-        if (wanted !== fighter.weapon) {
-            fighter.weapon = wanted
+        // A different weapon in hand: it takes a moment before it can be used, and the one put
+        // away stops reloading.
+        const wanted = frame.slot ?? 'primary'
+        if (wanted !== fighter.slot) {
+            if (fighter.slot !== 'melee') fighter.guns[fighter.slot].reloadUntil = 0
+            fighter.slot = wanted
             fighter.readyAt = fighter.clock + SWITCH_STEPS
-            fighter.reloadUntil = 0
         }
+        // A click is kept until the gun can take it (still switching, between shots) or it's let go.
+        const firing = Boolean(frame.buttons & BUTTON.fire)
+        if (firing && !fighter.wasFiring) fighter.clicked = true
+        if (!firing) fighter.clicked = false
+        fighter.wasFiring = firing
         if (fighter.clock < fighter.readyAt) return
-        if (fighter.weapon === 'stapler') this.stapler(fighter, frame, events)
-        else this.blaster(fighter, frame, events)
+        if (fighter.slot === 'melee') this.stapler(fighter, frame, events)
+        else this.gun(fighter, fighter.slot, frame, events)
     }
 
-    private blaster(fighter: Fighter, frame: InputFrame, events: ArenaEvent[]): void {
+    private gun(fighter: Fighter, slot: 'primary' | 'secondary', frame: InputFrame, events: ArenaEvent[]): void {
         const now = fighter.clock
-        const magazine = this.magazineOf(fighter)
-        if (fighter.reloadUntil > 0 && now >= fighter.reloadUntil) {
-            fighter.reloadUntil = 0
-            fighter.ammo = magazine
+        const gun = gunIn(fighter, slot)
+        const state = fighter.guns[slot]
+        const magazine = this.magazineOf(fighter, gun)
+        const reloadSteps = steps(reloadMsOf(gun))
+        if (state.reloadUntil > 0 && now >= state.reloadUntil) {
+            state.reloadUntil = 0
+            state.ammo = magazine
         }
         // Empty (a reload cut short by a switch, say): it reloads by itself.
-        if (fighter.ammo === 0 && fighter.reloadUntil === 0) fighter.reloadUntil = now + RELOAD_STEPS
-        const reloading = fighter.reloadUntil > 0
-        if (frame.buttons & BUTTON.reload && !reloading && fighter.ammo < magazine) {
-            fighter.reloadUntil = now + RELOAD_STEPS
+        if (state.ammo === 0 && state.reloadUntil === 0) state.reloadUntil = now + reloadSteps
+        const reloading = state.reloadUntil > 0
+        if (frame.buttons & BUTTON.reload && !reloading && state.ammo < magazine) {
+            state.reloadUntil = now + reloadSteps
             return
         }
-        if (!(frame.buttons & BUTTON.fire) || reloading || now < fighter.nextShotAt) return
+        const auto = gun !== 'launcher' && GUNS[gun].auto
+        const trigger = auto ? Boolean(frame.buttons & BUTTON.fire) : fighter.clicked
+        if (!trigger || reloading || now < state.nextShotAt) return
 
-        fighter.nextShotAt = now + SHOT_STEPS
+        fighter.clicked = false
+        const interval = gun === 'launcher' ? LAUNCHER.intervalMs : GUNS[gun].intervalMs
+        state.nextShotAt = now + steps(interval)
         fighter.shieldUntil = 0
-        fighter.ammo--
-        if (fighter.ammo === 0) fighter.reloadUntil = now + RELOAD_STEPS
+        state.ammo--
+        if (state.ammo === 0) state.reloadUntil = now + reloadSteps
 
+        if (gun === 'launcher') this.launch(fighter, frame, events)
+        else this.fire(fighter, gun, frame, events)
+    }
+
+    /** A hitscan trigger pull: each pellet its own ray in the cone, the damage added up per victim. */
+    private fire(fighter: Fighter, gun: Exclude<Gun, 'launcher'>, frame: InputFrame, events: ArenaEvent[]): void {
+        const spec = GUNS[gun]
         const origin = eyeOf(fighter.body)
-        const direction = aimDirection(frame.yaw, frame.pitch)
-        const shot = fireShot(this.world, origin, direction, this.targetsAt(frame.view, fighter.id))
-        const victim = shot.hit ? this.fighters.get(shot.hit.id) : undefined
-        const headshot = shot.hit?.headshot ?? false
-        // Headshot rounds: any headshot kills.
-        const oneShot = headshot && fighter.headshotUntil > this.step
-        const amount = this.hurts(victim)
-            ? oneShot
-                ? MAX_HEALTH
-                : WEAPON.damage * (headshot ? WEAPON.headshot : 1)
-            : 0
+        const aim = aimDirection(frame.yaw, frame.pitch)
+        const cone = spreadOf(spec, Boolean(frame.buttons & BUTTON.aim), fighter.body)
+        const targets = this.targetsAt(frame.view, fighter.id)
+        const dealt = new Map<string, { amount: number; headshot: boolean }>()
+        const ends: Array<[number, number, number]> = []
+        for (let pellet = 0; pellet < spec.pellets; pellet++) {
+            const direction = spreadDirection(aim, cone, frame.seq, pellet)
+            const shot = fireShot(this.world, origin, direction, targets, spec.range)
+            ends.push([round(shot.end.x, 3), round(shot.end.y, 3), round(shot.end.z, 3)])
+            if (!shot.hit) continue
+            const headshot = shot.hit.headshot
+            const amount = damageAt(spec, origin.distanceTo(shot.end)) * (headshot ? spec.headshot : 1)
+            const so = dealt.get(shot.hit.id) ?? { amount: 0, headshot: false }
+            dealt.set(shot.hit.id, { amount: so.amount + amount, headshot: so.headshot || headshot })
+        }
+
+        // Who took the most: the shot's `hit`, for the marker and the damage number.
+        let top: { id: string; amount: number; headshot: boolean } | null = null
+        const hurt: Array<{ victim: Fighter; amount: number; headshot: boolean }> = []
+        for (const [id, { amount, headshot }] of dealt) {
+            const victim = this.fighters.get(id)
+            // Headshot rounds: any headshot kills.
+            const oneShot = headshot && fighter.headshotUntil > this.step
+            const total = this.hurts(victim) ? (oneShot ? MAX_HEALTH : Math.round(amount)) : 0
+            if (victim && total > 0) hurt.push({ victim, amount: total, headshot })
+            if (!top || total > top.amount) top = { id, amount: total, headshot }
+        }
         events.push({
             type: 'shot',
             by: fighter.id,
+            weapon: gun,
             from: [round(origin.x, 3), round(origin.y, 3), round(origin.z, 3)],
-            to: [round(shot.end.x, 3), round(shot.end.y, 3), round(shot.end.z, 3)],
-            hit: victim?.id ?? null,
-            headshot,
-            damage: amount,
+            to: ends,
+            hit: top?.id ?? null,
+            headshot: top?.headshot ?? false,
+            damage: top?.amount ?? 0,
         })
-        if (victim && amount > 0) {
-            this.damage(fighter, victim, amount, { headshot, weapon: 'blaster', backstab: false }, events)
+        for (const { victim, amount, headshot } of hurt) {
+            this.damage(fighter, victim, amount, { headshot, weapon: gun, backstab: false }, events)
+        }
+    }
+
+    /** A rocket out of the launcher, from just in front of the eyes. */
+    private launch(fighter: Fighter, frame: InputFrame, events: ArenaEvent[]): void {
+        const direction = aimDirection(frame.yaw, frame.pitch)
+        const position = eyeOf(fighter.body)
+        const rocket: Rocket = {
+            id: this.nextRocketId++,
+            by: fighter.id,
+            team: fighter.team,
+            position,
+            velocity: direction.multiplyScalar(LAUNCHER.speed),
+            born: this.step,
+        }
+        this.rockets.push(rocket)
+        events.push({
+            type: 'launch',
+            by: fighter.id,
+            id: rocket.id,
+            from: [round(position.x, 3), round(position.y, 3), round(position.z, 3)],
+        })
+    }
+
+    /** Every rocket one step on: it goes off on a wall, a player, or at the end of its life. */
+    private flyRockets(events: ArenaEvent[]): void {
+        const dt = STEP_MS / 1000
+        this.rockets = this.rockets.filter(rocket => {
+            const length = rocket.velocity.length() * dt
+            const direction = rocket.velocity.clone().normalize()
+            let nearest = rayDistance(this.world, rocket.position, direction, length)
+            let hitPlayer = false
+            for (const f of this.fighters.values()) {
+                if (!f.alive) continue
+                if (f.id === rocket.by && this.step - rocket.born < ROCKET_ARMED_STEPS) continue
+                if (rocket.team !== null && f.team === rocket.team && f.id !== rocket.by) continue
+                const met = rayCapsule(rocket.position, direction, f.body)
+                if (met && met.distance < nearest) {
+                    nearest = met.distance
+                    hitPlayer = true
+                }
+            }
+            const expired = this.step - rocket.born >= ROCKET_STEPS
+            if (nearest < length || hitPlayer || expired) {
+                // Just short of the wall, so the blast isn't on the far side of it.
+                const at = rocket.position
+                    .clone()
+                    .addScaledVector(direction, Math.max(0, Math.min(nearest, length) - 0.03))
+                this.explode(rocket, at, events)
+                return false
+            }
+            rocket.position.addScaledVector(direction, length)
+            return true
+        })
+    }
+
+    /** The blast: damage and a shove for everyone in reach with nothing in between, less further out. */
+    private explode(rocket: Rocket, at: Vector3, events: ArenaEvent[]): void {
+        const by = this.fighters.get(rocket.by) ?? null
+        const hits: Array<{ id: string; damage: number }> = []
+        const hurt: Array<{ victim: Fighter; amount: number }> = []
+        for (const f of this.fighters.values()) {
+            if (!f.alive) continue
+            const self = f.id === rocket.by
+            if (!self && rocket.team !== null && f.team === rocket.team) continue
+            // The nearest point of their capsule's axis.
+            const axisY = Math.max(f.body.y + PLAYER.radius, Math.min(f.body.y + PLAYER.height - PLAYER.radius, at.y))
+            const point = new Vector3(f.body.x, axisY, f.body.z)
+            const to = point.clone().sub(at)
+            const distance = Math.max(0, to.length() - PLAYER.radius)
+            if (distance >= LAUNCHER.radius) continue
+            const length = to.length()
+            // Behind a wall from the blast: safe.
+            const covered =
+                length > 0.05 && rayDistance(this.world, at, to.clone().divideScalar(length), length) < length - 0.05
+            if (covered) continue
+            const share = 1 - distance / LAUNCHER.radius
+            const push = to.lengthSq() > 1e-6 ? to.clone().normalize() : new Vector3(0, 1, 0)
+            // A little lift, so a blast at your feet throws you up rather than into the floor.
+            push.y = Math.max(push.y, 0.35)
+            push.normalize().multiplyScalar(LAUNCHER.knockback * share)
+            f.body = {
+                ...f.body,
+                vx: f.body.vx + push.x,
+                vy: f.body.vy + push.y,
+                vz: f.body.vz + push.z,
+                onGround: false,
+            }
+            const amount = this.hurts(f) ? Math.round(LAUNCHER.damage * share * (self ? LAUNCHER.selfFactor : 1)) : 0
+            if (amount > 0) {
+                hits.push({ id: f.id, damage: amount })
+                hurt.push({ victim: f, amount })
+            }
+        }
+        events.push({
+            type: 'explode',
+            by: rocket.by,
+            id: rocket.id,
+            at: [round(at.x, 3), round(at.y, 3), round(at.z, 3)],
+            hits,
+        })
+        for (const { victim, amount } of hurt) {
+            this.damage(by, victim, amount, { headshot: false, weapon: 'launcher', backstab: false }, events)
         }
     }
 
@@ -418,15 +637,19 @@ export class Arena {
         return victim !== undefined && victim.alive && !this.shielded(victim)
     }
 
+    /** Hurts the victim; `by` null (they left) or the victim themselves (their own rocket) kills nobody's tally. */
     private damage(
-        by: Fighter,
+        by: Fighter | null,
         victim: Fighter,
         amount: number,
         how: { headshot: boolean; weapon: Weapon; backstab: boolean },
         events: ArenaEvent[]
     ): void {
+        if (!victim.alive) return
         victim.health = Math.max(0, victim.health - amount)
-        events.push({ type: 'damage', by: by.id, target: victim.id, amount, headshot: how.headshot })
+        if (by && by !== victim) {
+            events.push({ type: 'damage', by: by.id, target: victim.id, amount, headshot: how.headshot })
+        }
         if (victim.health > 0) return
 
         victim.alive = false
@@ -437,13 +660,14 @@ export class Arena {
         victim.headshotUntil = 0
         const victimStreak = victim.lifeKills
         victim.lifeKills = 0
-        by.lifeKills++
+        const killer = by && by !== victim ? by : null
+        if (killer) killer.lifeKills++
         events.push({
             type: 'kill',
-            killer: by.id,
+            killer: killer?.id ?? null,
             victim: victim.id,
             ...how,
-            killerStreak: by.lifeKills,
+            killerStreak: killer?.lifeKills ?? 0,
             victimStreak,
         })
     }
@@ -484,16 +708,23 @@ export class Arena {
         fighter.health = MAX_HEALTH
         fighter.alive = true
         fighter.shieldUntil = this.step + SHIELD_STEPS
-        fighter.ammo = WEAPON.magazine
-        fighter.reloadUntil = 0
-        fighter.nextShotAt = 0
         fighter.nextSwingAt = 0
         fighter.readyAt = 0
         fighter.lifeKills = 0
         fighter.magazineUntil = 0
         fighter.headshotUntil = 0
+        this.arm(fighter)
 
         return { type: 'spawn', id: fighter.id }
+    }
+
+    /** Their next loadout in hand, every gun full. */
+    private arm(fighter: Fighter): void {
+        fighter.loadout = fighter.nextLoadout
+        fighter.guns = {
+            primary: freshGun(magazineOf(fighter.loadout.primary)),
+            secondary: freshGun(magazineOf(fighter.loadout.secondary)),
+        }
     }
 
     /** The spawn point furthest from the nearest living enemy (a random one when there's none). */
@@ -525,6 +756,15 @@ export class Arena {
     private shielded(fighter: Fighter): boolean {
         return fighter.alive && this.step < fighter.shieldUntil
     }
+}
+
+function freshGun(ammo: number): GunState {
+    return { ammo, reloadUntil: 0, nextShotAt: 0 }
+}
+
+/** The gun in a slot of theirs. */
+function gunIn(fighter: Fighter, slot: 'primary' | 'secondary'): Gun {
+    return slot === 'primary' ? fighter.loadout.primary : fighter.loadout.secondary
 }
 
 function round(value: number, decimals: number): number {

@@ -99,7 +99,7 @@
                         <tr class="text-white/50"><th class="text-left font-normal">Weapon</th><th class="text-right font-normal">Kills</th><th class="text-right font-normal">Deaths to it</th></tr>
                         @foreach ($stats['weapons'] as $weapon => $counts)
                             <tr>
-                                <td class="py-1">{{ $weapon === 'stapler' ? '📎 Stapler' : '🔫 Blaster' }}</td>
+                                <td class="py-1">{{ \App\Games\OfficeFps\Models\OfficeFpsKill::WEAPON_LABELS[$weapon] ?? $weapon }}</td>
                                 <td class="text-right font-semibold tabular-nums">{{ $counts['kills'] }}</td>
                                 <td class="text-right font-semibold tabular-nums">{{ $counts['deaths'] }}</td>
                             </tr>

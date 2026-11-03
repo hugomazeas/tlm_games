@@ -18,7 +18,7 @@
         <div class="mb-6">
             <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight mb-1">🔫 Office FPS</h1>
             <p class="text-white/50 text-sm">
-                Minis with blasters and jetpacks, all over the office. One game, always on: jump in any time.
+                Minis with rifles, snipers, shotguns, rockets and jetpacks, all over the office. One game, always on: jump in any time.
             </p>
             <p class="text-sm mt-2" x-show="state" x-cloak>
                 <span class="inline-block w-2 h-2 rounded-full mr-1"

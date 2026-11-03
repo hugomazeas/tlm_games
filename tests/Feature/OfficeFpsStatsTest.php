@@ -127,6 +127,21 @@ class OfficeFpsStatsTest extends TestCase
         $this->assertSame(0, OfficeFpsMatch::count());
     }
 
+    public function test_kills_with_every_gun_are_kept_and_the_retired_blaster_shows_only_when_used(): void
+    {
+        $match = $this->match();
+        $match['kills'] = collect(['rifle', 'sniper', 'shotgun', 'pistol', 'launcher'])
+            ->map(fn (string $weapon, int $i) => ['killer_id' => $this->ann->id, 'victim_id' => $this->bob->id, 'weapon' => $weapon, 'headshot' => false, 'backstab' => false, 'at_ms' => 1000 * ($i + 1)])
+            ->all();
+        $this->postJson('/internal/office-fps/results', $match, $this->secret())->assertCreated();
+
+        $response = $this->get('/games/office-fps/players/'.$this->ann->id)->assertOk();
+        $weapons = $response->viewData('stats')['weapons'];
+        $this->assertSame(['rifle', 'sniper', 'shotgun', 'pistol', 'launcher', 'stapler'], array_keys($weapons));
+        $this->assertSame(['kills' => 1, 'deaths' => 0], $weapons['launcher']);
+        $response->assertSee('Launcher')->assertSee('Sniper')->assertDontSee('Blaster');
+    }
+
     public function test_a_players_page_adds_up_their_matches(): void
     {
         $this->postJson('/internal/office-fps/results', $this->match(), $this->secret())->assertCreated();

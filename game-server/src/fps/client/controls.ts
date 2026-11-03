@@ -1,4 +1,4 @@
-import { BUTTON, type Weapon } from '../protocol.ts'
+import { BUTTON, type Slot, SLOTS } from '../protocol.ts'
 
 /** Radians per pixel of mouse movement. */
 const SENSITIVITY = 0.0022
@@ -21,8 +21,9 @@ export class Controls {
     /** Mouse speed multiplier: your setting, lowered while zoomed so the aim moves the same on screen. */
     sensitivityScale = 1
     invertY = false
-    /** The weapon in hand: 1 or 2, or the scroll wheel. */
-    weapon: Weapon = 'blaster'
+    /** The slot in hand: 1, 2 or 3, the scroll wheel, or Q for the last one. */
+    slot: Slot = 'primary'
+    private lastSlot: Slot = 'secondary'
     /** V: first / third person. */
     onToggleView: (() => void) | null = null
 
@@ -52,7 +53,8 @@ export class Controls {
             e => {
                 if (!this.locked || e.deltaY === 0) return
                 e.preventDefault()
-                this.weapon = this.weapon === 'blaster' ? 'stapler' : 'blaster'
+                const next = SLOTS.indexOf(this.slot) + (e.deltaY > 0 ? 1 : -1)
+                this.select(SLOTS[(next + SLOTS.length) % SLOTS.length]!)
             },
             { passive: false }
         )
@@ -77,8 +79,10 @@ export class Controls {
             this.keys.add(e.code)
             if (e.code === 'KeyR') this.reloadAsked = true
             if (e.code === 'KeyV' && !e.repeat) this.onToggleView?.()
-            if (e.code === 'Digit1') this.weapon = 'blaster'
-            if (e.code === 'Digit2') this.weapon = 'stapler'
+            if (e.code === 'Digit1') this.select('primary')
+            if (e.code === 'Digit2') this.select('secondary')
+            if (e.code === 'Digit3') this.select('melee')
+            if (e.code === 'KeyQ' && !e.repeat) this.select(this.lastSlot)
         })
         document.addEventListener('keyup', e => this.keys.delete(e.code))
         window.addEventListener('blur', () => this.release())
@@ -86,6 +90,12 @@ export class Controls {
 
     get locked(): boolean {
         return document.pointerLockElement === this.canvas
+    }
+
+    select(slot: Slot): void {
+        if (slot === this.slot) return
+        this.lastSlot = this.slot
+        this.slot = slot
     }
 
     /** Facing a spawn's way (the server sets it on every spawn). */
@@ -104,6 +114,7 @@ export class Controls {
         if (held('Space')) buttons |= BUTTON.jet
         if (this.firing) buttons |= BUTTON.fire
         if (this.reloadAsked) buttons |= BUTTON.reload
+        if (this.aiming) buttons |= BUTTON.aim
         this.reloadAsked = false
         this.dashAsked = false
 

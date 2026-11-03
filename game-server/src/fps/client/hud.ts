@@ -1,6 +1,11 @@
 import {
     type BuffKind,
     FRAG_LIMITS,
+    type Loadout,
+    PRIMARIES,
+    SECONDARIES,
+    WEAPON_NAMES,
+    weaponIn,
     MATCH_MINUTES,
     type MatchView,
     type Mode,
@@ -15,7 +20,7 @@ import {
     TEAMS,
     ZONE_SECONDS_PER_POINT,
 } from '../protocol.ts'
-import { MAX_HEALTH, WEAPON } from '../sim/combat.ts'
+import { magazineOf, MAX_HEALTH } from '../sim/combat.ts'
 import { DEFAULT_SETTINGS, LIMITS, type Settings } from './settings.ts'
 
 /**
@@ -91,7 +96,7 @@ const CSS = `
 #fps-hud .card { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); text-align: center; pointer-events: auto; max-width: 420px; padding: 22px 26px; }
 #fps-hud .card h1 { font-size: 22px; margin: 0 0 4px; }
 #fps-hud .card p { margin: 6px 0; opacity: .85; font-weight: 500; }
-#fps-hud .card kbd { background: rgba(255,255,255,.12); border-radius: 4px; padding: 1px 6px; font: inherit; font-size: 12px; }
+#fps-hud kbd { background: rgba(255,255,255,.12); border-radius: 4px; padding: 1px 6px; font: inherit; font-size: 12px; }
 #fps-hud .card a { color: #ffd166; }
 #fps-hud .card { max-height: calc(100vh - 40px); overflow-y: auto; }
 #fps-hud .card .section { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.12); text-align: left; }
@@ -108,6 +113,15 @@ const CSS = `
 #fps-hud .card .check { display: block; font-size: 13px; margin: 4px 0 10px; }
 #fps-hud .slots b { display: inline-block; min-width: 14px; margin-left: 4px; padding: 0 3px; border-radius: 3px; text-align: center; background: rgba(255,255,255,.12); font-size: 10px; }
 #fps-hud .slots b.on { background: #ffd166; color: #1a1206; }
+#fps-hud .guns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px; }
+#fps-hud .card .guns button { text-align: left; padding: 6px 8px; line-height: 1.25; }
+#fps-hud .card .guns button.on { background: rgba(255,209,102,.18); border-color: #ffd166; }
+#fps-hud .guns button small { display: block; font-size: 11px; font-weight: 500; opacity: .7; }
+#fps-hud .scope { position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, transparent 0, transparent 32vmin, rgba(0,0,0,.9) 32.4vmin, #000 34vmin); }
+#fps-hud .scope::before, #fps-hud .scope::after { content: ''; position: absolute; left: 50%; top: 50%; background: rgba(0,0,0,.85); }
+#fps-hud .scope::before { width: 64vmin; height: 1.5px; margin: -0.75px 0 0 -32vmin; }
+#fps-hud .scope::after { width: 1.5px; height: 64vmin; margin: -32vmin 0 0 -0.75px; }
+#fps-hud.scoped .cross { background: #ff3b3b; }
 #fps-hud .hidden { display: none !important; }
 `
 
@@ -140,6 +154,9 @@ export class Hud {
             settings: Settings
             onSettings(settings: Settings): void
             onStart(rules: Rules): void
+            /** The guns this browser picked last. */
+            loadout: Loadout
+            onLoadout(loadout: Loadout): void
         }
     ) {
         const style = document.createElement('style')
@@ -148,6 +165,7 @@ export class Hud {
         this.root = document.createElement('div')
         this.root.id = 'fps-hud'
         this.root.innerHTML = `
+            <div class="scope hidden" data-el="scope"></div>
             <div class="hurt" data-el="hurt"></div>
             <div class="cross" data-el="cross"></div><div class="hit" data-el="hit"></div>
             <div class="elim" data-el="elim"></div>
@@ -173,13 +191,50 @@ export class Hud {
             <div class="panel board hidden" data-el="board"></div>
             <div class="panel card" data-el="card">
                 <div data-el="cardMain"></div>
+                <div class="section hidden" data-el="loadout"></div>
                 <div class="section hidden" data-el="host"></div>
                 <div class="section hidden" data-el="settings"></div>
             </div>`
         for (const node of this.root.querySelectorAll<HTMLElement>('[data-el]')) this.el[node.dataset.el!] = node
         document.body.append(this.root)
         this.buildSettings()
+        this.picked = hooks.loadout
+        this.renderLoadout()
         this.card('connecting')
+    }
+
+    private picked: Loadout
+    /** What you carry now (from the server): a different pick says it waits for your next spawn. */
+    private carried: Loadout | null = null
+
+    /** Sniper scoped in: the black scope ring over everything, and the viewmodel's job is done. */
+    scope(on: boolean): void {
+        this.el.scope!.classList.toggle('hidden', !on)
+        this.root.classList.toggle('scoped', on)
+    }
+
+    /** The loadout picker on the menu: a primary and a secondary, kept in this browser. */
+    private renderLoadout(): void {
+        const panel = this.el.loadout!
+        const pick = this.picked
+        const button = (gun: keyof typeof GUN_BLURBS, on: boolean) =>
+            `<button type="button" data-gun="${gun}" class="${on ? 'on' : ''}">${WEAPON_NAMES[gun]}<small>${GUN_BLURBS[gun]}</small></button>`
+        const waiting =
+            this.carried && (this.carried.primary !== pick.primary || this.carried.secondary !== pick.secondary)
+        panel.innerHTML = `<h2>Loadout</h2>
+            <div class="guns">${PRIMARIES.map(g => button(g, g === pick.primary)).join('')}</div>
+            <div class="guns">${SECONDARIES.map(g => button(g, g === pick.secondary)).join('')}</div>
+            <p class="hint">${waiting ? 'From your next spawn.' : '<kbd>1</kbd> primary · <kbd>2</kbd> secondary · <kbd>3</kbd> stapler'}</p>`
+        for (const node of panel.querySelectorAll<HTMLButtonElement>('[data-gun]')) {
+            node.addEventListener('click', () => {
+                const gun = node.dataset.gun!
+                const primary = PRIMARIES.find(g => g === gun)
+                const secondary = SECONDARIES.find(g => g === gun)
+                this.picked = { primary: primary ?? pick.primary, secondary: secondary ?? pick.secondary }
+                this.hooks.onLoadout(this.picked)
+                this.renderLoadout()
+            })
+        }
     }
 
     /** The middle card: while connecting, while the mouse is free (with the host's controls and the settings), or when the game is closed to you. */
@@ -187,6 +242,7 @@ export class Hud {
         this.cardState = state
         this.el.card!.classList.toggle('hidden', state === 'playing')
         this.el.settings!.classList.toggle('hidden', state !== 'paused')
+        this.el.loadout!.classList.toggle('hidden', state !== 'paused')
         this.renderHost()
         const back = `<p><a href="${this.backUrl}">Back to the Hub</a></p>`
         this.el.cardMain!.innerHTML = {
@@ -194,7 +250,7 @@ export class Hud {
             paused: `<h1>Office FPS</h1><p><b>Click to play</b></p>
                 <p><kbd>WASD</kbd> move · <kbd>Shift</kbd> + direction dodge · <kbd>Space</kbd> jetpack<br>
                 <kbd>Click</kbd> fire · <kbd>Right-click</kbd> aim · <kbd>R</kbd> reload<br>
-                <kbd>1</kbd> blaster · <kbd>2</kbd> stapler (or the wheel) · <kbd>V</kbd> 1st / 3rd person<br>
+                <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> weapons (or the wheel, <kbd>Q</kbd> the last) · <kbd>V</kbd> 1st / 3rd person<br>
                 <kbd>Tab</kbd> scores · <kbd>Esc</kbd> this menu</p>${back}`,
             playing: '',
             replaced: `<h1>Playing in another tab</h1><p>This one let go.</p>${back}`,
@@ -335,15 +391,28 @@ export class Hud {
         for (const name of ['health', 'ammo', 'fuelBar', 'cross']) this.el[name]!.classList.toggle('hidden', hide)
         if (!self) return
         this.el.health!.innerHTML = `<small>Health</small>${self.alive ? self.health : 0}`
-        const slots = `<span class="slots"><b class="${self.weapon === 'blaster' ? 'on' : ''}">1</b><b class="${self.weapon === 'stapler' ? 'on' : ''}">2</b></span>`
-        const big = self.magazine > WEAPON.magazine ? ' style="color:#f2b134"' : ''
-        const blaster = self.reloading
-            ? '<span style="opacity:.6">reloading</span>'
-            : `<span${big}>${self.ammo}</span><span style="opacity:.5;font-size:16px"> / ${self.magazine}</span>`
-        this.el.ammo!.innerHTML =
-            self.weapon === 'stapler'
-                ? `<small>Stapler ${slots}</small><span style="font-size:22px">📎 swing</span>`
-                : `<small>Blaster ${slots}</small>${blaster}`
+        const slot = (n: number, slotName: 'primary' | 'secondary' | 'melee') =>
+            `<b class="${weaponIn(slotName, self.loadout) === self.weapon ? 'on' : ''}">${n}</b>`
+        const slots = `<span class="slots">${slot(1, 'primary')}${slot(2, 'secondary')}${slot(3, 'melee')}</span>`
+        const name = WEAPON_NAMES[self.weapon]
+        if (self.weapon === 'stapler') {
+            this.el.ammo!.innerHTML = `<small>${name} ${slots}</small><span style="font-size:22px">📎 swing</span>`
+        } else {
+            const big = self.magazine > magazineOf(self.weapon) ? ' style="color:#f2b134"' : ''
+            const rounds = self.reloading
+                ? '<span style="opacity:.6">reloading</span>'
+                : `<span${big}>${self.ammo}</span><span style="opacity:.5;font-size:16px"> / ${self.magazine}</span>`
+            this.el.ammo!.innerHTML = `<small>${name} ${slots}</small>${rounds}`
+        }
+        // A new loadout in hand (a spawn): the picker stops saying it waits.
+        if (
+            !this.carried ||
+            this.carried.primary !== self.loadout.primary ||
+            this.carried.secondary !== self.loadout.secondary
+        ) {
+            this.carried = self.loadout
+            this.renderLoadout()
+        }
         this.el.fuel!.style.width = `${Math.round(self.body.fuel * 100)}%`
         this.el.fuel!.style.background = self.body.jetBoost > 0 ? 'linear-gradient(90deg,#29a3e0,#7fd1ff)' : ''
         if (self.alive && self.health < this.lastHealth) this.flashHurt()
@@ -514,7 +583,9 @@ export class Hud {
         else if (opts.self && !opts.self.alive) {
             const by = opts.killer ? `Fragged by ${escape(opts.killer)}` : 'Down'
             const taunt = opts.taunt ? `<small class="taunt">${escape(opts.taunt)}</small>` : ''
-            middle = `${by}${taunt}<small>Back in ${Math.ceil((opts.self.respawnInMs ?? 0) / 1000)}</small>`
+            const next = opts.self.nextLoadout
+            const guns = `${WEAPON_NAMES[next.primary]} + ${WEAPON_NAMES[next.secondary]}`
+            middle = `${by}${taunt}<small>Back in ${Math.ceil((opts.self.respawnInMs ?? 0) / 1000)} with ${escape(guns)} · <kbd>Esc</kbd> to change</small>`
         } else if (match.phase === 'countdown') {
             middle = `${Math.ceil((left ?? 0) / 1000)}<small>Warmup kills don't count</small>`
         }
@@ -630,6 +701,15 @@ export const BUFF_COLORS: Record<BuffKind, string> = { magazine: '#f2b134', jetp
 
 /** The reload ring's circumference (r = 11 in its 30 × 30 box). */
 const RING = 2 * Math.PI * 11
+
+/** One line on each gun, for the loadout picker. */
+const GUN_BLURBS = {
+    rifle: 'Automatic, 30 rounds',
+    sniper: 'Scope, one-shot headshots',
+    shotgun: 'Devastating up close',
+    pistol: 'Quick, 8 rounds',
+    launcher: 'Rockets, splash · 7 s reload',
+} as const
 
 /** Shows an element at once, then fades it out over `ms`. */
 function fadeOut(element: HTMLElement, ms: number): void {

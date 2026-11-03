@@ -13,6 +13,7 @@ import {
     ZONE_SECONDS_PER_POINT,
 } from './protocol.ts'
 import { RESPAWN_STEPS, SHIELD_STEPS } from './sim/arena.ts'
+import { GUNS } from './sim/combat.ts'
 import { PLAYER, STEP_MS } from './sim/movement.ts'
 import { testWorld } from './sim/testing.ts'
 import { ZONE_MS, ZONES } from './sim/places.ts'
@@ -251,15 +252,19 @@ describe('one game, joined on the fly', () => {
         const [ann, bob] = results[0]!.players
         expect(ann).toMatchObject({ playerId: 1, kills: 2, deaths: 0, bestStreak: 2, meleeKills: 0 })
         expect(ann!.shots).toBeGreaterThanOrEqual(10)
-        expect(ann!.hits).toBe(10)
-        expect(ann!.damage).toBe(200)
+        // Two kills with the rifle: about as many hits as it takes to bring 100 down, twice (fewer
+        // when the spread lands one on a head).
+        const perKill = Math.ceil(100 / GUNS.rifle.damage)
+        expect(ann!.hits).toBeGreaterThanOrEqual(2 * perKill - 2)
+        expect(ann!.hits).toBeLessThanOrEqual(2 * perKill)
+        expect(ann!.damage).toBeGreaterThanOrEqual(200)
         expect(bob).toMatchObject({ playerId: 2, kills: 0, deaths: 2, shots: 0, hits: 0, bestStreak: 0 })
         // The whole match, give or take a step.
         expect(Math.abs(ann!.playedMs - MATCH_MS)).toBeLessThan(100)
         expect(results[0]!.playerCount).toBe(2)
         expect(results[0]!.kills).toEqual([
-            expect.objectContaining({ killerId: 1, victimId: 2, weapon: 'blaster', backstab: false }),
-            expect.objectContaining({ killerId: 1, victimId: 2, weapon: 'blaster' }),
+            expect.objectContaining({ killerId: 1, victimId: 2, weapon: 'rifle', backstab: false }),
+            expect.objectContaining({ killerId: 1, victimId: 2, weapon: 'rifle' }),
         ])
         expect(results[0]!.kills[1]!.atMs).toBeGreaterThan(results[0]!.kills[0]!.atMs)
     })
@@ -538,18 +543,32 @@ describe('messages', () => {
             pitch: -0.3,
             buttons: BUTTON.fire | BUTTON.jet,
             view: 120,
-            weapon: 'stapler' as const,
+            slot: 'melee' as const,
         }
 
         expect(parseClientMessage(JSON.stringify({ type: 'input', frames: [encodeFrame(frame)] }))).toEqual({
             type: 'input',
             frames: [frame],
         })
-        // A 7-long frame (no weapon) holds the blaster.
+        // A 7-long frame (no slot) holds the primary.
         expect(parseClientMessage(JSON.stringify({ type: 'input', frames: [[1, 0, 0, 0, 0, 0, 0]] }))).toEqual({
             type: 'input',
-            frames: [{ seq: 1, forward: 0, strafe: 0, yaw: 0, pitch: 0, buttons: 0, view: 0, weapon: 'blaster' }],
+            frames: [{ seq: 1, forward: 0, strafe: 0, yaw: 0, pitch: 0, buttons: 0, view: 0, slot: 'primary' }],
         })
+    })
+
+    test('a loadout names real guns in the right slots, or it is refused', () => {
+        const parse = (loadout: unknown) => parseClientMessage(JSON.stringify({ type: 'loadout', loadout }))
+        expect(parse({ primary: 'sniper', secondary: 'launcher' })).toEqual({
+            type: 'loadout',
+            loadout: { primary: 'sniper', secondary: 'launcher' },
+        })
+        expect(parse({ primary: 'launcher', secondary: 'pistol' })).toBeNull()
+        expect(parse({ primary: 'bfg', secondary: 'pistol' })).toBeNull()
+        // A hello with a bad one still joins, with the default guns.
+        expect(
+            parseClientMessage(JSON.stringify({ type: 'hello', playerId: null, loadout: { primary: 'bfg' } }))
+        ).toEqual({ type: 'hello', playerId: null })
     })
 
     test("the host's start carries rules from the allowed lists only", () => {
@@ -574,9 +593,9 @@ describe('messages', () => {
             { type: 'input', frames: [[1, 2, 0, 0, 0, 0, 0]] },
             { type: 'input', frames: [[0, 0, 0, 0, 0, 0, 0]] },
             { type: 'input', frames: [[1, 0, 0, 0, 2, 0, 0]] },
-            { type: 'input', frames: [[1, 0, 0, 0, 0, 16, 0]] },
+            { type: 'input', frames: [[1, 0, 0, 0, 0, 32, 0]] },
             { type: 'input', frames: [[1, 0, 0, null, 0, 0, 0]] },
-            { type: 'input', frames: [[1, 0, 0, 0, 0, 0, 0, 2]] },
+            { type: 'input', frames: [[1, 0, 0, 0, 0, 0, 0, 3]] },
             { type: 'input', frames: [[1, 0, 0, 0, 0, 0, 0, 0, 0]] },
             { type: 'hello', playerId: 0 },
             { type: 'hello', playerId: 'x' },

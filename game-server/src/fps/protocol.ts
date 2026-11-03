@@ -16,11 +16,49 @@ export const MAX_FRAMES = 30
 export type Phase = 'warmup' | 'countdown' | 'playing' | 'intermission'
 
 /** Bits of an input frame's buttons. */
-export const BUTTON = { dash: 1, jet: 2, fire: 4, reload: 8 } as const
+export const BUTTON = { dash: 1, jet: 2, fire: 4, reload: 8, aim: 16 } as const
 
-/** The two weapon slots: 1 the blaster, 2 the stapler (melee). */
-export const WEAPONS = ['blaster', 'stapler'] as const
-export type Weapon = (typeof WEAPONS)[number]
+/** The guns: three primaries, two secondaries, and the stapler (melee) everyone carries. */
+export const PRIMARIES = ['rifle', 'sniper', 'shotgun'] as const
+export const SECONDARIES = ['pistol', 'launcher'] as const
+export type Primary = (typeof PRIMARIES)[number]
+export type Secondary = (typeof SECONDARIES)[number]
+export type Gun = Primary | Secondary
+export type Weapon = Gun | 'stapler'
+export const WEAPON_NAMES: Record<Weapon, string> = {
+    rifle: 'Assault rifle',
+    sniper: 'Sniper',
+    shotgun: 'Shotgun',
+    pistol: 'Pistol',
+    launcher: 'Launcher',
+    stapler: 'Stapler',
+}
+
+/** What you carry: a primary in slot 1, a secondary in slot 2 (the stapler is slot 3). */
+export interface Loadout {
+    primary: Primary
+    secondary: Secondary
+}
+export const DEFAULT_LOADOUT: Loadout = { primary: 'rifle', secondary: 'pistol' }
+
+/** The slots, in key order: 1, 2, 3. */
+export const SLOTS = ['primary', 'secondary', 'melee'] as const
+export type Slot = (typeof SLOTS)[number]
+
+/** The weapon in a slot, with this loadout. */
+export function weaponIn(slot: Slot, loadout: Loadout): Weapon {
+    return slot === 'primary' ? loadout.primary : slot === 'secondary' ? loadout.secondary : 'stapler'
+}
+
+/** A loadout from untrusted input, or null. */
+export function parseLoadout(value: unknown): Loadout | null {
+    if (typeof value !== 'object' || value === null) return null
+    const { primary, secondary } = value as Record<string, unknown>
+    const p = PRIMARIES.find(g => g === primary)
+    const s = SECONDARIES.find(g => g === secondary)
+
+    return p && s ? { primary: p, secondary: s } : null
+}
 
 /**
  * The modes: free for all, team deathmatch (red against blue), and king of the meeting room (hold
@@ -83,8 +121,8 @@ export interface InputFrame {
     buttons: number
     /** The server step the other players were drawn at when this frame was taken (for the shot's rewind). */
     view: number
-    /** The weapon in hand (switching takes a moment); the blaster when absent. */
-    weapon?: Weapon
+    /** The slot in hand (switching takes a moment); the primary when absent. */
+    slot?: Slot
 }
 
 export interface PlayerInfo {
@@ -127,10 +165,16 @@ export interface SelfState {
     /** What's left of the reload (ms), for the ring by the crosshair; null when not reloading. */
     reloadLeftMs: number | null
     shielded: boolean
+    /** In hand: the gun's ammo, reload and magazine above are its. */
     weapon: Weapon
+    /** What you carry now, and what you'll carry from your next spawn. */
+    loadout: Loadout
+    nextLoadout: Loadout
+    /** Rounds in the other gun (the one not in hand; null holding the stapler). */
+    otherAmmo: number | null
     /** Until you're back (ms), while you're down. */
     respawnInMs: number | null
-    /** Rounds a full magazine holds (more with a big magazine). */
+    /** Rounds a full magazine of the gun in hand holds (more with a big magazine). */
     magazine: number
     /** Your powers, with what's left of each (ms). */
     buffs: Array<{ kind: BuffKind; leftMs: number }>
@@ -140,12 +184,25 @@ export type GameEvent =
     | {
           type: 'shot'
           by: string
+          weapon: Gun
           from: [number, number, number]
-          to: [number, number, number]
+          /** Where each round ended (a shotgun's pellets: several). */
+          to: Array<[number, number, number]>
+          /** Who it hit (a shotgun's pellets may hit several: the one hurt most). */
           hit: string | null
           headshot: boolean
           /** Health it took (0: a miss, or a spawn-shielded target). */
           damage: number
+      }
+    /** A rocket left the launcher (`id` names it in the snapshots' `rockets`). */
+    | { type: 'launch'; by: string; id: number; from: [number, number, number] }
+    /** A rocket went off; `hits` is who it hurt and by how much. */
+    | {
+          type: 'explode'
+          by: string
+          id: number
+          at: [number, number, number]
+          hits: Array<{ id: string; damage: number }>
       }
     /** A stapler swing: who it hit (null: air), for how much, and whether it was from behind. */
     | { type: 'swing'; by: string; hit: string | null; damage: number; backstab: boolean }
@@ -198,10 +255,27 @@ export interface MatchView {
 
 export type ErrorCode = 'BAD_MESSAGE' | 'NOT_JOINED' | 'UNKNOWN_PLAYER' | 'UNAVAILABLE' | 'NOT_HOST' | 'NOT_ENOUGH'
 
-/** `hello` joins the game, as a Hub player or a guest (null); `input` sends frames; the host `start`s a match. */
+/** A rocket in flight. */
+export interface RocketState {
+    id: number
+    by: string
+    x: number
+    y: number
+    z: number
+    vx: number
+    vy: number
+    vz: number
+}
+
+/**
+ * `hello` joins the game, as a Hub player or a guest (null), with the loadout this browser
+ * remembers; `input` sends frames; `loadout` picks the guns for your next spawn; the host `start`s
+ * a match.
+ */
 export type ClientMessage =
-    | { type: 'hello'; playerId: number | null }
+    | { type: 'hello'; playerId: number | null; loadout?: Loadout }
     | { type: 'input'; frames: InputFrame[] }
+    | { type: 'loadout'; loadout: Loadout }
     | { type: 'start'; rules: Rules }
 
 export type ServerMessage =
@@ -219,6 +293,7 @@ export type ServerMessage =
           pickups: boolean[]
           /** King of the meeting room, while it's played. */
           zone: ZoneState | null
+          rockets: RocketState[]
       }
     /** You joined from another tab; this one is closed. */
     | { type: 'replaced' }
@@ -238,8 +313,15 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     if (message.type === 'hello') {
         const { playerId } = message
         if (playerId !== null && (!Number.isInteger(playerId) || (playerId as number) < 1)) return null
+        // A loadout that doesn't parse (an older tab, a gun since removed): the default one.
+        const loadout = parseLoadout(message.loadout) ?? undefined
 
-        return { type: 'hello', playerId: playerId as number | null }
+        return { type: 'hello', playerId: playerId as number | null, ...(loadout ? { loadout } : {}) }
+    }
+    if (message.type === 'loadout') {
+        const loadout = parseLoadout(message.loadout)
+
+        return loadout ? { type: 'loadout', loadout } : null
     }
     if (message.type === 'input') {
         const { frames } = message
@@ -268,23 +350,23 @@ export function parseClientMessage(raw: string): ClientMessage | null {
 }
 
 /**
- * Frames travel as arrays to stay small: [seq, forward, strafe, yaw, pitch, buttons, view, weapon],
- * the weapon as its slot's index (a 7-long frame holds the blaster).
+ * Frames travel as arrays to stay small: [seq, forward, strafe, yaw, pitch, buttons, view, slot],
+ * the slot as its index in SLOTS (a 7-long frame holds the primary).
  */
 export function encodeFrame(frame: InputFrame): number[] {
     const { seq, forward, strafe, yaw, pitch, buttons, view } = frame
-    return [seq, forward, strafe, yaw, pitch, buttons, view, WEAPONS.indexOf(frame.weapon ?? 'blaster')]
+    return [seq, forward, strafe, yaw, pitch, buttons, view, SLOTS.indexOf(frame.slot ?? 'primary')]
 }
 
 function parseFrame(value: unknown): InputFrame | null {
     if (!Array.isArray(value) || (value.length !== 7 && value.length !== 8)) return null
     if (!value.every(n => typeof n === 'number' && Number.isFinite(n))) return null
     const [seq, forward, strafe, yaw, pitch, buttons, view, slot = 0] = value as number[]
-    if (!Number.isInteger(seq) || seq! < 1 || !Number.isInteger(buttons) || buttons! < 0 || buttons! > 15) return null
+    if (!Number.isInteger(seq) || seq! < 1 || !Number.isInteger(buttons) || buttons! < 0 || buttons! > 31) return null
     if (Math.abs(forward!) > 1 || Math.abs(strafe!) > 1 || Math.abs(pitch!) > Math.PI / 2) return null
     if (!Number.isInteger(view) || view! < 0) return null
-    const weapon = WEAPONS[slot]
-    if (!Number.isInteger(slot) || weapon === undefined) return null
+    const held = SLOTS[slot]
+    if (!Number.isInteger(slot) || held === undefined) return null
 
     return {
         seq: seq!,
@@ -294,6 +376,6 @@ function parseFrame(value: unknown): InputFrame | null {
         pitch: pitch!,
         buttons: buttons!,
         view: view!,
-        weapon,
+        slot: held,
     }
 }

@@ -1,6 +1,8 @@
 import { Vector3 } from 'three'
-import { WEAPON } from '../sim/combat.ts'
 import { PLAYER } from '../sim/movement.ts'
+
+/** Furthest a name shows (the office is about 22 m end to end). */
+const TARGET_RANGE = 30
 import { type FpsWorld, rayDistance } from '../sim/world.ts'
 
 /**
@@ -33,7 +35,7 @@ export function targetUnderCrosshair(
         if (!other.alive) continue
         to.set(other.x, other.y + PLAYER.height / 2, other.z).sub(origin)
         const distance = to.length()
-        if (distance < 0.05 || distance > WEAPON.range) continue
+        if (distance < 0.05 || distance > TARGET_RANGE) continue
         to.divideScalar(distance)
         const angle = Math.acos(Math.max(-1, Math.min(1, to.dot(direction))))
         if (angle > Math.atan2(LEEWAY, distance) || angle >= bestAngle) continue
