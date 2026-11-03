@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { Vector3 } from 'three'
-import { aimDirection, fireShot, rayCapsule, WEAPON } from './combat.ts'
-import { PLAYER } from './movement.ts'
+import { aimDirection, damageAt, fireShot, GUNS, magazineOf, rayCapsule, spreadDirection, spreadOf } from './combat.ts'
+import { bodyAt, PLAYER } from './movement.ts'
 import { testWorld } from './testing.ts'
 import { officeWorld } from './world.ts'
 
@@ -65,13 +65,45 @@ describe('shots', () => {
         expect(shot.end.z).toBeCloseTo(1.6 - PLAYER.radius, 4)
     })
 
-    test('the blaster reaches across the office, not further', () => {
+    test('a gun reaches its range, not further', () => {
         const open = testWorld([])
+        const range = GUNS.shotgun.range
         const shoot = (z: number) =>
-            fireShot(open, new Vector3(0, 0.2, 0), new Vector3(0, 0, 1), [{ id: 'them', x: 0, y: 0, z }])
+            fireShot(open, new Vector3(0, 0.2, 0), new Vector3(0, 0, 1), [{ id: 'them', x: 0, y: 0, z }], range)
 
-        expect(shoot(WEAPON.range - 1).hit?.id).toBe('them')
-        expect(shoot(WEAPON.range + 1).hit).toBeNull()
-        expect(shoot(WEAPON.range + 1).end.z).toBeCloseTo(WEAPON.range, 6)
+        expect(shoot(range - 1).hit?.id).toBe('them')
+        expect(shoot(range + 1).hit).toBeNull()
+        expect(shoot(range + 1).end.z).toBeCloseTo(range, 6)
+    })
+})
+
+describe('the guns', () => {
+    test('spread is the same everywhere for a frame, inside its cone, and none at all aimed with the sniper', () => {
+        const ahead = new Vector3(0, 0, -1)
+        const one = spreadDirection(ahead, 0.1, 42, 3)
+        expect(spreadDirection(ahead, 0.1, 42, 3).equals(one)).toBe(true)
+        expect(spreadDirection(ahead, 0.1, 43, 3).equals(one)).toBe(false)
+        for (let seq = 1; seq < 200; seq++) {
+            expect(spreadDirection(ahead, 0.1, seq, 0).angleTo(ahead)).toBeLessThanOrEqual(0.1 + 1e-9)
+        }
+        const still = { ...bodyAt(0, 0, 0), onGround: true }
+        expect(spreadOf(GUNS.sniper, true, still)).toBe(0)
+        expect(spreadOf(GUNS.rifle, false, still)).toBeGreaterThan(spreadOf(GUNS.rifle, true, still))
+        expect(spreadOf(GUNS.rifle, true, { ...still, onGround: false })).toBeGreaterThan(
+            spreadOf(GUNS.rifle, true, still)
+        )
+    })
+
+    test('falloff: full damage up close, the floor of it far away', () => {
+        expect(damageAt(GUNS.shotgun, 1)).toBe(GUNS.shotgun.damage)
+        expect(damageAt(GUNS.shotgun, 20)).toBeCloseTo(GUNS.shotgun.damage * GUNS.shotgun.falloff![2], 6)
+        expect(damageAt(GUNS.sniper, 30)).toBe(GUNS.sniper.damage)
+    })
+
+    test('a big magazine gives every gun more, even the one-round launcher', () => {
+        expect(magazineOf('rifle', 1.5)).toBe(45)
+        expect(magazineOf('pistol', 1.5)).toBe(12)
+        expect(magazineOf('launcher')).toBe(1)
+        expect(magazineOf('launcher', 1.5)).toBe(2)
     })
 })

@@ -1,3 +1,5 @@
+import type { Gun } from '../protocol.ts'
+
 /**
  * Every sound in the game, made on the spot with Web Audio: oscillators with pitch sweeps and
  * envelopes, and filtered white noise. Nothing to download. Other players' sounds are placed
@@ -63,18 +65,32 @@ export class Sounds {
 
     // --- Yours ------------------------------------------------------------------------------
 
-    /** Your blaster: a zap falling in pitch, with a crack of noise on top. */
-    shot(): void {
-        this.tone('square', 1300, 160, 0.13, 0.22)
-        this.tone('sawtooth', 2600, 600, 0.06, 0.08)
-        this.burst(0.05, 'bandpass', 3200, 1800, 0.18)
+    /** Your gun going off. */
+    shot(weapon: Gun): void {
+        this.gun(weapon, 1)
     }
 
-    /** Someone else's blaster, quieter and placed where they are. */
-    otherShot(where: { gain: number; pan: number }): void {
-        const out = this.place(where, 0.6)
-        this.tone('square', 1100, 150, 0.12, 0.2, 0, out)
-        this.burst(0.05, 'bandpass', 2600, 1500, 0.15, 0, out)
+    /** Someone else's gun, quieter and placed where they are. */
+    otherShot(weapon: Gun, where: { gain: number; pan: number }): void {
+        this.gun(weapon, 0.75, this.place(where, 0.8))
+    }
+
+    /** A rocket went off (near you, or placed where it was): a deep boom, a roar of noise rumbling off. */
+    explosion(where?: { gain: number; pan: number }): void {
+        const out = where ? this.place(where, 1) : undefined
+        this.tone('sine', 85, 24, 0.9, 0.7, 0, out)
+        this.tone('triangle', 160, 40, 0.35, 0.3, 0, out)
+        this.burst(0.08, 'highpass', 5000, 2000, 0.3, 0, out)
+        this.burst(1.2, 'lowpass', 1800, 80, 0.55, 0, out)
+        this.burst(0.5, 'bandpass', 600, 150, 0.25, 0.05, out)
+    }
+
+    /** The launcher is loaded: the rocket clacks home and the sight pings. */
+    rocketReady(): void {
+        this.burst(0.03, 'bandpass', 2600, 2200, 0.3)
+        this.tone('square', 400, 300, 0.03, 0.12)
+        this.burst(0.03, 'bandpass', 3400, 3000, 0.3, 0.08)
+        this.tone('triangle', 1250, 1250, 0.12, 0.1, 0.12)
     }
 
     /** Your shot landed: a short tick. */
@@ -227,6 +243,49 @@ export class Sounds {
     }
 
     // --- The makings ------------------------------------------------------------------------
+
+    /**
+     * One gun's report, at `v` times its volume, into `out` (the master when absent). The rifle a
+     * sharp short crack, the sniper a big boom with a long tail, the shotgun a heavy wide blast
+     * (and its pump), the pistol a light pop, the launcher a thump and a whoosh.
+     */
+    private gun(weapon: Gun, v: number, out?: AudioNode): void {
+        switch (weapon) {
+            case 'rifle':
+                this.burst(0.06, 'bandpass', 4200, 1500, 0.28 * v, 0, out)
+                this.tone('square', 900, 120, 0.06, 0.12 * v, 0, out)
+                this.tone('sine', 190, 60, 0.08, 0.22 * v, 0, out)
+                break
+            case 'sniper':
+                this.burst(0.05, 'highpass', 6000, 3000, 0.35 * v, 0, out)
+                this.tone('sine', 120, 32, 0.5, 0.55 * v, 0, out)
+                this.burst(0.9, 'lowpass', 3000, 140, 0.42 * v, 0, out)
+                // Its echo off the far walls.
+                this.burst(0.6, 'lowpass', 1200, 180, 0.12 * v, 0.25, out)
+                // The bolt worked.
+                this.burst(0.04, 'bandpass', 2000, 1600, 0.16 * v, 0.4, out)
+                this.burst(0.04, 'bandpass', 2600, 2200, 0.16 * v, 0.72, out)
+                break
+            case 'shotgun':
+                this.tone('sine', 95, 30, 0.35, 0.55 * v, 0, out)
+                this.burst(0.4, 'lowpass', 5000, 200, 0.5 * v, 0, out)
+                this.burst(0.15, 'bandpass', 1200, 400, 0.3 * v, 0, out)
+                // Cha-chk.
+                this.burst(0.05, 'bandpass', 1800, 1400, 0.18 * v, 0.2, out)
+                this.burst(0.04, 'bandpass', 2400, 2000, 0.2 * v, 0.34, out)
+                break
+            case 'pistol':
+                this.burst(0.05, 'bandpass', 2600, 1200, 0.26 * v, 0, out)
+                this.tone('square', 700, 200, 0.05, 0.1 * v, 0, out)
+                this.tone('sine', 230, 90, 0.06, 0.18 * v, 0, out)
+                break
+            case 'launcher':
+                this.tone('sine', 75, 40, 0.25, 0.45 * v, 0, out)
+                this.burst(0.15, 'lowpass', 2000, 300, 0.3 * v, 0, out)
+                this.burst(0.6, 'bandpass', 400, 2400, 0.28 * v, 0.03, out)
+                break
+        }
+    }
 
     /** A gain and stereo pan for a placed sound, into the master. */
     private place(where: { gain: number; pan: number }, scale: number): AudioNode | undefined {

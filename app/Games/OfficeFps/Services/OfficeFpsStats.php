@@ -148,7 +148,8 @@ class OfficeFpsStats
     }
 
     /**
-     * Kills and deaths per weapon.
+     * Kills and deaths per weapon: every weapon in the game, and a retired one (the blaster) only
+     * when they have a kill or a death with it.
      *
      * @return array<string, array{kills: int, deaths: int}>
      */
@@ -162,6 +163,8 @@ class OfficeFpsStats
                 'kills' => (int) ($kills[$weapon] ?? 0),
                 'deaths' => (int) ($deaths[$weapon] ?? 0),
             ]])
+            ->reject(fn (array $counts, string $weapon) => in_array($weapon, OfficeFpsKill::RETIRED_WEAPONS, true)
+                && $counts['kills'] + $counts['deaths'] === 0)
             ->all();
     }
 

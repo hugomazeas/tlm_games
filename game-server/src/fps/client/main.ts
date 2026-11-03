@@ -2,9 +2,16 @@ import { ACESFilmicToneMapping, PCFShadowMap, PerspectiveCamera, Scene, Vector3,
 import { buildOffice } from '../map/office.js'
 import {
     BUTTON,
+    DEFAULT_LOADOUT,
     encodeFrame,
     type GameEvent,
+    type Gun,
     type InputFrame,
+    type Loadout,
+    parseLoadout,
+    type RocketState,
+    WEAPON_NAMES,
+    weaponIn,
     type MatchView,
     type PlayerInfo,
     type Rules,
@@ -15,7 +22,17 @@ import {
     type Weapon,
     type ZoneState,
 } from '../protocol.ts'
-import { aimDirection, eyeOf, STAPLER, SWITCH_MS, WEAPON } from '../sim/combat.ts'
+import {
+    aimDirection,
+    eyeOf,
+    GUNS,
+    LAUNCHER,
+    reloadMsOf,
+    spreadDirection,
+    spreadOf,
+    STAPLER,
+    SWITCH_MS,
+} from '../sim/combat.ts'
 import { MOVE, PLAYER, STEP_MS } from '../sim/movement.ts'
 import { PICKUP_SPOTS, type PickupKind, PICKUPS, ZONES } from '../sim/places.ts'
 import { rayDistance, worldFrom } from '../sim/world.ts'
@@ -55,6 +72,8 @@ declare global {
 const config: Config = window.officeFpsConfig ?? { playerId: null, name: 'Guest', backUrl: '/' }
 /** Frames per message: each frame goes out as soon as it's made (60 messages a second, ~60 bytes each). */
 const SEND_EVERY = 1
+/** The sniper's shot: a thicker line that lingers. */
+const SNIPER_TRACER = { width: 2.5, life: 250 }
 /** A correction this big is a teleport (a respawn): jump, don't glide. */
 const SNAP_DISTANCE = 1
 
@@ -85,6 +104,8 @@ addEventListener('resize', () => {
 })
 
 let settings = loadSettings()
+/** The guns picked in this browser (sent with hello, and on every change). */
+let picked: Loadout = rememberedLoadout()
 const sounds = new Sounds()
 const hud = new Hud(config.backUrl, {
     settings,
@@ -95,6 +116,12 @@ const hud = new Hud(config.backUrl, {
         sounds.setVolume(changed.volume)
     },
     onStart: rules => startMatch(rules),
+    loadout: picked,
+    onLoadout: chosen => {
+        picked = chosen
+        remember('officeFps.loadout', JSON.stringify(chosen))
+        if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'loadout', loadout: chosen }))
+    },
 })
 const controls = new Controls(renderer.domElement, locked => {
     hud.card(locked ? 'playing' : 'paused')
@@ -143,8 +170,15 @@ let wasConnectedAlive = false
 let matchAt = 0
 let lastBeep = 0
 /** The weapon in hand here, and when it can be used (as the server counts it). */
-let held: Weapon = 'blaster'
+let held: Weapon = DEFAULT_LOADOUT.primary
 let readyAt = 0
+/** A click a click-a-shot gun hasn't used yet (as the server keeps it). */
+let clicked = false
+/** Rockets in flight from the last snapshot, and when it came (they fly straight: drawn ahead by their speed). */
+let rockets: RocketState[] = []
+let rocketsAt = 0
+/** The launcher was loaded on the last frame (a click when it's loaded again). */
+let launcherLoaded = true
 let closedForGood = false
 /** Your jetpack burning on your last frame (drawn on your own trooper in third person). */
 let jetting = false
@@ -162,6 +196,13 @@ function remembered(key: string): string | null {
         return null
     }
 }
+function rememberedLoadout(): Loadout {
+    try {
+        return parseLoadout(JSON.parse(remembered('officeFps.loadout') ?? 'null')) ?? DEFAULT_LOADOUT
+    } catch {
+        return DEFAULT_LOADOUT
+    }
+}
 function remember(key: string, value: string): void {
     try {
         localStorage.setItem(key, value)
@@ -176,7 +217,7 @@ function connect(): void {
     const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/games/office-fps/live/ws`
     const ws = new WebSocket(url)
     socket = ws
-    ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', playerId: config.playerId }))
+    ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', playerId: config.playerId, loadout: picked }))
     ws.onmessage = event => receive(JSON.parse(event.data as string) as ServerMessage)
     ws.onclose = () => {
         if (socket !== ws) return
@@ -294,6 +335,12 @@ function snapshot(snap: Extract<ServerMessage, { type: 'snap' }>, now: number): 
     }
     teams = new Map(snap.players.map(p => [p.id, p.team]))
     pickupsReady = snap.pickups
+    rockets = snap.rockets
+    rocketsAt = now
+    // The launcher in hand loaded again: a click.
+    const loaded = self?.weapon === 'launcher' && self.ammo > 0 && !self.reloading
+    if (loaded && !launcherLoaded) sounds.rocketReady()
+    launcherLoaded = self?.weapon !== 'launcher' || loaded
     // The zone moved on: two beeps and a word.
     if (snap.zone && zone && snap.zone.index !== zone.index) {
         sounds.zoneMoved()
@@ -339,14 +386,18 @@ function onEvent(event: GameEvent, now: number): void {
                 } else if (event.damage > 0) {
                     sounds.hit()
                 }
-                const at = toScreen(new Vector3(...event.to))
+                const struck = avatars.centerOf(event.hit)
+                const at = toScreen(struck ? new Vector3(struck.x, struck.y, struck.z) : new Vector3(...event.to[0]!))
                 if (at) hud.damageNumber(event.damage, event.headshot, at.x, at.y)
             }
             return
         }
         const color = parseInt((roster.get(event.by)?.color ?? '#ffffff').slice(1), 16)
-        effects.tracer(new Vector3(...event.from), new Vector3(...event.to), color, now, event.hit !== null)
-        sounds.otherShot(spatial(listener(), { x: event.from[0], z: event.from[2] }))
+        const style = event.weapon === 'sniper' ? SNIPER_TRACER : {}
+        for (const to of event.to) {
+            effects.tracer(new Vector3(...event.from), new Vector3(...to), color, now, event.hit !== null, style)
+        }
+        sounds.otherShot(event.weapon, spatial(listener(), { x: event.from[0], z: event.from[2] }))
         // Hit: which way it came from, and how hard.
         if (event.hit === me && event.damage > 0) {
             hud.damageFrom(bearingTo(event.from))
@@ -357,6 +408,31 @@ function onEvent(event: GameEvent, now: number): void {
                 sounds.hurt()
             }
         }
+    }
+    if (event.type === 'launch') {
+        // Yours was heard when fired.
+        if (event.by !== me) sounds.otherShot('launcher', spatial(listener(), { x: event.from[0], z: event.from[2] }))
+        return
+    }
+    if (event.type === 'explode') {
+        const at = { x: event.at[0], y: event.at[1], z: event.at[2] }
+        effects.explosion(at, now)
+        sounds.explosion(spatial(listener(), at))
+        for (const hit of event.hits) {
+            avatars.flash(hit.id, now)
+            if (hit.id === me && event.by !== me) {
+                hud.damageFrom(bearingTo(event.at))
+                sounds.hurt()
+            }
+            if (event.by === me && hit.id !== me) {
+                hud.hitMarker(false)
+                sounds.hit()
+                const struck = avatars.centerOf(hit.id)
+                const on = struck ? toScreen(new Vector3(struck.x, struck.y, struck.z)) : null
+                if (on) hud.damageNumber(hit.damage, false, on.x, on.y)
+            }
+        }
+        return
     }
     if (event.type === 'swing') {
         if (event.hit && event.damage > 0) avatars.flash(event.hit, now)
@@ -381,9 +457,17 @@ function onEvent(event: GameEvent, now: number): void {
     }
     if (event.type === 'kill') {
         const icon =
-            event.weapon === 'stapler' ? (event.backstab ? '📎 from behind' : '📎') : event.headshot ? '⌖' : '→'
-        const how = `<span style="opacity:.7">${icon}</span>`
-        hud.killFeed(`${colored(event.killer)} ${how} ${colored(event.victim)}`)
+            event.weapon === 'stapler'
+                ? event.backstab
+                    ? '📎 from behind'
+                    : '📎'
+                : `${WEAPON_NAMES[event.weapon]}${event.headshot ? ' ⌖' : ''}`
+        const how = `<span style="opacity:.7">[${icon}]</span>`
+        hud.killFeed(
+            event.killer === null
+                ? `${colored(event.victim)} <span style="opacity:.7">blew themselves up</span>`
+                : `${colored(event.killer)} ${how} ${colored(event.victim)}`
+        )
         // Still drawn where they fell (they disappear on the next frame).
         const fell = avatars.centerOf(event.victim)
         if (fell) effects.burst(fell, colorOf(event.victim), now)
@@ -471,7 +555,7 @@ function step(now: number): void {
         pitch: aim.pitch,
         buttons: keys.buttons,
         view: Math.max(0, Math.floor(clock.renderStep(now) ?? 0)),
-        weapon: controls.weapon,
+        slot: controls.slot,
     }
     jetting = Boolean(input.buttons & BUTTON.jet) && (body?.fuel ?? 0) > 0
     prediction.apply(input, self.alive)
@@ -482,31 +566,59 @@ function step(now: number): void {
     sounds.jetting(jetting && self.alive && controls.locked)
 
     // A new weapon in hand: like the server, it can't be used for a moment.
-    if (controls.weapon !== held) {
-        held = controls.weapon
+    const wanted = weaponIn(controls.slot, self.loadout)
+    if (wanted !== held) {
+        held = wanted
         readyAt = now + SWITCH_MS
         if (viewmodel) viewmodel.weapon = held
     }
-    const firing = Boolean(input.buttons & BUTTON.fire) && self.alive && now >= readyAt
-    const pulled = firing && !wasFiring
-    wasFiring = firing
+    // As the server does: a click waits for the gun until it's used or let go.
+    const holding = Boolean(input.buttons & BUTTON.fire) && self.alive
+    if (holding && !wasFiring) clicked = true
+    if (!holding) clicked = false
+    wasFiring = holding
+    const ready = self.alive && now >= readyAt
     // Your own shot or swing shows (and sounds) at once: the server's answer only says what it hit.
-    if (firing && held === 'blaster' && !self.reloading && self.ammo > 0 && now >= nextLocalShot) {
-        nextLocalShot = now + WEAPON.intervalMs
-        const eye = eyeOf(prediction.body!)
-        const direction = aimDirection(input.yaw, input.pitch)
-        const end = eye.clone().addScaledVector(direction, rayDistance(world, eye, direction, WEAPON.range))
-        viewmodel?.fire(now)
-        effects.tracer(viewmodel && !thirdPerson ? viewmodel.muzzleIn(camera) : eye, end, 0xffd080, now, false)
-        sounds.shot()
-    } else if (pulled && held === 'blaster' && (self.reloading || self.ammo === 0)) {
-        sounds.empty()
+    // The rounds are the server's: only fire here once it has the same gun in hand.
+    if (ready && held !== 'stapler' && self.weapon === held) {
+        const auto = held !== 'launcher' && GUNS[held].auto
+        const trigger = auto ? holding : clicked
+        const canFire = !self.reloading && self.ammo > 0 && now >= nextLocalShot
+        if (trigger && canFire) {
+            clicked = false
+            nextLocalShot = now + (held === 'launcher' ? LAUNCHER.intervalMs : GUNS[held].intervalMs)
+            fireLocally(held, input, now)
+        } else if (trigger && clicked && (self.reloading || self.ammo === 0)) {
+            clicked = false
+            sounds.empty()
+        }
     }
-    if (firing && held === 'stapler' && now >= nextLocalSwing) {
+    if (ready && holding && held === 'stapler' && now >= nextLocalSwing) {
         nextLocalSwing = now + STAPLER.intervalMs
         viewmodel?.swing(now)
         if (me) avatars.swing(me, now)
         sounds.swing()
+    }
+}
+
+/**
+ * Your shot, drawn now: every pellet where the server will put it (the spread is seeded by the
+ * frame), from the muzzle. A rocket is the server's to draw; here it only kicks and sounds.
+ */
+function fireLocally(gun: Gun, input: InputFrame, now: number): void {
+    viewmodel?.fire(now)
+    sounds.shot(gun)
+    if (gun === 'launcher') return
+    const spec = GUNS[gun]
+    const body = prediction.body!
+    const eye = eyeOf(body)
+    const aim = aimDirection(input.yaw, input.pitch)
+    const cone = spreadOf(spec, Boolean(input.buttons & BUTTON.aim), body)
+    const from = viewmodel && !thirdPerson ? viewmodel.muzzleIn(camera) : eye
+    for (let pellet = 0; pellet < spec.pellets; pellet++) {
+        const direction = spreadDirection(aim, cone, input.seq, pellet)
+        const end = eye.clone().addScaledVector(direction, rayDistance(world, eye, direction, spec.range))
+        effects.tracer(from, end, 0xffd080, now, false, gun === 'sniper' ? SNIPER_TRACER : {})
     }
 }
 
@@ -530,7 +642,7 @@ document.addEventListener('visibilitychange', () => {
 function sendIdle(): void {
     if (!me || !self) return
     const { yaw, pitch } = controls
-    outbox.push({ seq: ++seq, forward: 0, strafe: 0, yaw, pitch, buttons: 0, view: 0, weapon: held })
+    outbox.push({ seq: ++seq, forward: 0, strafe: 0, yaw, pitch, buttons: 0, view: 0, slot: controls.slot })
     flush()
 }
 
@@ -557,12 +669,17 @@ function draw(now: number): void {
         camera.position.set(Math.sin(a) * 14, 16, Math.cos(a) * 9)
         camera.lookAt(0, 0, 0)
     }
-    // Aiming (right mouse, the blaster only): the view zooms in, the mouse slows to match (times
-    // your aiming sensitivity), the blaster centres on its sights.
-    const aimingNow = controls.aiming && Boolean(self?.alive) && held === 'blaster'
-    aimBlend += ((aimingNow ? 1 : 0) - aimBlend) * Math.min(1, dt * 14)
+    // Aiming (right mouse, a gun): the view zooms in (as far as the gun's sights go; the sniper's
+    // scope much further), the mouse slows to match (times your aiming sensitivity), the gun
+    // centres on its sights.
+    const aimingNow = controls.aiming && Boolean(self?.alive) && held !== 'stapler'
+    aimBlend += ((aimingNow ? 1 : 0) - aimBlend) * Math.min(1, dt * (held === 'sniper' ? 10 : 14))
     const hipFov = settings.fov
-    const fov = hipFov + (aimFov(hipFov) - hipFov) * aimBlend
+    const gunFov = held === 'stapler' ? null : held === 'launcher' ? LAUNCHER.aimFov : GUNS[held].aimFov
+    const fov = hipFov + (Math.min(hipFov, gunFov ?? aimFov(hipFov)) - hipFov) * aimBlend
+    // The sniper's scope: once it's up, the scope's ring instead of the rifle.
+    const scoped = held === 'sniper' && aimBlend > 0.85 && !third
+    hud.scope(scoped)
     if (Math.abs(camera.fov - fov) > 0.01) {
         camera.fov = fov
         camera.updateProjectionMatrix()
@@ -570,12 +687,16 @@ function draw(now: number): void {
     const aimedSensitivity = 1 + (settings.aimSensitivity - 1) * aimBlend
     controls.sensitivityScale = settings.sensitivity * (fov / hipFov) * aimedSensitivity
     hud.aiming = aimingNow
-    // A reload: the ring by the crosshair and the blaster's animation, run to its end between snapshots.
-    const reloading = Boolean(self?.alive && self.reloading && held === 'blaster' && reloadEndsAt !== null)
-    const reload = reloading ? reloadProgress(Math.max(0, reloadEndsAt! - now), WEAPON.reloadMs) : null
+    // A reload: the ring by the crosshair and the gun's animation, run to its end between snapshots.
+    const reloading = Boolean(
+        self?.alive && self.reloading && held !== 'stapler' && self.weapon === held && reloadEndsAt !== null
+    )
+    const reload =
+        reloading && held !== 'stapler' ? reloadProgress(Math.max(0, reloadEndsAt! - now), reloadMsOf(held)) : null
     hud.reload(reload)
     if (viewmodel) {
-        viewmodel.visible = Boolean(self?.alive) && !third
+        viewmodel.visible = Boolean(self?.alive) && !third && !scoped
+        viewmodel.loaded = held === 'launcher' && Boolean(self && self.ammo > 0 && !self.reloading)
         const moving = Boolean(body && body.onGround && Math.hypot(body.vx, body.vz) > 0.5)
         viewmodel.update(now, moving, aimBlend, reload)
     }
@@ -609,6 +730,12 @@ function draw(now: number): void {
     }
     avatars.update(poses, roster, third ? null : me, now)
     effects.update(now)
+    // Rockets fly straight: from the last snapshot, ahead by their speed.
+    const ahead = (now - rocketsAt) / 1000
+    effects.rockets(
+        rockets.map(r => ({ ...r, x: r.x + r.vx * ahead, y: r.y + r.vy * ahead, z: r.z + r.vz * ahead })),
+        now
+    )
     pickupViews.update(pickupsReady, now)
     zoneView.update(zone, colorOf, zone !== null && zone.holder === me, now)
     showZone(now)

@@ -342,7 +342,7 @@ async function fpsMessage(ws: ServerWebSocket<SocketData>, raw: string): Promise
             isOpen: () => ws.readyState === 1,
         }
         // Settles to false on any error: nothing waiting on it is left with a rejection.
-        ws.data.ready = fps.hello(conn, message.playerId).catch(error => {
+        ws.data.ready = fps.hello(conn, message.playerId, message.loadout).catch(error => {
             console.error('Office FPS join failed:', error)
             return false
         })
@@ -351,6 +351,7 @@ async function fpsMessage(ws: ServerWebSocket<SocketData>, raw: string): Promise
     if (!ws.data.ready) return reply({ type: 'error', code: 'NOT_JOINED' })
     if (!(await ws.data.ready)) return
     if (message.type === 'start') fps.lobby.start(ws.data.id, message.rules)
+    else if (message.type === 'loadout') fps.lobby.setLoadout(ws.data.id, message.loadout)
     else fps.lobby.input(ws.data.id, message.frames)
 }
 

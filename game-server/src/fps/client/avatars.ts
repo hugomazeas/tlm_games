@@ -13,7 +13,7 @@ import {
     TorusGeometry,
 } from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
-import { type PlayerInfo, TEAM_COLORS } from '../protocol.ts'
+import { type Gun, type PlayerInfo, TEAM_COLORS } from '../protocol.ts'
 import { PLAYER } from '../sim/movement.ts'
 import { BUFF_COLORS } from './hud.ts'
 import type { Pose } from './timeline.ts'
@@ -21,7 +21,7 @@ import type { Pose } from './timeline.ts'
 /**
  * The other minis: little jetpack troopers in their player's colour, drawn inside the 40 cm
  * capsule the server collides and hits (feet at 0, eyes at PLAYER.eye). Legs swing with their
- * speed and dangle in flight, the arms hold a blaster that follows their aim, the jetpack's two
+ * speed and dangle in flight, the arms hold their gun (or stapler) that follows their aim, the jetpack's two
  * flames flicker while it burns; a hit flashes them white, a spawn shield wraps them in a bubble.
  */
 
@@ -59,6 +59,21 @@ const shape = {
     frontSight: new BoxGeometry(0.004, 0.012, 0.005),
     barrel: new CylinderGeometry(0.009, 0.009, 0.06, 10).rotateX(Math.PI / 2),
     muzzle: new CylinderGeometry(0.012, 0.012, 0.012, 10).rotateX(Math.PI / 2),
+    // The other guns, built along -Z like the rifle (cylinders turned to lie along Z).
+    stock: new BoxGeometry(0.024, 0.032, 0.05),
+    rifleMag: new BoxGeometry(0.018, 0.04, 0.024),
+    longBarrel: new CylinderGeometry(0.006, 0.006, 0.13, 8).rotateX(Math.PI / 2),
+    scope: new CylinderGeometry(0.011, 0.011, 0.08, 12).rotateX(Math.PI / 2),
+    scopeBell: new CylinderGeometry(0.015, 0.011, 0.02, 12).rotateX(Math.PI / 2),
+    lens: new CylinderGeometry(0.01, 0.01, 0.003, 12).rotateX(Math.PI / 2),
+    shotgunBarrel: new CylinderGeometry(0.012, 0.012, 0.11, 10).rotateX(Math.PI / 2),
+    pump: new BoxGeometry(0.034, 0.024, 0.045),
+    pistol: new RoundedBoxGeometry(0.026, 0.026, 0.075, 2, 0.006),
+    pistolGrip: new BoxGeometry(0.022, 0.045, 0.026),
+    launcherTube: new CylinderGeometry(0.03, 0.03, 0.24, 14).rotateX(Math.PI / 2),
+    launcherBand: new CylinderGeometry(0.032, 0.032, 0.025, 14).rotateX(Math.PI / 2),
+    warhead: new ConeGeometry(0.022, 0.045, 12).rotateX(-Math.PI / 2),
+    ringSight: new TorusGeometry(0.012, 0.002, 6, 16),
     shield: new SphereGeometry(0.29, 24, 16),
     halo: new TorusGeometry(0.07, 0.008, 6, 28),
 }
@@ -71,6 +86,8 @@ const visorMaterial = new MeshStandardMaterial({
     metalness: 0.9,
     envMapIntensity: 1.6,
 })
+const olive = new MeshStandardMaterial({ color: 0x4d5a36, roughness: 0.6, metalness: 0.25 })
+const red = new MeshStandardMaterial({ color: 0xc8372d, roughness: 0.45 })
 const flameMaterial = new MeshBasicMaterial({ color: 0xff8a2a, transparent: true, opacity: 0.8, depthWrite: false })
 const coreMaterial = new MeshBasicMaterial({ color: 0xfff1b0, transparent: true, opacity: 0.95, depthWrite: false })
 const shieldMaterial = new MeshBasicMaterial({ color: 0x9fe3ff, transparent: true, opacity: 0.16, depthWrite: false })
@@ -81,9 +98,10 @@ interface Avatar {
     body: Group
     hips: [Group, Group]
     shoulders: [Group, Group]
-    /** The blaster and the arms holding it: pitched with their aim. */
+    /** The gun and the arms holding it: pitched with their aim. */
     aim: Group
-    gun: Group
+    /** One model per gun; the one in their hands shows. */
+    guns: Record<Gun, Group>
     stapler: Group
     swingAt: number
     head: Group
@@ -173,7 +191,7 @@ export class Avatars {
 
         // Arms and blaster follow the aim; the head follows it half way.
         avatar.aim.rotation.x = pose.pitch
-        avatar.gun.visible = pose.state.weapon === 'blaster'
+        for (const [gun, model] of Object.entries(avatar.guns)) model.visible = gun === pose.state.weapon
         avatar.stapler.visible = pose.state.weapon === 'stapler'
         // A swing: a quick chop down and back.
         const swung = (now - avatar.swingAt) / 300
@@ -259,17 +277,76 @@ export class Avatars {
             shoulder.add(part(shape.arm, suit), part(shape.glove, dark, 0, -0.1, 0))
             aim.add(shoulder)
         }
-        const gun = new Group()
-        gun.position.set(0.03, -0.035, -0.11)
-        gun.add(part(shape.gun, metal))
-        gun.add(part(shape.barrel, dark, 0, 0.006, -0.09), part(shape.muzzle, glow, 0, 0.006, -0.12))
-        gun.add(part(shape.rearSight, dark, 0, 0.024, 0.045), part(shape.frontSight, dark, 0, 0.026, -0.05))
+        // The guns, held where the hands meet; only the one in hand shows.
+        const held = () => {
+            const group = new Group()
+            group.position.set(0.03, -0.035, -0.11)
+            group.visible = false
+            return group
+        }
+        const tilted = (mesh: Mesh, x: number) => {
+            mesh.rotation.x = x
+            return mesh
+        }
+        // The assault rifle: body, stock, a curved magazine, a long barrel, iron sights.
+        const rifle = held()
+        rifle.add(
+            part(shape.gun, metal),
+            part(shape.stock, dark, 0, -0.006, 0.085),
+            tilted(part(shape.rifleMag, suit, 0, -0.038, -0.025), 0.3),
+            part(shape.longBarrel, dark, 0, 0.006, -0.12),
+            part(shape.muzzle, glow, 0, 0.006, -0.19),
+            part(shape.rearSight, dark, 0, 0.024, 0.045),
+            part(shape.frontSight, dark, 0, 0.026, -0.05)
+        )
+        // The sniper: body, stock, a big scope on top, a long barrel, a small magazine.
+        const sniper = held()
+        sniper.add(
+            part(shape.gun, metal),
+            part(shape.stock, suit, 0, -0.006, 0.085),
+            part(shape.rifleMag, dark, 0, -0.03, -0.015),
+            part(shape.longBarrel, dark, 0, 0.004, -0.13),
+            part(shape.longBarrel, dark, 0, 0.004, -0.2),
+            part(shape.muzzle, glow, 0, 0.004, -0.27),
+            part(shape.scope, dark, 0, 0.036, 0),
+            part(shape.scopeBell, dark, 0, 0.036, -0.05),
+            part(shape.lens, glow, 0, 0.036, 0.041)
+        )
+        // The shotgun: body, a fat barrel, the pump in their colour under it.
+        const shotgun = held()
+        shotgun.add(
+            part(shape.gun, metal),
+            part(shape.stock, dark, 0, -0.006, 0.085),
+            part(shape.shotgunBarrel, metal, 0, 0.008, -0.11),
+            part(shape.pump, suit, 0, -0.016, -0.1),
+            part(shape.muzzle, glow, 0, 0.008, -0.165)
+        )
+        // The pistol: small, in one hand's reach.
+        const pistol = held()
+        pistol.add(
+            part(shape.pistol, metal),
+            tilted(part(shape.pistolGrip, suit, 0, -0.03, 0.02), -0.3),
+            part(shape.muzzle, glow, 0, 0.004, -0.04)
+        )
+        // The launcher: a fat tube on the shoulder, a band in their colour, the rocket's red nose out the front.
+        const launcher = held()
+        launcher.position.set(0.05, 0.005, -0.06)
+        launcher.add(
+            part(shape.launcherTube, olive),
+            part(shape.launcherBand, suit, 0, 0, 0.02),
+            part(shape.launcherBand, dark, 0, 0, 0.11),
+            part(shape.warhead, red, 0, 0, -0.14),
+            part(shape.ringSight, dark, 0, 0.044, -0.09),
+            part(shape.frontSight, dark, 0, 0.034, -0.09),
+            part(shape.pistolGrip, dark, 0, -0.045, 0.02)
+        )
+        const guns: Record<Gun, Group> = { rifle, sniper, shotgun, pistol, launcher }
         // The stapler, held the same way, pivoting at its back for the chop.
         const stapler = new Group()
         stapler.position.set(0.03, -0.03, -0.06)
         stapler.add(part(shape.staplerBase, dark, 0, -0.008, -0.05), part(shape.staplerArm, suit, 0, 0.008, -0.048))
         stapler.visible = false
-        aim.add(gun, stapler)
+        aim.add(...Object.values(guns), stapler)
         body.add(aim)
 
         // Jetpack on the back (+Z): two tanks, nozzles with rings, a flame under each.
@@ -321,7 +398,7 @@ export class Avatars {
             speed: 0,
             stride: 0,
             flashUntil: 0,
-            gun,
+            guns,
             stapler,
             swingAt: -1e9,
         }

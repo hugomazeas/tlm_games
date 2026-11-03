@@ -237,7 +237,7 @@ that is played live, in real time, rather than scored afterwards.
 
 ### Office FPS (in progress, `game-server/src/fps/`)
 
-Minis (40 cm) with blasters, staplers and jetpacks in the office (3rd floor), server-authoritative.
+Minis (40 cm) with guns, staplers and jetpacks in the office (3rd floor), server-authoritative.
 Playable at `/games/office-fps`.
 
 - **In the Hub:** `app/Games/OfficeFps/` serves the game page: without `?player=` / `?guest=1` it
@@ -271,8 +271,20 @@ Playable at `/games/office-fps`.
 - **Callouts** (`client/callouts.ts`, pure): kill events carry `killerStreak`, `victimStreak`,
   `firstBlood`; `announce` turns them into feed lines and your banner (double kill … shutdown),
   `taunt` the line under "Fragged by". Awards (`awardsFor` in `lobby.ts`) show on the scoreboard.
-- **Weapons:** 1 the blaster, 2 the stapler (or the wheel), sent in each frame (`weapon`,
-  the 8th element); a switch takes `SWITCH_MS` before the new one works. The stapler
+- **Weapons:** a loadout (`Loadout`: a primary, rifle / sniper / shotgun, and a secondary,
+  pistol / launcher; rifle + pistol by default), picked on the Esc menu, remembered in the
+  browser (`officeFps.loadout`), sent with `hello` and as `loadout`; it applies at the next spawn
+  (at once while still spawn-shielded). Slots 1 primary, 2 secondary, 3 stapler (the wheel, Q the
+  last), the slot sent in each frame (the 8th element); a switch takes `SWITCH_MS`, and each gun
+  keeps its rounds while holstered. Guns are data (`GUNS`, `LAUNCHER` in `sim/combat.ts`):
+  damage, headshot ×, cadence, auto or a click a shot (a click is kept until the gun can use
+  it), magazine, reload, pellets, range, falloff, spread (hip / aiming via `BUTTON.aim` / moving /
+  in the air) and aiming field of view (the sniper's scope: 14°, a scope overlay). Spread is
+  seeded by the frame (`spreadDirection`), so your tracers land where the server's rounds do.
+  The launcher fires a rocket the arena flies each step (`rockets` in snapshots; `launch` and
+  `explode` events): splash with falloff behind cover-checks, knockback (rocket jumps), half
+  damage to yourself, and a self-kill counts for nobody (`killer: null`). Kills name the gun;
+  Laravel keeps `blaster` for older matches (`OfficeFpsKill::RETIRED_WEAPONS`). The stapler
   (`swingStapler`): 0.45 m reach in a ~35° cone, 50 damage, 100 from behind (a backstab), a
   swing every 0.55 s; `swing` events, kills carry `weapon` and `backstab`.
 - **Settings** (`client/settings.ts`, in this browser): sensitivity, aiming sensitivity, field
@@ -280,7 +292,7 @@ Playable at `/games/office-fps`.
 - **Sound** (`client/sounds.ts`): every effect synthesized with Web Audio (oscillator sweeps and
   filtered noise, no files), unlocked by the click that takes the mouse. Others' shots and
   swings are panned and faded by `spatial()`. Reloads: `SelfState.reloadLeftMs` drives the ring
-  by the crosshair (`reloadProgress`) and the blaster's animation (tilt, magazine out and in).
+  by the crosshair (`reloadProgress`) and each gun's own reload animation.
   Headshots: gold "HEADSHOT" by the crosshair when you land one, red across the screen with a
   flash when you take one.
 - **In the game server:** `fps/live.ts` (the one `FpsLobby`, players looked up with
@@ -296,7 +308,7 @@ Playable at `/games/office-fps`.
 - **Controls:** WASD walk, Space jetpack, Shift + a direction (either order: the key that
   completes the pair fires it) dodges (`BUTTON.dash`: a 7 m/s burst for 12 steps that way,
   20% fuel, 0.75 s cooldown, in `stepBody` so it's predicted and checked), click fires,
-  right-click aims (field of view 78° → 45°, mouse slowed to match, blaster centred), V
+  right-click aims (the gun's zoom, mouse slowed to match, the gun on its sights), V
   first/third person.
 - **Feedback:** shot events carry the `damage` they did (0 on a spawn shield). Your hits: a
   marker (gold on a headshot), the number where it landed, a big red marker and "Eliminated"
@@ -311,8 +323,8 @@ Playable at `/games/office-fps`.
   Both place everything from the same seeded random numbers: keep anything that calls `R()` in
   the geometry, never in the materials, or the server's collision drifts from what's drawn.
 - **Sim** (`fps/sim/`, pure): `movement.ts` steps a body at 60 Hz (4 collision sub-steps;
-  walk/run/jetpack tuning at the top), shared with the browser for prediction; `combat.ts` is
-  the hitscan blaster (walls and glass stop shots, headshots on the top of the capsule);
+  walk/run/jetpack tuning at the top), shared with the browser for prediction; `combat.ts` has
+  the guns and hitscan (walls and glass stop shots, headshots on the top of the capsule);
   `arena.ts` runs everyone: one input frame per step (the last one repeated, without firing,
   when none came), shots judged where the shooter saw the target (up to 200 ms back), respawns
   at the spawn point furthest from everyone with a short shield.
@@ -326,7 +338,7 @@ Playable at `/games/office-fps`.
   buttons, view]`, each sent as soon as it's made; snapshots at 30 Hz with your full state and
   `ack` (your last frame used). The server uses every frame of yours that has arrived each step
   (never a queue: that once held input 500 ms behind), within a budget of one a step banked up to
-  `MAX_BURST` (no faster than real time), and the blaster's timings run on your frames' clock;
+  `MAX_BURST` (no faster than real time), and the guns' timings run on your frames' clock;
   no frames for 0.5 s and gravity takes over.
   A snapshot's `players` lists everyone seated, you included: draw others from it, yourself
   from your prediction.

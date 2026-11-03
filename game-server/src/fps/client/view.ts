@@ -1,5 +1,8 @@
 import { Vector3 } from 'three'
-import { aimDirection, WEAPON } from '../sim/combat.ts'
+import { aimDirection } from '../sim/combat.ts'
+
+/** How far the crosshair's point is looked for: past the office's length. */
+const LOOK_RANGE = 40
 import { type FpsWorld, rayDistance } from '../sim/world.ts'
 
 /**
@@ -36,7 +39,7 @@ export function aimFromCamera(
     pitch: number
 ): { yaw: number; pitch: number } {
     const look = aimDirection(yaw, pitch)
-    const target = camera.clone().addScaledVector(look, rayDistance(world, camera, look, WEAPON.range))
+    const target = camera.clone().addScaledVector(look, rayDistance(world, camera, look, LOOK_RANGE))
     const to = target.sub(eye)
     // Something right in front of the lens (a wall you hug): just shoot straight.
     if (to.length() < 0.2) return { yaw, pitch }

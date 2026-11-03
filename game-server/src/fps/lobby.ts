@@ -4,7 +4,9 @@ import {
     DEFAULT_RULES,
     type ErrorCode,
     type GameEvent,
+    DEFAULT_LOADOUT,
     type InputFrame,
+    type Loadout,
     MAX_PLAYERS,
     type MatchView,
     type Mode,
@@ -76,6 +78,8 @@ export interface Joiner {
     playerId: number | null
     name: string
     color?: string
+    /** The guns their browser remembers. */
+    loadout?: Loadout
 }
 
 /** One person's match. */
@@ -136,6 +140,8 @@ interface Member {
     info: PlayerInfo
     /** The key of their score: their Hub player, else this connection. */
     key: string
+    /** Their guns (kept while they watch, for when a seat frees). */
+    loadout: Loadout
 }
 
 interface Tally {
@@ -208,7 +214,12 @@ export class FpsLobby {
             playerId: joiner.playerId,
             watching: !seated,
         }
-        const member: Member = { conn, info, key: joiner.playerId !== null ? `p${joiner.playerId}` : conn.id }
+        const member: Member = {
+            conn,
+            info,
+            key: joiner.playerId !== null ? `p${joiner.playerId}` : conn.id,
+            loadout: joiner.loadout ?? DEFAULT_LOADOUT,
+        }
         this.members.set(conn.id, member)
         if (seated) this.seat(member)
         else this.waiting.push(conn.id)
@@ -247,6 +258,14 @@ export class FpsLobby {
         const member = this.members.get(connId)
         if (!member || member.info.watching) return
         this.arena.queue(connId, frames)
+    }
+
+    /** Their guns from their next spawn (right away if they've just spawned). */
+    setLoadout(connId: string, loadout: Loadout): void {
+        const member = this.members.get(connId)
+        if (!member) return
+        member.loadout = loadout
+        if (!member.info.watching) this.arena.setLoadout(connId, loadout)
     }
 
     /** The host starts a match with these rules (from warmup, with someone to play). */
@@ -300,7 +319,7 @@ export class FpsLobby {
         const tally = this.tallies.get(member.key)
         // In a team match a newcomer joins the smaller side; someone back keeps theirs.
         const team = this.phase === 'playing' && this.rules.mode === 'tdm' ? (tally?.team ?? this.smallerTeam()) : null
-        this.record(this.arena.add(member.conn.id, team))
+        this.record(this.arena.add(member.conn.id, team, member.loadout))
         // Back in the same match (a dropped connection, a reload): their score is still theirs.
         if (tally) {
             tally.connId = member.conn.id
@@ -550,6 +569,7 @@ export class FpsLobby {
         const players = this.arena.states()
         const pickups = this.arena.pickups()
         const zone = this.phase === 'playing' && this.rules.mode === 'koth' ? this.zone : null
+        const rockets = this.arena.rocketStates()
         const events = this.events
         this.events = []
         for (const member of this.members.values()) {
@@ -563,6 +583,7 @@ export class FpsLobby {
                 events,
                 pickups,
                 zone,
+                rockets,
             })
         }
     }

@@ -9,7 +9,21 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** One kill in a match. A guest's side (killer or victim) is null. */
 class OfficeFpsKill extends Model
 {
-    public const WEAPONS = ['blaster', 'stapler'];
+    /** What a kill can be made with: today's guns and the stapler, and the blaster of older matches. */
+    public const WEAPONS = ['rifle', 'sniper', 'shotgun', 'pistol', 'launcher', 'stapler', 'blaster'];
+
+    /** The blaster was replaced by the loadout's guns; its kills stay in the records. */
+    public const RETIRED_WEAPONS = ['blaster'];
+
+    public const WEAPON_LABELS = [
+        'rifle' => '🔫 Assault rifle',
+        'sniper' => '🎯 Sniper',
+        'shotgun' => '💥 Shotgun',
+        'pistol' => '🔫 Pistol',
+        'launcher' => '🚀 Launcher',
+        'stapler' => '📎 Stapler',
+        'blaster' => '🔫 Blaster',
+    ];
 
     protected $table = 'office_fps_kills';
 

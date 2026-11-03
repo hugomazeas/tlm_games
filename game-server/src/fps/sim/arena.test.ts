@@ -1,9 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 import { createRng } from '../../sim/rng.ts'
-import { BUTTON, type InputFrame, type Team } from '../protocol.ts'
+import { BUTTON, DEFAULT_LOADOUT, type InputFrame, type Loadout, type Slot, type Team } from '../protocol.ts'
 import type { PickupSpot } from './places.ts'
 import { Arena, MAX_BURST, SHIELD_STEPS } from './arena.ts'
-import { STAPLER, WEAPON } from './combat.ts'
+import { GUNS, LAUNCHER, STAPLER } from './combat.ts'
+
+const RIFLE = GUNS.rifle
+/** Frames between two rifle shots. */
+const RIFLE_EVERY = (RIFLE.intervalMs * 60) / 1000
 import { type Body, bodyAt, MOVE, moveOf, stepBody } from './movement.ts'
 import { testWorld } from './testing.ts'
 
@@ -98,7 +102,7 @@ describe('inputs are used as they arrive, never queued', () => {
             strafe: 0,
             yaw: dz < 0 ? 0 : Math.PI,
             pitch: Math.atan2(0.2 - 0.34, Math.abs(dz)),
-            buttons: BUTTON.fire,
+            buttons: BUTTON.fire | BUTTON.aim,
             view: 0,
         }
         const fire = (seq: number) => {
@@ -112,19 +116,19 @@ describe('inputs are used as they arrive, never queued', () => {
             a.queue('a', [{ ...aim, seq: seq++, buttons: 0 }])
             a.advance()
         }
-        expect(fire(seq)).toMatchObject({ hit: 'b', damage: 20 })
-        expect(a.states().find(s => s.id === 'b')!.health).toBe(80)
+        expect(fire(seq)).toMatchObject({ hit: 'b', damage: RIFLE.damage })
+        expect(a.states().find(s => s.id === 'b')!.health).toBe(100 - RIFLE.damage)
     })
 
-    test("the blaster's cadence follows the player's frames, even caught up in one step", () => {
+    test("the rifle's cadence follows the player's frames, even caught up in one step", () => {
         const a = arena()
         for (let i = 0; i < 30; i++) a.advance()
         a.queue('me', frames(1, 28, BUTTON.fire))
         const shots = a.advance().filter(e => e.type === 'shot')
 
-        // Frames 1, 10, 19 and 28: one every 150 ms of theirs.
-        expect(shots).toHaveLength(4)
-        expect(a.self('me')!.ammo).toBe(8)
+        // Frames 1, 7, 13, 19 and 25: one every 100 ms of theirs.
+        expect(shots).toHaveLength(5)
+        expect(a.self('me')!.ammo).toBe(RIFLE.magazine - 5)
     })
 })
 
@@ -132,8 +136,9 @@ describe('reloading', () => {
     test('an empty magazine reloads by itself, counting down what is left, then refills', () => {
         const a = arena()
         for (let i = 0; i < 30; i++) a.advance()
-        // Twelve shots, one every 9 frames, a frame a step: the last one empties it.
-        for (let i = 0; i < 12 * 9 - 8; i++) {
+        // A magazine of shots, one every RIFLE_EVERY frames, a frame a step: the last one empties it.
+        const last = RIFLE.magazine * RIFLE_EVERY - (RIFLE_EVERY - 1)
+        for (let i = 0; i < last; i++) {
             a.queue('me', frames(i + 1, 1, BUTTON.fire))
             a.advance()
         }
@@ -141,23 +146,24 @@ describe('reloading', () => {
         const started = a.self('me')!
         expect(started.ammo).toBe(0)
         expect(started.reloading).toBe(true)
-        expect(started.reloadLeftMs).toBeGreaterThan(WEAPON.reloadMs - 200)
-        expect(started.reloadLeftMs).toBeLessThanOrEqual(WEAPON.reloadMs)
+        expect(started.reloadLeftMs).toBeGreaterThan(RIFLE.reloadMs - 200)
+        expect(started.reloadLeftMs).toBeLessThanOrEqual(RIFLE.reloadMs)
 
         // Half way through: about half left.
-        let seq = 12 * 9 - 7
+        let seq = last + 1
         const wait = (steps: number) => {
             for (let i = 0; i < steps; i++) {
                 a.queue('me', frames(seq++, 1))
                 a.advance()
             }
         }
-        wait(36)
-        expect(a.self('me')!.reloadLeftMs).toBeCloseTo(started.reloadLeftMs! - 600, -2)
+        const half = (RIFLE.reloadMs * 60) / 2000
+        wait(half)
+        expect(a.self('me')!.reloadLeftMs).toBeCloseTo(started.reloadLeftMs! - RIFLE.reloadMs / 2, -2)
 
-        wait(40)
+        wait(half + 4)
         const done = a.self('me')!
-        expect([done.reloading, done.reloadLeftMs, done.ammo]).toEqual([false, null, WEAPON.magazine])
+        expect([done.reloading, done.reloadLeftMs, done.ammo]).toEqual([false, null, RIFLE.magazine])
     })
 })
 
@@ -166,7 +172,11 @@ describe('reloading', () => {
  * given, teams as given. `step(frames)` runs one step with each one's frame; `aimAt` fires a's
  * blaster at b's chest or head.
  */
-function duel(pickups: PickupSpot[] = [], teams: [Team | null, Team | null] = [null, null]) {
+function duel(
+    pickups: PickupSpot[] = [],
+    teams: [Team | null, Team | null] = [null, null],
+    loadout: Loadout = DEFAULT_LOADOUT
+) {
     const a = new Arena(
         testWorld(
             [
@@ -178,8 +188,8 @@ function duel(pickups: PickupSpot[] = [], teams: [Team | null, Team | null] = [n
         ),
         createRng(1)
     )
-    a.add('a', teams[0])
-    a.add('b', teams[1])
+    a.add('a', teams[0], loadout)
+    a.add('b', teams[1], loadout)
     // Name them by where they stand, whichever spawn each got.
     const north = a.self('a')!.body.z < 0 ? 'a' : 'b'
     const south = north === 'a' ? 'b' : 'a'
@@ -198,9 +208,15 @@ function duel(pickups: PickupSpot[] = [], teams: [Team | null, Team | null] = [n
         for (const id of ['a', 'b']) a.queue(id, [frame(id, frames[id])])
         return a.advance()
     }
-    /** North fires at south's chest (or head). */
-    const shoot = (head = false) =>
-        step({ [north]: { yaw: Math.PI, pitch: Math.atan2((head ? 0.36 : 0.2) - 0.34, 4), buttons: BUTTON.fire } })
+    /**
+     * North fires at south's chest (or head), aiming down the sights, from a slot. A click-a-shot
+     * gun needs the trigger let go between shots: `release` sends a frame without it first.
+     */
+    const shoot = (head = false, slot: Slot = 'primary', release = false) => {
+        const aim = { yaw: Math.PI, pitch: Math.atan2((head ? 0.36 : 0.2) - 0.34, 4), slot }
+        if (release) step({ [north]: { ...aim, buttons: BUTTON.aim } })
+        return step({ [north]: { ...aim, buttons: BUTTON.fire | BUTTON.aim } })
+    }
     const waitShields = () => {
         for (let i = 0; i < SHIELD_STEPS + 1; i++) step()
     }
@@ -211,12 +227,12 @@ function duel(pickups: PickupSpot[] = [], teams: [Team | null, Team | null] = [n
 describe('pickups', () => {
     const at = (kind: PickupSpot['kind'], x: number, z: number): PickupSpot => ({ kind, x, z, room: 'here' })
 
-    test('walking onto a big magazine fills 18 rounds for a minute, then back to 12', () => {
+    test('walking onto a big magazine fills half as many rounds again for a minute, then back', () => {
         // Right where north spawns.
         const { a, north, step } = duel([at('magazine', 0, -2)])
         const events = step()
         expect(events).toContainEqual({ type: 'pickup', by: north, spot: 0 })
-        expect(a.self(north)).toMatchObject({ ammo: 18, magazine: 18 })
+        expect(a.self(north)).toMatchObject({ ammo: 45, magazine: 45, otherAmmo: 12 })
         expect(a.self(north)!.buffs).toEqual([{ kind: 'magazine', leftMs: expect.any(Number) }])
         expect(a.states().find(s => s.id === north)!.buffs).toEqual(['magazine'])
         // Gone until it comes back.
@@ -225,8 +241,8 @@ describe('pickups', () => {
         // Off the pad (a metre toward +Z), so it isn't taken again when it comes back; then a minute.
         for (let i = 0; i < 30; i++) step({ [north]: { forward: 1, yaw: Math.PI } })
         for (let i = 0; i < 60 * 60; i++) step()
-        expect(a.self(north)).toMatchObject({ magazine: 12, buffs: [] })
-        expect(a.self(north)!.ammo).toBeLessThanOrEqual(12)
+        expect(a.self(north)).toMatchObject({ magazine: 30, otherAmmo: 8, buffs: [] })
+        expect(a.self(north)!.ammo).toBeLessThanOrEqual(30)
         expect(a.pickups()).toEqual([true])
     })
 
@@ -316,7 +332,7 @@ describe('the stapler', () => {
         const near = a.self('x')!.body.z < gap / 2 ? 'x' : 'y'
         const far = near === 'x' ? 'y' : 'x'
         let seq = 0
-        const frame = (buttons: number, weapon: 'blaster' | 'stapler' = 'stapler'): InputFrame => ({
+        const frame = (buttons: number, slot: Slot = 'melee'): InputFrame => ({
             seq: ++seq,
             forward: 0,
             strafe: 0,
@@ -324,11 +340,11 @@ describe('the stapler', () => {
             pitch: Math.atan2(0.2 - 0.34, gap),
             buttons,
             view: a.step,
-            weapon,
+            slot,
         })
         /** One step of the near one's frame; the events it gave. */
-        const step = (buttons: number, weapon?: 'blaster' | 'stapler') => {
-            a.queue(near, [frame(buttons, weapon)])
+        const step = (buttons: number, slot?: Slot) => {
+            a.queue(near, [frame(buttons, slot)])
             return a.advance()
         }
         // Stapler out, past the spawn shields.
@@ -372,14 +388,139 @@ describe('the stapler', () => {
 
     test('switching weapons takes a moment before the new one works', () => {
         const { a, near, step } = standOff(Math.PI, 0)
-        // To the blaster and fire at once: nothing yet.
-        expect(step(BUTTON.fire, 'blaster').filter(e => e.type === 'shot')).toEqual([])
-        expect(a.self(near)!.weapon).toBe('blaster')
+        // To the rifle and fire at once: nothing yet.
+        expect(step(BUTTON.fire, 'primary').filter(e => e.type === 'shot')).toEqual([])
+        expect(a.self(near)!.weapon).toBe('rifle')
         let fired = false
         let waited = 0
-        for (; waited < 60 && !fired; waited++) fired = step(BUTTON.fire, 'blaster').some(e => e.type === 'shot')
+        for (; waited < 60 && !fired; waited++) fired = step(BUTTON.fire, 'primary').some(e => e.type === 'shot')
         expect(fired).toBe(true)
         expect(waited).toBeGreaterThan(10)
-        expect(a.states().find(s => s.id === near)!.weapon).toBe('blaster')
+        expect(a.states().find(s => s.id === near)!.weapon).toBe('rifle')
+    })
+})
+
+describe('the guns', () => {
+    test('the pistol fires a shot a click: holding the trigger fires once', () => {
+        const { a, north, step, shoot, waitShields } = duel()
+        waitShields()
+        let shots = 0
+        for (let i = 0; i < 60; i++) shots += shoot(false, 'secondary').filter(e => e.type === 'shot').length
+        expect(shots).toBe(1)
+        // Let go and click again (past the switch and its cadence): another.
+        expect(shoot(false, 'secondary', true).filter(e => e.type === 'shot')).toHaveLength(1)
+        expect(a.self(north)).toMatchObject({ weapon: 'pistol', ammo: 6, magazine: 8, otherAmmo: 30 })
+        void step
+    })
+
+    test('each gun keeps its own rounds when you switch', () => {
+        const { a, north, shoot, waitShields } = duel()
+        waitShields()
+        for (let i = 0; i < 30; i++) shoot()
+        const rifle = a.self(north)!.ammo
+        expect(rifle).toBeLessThan(30)
+        for (let i = 0; i < 30; i++) shoot(false, 'secondary', i % 2 === 0)
+        expect(a.self(north)!.otherAmmo).toBe(rifle)
+    })
+
+    test('the sniper downs anyone with a headshot, and a body shot leaves them standing', () => {
+        const { a, south, shoot, waitShields } = duel([], [null, null], { primary: 'sniper', secondary: 'pistol' })
+        waitShields()
+        let body: ReturnType<typeof shoot> = []
+        for (let i = 0; i < 30 && !body.some(e => e.type === 'shot'); i++) body = shoot(false, 'primary', true)
+        expect(body.find(e => e.type === 'shot')).toMatchObject({ weapon: 'sniper', damage: GUNS.sniper.damage })
+        expect(a.states().find(s => s.id === south)!.alive).toBe(true)
+
+        let head: ReturnType<typeof shoot> = []
+        for (let i = 0; i < 120 && !head.some(e => e.type === 'shot'); i++) head = shoot(true, 'primary', true)
+        expect(head).toContainEqual(expect.objectContaining({ type: 'kill', weapon: 'sniper', headshot: true }))
+    })
+
+    test("the shotgun's pellets spread, and hurt far less from across the room than up close", () => {
+        const pellets = (gap: number) => {
+            const a = new Arena(
+                testWorld([
+                    { name: 'near', position: [0, 0, 0], yaw: Math.PI },
+                    { name: 'far', position: [0, 0, gap], yaw: 0 },
+                ]),
+                createRng(2)
+            )
+            a.add('x', null, { primary: 'shotgun', secondary: 'pistol' })
+            a.add('y', null, { primary: 'shotgun', secondary: 'pistol' })
+            const near = a.self('x')!.body.z < gap / 2 ? 'x' : 'y'
+            for (let i = 0; i < SHIELD_STEPS + 1; i++) a.advance()
+            a.queue(near, [
+                {
+                    seq: 1,
+                    forward: 0,
+                    strafe: 0,
+                    yaw: Math.PI,
+                    pitch: Math.atan2(0.2 - 0.34, gap),
+                    buttons: BUTTON.fire,
+                    view: a.step,
+                },
+            ])
+            return a.advance().find(e => e.type === 'shot')!
+        }
+        const close = pellets(1)
+        const far = pellets(5)
+        expect(close.type === 'shot' && close.to).toHaveLength(GUNS.shotgun.pellets)
+        expect(close.type === 'shot' && new Set(close.to.map(t => t.join())).size).toBeGreaterThan(1)
+        expect(close.damage).toBeGreaterThan(60)
+        expect(far.damage).toBeLessThan(close.damage / 3)
+    })
+
+    test('a rocket flies, goes off on its target, and the blast throws them', () => {
+        const { a, north, south, shoot, step, waitShields } = duel([], [null, null], {
+            primary: 'rifle',
+            secondary: 'launcher',
+        })
+        waitShields()
+        const launched = shoot(false, 'secondary', true).concat(shoot(false, 'secondary', true))
+        // Past the switch: it fires on a click.
+        let events = launched
+        for (let i = 0; i < 30 && !events.some(e => e.type === 'launch'); i++) events = shoot(false, 'secondary', true)
+        expect(events).toContainEqual(expect.objectContaining({ type: 'launch', by: north }))
+        expect(a.rocketStates()).toHaveLength(1)
+        expect(a.self(north)!.reloading).toBe(true)
+
+        // 4 m at 9 m/s: under half a second.
+        let blast: ReturnType<typeof step> = []
+        for (let i = 0; i < 40 && !blast.some(e => e.type === 'explode'); i++) blast = step()
+        const boom = blast.find(e => e.type === 'explode')
+        expect(boom).toMatchObject({ by: north, hits: [{ id: south, damage: expect.any(Number) }] })
+        expect(a.rocketStates()).toHaveLength(0)
+        const thrown = a.self(south)!.body
+        expect(Math.hypot(thrown.vx, thrown.vy, thrown.vz)).toBeGreaterThan(2)
+        expect(a.self(south)!.health).toBeLessThan(100 - LAUNCHER.damage / 2)
+    })
+
+    test('your own rocket at your feet hurts you less, throws you up, and counts for nobody', () => {
+        const { a, north, step, waitShields } = duel([], [null, null], { primary: 'rifle', secondary: 'launcher' })
+        waitShields()
+        // Straight down.
+        const down = { yaw: 0, pitch: -Math.PI / 2 + 0.01, slot: 'secondary' as const }
+        for (let i = 0; i < 20; i++) step({ [north]: { ...down, buttons: 0 } })
+        const events = step({ [north]: { ...down, buttons: BUTTON.fire } })
+        const all = events.concat(step(), step(), step())
+        const boom = all.find(e => e.type === 'explode')
+        expect(boom).toMatchObject({ by: north, hits: [{ id: north }] })
+        const me = a.self(north)!
+        expect(me.health).toBeGreaterThan(100 - LAUNCHER.damage * LAUNCHER.selfFactor - 1)
+        expect(me.health).toBeLessThan(100)
+        expect(me.body.vy).toBeGreaterThan(1)
+    })
+
+    test('a new loadout waits for the next spawn, unless you have only just spawned', () => {
+        const { a, north, step } = duel()
+        a.setLoadout(north, { primary: 'shotgun', secondary: 'launcher' })
+        expect(a.self(north)).toMatchObject({ weapon: 'shotgun', loadout: { primary: 'shotgun' } })
+
+        for (let i = 0; i < SHIELD_STEPS + 1; i++) step()
+        a.setLoadout(north, { primary: 'sniper', secondary: 'pistol' })
+        expect(a.self(north)).toMatchObject({
+            weapon: 'shotgun',
+            nextLoadout: { primary: 'sniper', secondary: 'pistol' },
+        })
     })
 })
