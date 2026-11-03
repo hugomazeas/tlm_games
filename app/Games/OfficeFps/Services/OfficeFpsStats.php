@@ -3,6 +3,7 @@
 namespace App\Games\OfficeFps\Services;
 
 use App\Games\OfficeFps\Models\OfficeFpsKill;
+use App\Games\OfficeFps\Models\OfficeFpsMatch;
 use App\Games\OfficeFps\Models\OfficeFpsResult;
 use App\Models\Player;
 use Illuminate\Database\Eloquent\Builder;
@@ -44,7 +45,7 @@ class OfficeFpsStats
     /**
      * A player's whole office FPS record, or null if they've never finished a match.
      *
-     * @return array{totals: array<string, int|float>, records: array<string, int>, weapons: array<string, array{kills: int, deaths: int}>, nemeses: Collection, victims: Collection, recent: Collection, rank: int|null}|null
+     * @return array{totals: array<string, int|float>, modes: array<string, array{matches: int, wins: int}>, records: array<string, int>, weapons: array<string, array{kills: int, deaths: int}>, nemeses: Collection, victims: Collection, recent: Collection, rank: int|null}|null
      */
     public function forPlayer(Player $player): ?array
     {
@@ -80,7 +81,10 @@ class OfficeFpsStats
                 'melee_kills' => (int) $row->melee_kills,
                 'backstabs' => (int) $row->backstabs,
                 'played_ms' => (int) $row->played_ms,
+                'zone_ms' => (int) $row->zone_ms,
+                'pickups' => (int) $row->pickups,
             ],
+            'modes' => $this->modes($player),
             'records' => [
                 'most_kills' => (int) (clone $results)->max('kills'),
                 'most_damage' => (int) (clone $results)->max('damage'),
@@ -100,7 +104,7 @@ class OfficeFpsStats
         return OfficeFpsResult::query()->select(
             'player_id',
             DB::raw('COUNT(*) as matches'),
-            DB::raw('SUM(CASE WHEN place = 1 THEN 1 ELSE 0 END) as wins'),
+            DB::raw('SUM(CASE WHEN won THEN 1 ELSE 0 END) as wins'),
             DB::raw('SUM(CASE WHEN place <= 3 THEN 1 ELSE 0 END) as podiums'),
             DB::raw('AVG(place) as average_place'),
             DB::raw('SUM(kills) as kills'),
@@ -112,7 +116,35 @@ class OfficeFpsStats
             DB::raw('SUM(melee_kills) as melee_kills'),
             DB::raw('SUM(backstabs) as backstabs'),
             DB::raw('SUM(played_ms) as played_ms'),
+            DB::raw('SUM(zone_ms) as zone_ms'),
+            DB::raw('SUM(pickups) as pickups'),
         );
+    }
+
+    /**
+     * Matches played and won in each mode, every mode listed (zeros for one never played).
+     *
+     * @return array<string, array{matches: int, wins: int}>
+     */
+    private function modes(Player $player): array
+    {
+        $rows = OfficeFpsResult::query()
+            ->join('office_fps_matches', 'office_fps_matches.id', '=', 'office_fps_results.office_fps_match_id')
+            ->where('office_fps_results.player_id', $player->id)
+            ->groupBy('office_fps_matches.mode')
+            ->get([
+                'office_fps_matches.mode',
+                DB::raw('COUNT(*) as matches'),
+                DB::raw('SUM(CASE WHEN office_fps_results.won THEN 1 ELSE 0 END) as wins'),
+            ])
+            ->keyBy('mode');
+
+        return collect(OfficeFpsMatch::MODES)
+            ->mapWithKeys(fn (string $mode) => [$mode => [
+                'matches' => (int) ($rows[$mode]->matches ?? 0),
+                'wins' => (int) ($rows[$mode]->wins ?? 0),
+            ]])
+            ->all();
     }
 
     /**

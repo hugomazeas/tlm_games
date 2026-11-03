@@ -1,15 +1,18 @@
 import { BufferGeometry, Float32BufferAttribute, Mesh } from 'three'
 import { MeshBVH } from 'three-mesh-bvh'
 import type { CollisionMesh, SpawnPoint } from '../map/office.js'
+import type { PickupSpot } from './places.ts'
 import type { FpsWorld } from './world.ts'
 
 /**
  * A bare room for tests: a 40 × 40 m floor at y = 0, nothing else unless asked (`walls`: boxes
- * given by their min and max corners), and the spawn points given. Fast to build, easy to aim in.
+ * given by their min and max corners; `pickups`), and the spawn points given. Fast to build, easy
+ * to aim in.
  */
 export function testWorld(
     spawnPoints: SpawnPoint[],
-    walls: Array<{ min: [number, number, number]; max: [number, number, number] }> = []
+    walls: Array<{ min: [number, number, number]; max: [number, number, number] }> = [],
+    pickups: PickupSpot[] = []
 ): FpsWorld {
     const positions: number[] = []
     const quad = (a: number[], b: number[], c: number[], d: number[]) =>
@@ -29,5 +32,5 @@ export function testWorld(
     const solid = new Mesh(geometry) as unknown as CollisionMesh
     solid.geometry.boundsTree = new MeshBVH(geometry)
 
-    return { meshes: [solid], spawnPoints }
+    return { meshes: [solid], spawnPoints, pickups }
 }

@@ -111,6 +111,11 @@ export class Effects {
     }
 }
 
+/** Smooth in and out (0 … 1). */
+function ease(t: number): number {
+    return t * t * (3 - 2 * t)
+}
+
 /** Where your blaster sits in the camera's frame (m): its centre line, and the top of its body. */
 const GUN_X = 0.045
 const BODY_TOP = -0.0275
@@ -123,6 +128,8 @@ export class Viewmodel {
     private readonly blaster = new Group()
     private readonly stapler = new Group()
     private readonly staplerArm: Group
+    private readonly magazine: Mesh
+    private readonly magazineY: number
     private held: Weapon = 'blaster'
     private switchAt = -1e9
     private swingAt = -1e9
@@ -181,7 +188,10 @@ export class Viewmodel {
         this.flash.position.copy(this.muzzle).add(new Vector3(0, 0, -0.02))
         this.flash.visible = false
         this.light.position.copy(this.muzzle)
-        this.blaster.add(body, ...stripes, grip, barrel, ...rear, ...front, tip, this.flash, this.light)
+        // The magazine, in the well in front of the grip: it drops out during a reload.
+        this.magazineY = top - 0.045
+        this.magazine = box([0.016, 0.032, 0.022], trim, [x, this.magazineY, -0.112])
+        this.blaster.add(body, ...stripes, grip, barrel, ...rear, ...front, tip, this.magazine, this.flash, this.light)
         // Drawn over the world so it never sinks into a wall you hug. Without depth, order decides:
         // the body first, then what sits on it (stripes, sights), then the sight's glowing tip.
         for (const mesh of [...stripes, ...rear, ...front]) mesh.renderOrder = 11
@@ -237,18 +247,29 @@ export class Viewmodel {
 
     /**
      * `aim` 0–1: how far into aiming down the sights (the blaster slides to the middle, under the
-     * crosshair, and stops bobbing).
+     * crosshair, and stops bobbing). `reload` 0–1: how far through a reload (null: none).
      */
-    update(now: number, moving: boolean, aim = 0): void {
+    update(now: number, moving: boolean, aim = 0, reload: number | null = null): void {
         const since = now - this.kickAt
         const kick = Math.max(0, 1 - since / 90) * (1 - aim * 0.6)
         const bob = moving ? Math.sin(now * 0.012) * 0.003 * (1 - aim) : 0
         // Just switched: the new weapon rises from below.
         const raise = Math.min(1, (now - this.switchAt) / SWITCH_MS)
         const lowered = (1 - raise) * 0.07
+        // A reload: the blaster tips over to show its side, the magazine drops out and slides back in.
+        const r = this.held === 'blaster' ? reload : null
+        const tilt = r === null ? 0 : ease(Math.min(1, r / 0.15)) * ease(Math.min(1, (1 - r) / 0.15))
+        let drop = 0
+        if (r !== null) {
+            if (r < 0.45) drop = ease(Math.max(0, (r - 0.15) / 0.3))
+            else if (r < 0.6) drop = 1
+            else drop = 1 - ease(Math.min(1, (r - 0.6) / 0.25))
+        }
+        this.magazine.position.y = this.magazineY - drop * 0.07
+        this.magazine.visible = drop < 0.98
         // Aimed, the sights' line runs through the middle of the view: the crosshair sits on the front post.
-        this.root.position.set(-GUN_X * aim, bob - SIGHT_LINE * aim - lowered, kick * 0.02)
-        this.root.rotation.x = kick * 0.12
+        this.root.position.set(-GUN_X * aim, bob - SIGHT_LINE * aim - lowered - tilt * 0.015, kick * 0.02)
+        this.root.rotation.set(kick * 0.12 + tilt * 0.18, 0, tilt * 0.35)
         this.blaster.visible = this.held === 'blaster'
         this.stapler.visible = this.held === 'stapler'
         this.flash.visible = this.held === 'blaster' && since < 45

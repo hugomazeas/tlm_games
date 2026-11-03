@@ -10,17 +10,24 @@ import {
     type Rules,
     type SelfState,
     type ServerMessage,
+    type Team,
+    TEAM_COLORS,
     type Weapon,
+    type ZoneState,
 } from '../protocol.ts'
 import { aimDirection, eyeOf, STAPLER, SWITCH_MS, WEAPON } from '../sim/combat.ts'
-import { PLAYER, STEP_MS } from '../sim/movement.ts'
+import { MOVE, PLAYER, STEP_MS } from '../sim/movement.ts'
+import { PICKUP_SPOTS, type PickupKind, PICKUPS, ZONES } from '../sim/places.ts'
 import { rayDistance, worldFrom } from '../sim/world.ts'
 import { Avatars } from './avatars.ts'
+import { announce, taunt } from './callouts.ts'
 import { Controls } from './controls.ts'
 import { Effects, Viewmodel } from './effects.ts'
-import { escape, Hud } from './hud.ts'
+import { BUFF_LABELS, escape, Hud } from './hud.ts'
+import { PICKUP_COLORS, PickupViews, ZoneView } from './pickups.ts'
 import { Prediction } from './prediction.ts'
 import { aimFov, loadSettings, saveSettings } from './settings.ts'
+import { reloadProgress, Sounds, spatial } from './sounds.ts'
 import { targetUnderCrosshair } from './targeting.ts'
 import { Interpolator, type Pose, ServerClock } from './timeline.ts'
 import { aimFromCamera, thirdPersonCamera } from './view.ts'
@@ -69,6 +76,8 @@ camera.rotation.order = 'YXZ'
 scene.add(camera)
 const office = buildOffice(scene, renderer)
 const world = worldFrom(office)
+const pickupViews = new PickupViews(scene)
+const zoneView = new ZoneView(scene)
 addEventListener('resize', () => {
     renderer.setSize(innerWidth, innerHeight)
     camera.aspect = innerWidth / innerHeight
@@ -76,17 +85,25 @@ addEventListener('resize', () => {
 })
 
 let settings = loadSettings()
+const sounds = new Sounds()
 const hud = new Hud(config.backUrl, {
     settings,
     onSettings: changed => {
         settings = changed
         saveSettings(changed)
         controls.invertY = changed.invertY
+        sounds.setVolume(changed.volume)
     },
     onStart: rules => startMatch(rules),
 })
-const controls = new Controls(renderer.domElement, locked => hud.card(locked ? 'playing' : 'paused'))
+const controls = new Controls(renderer.domElement, locked => {
+    hud.card(locked ? 'playing' : 'paused')
+    // The click that takes the mouse is the one browsers need before any sound.
+    if (locked) sounds.unlock()
+    else sounds.jetting(false)
+})
 controls.invertY = settings.invertY
+sounds.setVolume(settings.volume)
 const avatars = new Avatars(scene)
 const effects = new Effects(scene)
 let viewmodel: Viewmodel | null = null
@@ -99,6 +116,15 @@ let match: MatchView | null = null
 let self: SelfState | null = null
 let wasAlive = false
 let killer: string | null = null
+/** The line under "Fragged by …", picked when you go down. */
+let deathTaunt: string | null = null
+/** The latest snapshot's pickups (which are there) and zone. */
+let pickupsReady: boolean[] = []
+let zone: ZoneState | null = null
+/** When `zone` came (its `movesInMs` counts from then). */
+let zoneAt = 0
+/** Everyone's side, from the latest snapshot (team deathmatch). */
+let teams = new Map<string, Team | null>()
 let seq = 0
 let outbox: InputFrame[] = []
 let prediction = new Prediction(world)
@@ -108,6 +134,14 @@ let others = new Interpolator()
 const smoothing = new Vector3()
 let nextLocalShot = 0
 let nextLocalSwing = 0
+let wasFiring = false
+/** When your reload ends on this clock (null: not reloading); the ring and the animation run to it. */
+let reloadEndsAt: number | null = null
+/** Seen alive once already: later spawns get their chime (not the first one, on joining). */
+let wasConnectedAlive = false
+/** When the last match message came (its remainingMs counts from then), and the last countdown beep. */
+let matchAt = 0
+let lastBeep = 0
 /** The weapon in hand here, and when it can be used (as the server counts it). */
 let held: Weapon = 'blaster'
 let readyAt = 0
@@ -166,7 +200,10 @@ function receive(message: ServerMessage): void {
             outbox = []
             self = null
             wasAlive = false
+            wasConnectedAlive = false
+            reloadEndsAt = null
             match = message.match
+            matchAt = now
             hud.setMatch(message.match, now)
             hud.card(controls.locked ? 'playing' : 'paused')
             viewmodel ??= new Viewmodel(camera, roster.get(me)?.color ?? '#ffd166')
@@ -176,11 +213,20 @@ function receive(message: ServerMessage): void {
             roster = new Map(message.players.map(p => [p.id, p]))
             updateHost()
             return
-        case 'match':
+        case 'match': {
+            const before = match?.phase
+            const pointsBefore = match?.scores.find(s => s.id === me)?.points ?? 0
             match = message.match
+            matchAt = now
             hud.setMatch(message.match, now)
             updateHost()
+            if (before === 'countdown' && match.phase === 'playing') sounds.countdown(true)
+            if (before === 'playing' && match.phase === 'intermission') sounds.result(iWon(match))
+            // A second more in the zone: a soft tick.
+            const points = match.scores.find(s => s.id === me)?.points ?? 0
+            if (match.phase === 'playing' && points > pointsBefore) sounds.zoneTick()
             return
+        }
         case 'snap':
             snapshot(message, now)
             return
@@ -207,6 +253,16 @@ function updateHost(): void {
     hud.setHost({ isHost: host !== null && host === me, name: host ? (roster.get(host)?.name ?? null) : null, seated })
 }
 
+/** Did you (or your side) win the match that just ended? */
+function iWon(view: MatchView): boolean {
+    if (view.mode === 'tdm' && view.teams) {
+        const mine = view.scores.find(s => s.id === me)?.team
+        const other = mine === 'red' ? 'blue' : 'red'
+        return mine !== undefined && mine !== null && view.teams[mine] > view.teams[other]
+    }
+    return view.scores[0]?.id === me
+}
+
 function startMatch(rules: Rules): void {
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'start', rules }))
 }
@@ -214,10 +270,16 @@ function startMatch(rules: Rules): void {
 function snapshot(snap: Extract<ServerMessage, { type: 'snap' }>, now: number): void {
     clock.heard(snap.step, now)
     others.push(snap.step, snap.players)
+    const wasReloading = self?.reloading ?? false
     self = snap.you
     hud.setSelf(self)
     if (self) {
+        // The reload's end, on this clock (the ring and the animation run to it between snapshots).
+        reloadEndsAt = self.reloadLeftMs === null ? null : now + self.reloadLeftMs
+        if (self.reloading && !wasReloading && self.reloadLeftMs !== null) sounds.reload(self.reloadLeftMs)
         const spawned = self.alive && !wasAlive
+        if (spawned && wasConnectedAlive) sounds.spawn()
+        wasConnectedAlive = true
         const correction = prediction.reconcile(snap.ack, self.body, self.alive)
         const off = Math.hypot(correction.x, correction.y, correction.z)
         if (spawned || off > SNAP_DISTANCE) smoothing.set(0, 0, 0)
@@ -226,22 +288,57 @@ function snapshot(snap: Extract<ServerMessage, { type: 'snap' }>, now: number): 
             const at = snap.players.find(p => p.id === me)
             if (at) controls.face(at.yaw)
             killer = null
+            deathTaunt = null
         }
         wasAlive = self.alive
     }
+    teams = new Map(snap.players.map(p => [p.id, p.team]))
+    pickupsReady = snap.pickups
+    // The zone moved on: two beeps and a word.
+    if (snap.zone && zone && snap.zone.index !== zone.index) {
+        sounds.zoneMoved()
+        hud.toast(`ZONE MOVED: ${ZONES[snap.zone.index]!.name.toUpperCase()}`, '#ffffff')
+    }
+    zone = snap.zone
+    zoneAt = now
     for (const event of snap.events) onEvent(event, now)
+}
+
+/** Someone's colour: their side's in team deathmatch, their own otherwise. */
+function colorOf(id: string | null): string {
+    if (!id) return '#ffffff'
+    const team = teams.get(id)
+    return team ? TEAM_COLORS[team] : (roster.get(id)?.color ?? '#ffffff')
 }
 
 function onEvent(event: GameEvent, now: number): void {
     const name = (id: string | null) => (id && roster.get(id)?.name) || '?'
-    const colored = (id: string | null) =>
-        `<span style="color:${(id && roster.get(id)?.color) || '#fff'}">${escape(name(id))}</span>`
+    const colored = (id: string | null) => `<span style="color:${colorOf(id)}">${escape(name(id))}</span>`
+    if (event.type === 'pickup') {
+        const spot = PICKUP_SPOTS[event.spot]
+        if (!spot) return
+        const { name: what } = PICKUPS[spot.kind]
+        hud.killFeed(
+            `${colored(event.by)} <span style="opacity:.7">grabbed</span> <b style="color:${PICKUP_COLORS[spot.kind]}">${what}</b> <span style="opacity:.6">in ${spot.room}</span>`
+        )
+        if (event.by === me) {
+            hud.toast(PICKUP_TOASTS[spot.kind], PICKUP_COLORS[spot.kind])
+            sounds.pickup(spot.kind)
+        }
+        return
+    }
     if (event.type === 'shot') {
         if (event.hit && event.damage > 0) avatars.flash(event.hit, now)
         if (event.by === me) {
             // Drawn already when fired; the server says whether it hit, and for how much.
             if (event.hit) {
                 if (event.damage > 0) hud.hitMarker(event.headshot)
+                if (event.damage > 0 && event.headshot) {
+                    hud.headshot('dealt')
+                    sounds.headshot()
+                } else if (event.damage > 0) {
+                    sounds.hit()
+                }
                 const at = toScreen(new Vector3(...event.to))
                 if (at) hud.damageNumber(event.damage, event.headshot, at.x, at.y)
             }
@@ -249,22 +346,38 @@ function onEvent(event: GameEvent, now: number): void {
         }
         const color = parseInt((roster.get(event.by)?.color ?? '#ffffff').slice(1), 16)
         effects.tracer(new Vector3(...event.from), new Vector3(...event.to), color, now, event.hit !== null)
-        // Hit: which way it came from.
-        if (event.hit === me && event.damage > 0) hud.damageFrom(bearingTo(event.from))
+        sounds.otherShot(spatial(listener(), { x: event.from[0], z: event.from[2] }))
+        // Hit: which way it came from, and how hard.
+        if (event.hit === me && event.damage > 0) {
+            hud.damageFrom(bearingTo(event.from))
+            if (event.headshot) {
+                hud.headshot('taken')
+                sounds.headshotTaken()
+            } else {
+                sounds.hurt()
+            }
+        }
     }
     if (event.type === 'swing') {
         if (event.hit && event.damage > 0) avatars.flash(event.hit, now)
         if (event.by === me) {
             // The chop was drawn when swung; the server says what it hit.
             const struck = event.hit ? avatars.centerOf(event.hit) : null
-            if (event.hit && event.damage > 0) hud.hitMarker(event.backstab)
+            if (event.hit && event.damage > 0) {
+                hud.hitMarker(event.backstab)
+                sounds.swingHit(event.backstab)
+            }
             const at = struck ? toScreen(new Vector3(struck.x, struck.y, struck.z)) : null
             if (event.hit && at) hud.damageNumber(event.damage, event.backstab, at.x, at.y)
             return
         }
         avatars.swing(event.by, now)
         const from = avatars.centerOf(event.by)
-        if (event.hit === me && event.damage > 0 && from) hud.damageFrom(bearingTo([from.x, from.y, from.z]))
+        if (from) sounds.swing(spatial(listener(), from))
+        if (event.hit === me && event.damage > 0) {
+            if (from) hud.damageFrom(bearingTo([from.x, from.y, from.z]))
+            sounds.hurt()
+        }
     }
     if (event.type === 'kill') {
         const icon =
@@ -273,13 +386,31 @@ function onEvent(event: GameEvent, now: number): void {
         hud.killFeed(`${colored(event.killer)} ${how} ${colored(event.victim)}`)
         // Still drawn where they fell (they disappear on the next frame).
         const fell = avatars.centerOf(event.victim)
-        if (fell) effects.burst(fell, roster.get(event.victim)?.color ?? '#ffffff', now)
-        if (event.victim === me) killer = event.killer ? name(event.killer) : null
+        if (fell) effects.burst(fell, colorOf(event.victim), now)
+        if (event.victim === me) {
+            killer = event.killer ? name(event.killer) : null
+            deathTaunt = event.killer && event.killer !== me ? taunt(event, Math.random) : null
+        }
         if (event.killer === me && event.victim !== me) {
             hud.hitMarker(event.headshot, true)
             hud.eliminated(name(event.victim))
+            sounds.kill()
+        }
+        // Streaks, shutdowns, first blood: lines for everyone, a banner for whoever did it.
+        const said = announce(event, me, id => escape(name(id)))
+        for (const line of said.feed) hud.killFeed(`<span style="color:#ffd166">${line}</span>`)
+        if (said.banner) {
+            hud.callout(said.banner.title, said.banner.sub, said.banner.level)
+            sounds.callout(said.banner.level)
         }
     }
+}
+
+const PICKUP_TOASTS: Record<PickupKind, string> = {
+    health: '+50 HEALTH',
+    magazine: 'BIG MAGAZINE: 18 ROUNDS FOR 60 s',
+    jetpack: 'JETPACK ×4 FOR 60 s',
+    headshot: 'ONE-SHOT HEADSHOTS FOR 30 s',
 }
 
 /** A point in the world on screen (px), or null when it's behind the camera. */
@@ -287,6 +418,13 @@ function toScreen(point: Vector3): { x: number; y: number } | null {
     const p = point.clone().project(camera)
     if (p.z > 1) return null
     return { x: (p.x * 0.5 + 0.5) * innerWidth, y: (-p.y * 0.5 + 0.5) * innerHeight }
+}
+
+/** Where you hear from: your body (or the camera, watching) and where you look. */
+function listener(): { x: number; z: number; yaw: number } {
+    const body = prediction.body
+    const at = body ?? camera.position
+    return { x: at.x, z: at.z, yaw: controls.yaw }
 }
 
 /** Which way a point is from where you look: radians, 0 ahead, π/2 to your right. */
@@ -339,6 +477,9 @@ function step(now: number): void {
     prediction.apply(input, self.alive)
     outbox.push(input)
     if (outbox.length >= SEND_EVERY) flush()
+    // A dodge that went off (the body just started one), and the jetpack's rumble while it burns.
+    if (self.alive && prediction.body?.dashLeft === MOVE.dashSteps) sounds.dash()
+    sounds.jetting(jetting && self.alive && controls.locked)
 
     // A new weapon in hand: like the server, it can't be used for a moment.
     if (controls.weapon !== held) {
@@ -347,7 +488,9 @@ function step(now: number): void {
         if (viewmodel) viewmodel.weapon = held
     }
     const firing = Boolean(input.buttons & BUTTON.fire) && self.alive && now >= readyAt
-    // Your own shot or swing shows at once: the server's answer only says what it hit.
+    const pulled = firing && !wasFiring
+    wasFiring = firing
+    // Your own shot or swing shows (and sounds) at once: the server's answer only says what it hit.
     if (firing && held === 'blaster' && !self.reloading && self.ammo > 0 && now >= nextLocalShot) {
         nextLocalShot = now + WEAPON.intervalMs
         const eye = eyeOf(prediction.body!)
@@ -355,11 +498,15 @@ function step(now: number): void {
         const end = eye.clone().addScaledVector(direction, rayDistance(world, eye, direction, WEAPON.range))
         viewmodel?.fire(now)
         effects.tracer(viewmodel && !thirdPerson ? viewmodel.muzzleIn(camera) : eye, end, 0xffd080, now, false)
+        sounds.shot()
+    } else if (pulled && held === 'blaster' && (self.reloading || self.ammo === 0)) {
+        sounds.empty()
     }
     if (firing && held === 'stapler' && now >= nextLocalSwing) {
         nextLocalSwing = now + STAPLER.intervalMs
         viewmodel?.swing(now)
         if (me) avatars.swing(me, now)
+        sounds.swing()
     }
 }
 
@@ -423,10 +570,21 @@ function draw(now: number): void {
     const aimedSensitivity = 1 + (settings.aimSensitivity - 1) * aimBlend
     controls.sensitivityScale = settings.sensitivity * (fov / hipFov) * aimedSensitivity
     hud.aiming = aimingNow
+    // A reload: the ring by the crosshair and the blaster's animation, run to its end between snapshots.
+    const reloading = Boolean(self?.alive && self.reloading && held === 'blaster' && reloadEndsAt !== null)
+    const reload = reloading ? reloadProgress(Math.max(0, reloadEndsAt! - now), WEAPON.reloadMs) : null
+    hud.reload(reload)
     if (viewmodel) {
         viewmodel.visible = Boolean(self?.alive) && !third
         const moving = Boolean(body && body.onGround && Math.hypot(body.vx, body.vz) > 0.5)
-        viewmodel.update(now, moving, aimBlend)
+        viewmodel.update(now, moving, aimBlend, reload)
+    }
+
+    // The countdown's last three seconds tick.
+    if (match?.phase === 'countdown' && match.remainingMs !== null) {
+        const seconds = Math.ceil((match.remainingMs - (now - matchAt)) / 1000)
+        if (seconds !== lastBeep && seconds >= 1 && seconds <= 3) sounds.countdown(false)
+        lastBeep = seconds
     }
 
     const at = clock.renderStep(now)
@@ -444,14 +602,54 @@ function draw(now: number): void {
             jet: jetting,
             shielded: self.shielded,
             weapon: held,
+            team: teams.get(me) ?? null,
+            buffs: self.buffs.map(b => b.kind),
         }
         poses.set(me, { ...where, ...facing, state })
     }
     avatars.update(poses, roster, third ? null : me, now)
     effects.update(now)
+    pickupViews.update(pickupsReady, now)
+    zoneView.update(zone, colorOf, zone !== null && zone.holder === me, now)
+    showZone(now)
     showTarget(poses)
-    hud.update(now, { me, self, killer, tab: controls.scoreboardHeld, roster })
+    hud.update(now, { me, self, killer, taunt: deathTaunt, tab: controls.scoreboardHeld, roster })
     renderer.render(scene, camera)
+}
+
+/** King of the meeting room: who holds the zone, and a marker pointing at it (kept on screen). */
+function showZone(now: number): void {
+    if (!zone || match?.phase !== 'playing' || !self?.alive) return hud.zone(null, null)
+    const place = ZONES[zone.index]!
+    const holder = zone.holder
+    const status = zone.contested
+        ? { text: 'ZONE CONTESTED', color: '#ff9f1c' }
+        : holder === me
+          ? { text: 'HOLDING THE ZONE', color: '#3ddc84' }
+          : holder
+            ? { text: `${roster.get(holder)?.name ?? '?'} HOLDS THE ZONE`, color: colorOf(holder) }
+            : { text: 'TAKE THE ZONE', color: '#ffffff' }
+    camera.updateMatrixWorld()
+    const centre = new Vector3(place.x, 1.0, place.z)
+    const p = centre.clone().project(camera)
+    // Behind you: flip it so the marker sits on the side you'd turn to.
+    const behind = p.z > 1
+    let x = behind ? -p.x : p.x
+    let y = behind ? -p.y : p.y
+    if (behind || Math.abs(x) > 0.92 || Math.abs(y) > 0.85) {
+        const scale = Math.max(Math.abs(x) / 0.92, Math.abs(y) / 0.85, behind ? 1 : 0)
+        x /= scale
+        y /= scale
+    }
+    const body = prediction.body
+    const metres = body ? Math.hypot(place.x - body.x, place.z - body.z) : 0
+    const moves = Math.max(0, Math.ceil((zone.movesInMs - (now - zoneAt)) / 1000))
+    hud.zone(status, {
+        x: (x * 0.5 + 0.5) * innerWidth,
+        y: (-y * 0.5 + 0.5) * innerHeight,
+        label: `${place.name} · ${metres.toFixed(0)} m · moves in ${moves} s`,
+        color: zone.contested ? '#ff9f1c' : holder ? colorOf(holder) : '#ffffff',
+    })
 }
 
 /** The name and health of whoever the crosshair is on, over their head. */
@@ -467,5 +665,7 @@ function showTarget(poses: Map<string, Pose>): void {
     const at = pose ? toScreen(new Vector3(pose.x, pose.y + PLAYER.height + 0.08, pose.z)) : null
     if (!id || !pose || !at) return hud.target(null)
     const info = roster.get(id)
-    hud.target({ name: info?.name ?? '?', color: info?.color ?? '#ffffff', health: pose.state.health }, at.x, at.y)
+    const buffs = pose.state.buffs.map(kind => BUFF_LABELS[kind].icon).join('')
+    const label = `${info?.name ?? '?'}${buffs ? ` ${buffs}` : ''}`
+    hud.target({ name: label, color: colorOf(id), health: pose.state.health }, at.x, at.y)
 }

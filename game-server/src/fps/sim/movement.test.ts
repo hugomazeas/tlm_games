@@ -77,6 +77,16 @@ describe('a mini in the office', () => {
         expect(empty.y + PLAYER.height).toBeLessThan(2.71)
     })
 
+    test('a jetpack extender makes the same fuel last four times as long, and runs out', () => {
+        const start = standing()
+        const plain = run(start, { ...IDLE, jet: true }, 60)
+        const boosted = run({ ...start, jetBoost: 600 }, { ...IDLE, jet: true }, 60)
+
+        expect(1 - boosted.fuel).toBeCloseTo((1 - plain.fuel) / 4, 3)
+        expect(boosted.jetBoost).toBe(540)
+        expect(run({ ...start, jetBoost: 10 }, IDLE, 20).jetBoost).toBe(0)
+    })
+
     test('fuel only comes back on the ground', () => {
         const flying = run(standing(), { ...IDLE, jet: true }, 60)
         const falling = stepBody(officeWorld(), flying, IDLE)

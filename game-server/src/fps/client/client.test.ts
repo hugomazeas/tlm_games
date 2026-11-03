@@ -9,9 +9,97 @@ import { aimFromCamera, THIRD_PERSON, thirdPersonCamera } from './view.ts'
 import { targetUnderCrosshair } from './targeting.ts'
 import { Viewmodel } from './effects.ts'
 import { aimFov, DEFAULT_SETTINGS, LIMITS, parseSettings } from './settings.ts'
+import { reloadProgress, spatial } from './sounds.ts'
+import { announce, streakCallout, taunt } from './callouts.ts'
+import type { GameEvent } from '../protocol.ts'
 import { PerspectiveCamera } from 'three'
 import { Vector3 } from 'three'
 import { aimDirection, fireShot } from '../sim/combat.ts'
+
+describe('the announcer', () => {
+    const names: Record<string, string> = { me: 'Ann', bob: 'Bob', cat: 'Cat' }
+    const name = (id: string | null) => (id ? (names[id] ?? '?') : '?')
+    const kill = (over: Partial<Extract<GameEvent, { type: 'kill' }>> = {}): Extract<GameEvent, { type: 'kill' }> => ({
+        type: 'kill',
+        killer: 'me',
+        victim: 'bob',
+        headshot: false,
+        weapon: 'blaster',
+        backstab: false,
+        killerStreak: 1,
+        victimStreak: 0,
+        ...over,
+    })
+
+    test('streaks are called at 2, 3, 5, 7, 10 and 15 kills in a life, and only then', () => {
+        expect([1, 2, 3, 4, 5, 6, 7, 10, 15].map(n => streakCallout(n)?.title ?? null)).toEqual([
+            null,
+            'DOUBLE KILL',
+            'TRIPLE KILL',
+            null,
+            'RAMPAGE',
+            null,
+            'UNSTOPPABLE',
+            'OFFICE TYRANT',
+            'EXCEEDS EXPECTATIONS',
+        ])
+    })
+
+    test('your streak is your banner; everyone reads it in the feed', () => {
+        const yours = announce(kill({ killerStreak: 5 }), 'me', name)
+        expect(yours.banner).toMatchObject({ title: 'RAMPAGE' })
+        expect(yours.feed).toEqual(['🔥 Ann is on a rampage'])
+
+        const theirs = announce(kill({ killerStreak: 5 }), 'cat', name)
+        expect(theirs.banner).toBeNull()
+        expect(theirs.feed).toEqual(['🔥 Ann is on a rampage'])
+    })
+
+    test('ending a streak of 3 or more is a shutdown; the first kill is first blood', () => {
+        expect(announce(kill({ victimStreak: 4 }), 'me', name)).toEqual({
+            banner: { title: 'SHUTDOWN', sub: 'Bob had 4 in a row', level: 3 },
+            feed: ["🛑 Ann ended Bob's 4-kill streak"],
+        })
+        expect(announce(kill({ victimStreak: 2 }), 'me', name)).toEqual({ banner: null, feed: [] })
+        expect(announce(kill({ firstBlood: true }), 'me', name).banner).toMatchObject({ title: 'FIRST BLOOD' })
+    })
+
+    test('the taunt fits how you went down', () => {
+        const first = () => 0
+        expect(taunt(kill({ weapon: 'stapler', backstab: true }), first)).toContain('back')
+        expect(taunt(kill({ weapon: 'stapler' }), first)).toContain('Stapled')
+        expect(taunt(kill({ headshot: true }), first)).toContain('quarterly')
+        expect(typeof taunt(kill(), () => 0.999)).toBe('string')
+    })
+})
+
+describe('sound placement and the reload ring', () => {
+    // Looking toward -Z (yaw 0): +X is to the right.
+    const me = { x: 0, z: 0, yaw: 0 }
+
+    test('a sound to your right pans right, to your left pans left, ahead is centred', () => {
+        expect(spatial(me, { x: 3, z: 0 }).pan).toBeCloseTo(1, 6)
+        expect(spatial(me, { x: -3, z: 0 }).pan).toBeCloseTo(-1, 6)
+        expect(spatial(me, { x: 0, z: -3 }).pan).toBeCloseTo(0, 6)
+        // Turned to face +X (yaw -π/2), that sound is now ahead.
+        expect(spatial({ ...me, yaw: -Math.PI / 2 }, { x: 3, z: 0 }).pan).toBeCloseTo(0, 6)
+    })
+
+    test('nearer is louder, never quite silent across the office', () => {
+        const near = spatial(me, { x: 0.5, z: 0 }).gain
+        const far = spatial(me, { x: 15, z: 0 }).gain
+        expect(near).toBeGreaterThan(far)
+        expect(spatial(me, { x: 0, z: 0 }).gain).toBe(1)
+        expect(spatial(me, { x: 200, z: 0 }).gain).toBeGreaterThan(0)
+    })
+
+    test("the reload ring fills as what's left runs down", () => {
+        expect(reloadProgress(null, 1200)).toBeNull()
+        expect(reloadProgress(1200, 1200)).toBe(0)
+        expect(reloadProgress(300, 1200)).toBeCloseTo(0.75, 6)
+        expect(reloadProgress(0, 1200)).toBe(1)
+    })
+})
 
 describe('settings', () => {
     test('read back as saved, the defaults for anything missing or broken, numbers clamped', () => {
@@ -207,6 +295,8 @@ describe('drawing the others', () => {
         alive,
         health: 100,
         weapon: 'blaster',
+        team: null,
+        buffs: [],
         jet: false,
         shielded: false,
     })

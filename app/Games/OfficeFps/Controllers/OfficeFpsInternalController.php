@@ -4,6 +4,7 @@ namespace App\Games\OfficeFps\Controllers;
 
 use App\Games\OfficeFps\Models\OfficeFpsKill;
 use App\Games\OfficeFps\Models\OfficeFpsMatch;
+use App\Games\OfficeFps\Models\OfficeFpsResult;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,6 +26,7 @@ class OfficeFpsInternalController extends Controller
             'frag_limit' => 'required|integer|min:1|max:200',
             'minutes' => 'required|integer|min:1|max:120',
             'player_count' => 'required|integer|min:1|max:12',
+            'mode' => ['sometimes', 'string', Rule::in(OfficeFpsMatch::MODES)],
             'players' => 'required|array|min:1|max:12',
             'players.*.player_id' => 'required|integer|distinct|exists:players,id',
             'players.*.place' => 'required|integer|min:1|max:12',
@@ -39,6 +41,10 @@ class OfficeFpsInternalController extends Controller
             'players.*.best_streak' => 'required|integer|min:0|max:10000',
             'players.*.played_ms' => 'required|integer|min:0|max:7200000',
             'players.*.left' => 'required|boolean',
+            'players.*.team' => ['sometimes', 'nullable', 'string', Rule::in(OfficeFpsResult::TEAMS)],
+            'players.*.won' => 'sometimes|boolean',
+            'players.*.zone_ms' => 'sometimes|integer|min:0|max:7200000',
+            'players.*.pickups' => 'sometimes|integer|min:0|max:10000',
             'kills' => 'present|array|max:5000',
             'kills.*.killer_id' => 'nullable|integer|exists:players,id',
             'kills.*.victim_id' => 'nullable|integer|exists:players,id',
@@ -55,9 +61,16 @@ class OfficeFpsInternalController extends Controller
                 'frag_limit' => $validated['frag_limit'],
                 'minutes' => $validated['minutes'],
                 'player_count' => $validated['player_count'],
+                'mode' => $validated['mode'] ?? 'ffa',
             ]);
             foreach ($validated['players'] as $row) {
-                $match->results()->create($row);
+                // Posts from before modes: no team, the winner is whoever placed first.
+                $match->results()->create($row + [
+                    'team' => null,
+                    'won' => (int) $row['place'] === 1,
+                    'zone_ms' => 0,
+                    'pickups' => 0,
+                ]);
             }
             foreach ($validated['kills'] as $kill) {
                 $match->kills()->create($kill);

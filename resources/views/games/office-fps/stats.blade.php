@@ -60,6 +60,8 @@
                         ['Stapler kills', $t['melee_kills']],
                         ['Backstabs', $t['backstabs']],
                         ['Time played', $minutes($t['played_ms'])],
+                        ['Pickups', $t['pickups']],
+                        ['Zone time', $minutes($t['zone_ms'])],
                     ] as [$label, $value])
                         <dt class="text-white/50">{{ $label }}</dt>
                         <dd class="text-right font-semibold tabular-nums">{{ $value }}</dd>
@@ -75,6 +77,20 @@
                         <dt class="text-white/50">Most damage in a match</dt><dd class="text-right font-semibold">{{ number_format($stats['records']['most_damage']) }}</dd>
                         <dt class="text-white/50">Longest streak</dt><dd class="text-right font-semibold">{{ $stats['records']['best_streak'] }}</dd>
                     </dl>
+                </section>
+
+                <section class="bg-white/5 border border-white/10 rounded-xl p-4">
+                    <h2 class="text-sm uppercase tracking-wider text-white/50 mb-3">By mode</h2>
+                    <table class="w-full text-sm">
+                        <tr class="text-white/50"><th class="text-left font-normal">Mode</th><th class="text-right font-normal">Matches</th><th class="text-right font-normal">Wins</th></tr>
+                        @foreach ($stats['modes'] as $mode => $counts)
+                            <tr>
+                                <td class="py-1">{{ \App\Games\OfficeFps\Models\OfficeFpsMatch::MODE_LABELS[$mode] }}</td>
+                                <td class="text-right font-semibold tabular-nums">{{ $counts['matches'] }}</td>
+                                <td class="text-right font-semibold tabular-nums">{{ $counts['wins'] }}</td>
+                            </tr>
+                        @endforeach
+                    </table>
                 </section>
 
                 <section class="bg-white/5 border border-white/10 rounded-xl p-4">
@@ -115,13 +131,19 @@
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <tr class="text-white/50 text-left">
-                        <th class="font-normal py-1">When</th><th class="font-normal">Place</th><th class="font-normal text-right">Kills</th>
+                        <th class="font-normal py-1">When</th><th class="font-normal">Mode</th><th class="font-normal">Place</th><th class="font-normal text-right">Kills</th>
                         <th class="font-normal text-right">Deaths</th><th class="font-normal text-right">Damage</th><th class="font-normal text-right">Accuracy</th><th class="font-normal text-right">Rules</th>
                     </tr>
                     @foreach ($stats['recent'] as $result)
                         <tr class="border-t border-white/5">
                             <td class="py-1.5 text-white/70">{{ $result->match->ended_at->diffForHumans() }}</td>
-                            <td>{{ $result->place === 1 ? '🏆' : '' }} {{ $result->place }} / {{ $result->match->player_count }}{{ $result->left ? ' (left)' : '' }}</td>
+                            <td class="text-white/70">
+                                {{ \App\Games\OfficeFps\Models\OfficeFpsMatch::MODE_LABELS[$result->match->mode] ?? $result->match->mode }}
+                                @if ($result->match->mode === 'tdm' && $result->team)
+                                    <span class="{{ $result->team === 'red' ? 'text-red-400' : 'text-blue-400' }}">· Team {{ $result->team }}</span>
+                                @endif
+                            </td>
+                            <td>{{ $result->won ? '🏆' : '' }} {{ $result->place }} / {{ $result->match->player_count }}{{ $result->left ? ' (left)' : '' }}</td>
                             <td class="text-right tabular-nums">{{ $result->kills }}</td>
                             <td class="text-right tabular-nums">{{ $result->deaths }}</td>
                             <td class="text-right tabular-nums">{{ number_format($result->damage) }}</td>

@@ -1,4 +1,20 @@
-import { FRAG_LIMITS, MATCH_MINUTES, type MatchView, type PlayerInfo, type Rules, type SelfState } from '../protocol.ts'
+import {
+    type BuffKind,
+    FRAG_LIMITS,
+    MATCH_MINUTES,
+    type MatchView,
+    type Mode,
+    MODE_NAMES,
+    MODES,
+    type PlayerInfo,
+    type Rules,
+    type Score,
+    type SelfState,
+    type Team,
+    TEAM_COLORS,
+    TEAMS,
+    ZONE_SECONDS_PER_POINT,
+} from '../protocol.ts'
 import { MAX_HEALTH, WEAPON } from '../sim/combat.ts'
 import { DEFAULT_SETTINGS, LIMITS, type Settings } from './settings.ts'
 
@@ -23,12 +39,35 @@ const CSS = `
 #fps-hud .pop.none { color: rgba(255,255,255,.55); font-size: 14px; }
 #fps-hud .elim { position: absolute; left: 50%; top: calc(50% + 46px); transform: translateX(-50%); font-size: 15px; letter-spacing: .14em; text-transform: uppercase; color: #ff6b6b; text-shadow: 0 2px 4px rgba(0,0,0,.8); opacity: 0; transition: opacity .4s; }
 #fps-hud .elim b { color: #fff; }
+#fps-hud .callout { position: absolute; left: 50%; top: 13%; transform: translateX(-50%); text-align: center; font-weight: 900; letter-spacing: .12em; color: #ffd166; text-shadow: 0 0 14px rgba(255,140,0,.75), 0 3px 4px rgba(0,0,0,.9); opacity: 0; white-space: nowrap; }
+#fps-hud .callout small { display: block; font-size: 14px; letter-spacing: .06em; color: #fff; font-weight: 600; }
+#fps-hud .toast { position: absolute; left: 50%; top: calc(50% + 70px); transform: translateX(-50%); font-weight: 800; font-size: 16px; letter-spacing: .08em; text-shadow: 0 2px 4px rgba(0,0,0,.85); opacity: 0; white-space: nowrap; }
+#fps-hud .buffs { position: absolute; left: 20px; bottom: 96px; display: flex; flex-direction: column; gap: 4px; }
+#fps-hud .buffs div { background: rgba(12,14,18,.62); border-radius: 6px; padding: 3px 8px; font-size: 13px; }
+#fps-hud .buffs b { font-variant-numeric: tabular-nums; margin-left: 4px; }
+#fps-hud .zone-status { position: absolute; left: 50%; top: calc(50% + 96px); transform: translateX(-50%); font-weight: 800; font-size: 14px; letter-spacing: .14em; text-shadow: 0 2px 4px rgba(0,0,0,.85); white-space: nowrap; }
+#fps-hud .zone-marker { position: absolute; width: 18px; height: 18px; margin: -9px; border: 3px solid; transform: rotate(45deg); box-shadow: 0 0 6px rgba(0,0,0,.6); }
+#fps-hud .zone-marker span { position: absolute; left: 50%; top: 24px; transform: rotate(-45deg) translateX(-50%); transform-origin: 0 0; white-space: nowrap; font-size: 12px; text-shadow: 0 1px 3px #000; }
+#fps-hud .middle .taunt { font-style: italic; color: #ffd166; opacity: 1; }
+#fps-hud .board h3 { margin: 10px 0 2px; font-size: 13px; letter-spacing: .12em; }
+#fps-hud .awards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; margin-bottom: 10px; }
+#fps-hud .awards div { background: rgba(255,255,255,.06); border-radius: 8px; padding: 6px 8px; }
+#fps-hud .awards small { display: block; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; opacity: .6; }
+#fps-hud .awards b { display: block; font-size: 15px; }
+#fps-hud .awards span { font-size: 12px; opacity: .75; }
 #fps-hud .from { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transition: opacity .9s ease-in; }
 #fps-hud .from::before { content: ''; position: absolute; left: -70px; top: -190px; width: 140px; height: 34px; border-radius: 50% 50% 0 0 / 100% 100% 0 0; background: radial-gradient(ellipse at 50% 100%, rgba(255,40,40,.0) 40%, rgba(255,40,40,.85) 72%, rgba(255,40,40,0) 74%); }
 #fps-hud .target { position: absolute; transform: translate(-50%,-100%); text-align: center; pointer-events: none; transition: opacity .15s; }
 #fps-hud .target .name { font-size: 13px; padding: 2px 8px; border-radius: 6px; background: rgba(12,14,18,.7); white-space: nowrap; }
 #fps-hud .target .bar { width: 70px; height: 5px; margin: 4px auto 0; border-radius: 3px; background: rgba(0,0,0,.55); overflow: hidden; }
 #fps-hud .target .bar div { height: 100%; transition: width .15s; }
+#fps-hud .reload { position: absolute; left: calc(50% + 18px); top: calc(50% + 18px); width: 30px; height: 30px; }
+#fps-hud .reload circle { fill: none; stroke-width: 3.5; }
+#fps-hud .reload .track { stroke: rgba(0,0,0,.45); }
+#fps-hud .reload .fill { stroke: #ffd166; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%; filter: drop-shadow(0 0 2px rgba(0,0,0,.7)); }
+#fps-hud .hs-dealt { position: absolute; left: 50%; top: calc(50% - 56px); transform: translateX(-50%); font: 900 16px system-ui, sans-serif; letter-spacing: .2em; color: #ffd166; text-shadow: 0 0 8px rgba(255,180,0,.8), 0 2px 3px rgba(0,0,0,.8); opacity: 0; }
+#fps-hud .hs-taken { position: absolute; left: 50%; top: 20%; transform: translateX(-50%); font: 900 28px system-ui, sans-serif; letter-spacing: .25em; color: #ff3b3b; text-shadow: 0 0 12px rgba(255,0,0,.7), 0 2px 4px rgba(0,0,0,.9); opacity: 0; }
+#fps-hud .hs-flash { position: absolute; inset: 0; box-shadow: inset 0 0 0 6px rgba(255,40,40,.85), inset 0 0 160px rgba(255,0,0,.55); opacity: 0; }
 #fps-hud.aiming .cross { width: 3px; height: 3px; margin: -1.5px; }
 #fps-hud .health { position: absolute; left: 20px; bottom: 20px; font-size: 30px; min-width: 120px; }
 #fps-hud .health small, #fps-hud .ammo small { display: block; font-size: 11px; opacity: .65; letter-spacing: .12em; text-transform: uppercase; }
@@ -77,6 +116,8 @@ export interface HudFrame {
     self: SelfState | null
     /** Who downed you last. */
     killer: string | null
+    /** The line under "Fragged by …". */
+    taunt: string | null
     tab: boolean
     roster: Map<string, PlayerInfo>
 }
@@ -110,6 +151,18 @@ export class Hud {
             <div class="hurt" data-el="hurt"></div>
             <div class="cross" data-el="cross"></div><div class="hit" data-el="hit"></div>
             <div class="elim" data-el="elim"></div>
+            <div class="callout" data-el="callout"></div>
+            <div class="toast" data-el="toast"></div>
+            <div class="buffs" data-el="buffs"></div>
+            <div class="zone-status hidden" data-el="zoneStatus"></div>
+            <div class="zone-marker hidden" data-el="zoneMarker"><span></span></div>
+            <div class="hs-flash" data-el="hsFlash"></div>
+            <div class="hs-dealt" data-el="hsDealt">HEADSHOT</div>
+            <div class="hs-taken" data-el="hsTaken">HEADSHOT</div>
+            <svg class="reload hidden" data-el="reload" viewBox="0 0 30 30" aria-hidden="true">
+                <circle class="track" cx="15" cy="15" r="11"></circle>
+                <circle class="fill" cx="15" cy="15" r="11" data-el="reloadFill" stroke-dasharray="${RING} ${RING}" stroke-dashoffset="${RING}"></circle>
+            </svg>
             <div class="target hidden" data-el="target"><div class="name"></div><div class="bar"><div></div></div></div>
             <div class="panel top" data-el="top"></div>
             <div class="feed" data-el="feed"></div>
@@ -173,22 +226,48 @@ export class Hud {
             panel.innerHTML = `<p>Waiting for <b>${escape(this.host.name ?? 'the host')}</b> to start the next match.</p>`
             return
         }
-        const options = (values: readonly number[], chosen: number, unit: string) =>
-            values.map(v => `<option value="${v}"${v === chosen ? ' selected' : ''}>${v} ${unit}</option>`).join('')
         const enough = this.host.seated >= 2
+        const modes = MODES.map(
+            m => `<option value="${m}"${m === match.mode ? ' selected' : ''}>${MODE_NAMES[m]}</option>`
+        ).join('')
+        const minutes = MATCH_MINUTES.map(
+            v => `<option value="${v}"${v === match.minutes ? ' selected' : ''}>${v} min</option>`
+        ).join('')
         panel.innerHTML = `
             <h2>You're the host</h2>
+            <div class="row"><label>Mode <select data-rule="mode">${modes}</select></label></div>
             <div class="row">
-                <label>First to <select data-rule="fragLimit">${options(FRAG_LIMITS, match.fragLimit, 'kills')}</select></label>
-                <label>or <select data-rule="minutes">${options(MATCH_MINUTES, match.minutes, 'min')}</select></label>
+                <label>First to <select data-rule="fragLimit"></select></label>
+                <label>or <select data-rule="minutes">${minutes}</select></label>
             </div>
+            <p class="hint" data-explain></p>
             <button type="button" data-start ${enough ? '' : 'disabled'}>Start match</button>
             <p class="hint">${enough ? (this.hostNotice ?? '') : 'Needs a second player.'}</p>`
+        const select = (rule: string) => panel.querySelector<HTMLSelectElement>(`[data-rule="${rule}"]`)!
+        // The limit reads as kills, team kills or seconds in the zone, depending on the mode.
+        const describe = () => {
+            const mode = select('mode').value as Mode
+            const chosen = Number(select('fragLimit').value) || match.fragLimit
+            select('fragLimit').innerHTML = FRAG_LIMITS.map(v => {
+                const label =
+                    mode === 'koth'
+                        ? `${v * ZONE_SECONDS_PER_POINT} s in the zone`
+                        : mode === 'tdm'
+                          ? `${v} team kills`
+                          : `${v} kills`
+                return `<option value="${v}"${v === chosen ? ' selected' : ''}>${label}</option>`
+            }).join('')
+            panel.querySelector('[data-explain]')!.textContent = MODE_HINTS[mode]
+        }
+        describe()
+        select('mode').addEventListener('change', describe)
         panel.querySelector('[data-start]')!.addEventListener('click', () => {
-            const value = (rule: string) =>
-                Number(panel.querySelector<HTMLSelectElement>(`[data-rule="${rule}"]`)!.value)
             this.hostNotice = null
-            this.hooks.onStart({ fragLimit: value('fragLimit'), minutes: value('minutes') })
+            this.hooks.onStart({
+                mode: select('mode').value as Mode,
+                fragLimit: Number(select('fragLimit').value),
+                minutes: Number(select('minutes').value),
+            })
         })
     }
 
@@ -202,11 +281,13 @@ export class Hud {
                 <input type="range" data-setting="${key}" min="${min}" max="${max}" step="${step}" value="${s[key]}"></label>`
         }
         const times = (v: number) => `${v.toFixed(2)}×`
+        const percent = (v: number) => (v === 0 ? 'off' : `${Math.round(v * 100)}%`)
         panel.innerHTML = `
             <h2>Settings</h2>
             ${slider('sensitivity', 'Mouse sensitivity', times)}
             ${slider('aimSensitivity', 'While aiming', times)}
             ${slider('fov', 'Field of view', v => `${v}°`)}
+            ${slider('volume', 'Sound', percent)}
             <label class="check"><input type="checkbox" data-setting="invertY" ${s.invertY ? 'checked' : ''}> Invert mouse Y</label>
             <button type="button" data-reset>Defaults</button>`
         const show = (key: keyof typeof LIMITS, text: string) => {
@@ -219,6 +300,7 @@ export class Hud {
                 sensitivity: value('sensitivity'),
                 aimSensitivity: value('aimSensitivity'),
                 fov: value('fov'),
+                volume: value('volume'),
                 invertY: panel.querySelector<HTMLInputElement>('[data-setting="invertY"]')!.checked,
             }
         }
@@ -227,6 +309,7 @@ export class Hud {
             show('sensitivity', times(settings.sensitivity))
             show('aimSensitivity', times(settings.aimSensitivity))
             show('fov', `${settings.fov}°`)
+            show('volume', percent(settings.volume))
             this.hooks.onSettings(settings)
         })
         panel.querySelector('[data-reset]')!.addEventListener('click', () => {
@@ -253,16 +336,74 @@ export class Hud {
         if (!self) return
         this.el.health!.innerHTML = `<small>Health</small>${self.alive ? self.health : 0}`
         const slots = `<span class="slots"><b class="${self.weapon === 'blaster' ? 'on' : ''}">1</b><b class="${self.weapon === 'stapler' ? 'on' : ''}">2</b></span>`
+        const big = self.magazine > WEAPON.magazine ? ' style="color:#f2b134"' : ''
         const blaster = self.reloading
             ? '<span style="opacity:.6">reloading</span>'
-            : `${self.ammo}<span style="opacity:.5;font-size:16px"> / ${WEAPON.magazine}</span>`
+            : `<span${big}>${self.ammo}</span><span style="opacity:.5;font-size:16px"> / ${self.magazine}</span>`
         this.el.ammo!.innerHTML =
             self.weapon === 'stapler'
                 ? `<small>Stapler ${slots}</small><span style="font-size:22px">📎 swing</span>`
                 : `<small>Blaster ${slots}</small>${blaster}`
         this.el.fuel!.style.width = `${Math.round(self.body.fuel * 100)}%`
+        this.el.fuel!.style.background = self.body.jetBoost > 0 ? 'linear-gradient(90deg,#29a3e0,#7fd1ff)' : ''
         if (self.alive && self.health < this.lastHealth) this.flashHurt()
         this.lastHealth = self.alive ? self.health : MAX_HEALTH
+        // Your powers, each with its time left.
+        this.el.buffs!.innerHTML = self.buffs
+            .map(b => {
+                const { icon, label } = BUFF_LABELS[b.kind]
+                return `<div>${icon} ${label} <b style="color:${BUFF_COLORS[b.kind]}">${Math.ceil(b.leftMs / 1000)} s</b></div>`
+            })
+            .join('')
+    }
+
+    /** A big banner across the top: a streak, a shutdown, first blood (`level` 1 … 4 grows it). */
+    callout(title: string, sub: string, level: number): void {
+        const el = this.el.callout!
+        el.innerHTML = `${escape(title)}<small>${escape(sub)}</small>`
+        el.style.fontSize = `${26 + level * 6}px`
+        el.style.transition = 'none'
+        el.style.opacity = '1'
+        el.style.transform = 'translateX(-50%) scale(1.25)'
+        requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+                el.style.transition = 'opacity 2.2s ease-in 0.8s, transform .25s ease-out'
+                el.style.transform = 'translateX(-50%) scale(1)'
+                el.style.opacity = '0'
+            })
+        )
+    }
+
+    /** A short note by the crosshair (what you just picked up). */
+    toast(text: string, color: string): void {
+        const el = this.el.toast!
+        el.textContent = text
+        el.style.color = color
+        fadeOut(el, 1400)
+    }
+
+    /**
+     * King of the meeting room: the line under the crosshair (holding, contested, go get it) and
+     * the marker over the zone (screen px; clamped to the edge when it's off screen). Null hides both.
+     */
+    zone(
+        status: { text: string; color: string } | null,
+        marker: { x: number; y: number; label: string; color: string } | null
+    ): void {
+        const line = this.el.zoneStatus!
+        line.classList.toggle('hidden', status === null)
+        if (status) {
+            line.textContent = status.text
+            line.style.color = status.color
+        }
+        const pin = this.el.zoneMarker!
+        pin.classList.toggle('hidden', marker === null)
+        if (marker) {
+            pin.style.left = `${marker.x}px`
+            pin.style.top = `${marker.y}px`
+            pin.style.borderColor = marker.color
+            pin.querySelector('span')!.textContent = marker.label
+        }
     }
 
     /** Your shot landed: a marker on the crosshair (gold for a headshot, big and red for a kill). */
@@ -286,6 +427,19 @@ export class Hud {
             pop.style.opacity = '0'
         })
         setTimeout(() => pop.remove(), 750)
+    }
+
+    /** The ring by the crosshair, filling as a reload goes (0 … 1), or hidden (null). */
+    reload(progress: number | null): void {
+        this.el.reload!.classList.toggle('hidden', progress === null)
+        if (progress !== null) this.el.reloadFill!.setAttribute('stroke-dashoffset', String(RING * (1 - progress)))
+    }
+
+    /** A headshot: one you landed (gold, by the crosshair), or one you took (red, with a flash round the screen). */
+    headshot(who: 'dealt' | 'taken'): void {
+        if (who === 'dealt') return fadeOut(this.el.hsDealt!, 700)
+        fadeOut(this.el.hsTaken!, 1100)
+        fadeOut(this.el.hsFlash!, 600)
     }
 
     /** You took someone down. */
@@ -342,7 +496,6 @@ export class Hud {
         const match = this.match
         if (!match) return
         const left = match.remainingMs === null ? null : Math.max(0, match.remainingMs - (now - this.matchAt))
-        const leader = match.scores[0]
         this.el.top!.innerHTML = {
             warmup: `Warmup <small style="opacity:.7">· ${
                 this.host.isHost
@@ -351,8 +504,8 @@ export class Hud {
                         : 'waiting for a second player'
                     : `${escape(this.host.name ?? 'the host')} starts the next match`
             }</small>`,
-            countdown: `Match in <b>${Math.ceil((left ?? 0) / 1000)}</b>`,
-            playing: `<b>${clock(left ?? 0)}</b> <small style="opacity:.7">· first to ${match.fragLimit}${leader ? ` · ${escape(leader.name)} ${leader.kills}` : ''}</small>`,
+            countdown: `${MODE_NAMES[match.mode]} in <b>${Math.ceil((left ?? 0) / 1000)}</b>`,
+            playing: `<b>${clock(left ?? 0)}</b> <small style="opacity:.7">· ${this.standing(match, opts.me)}</small>`,
             intermission: `Match over <small style="opacity:.7">· back to warmup in ${Math.ceil((left ?? 0) / 1000)}</small>`,
         }[match.phase]
 
@@ -360,7 +513,8 @@ export class Hud {
         if (opts.me && !opts.self) middle = `Watching<small>The game is full: you're in at the next free seat.</small>`
         else if (opts.self && !opts.self.alive) {
             const by = opts.killer ? `Fragged by ${escape(opts.killer)}` : 'Down'
-            middle = `${by}<small>Back in ${Math.ceil((opts.self.respawnInMs ?? 0) / 1000)}</small>`
+            const taunt = opts.taunt ? `<small class="taunt">${escape(opts.taunt)}</small>` : ''
+            middle = `${by}${taunt}<small>Back in ${Math.ceil((opts.self.respawnInMs ?? 0) / 1000)}</small>`
         } else if (match.phase === 'countdown') {
             middle = `${Math.ceil((left ?? 0) / 1000)}<small>Warmup kills don't count</small>`
         }
@@ -372,30 +526,77 @@ export class Hud {
         if (show) board.innerHTML = this.board(match, opts.me, opts.roster)
     }
 
+    /** The match's score in a line: the sides (team deathmatch), the zone time, or the leader's kills. */
+    private standing(match: MatchView, me: string | null): string {
+        if (match.mode === 'tdm' && match.teams) {
+            const mine = match.scores.find(s => s.id === me)?.team
+            const side = (team: Team) =>
+                `<b style="color:${TEAM_COLORS[team]}${mine === team ? ';text-decoration:underline' : ''}">${team.toUpperCase()} ${match.teams![team]}</b>`
+            return `${side('red')} – ${side('blue')} · first to ${match.fragLimit}`
+        }
+        const leader = match.scores[0]
+        if (match.mode === 'koth') {
+            const goal = match.fragLimit * ZONE_SECONDS_PER_POINT
+            const you = match.scores.find(s => s.id === me)
+            return `${you ? `you ${you.points} s · ` : ''}${leader ? `${escape(leader.name)} ${leader.points} s · ` : ''}first to ${goal} s`
+        }
+        return `first to ${match.fragLimit}${leader ? ` · ${escape(leader.name)} ${leader.kills}` : ''}`
+    }
+
     private board(match: MatchView, me: string | null, roster: Map<string, PlayerInfo>): string {
-        const winner = match.scores[0] ? `${escape(match.scores[0].name)} wins` : 'Match over'
-        const title = match.phase === 'intermission' ? `<h2 style="margin:0 0 8px;font-size:18px">${winner}</h2>` : ''
         const dot = (color: string) => `<span style="color:${color}">●</span>`
-        const row = (classes: string, place: string, name: string, kills: string, deaths: string) =>
-            `<tr class="${classes}"><td>${place}</td><td>${name}</td><td class="n">${kills}</td><td class="n">${deaths}</td></tr>`
+        const koth = match.mode === 'koth'
+        const row = (classes: string, place: string, name: string, cells: string[]) =>
+            `<tr class="${classes}"><td>${place}</td><td>${name}</td>${cells.map(c => `<td class="n">${c}</td>`).join('')}</tr>`
+        const cellsOf = (s: Score) => [...(koth ? [`${s.points} s`] : []), String(s.kills), String(s.deaths)]
+        const scoreRow = (s: Score, i: number) =>
+            row(
+                `${s.id === me ? 'me' : ''} ${s.id === null ? 'gone' : ''}`,
+                String(i + 1),
+                `${dot(s.color)} ${escape(s.name)}`,
+                cellsOf(s)
+            )
+        const head = `<tr><th></th><th>Player</th>${koth ? '<th class="n">Zone</th>' : ''}<th class="n">Kills</th><th class="n">Deaths</th></tr>`
+
+        let title = ''
+        if (match.phase === 'intermission') {
+            const winner =
+                match.mode === 'tdm' && match.teams
+                    ? match.teams.red === match.teams.blue
+                        ? "It's a draw"
+                        : `${match.teams.red > match.teams.blue ? 'Red' : 'Blue'} team wins`
+                    : match.scores[0]
+                      ? `${escape(match.scores[0].name)} wins`
+                      : 'Match over'
+            title = `<h2 style="margin:0 0 8px;font-size:18px">${winner}</h2>`
+        }
+        const awards = match.awards?.length
+            ? `<div class="awards">${match.awards
+                  .map(
+                      a =>
+                          `<div><small>${escape(a.title)}</small><b style="color:${a.color}">${escape(a.name)}</b><span>${escape(a.detail)}</span></div>`
+                  )
+                  .join('')}</div>`
+            : ''
+
+        // Team deathmatch: one table per side, with its total.
+        if (match.mode === 'tdm' && match.scores.length) {
+            const tables = TEAMS.map(team => {
+                const rows = match.scores.filter(s => s.team === team).map(scoreRow)
+                const total = match.teams?.[team] ?? 0
+                return `<h3 style="color:${TEAM_COLORS[team]}">${team.toUpperCase()} · ${total}</h3><table>${head}${rows.join('')}</table>`
+            })
+            return `${title}${awards}${tables.join('')}`
+        }
         // In a match, the scores (who left greyed); in warmup, who's here.
         const rows = match.scores.length
-            ? match.scores.map((s, i) =>
-                  row(
-                      `${s.id === me ? 'me' : ''} ${s.id === null ? 'gone' : ''}`,
-                      String(i + 1),
-                      `${dot(s.color)} ${escape(s.name)}`,
-                      String(s.kills),
-                      String(s.deaths)
-                  )
-              )
+            ? match.scores.map(scoreRow)
             : [...roster.values()].map(p => {
                   const watching = p.watching ? ' <small style="opacity:.6">watching</small>' : ''
-                  return row(p.id === me ? 'me' : '', '', `${dot(p.color)} ${escape(p.name)}${watching}`, '–', '–')
+                  return row(p.id === me ? 'me' : '', '', `${dot(p.color)} ${escape(p.name)}${watching}`, ['–', '–'])
               })
 
-        const head = '<tr><th></th><th>Player</th><th class="n">Kills</th><th class="n">Deaths</th></tr>'
-        return `${title}<table>${head}${rows.join('')}</table>`
+        return `${title}${awards}<table>${head}${rows.join('')}</table>`
     }
 
     private flashHurt(): void {
@@ -413,6 +614,22 @@ function clock(ms: number): string {
     const s = Math.ceil(ms / 1000)
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
+
+const MODE_HINTS: Record<Mode, string> = {
+    ffa: 'Everyone for themselves: most kills wins.',
+    tdm: 'Red against blue, sides balanced. No friendly fire.',
+    koth: 'Hold the zone alone to score a second a second. It moves every minute.',
+}
+
+export const BUFF_LABELS: Record<BuffKind, { icon: string; label: string }> = {
+    magazine: { icon: '📦', label: 'Big magazine' },
+    jetpack: { icon: '🚀', label: 'Jetpack ×4' },
+    headshot: { icon: '🎯', label: 'One-shot headshots' },
+}
+export const BUFF_COLORS: Record<BuffKind, string> = { magazine: '#f2b134', jetpack: '#29a3e0', headshot: '#ff3b3b' }
+
+/** The reload ring's circumference (r = 11 in its 30 × 30 box). */
+const RING = 2 * Math.PI * 11
 
 /** Shows an element at once, then fades it out over `ms`. */
 function fadeOut(element: HTMLElement, ms: number): void {

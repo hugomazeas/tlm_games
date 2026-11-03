@@ -1,6 +1,6 @@
 /**
  * Your settings, kept in this browser: mouse sensitivity (and while aiming), field of view,
- * invert Y. Read with every value checked and clamped, so an old or hand-edited one can't break
+ * invert Y, sound volume. Read with every value checked and clamped, so an old or hand-edited one can't break
  * the game.
  */
 
@@ -12,14 +12,17 @@ export interface Settings {
     /** Vertical field of view from the hip (degrees); aiming zooms to about 58% of it. */
     fov: number
     invertY: boolean
+    /** Sound effects, 0 (off) … 1. */
+    volume: number
 }
 
-export const DEFAULT_SETTINGS: Settings = { sensitivity: 1, aimSensitivity: 1, fov: 78, invertY: false }
+export const DEFAULT_SETTINGS: Settings = { sensitivity: 1, aimSensitivity: 1, fov: 78, invertY: false, volume: 0.6 }
 
 export const LIMITS = {
     sensitivity: { min: 0.1, max: 4, step: 0.05 },
     aimSensitivity: { min: 0.2, max: 2, step: 0.05 },
     fov: { min: 60, max: 110, step: 1 },
+    volume: { min: 0, max: 1, step: 0.05 },
 } as const
 
 const KEY = 'officeFps.settings'
@@ -42,6 +45,7 @@ export function parseSettings(raw: string | null): Settings {
         sensitivity: number('sensitivity'),
         aimSensitivity: number('aimSensitivity'),
         fov: number('fov'),
+        volume: number('volume'),
         invertY: typeof value.invertY === 'boolean' ? value.invertY : DEFAULT_SETTINGS.invertY,
     }
 }

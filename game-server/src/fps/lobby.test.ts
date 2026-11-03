@@ -8,11 +8,14 @@ import {
     type InputFrame,
     MAX_PLAYERS,
     parseClientMessage,
+    type Rules,
     type ServerMessage,
+    ZONE_SECONDS_PER_POINT,
 } from './protocol.ts'
 import { RESPAWN_STEPS, SHIELD_STEPS } from './sim/arena.ts'
 import { PLAYER, STEP_MS } from './sim/movement.ts'
 import { testWorld } from './sim/testing.ts'
+import { ZONE_MS, ZONES } from './sim/places.ts'
 
 /** Two spawn points 4 m apart in an open room: whoever is at one can shoot whoever is at the other. */
 const world = testWorld([
@@ -203,7 +206,7 @@ describe('one game, joined on the fly', () => {
         const [a, b] = [client('a1'), client('b2')]
         lobby.join(a, { playerId: 1, name: 'a1' })
         lobby.join(b, { playerId: 2, name: 'b2' })
-        lobby.start(a.id, { fragLimit: 5, minutes: 10 })
+        lobby.start(a.id, { mode: 'ffa', fragLimit: 5, minutes: 10 })
         expect(b.last('match')!.match).toMatchObject({ phase: 'countdown', fragLimit: 5, minutes: 10 })
         play(COUNTDOWN_MS + STEP_MS + SHIELD_STEPS * STEP_MS + 100)
 
@@ -212,7 +215,7 @@ describe('one game, joined on the fly', () => {
             if (k < 4) play((RESPAWN_STEPS + SHIELD_STEPS) * STEP_MS + 100)
         }
         expect(a.last('match')!.match.phase).toBe('intermission')
-        expect(results[0]!.rules).toEqual({ fragLimit: 5, minutes: 10 })
+        expect(results[0]!.rules).toEqual({ mode: 'ffa', fragLimit: 5, minutes: 10 })
     })
 
     test('the host passes to the next longest seated when they leave', () => {
@@ -356,6 +359,136 @@ describe('one game, joined on the fly', () => {
     })
 })
 
+describe('modes', () => {
+    /** Everyone joins; the first (the host) starts a match with these rules. */
+    function startWith(rules: Rules, ...clients: Client[]): void {
+        for (const c of clients) lobby.join(c, { playerId: Number(c.id.replace(/\D/g, '')) || null, name: c.id })
+        lobby.start(clients[0]!.id, rules)
+        play(COUNTDOWN_MS + STEP_MS)
+        play(SHIELD_STEPS * STEP_MS + 100)
+    }
+    const teamOf = (c: Client, id: string) => c.last('snap')!.players.find(p => p.id === id)!.team
+
+    test('team deathmatch: two even sides, kills count for the side, the winning side all won', () => {
+        const [a, b] = [client('a1'), client('b2')]
+        startWith({ mode: 'tdm', fragLimit: 5, minutes: 10 }, a, b)
+        expect(new Set([teamOf(a, 'a1'), teamOf(a, 'b2')])).toEqual(new Set(['red', 'blue']))
+
+        for (let k = 0; k < 5; k++) {
+            kill(a, b)
+            if (k < 4) play((RESPAWN_STEPS + SHIELD_STEPS) * STEP_MS + 100)
+        }
+        const winner = teamOf(a, 'a1')!
+        expect(a.last('match')!.match).toMatchObject({ phase: 'intermission', teams: { [winner]: 5 } })
+        const [first, second] = results[0]!.players
+        expect([first!.name, first!.won, first!.team]).toEqual(['a1', true, winner])
+        expect([second!.name, second!.won]).toEqual(['b2', false])
+        expect(results[0]!.rules.mode).toBe('tdm')
+    })
+
+    test('team deathmatch: a newcomer joins the smaller side', () => {
+        const [a, b, c] = [client('a1'), client('b2'), client('c3')]
+        startWith({ mode: 'tdm', fragLimit: 15, minutes: 10 }, a, b, c)
+        const count = (team: string) => a.last('snap')!.players.filter(p => p.team === team).length
+        const smaller = count('red') < count('blue') ? 'red' : 'blue'
+
+        const d = client('d4')
+        lobby.join(d, { playerId: 4, name: 'd4' })
+        play(STEP_MS * 3)
+        expect(teamOf(a, 'd4')).toBe(smaller)
+        expect(count('red')).toBe(2)
+        expect(count('blue')).toBe(2)
+    })
+
+    test('king of the meeting room: alone in the zone scores, two in it score nothing, and it moves', () => {
+        const [a, b] = [client('a1'), client('b2')]
+        startWith({ mode: 'koth', fragLimit: 5, minutes: 10 }, a, b)
+        const zone = a.last('snap')!.zone!
+        expect(zone.holder).toBeNull()
+        const place = ZONES[zone.index]!
+
+        // a walks into it and holds it 3 s.
+        walkTo(a, place.x, place.z)
+        play(3000, () => [[a, idle()]])
+        expect(a.last('snap')!.zone).toMatchObject({ index: zone.index, holder: 'a1', contested: false })
+        const held = a.last('match')!.match.scores.find(s => s.id === 'a1')!.points
+        expect(held).toBeGreaterThanOrEqual(3)
+
+        // b joins them: contested, nobody scores.
+        walkTo(b, place.x, place.z, [a])
+        play(2000, () => [
+            [a, idle()],
+            [b, idle()],
+        ])
+        expect(a.last('snap')!.zone).toMatchObject({ holder: null, contested: true })
+        const still = a.last('match')!.match.scores.find(s => s.id === 'a1')!.points
+        play(2000, () => [
+            [a, idle()],
+            [b, idle()],
+        ])
+        expect(a.last('match')!.match.scores.find(s => s.id === 'a1')!.points).toBe(still)
+
+        // A minute in, the zone has moved on.
+        play(ZONE_MS, () => [
+            [a, idle()],
+            [b, idle()],
+        ])
+        expect(a.last('snap')!.zone!.index).not.toBe(zone.index)
+    })
+
+    test('king of the meeting room: ten times the limit in seconds wins it', () => {
+        const [a, b] = [client('a1'), client('b2')]
+        startWith({ mode: 'koth', fragLimit: 5, minutes: 10 }, a, b)
+        const place = ZONES[a.last('snap')!.zone!.index]!
+        walkTo(a, place.x, place.z)
+        play(5 * ZONE_SECONDS_PER_POINT * 1000 + 500, () => [[a, idle()]])
+
+        expect(a.last('match')!.match.phase).toBe('intermission')
+        const ann = results[0]!.players.find(p => p.playerId === 1)!
+        expect([ann.place, ann.won]).toEqual([1, true])
+        expect(ann.zoneMs).toBeGreaterThanOrEqual(5 * ZONE_SECONDS_PER_POINT * 1000)
+        expect(a.last('match')!.match.awards![0]).toMatchObject({ title: 'MVP', name: 'a1' })
+    })
+
+    test('the first kill of a match is first blood; the scoreboard after it has awards', () => {
+        const [a, b] = [client('a1'), client('b2')]
+        startMatch(a, b)
+        kill(a, b)
+        play((RESPAWN_STEPS + SHIELD_STEPS) * STEP_MS + 100)
+        kill(a, b)
+        const kills = a.inbox.flatMap(m => (m.type === 'snap' ? m.events : [])).filter(e => e.type === 'kill')
+        expect(kills.map(k => k.type === 'kill' && k.firstBlood === true)).toEqual([true, false])
+
+        play(MATCH_MS)
+        const awards = a.last('match')!.match.awards!
+        expect(awards.map(w => w.title)).toContain('MVP')
+        expect(awards.find(w => w.title === 'MVP')).toMatchObject({ name: 'a1', detail: '2 kills' })
+        // Back to warmup, no awards left over.
+        play(INTERMISSION_MS + STEP_MS)
+        expect(a.last('match')!.match.awards).toBeNull()
+    })
+})
+
+/** A frame that does nothing (keeps a browser's frames coming). */
+function idle(): Omit<InputFrame, 'seq'> {
+    return { forward: 0, strafe: 0, yaw: 0, pitch: 0, buttons: 0, view: 0 }
+}
+
+/** Walks `c` to (x, z), step by step (the others sending idle frames meanwhile). */
+function walkTo(c: Client, x: number, z: number, others: Client[] = []): void {
+    for (let i = 0; i < 60 * 20; i++) {
+        const me = where(c, c.id)
+        const dx = x - me.x
+        const dz = z - me.z
+        if (Math.hypot(dx, dz) < 0.3) return
+        play(STEP_MS, () => [
+            [c, { ...idle(), forward: 1, yaw: Math.atan2(-dx, -dz) }],
+            ...others.map((o): [Client, Omit<InputFrame, 'seq'>] => [o, idle()]),
+        ])
+    }
+    throw new Error(`${c.id} never got to ${x}, ${z}`)
+}
+
 describe('shots are judged where the shooter saw the target', () => {
     test('a target that has since moved away is still hit; one seen too long ago is not', () => {
         // a at north, b at south; b runs east out of a's line.
@@ -422,7 +555,11 @@ describe('messages', () => {
     test("the host's start carries rules from the allowed lists only", () => {
         const start = (rules: unknown) => parseClientMessage(JSON.stringify({ type: 'start', rules }))
 
-        expect(start({ fragLimit: 25, minutes: 10 })).toEqual({ type: 'start', rules: { fragLimit: 25, minutes: 10 } })
+        const rules = { mode: 'koth' as const, fragLimit: 25, minutes: 10 }
+        expect(start(rules)).toEqual({ type: 'start', rules })
+        // No mode (an older tab): free for all. A made-up one: refused.
+        expect(start({ fragLimit: 25, minutes: 10 })).toEqual({ type: 'start', rules: { ...rules, mode: 'ffa' } })
+        expect(start({ ...rules, mode: 'battle royale' })).toBeNull()
         expect(start({ fragLimit: 7, minutes: 10 })).toBeNull()
         expect(start({ fragLimit: 25, minutes: 1 })).toBeNull()
         expect(start(null)).toBeNull()
