@@ -18,6 +18,19 @@ export type Phase = 'warmup' | 'countdown' | 'playing' | 'intermission'
 /** Bits of an input frame's buttons. */
 export const BUTTON = { dash: 1, jet: 2, fire: 4, reload: 8 } as const
 
+/** The two weapon slots: 1 the blaster, 2 the stapler (melee). */
+export const WEAPONS = ['blaster', 'stapler'] as const
+export type Weapon = (typeof WEAPONS)[number]
+
+/** What the host may pick for a match. */
+export const FRAG_LIMITS = [5, 10, 15, 20, 25, 30, 50] as const
+export const MATCH_MINUTES = [3, 5, 10, 15, 20] as const
+export interface Rules {
+    fragLimit: number
+    minutes: number
+}
+export const DEFAULT_RULES: Rules = { fragLimit: 15, minutes: 5 }
+
 /** One step's input: what the keys and the mouse said, and which server step the shooter was looking at. */
 export interface InputFrame {
     /** Counts up from 1, one per step. */
@@ -29,6 +42,8 @@ export interface InputFrame {
     buttons: number
     /** The server step the other players were drawn at when this frame was taken (for the shot's rewind). */
     view: number
+    /** The weapon in hand (switching takes a moment); the blaster when absent. */
+    weapon?: Weapon
 }
 
 export interface PlayerInfo {
@@ -54,6 +69,7 @@ export interface PlayerState {
     jet: boolean
     /** Just spawned: can't be hurt until it runs out or they fire. */
     shielded: boolean
+    weapon: Weapon
 }
 
 /** You, in full: your browser predicts from it. */
@@ -64,6 +80,7 @@ export interface SelfState {
     ammo: number
     reloading: boolean
     shielded: boolean
+    weapon: Weapon
     /** Until you're back (ms), while you're down. */
     respawnInMs: number | null
 }
@@ -79,7 +96,9 @@ export type GameEvent =
           /** Health it took (0: a miss, or a spawn-shielded target). */
           damage: number
       }
-    | { type: 'kill'; killer: string | null; victim: string; headshot: boolean }
+    /** A stapler swing: who it hit (null: air), for how much, and whether it was from behind. */
+    | { type: 'swing'; by: string; hit: string | null; damage: number; backstab: boolean }
+    | { type: 'kill'; killer: string | null; victim: string; headshot: boolean; weapon: Weapon; backstab: boolean }
     | { type: 'spawn'; id: string }
 
 export interface Score {
@@ -95,15 +114,22 @@ export interface MatchView {
     phase: Phase
     /** Until the phase moves on (ms; null in warmup). */
     remainingMs: number | null
+    /** The match's rules: the one being played, or (in warmup) the last one's. */
     fragLimit: number
+    minutes: number
+    /** Who starts the next match and picks its rules (a connection id): the longest seated. */
+    host: string | null
     /** Best first. In warmup, nobody's counted. */
     scores: Score[]
 }
 
-export type ErrorCode = 'BAD_MESSAGE' | 'NOT_JOINED' | 'UNKNOWN_PLAYER' | 'UNAVAILABLE'
+export type ErrorCode = 'BAD_MESSAGE' | 'NOT_JOINED' | 'UNKNOWN_PLAYER' | 'UNAVAILABLE' | 'NOT_HOST' | 'NOT_ENOUGH'
 
-/** `hello` joins the game, as a Hub player or a guest (null); `input` sends frames. */
-export type ClientMessage = { type: 'hello'; playerId: number | null } | { type: 'input'; frames: InputFrame[] }
+/** `hello` joins the game, as a Hub player or a guest (null); `input` sends frames; the host `start`s a match. */
+export type ClientMessage =
+    | { type: 'hello'; playerId: number | null }
+    | { type: 'input'; frames: InputFrame[] }
+    | { type: 'start'; rules: Rules }
 
 export type ServerMessage =
     | { type: 'welcome'; you: string; step: number; players: PlayerInfo[]; match: MatchView }
@@ -143,22 +169,45 @@ export function parseClientMessage(raw: string): ClientMessage | null {
 
         return { type: 'input', frames: parsed }
     }
+    if (message.type === 'start') {
+        const rules = message.rules as Record<string, unknown> | null | undefined
+        const fragLimit = FRAG_LIMITS.find(n => n === rules?.fragLimit)
+        const minutes = MATCH_MINUTES.find(n => n === rules?.minutes)
+        if (fragLimit === undefined || minutes === undefined) return null
+
+        return { type: 'start', rules: { fragLimit, minutes } }
+    }
 
     return null
 }
 
-/** Frames travel as arrays to stay small: [seq, forward, strafe, yaw, pitch, buttons, view]. */
+/**
+ * Frames travel as arrays to stay small: [seq, forward, strafe, yaw, pitch, buttons, view, weapon],
+ * the weapon as its slot's index (a 7-long frame holds the blaster).
+ */
 export function encodeFrame(frame: InputFrame): number[] {
-    return [frame.seq, frame.forward, frame.strafe, frame.yaw, frame.pitch, frame.buttons, frame.view]
+    const { seq, forward, strafe, yaw, pitch, buttons, view } = frame
+    return [seq, forward, strafe, yaw, pitch, buttons, view, WEAPONS.indexOf(frame.weapon ?? 'blaster')]
 }
 
 function parseFrame(value: unknown): InputFrame | null {
-    if (!Array.isArray(value) || value.length !== 7) return null
+    if (!Array.isArray(value) || (value.length !== 7 && value.length !== 8)) return null
     if (!value.every(n => typeof n === 'number' && Number.isFinite(n))) return null
-    const [seq, forward, strafe, yaw, pitch, buttons, view] = value as number[]
+    const [seq, forward, strafe, yaw, pitch, buttons, view, slot = 0] = value as number[]
     if (!Number.isInteger(seq) || seq! < 1 || !Number.isInteger(buttons) || buttons! < 0 || buttons! > 15) return null
     if (Math.abs(forward!) > 1 || Math.abs(strafe!) > 1 || Math.abs(pitch!) > Math.PI / 2) return null
     if (!Number.isInteger(view) || view! < 0) return null
+    const weapon = WEAPONS[slot]
+    if (!Number.isInteger(slot) || weapon === undefined) return null
 
-    return { seq: seq!, forward: forward!, strafe: strafe!, yaw: yaw!, pitch: pitch!, buttons: buttons!, view: view! }
+    return {
+        seq: seq!,
+        forward: forward!,
+        strafe: strafe!,
+        yaw: yaw!,
+        pitch: pitch!,
+        buttons: buttons!,
+        view: view!,
+        weapon,
+    }
 }

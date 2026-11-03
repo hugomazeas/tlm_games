@@ -71,6 +71,7 @@ GET  /games/racing/tracks/{track}/play  Race a track in a lobby (?lobby= joins o
 GET  /games/racing/tracks/{track}/records  The track's records (JSON): each player's best time, the fastest lap
 POST /games/racing/drivers          Add yourself as a player from the game's welcome screen (JSON)
 GET  /games/office-fps              Office FPS: pick who's playing, then the one always-open game (?player= or ?guest=1)
+GET  /games/office-fps/players/{player}  A player's office FPS stats (totals, records, weapons, rivals, recent matches)
 GET  /games/racing/garage/{player}  Garage: paint a player's kart (body + accent)
 PUT  /games/racing/garage/{player}  Save a player's kart colours
 POST /push/hot-potato/subscribe     Opt a player's browser into "a hot potato opened" pushes
@@ -236,13 +237,30 @@ that is played live, in real time, rather than scored afterwards.
 
 ### Office FPS (in progress, `game-server/src/fps/`)
 
-Minis (40 cm) with blasters and jetpacks in the office (3rd floor), server-authoritative.
-Playable at `/games/office-fps`; results aren't saved yet (logged by the game server) and there's
-no leaderboard or dashboard card yet.
+Minis (40 cm) with blasters, staplers and jetpacks in the office (3rd floor), server-authoritative.
+Playable at `/games/office-fps`.
 
-- **In the Hub:** `app/Games/OfficeFps/` serves one page: without `?player=` / `?guest=1` it asks
-  who's playing (and shows who's in, from the game server's `/games/office-fps/live/state`),
+- **In the Hub:** `app/Games/OfficeFps/` serves the game page: without `?player=` / `?guest=1` it
+  asks who's playing (and shows who's in, from the game server's `/games/office-fps/live/state`),
   with them it loads `play.js?v=…` (`BundleVersion`) with `window.officeFpsConfig`.
+- **Stats:** when a match ends the game server posts it to `/internal/office-fps/results`
+  (`OfficeFpsInternalController`, the shared secret): `office_fps_matches` (rules, size),
+  `office_fps_results` (one row per Hub player: place, kills, deaths, headshots, damage, shots,
+  hits, melee kills, backstabs, best streak, time played, left) and `office_fps_kills` (who killed
+  whom with what; a guest's side null). `OfficeFpsStats` adds them up: the leaderboard (mode
+  `kills`: kills, K/D, wins, matches, accuracy; also the home card's podium and the player
+  profile's line) and each player's page `/games/office-fps/players/{player}` (totals and rates,
+  records, per weapon, nemesis and favourite target, recent matches). The `game_types` and
+  `game_modes` rows come from migrations (deploys don't seed).
+- **Host and rules:** no match starts by itself. Everyone warms up until the host (the longest
+  seated; it passes on when they leave) picks a kill limit and a length (`FRAG_LIMITS`,
+  `MATCH_MINUTES`) on their Esc menu and sends `start`; after the scoreboard it's warmup again.
+- **Weapons:** 1 the blaster, 2 the stapler (or the wheel), sent in each frame (`weapon`,
+  the 8th element); a switch takes `SWITCH_MS` before the new one works. The stapler
+  (`swingStapler`): 0.45 m reach in a ~35° cone, 50 damage, 100 from behind (a backstab), a
+  swing every 0.55 s; `swing` events, kills carry `weapon` and `backstab`.
+- **Settings** (`client/settings.ts`, in this browser): sensitivity, aiming sensitivity, field
+  of view, invert Y, on the Esc menu.
 - **In the game server:** `fps/live.ts` (the one `FpsLobby`, players looked up with
   `findPlayer`, ticked every 4 ms: steps run on their own 60 Hz clock), `fps/serve.ts` (the
   bundle), wired into `server.ts` at `/games/office-fps/live/ws`; nginx proxies the prefix to the
@@ -277,8 +295,8 @@ no leaderboard or dashboard card yet.
   when none came), shots judged where the shooter saw the target (up to 200 ms back), respawns
   at the spawn point furthest from everyone with a short shield.
 - **One game** (`fps/lobby.ts`, pure, like racing's lobbies): always open, everyone who connects
-  is in it. Warmup alone; two in starts a countdown, then a match (first to 15 or 5 min), a
-  scoreboard, and the next match by itself. Joining mid-match drops you straight in at 0; who
+  is in it. Warmup until the host starts a match (a countdown, the match, a scoreboard, warmup
+  again). Joining mid-match drops you straight in at 0; who
   leaves keeps their kills in the results; rejoining the same match gets your score back; a
   second tab of the same player replaces the first; past 12 seated you watch until a seat frees.
   Fewer than two calls a match off. Results (people only) go out through `onResults`.

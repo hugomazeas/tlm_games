@@ -1,16 +1,9 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { createRng } from '../sim/rng.ts'
-import {
-    COUNTDOWN_MS,
-    type Connection,
-    FpsLobby,
-    FRAG_LIMIT,
-    INTERMISSION_MS,
-    MATCH_MS,
-    type MatchResult,
-} from './lobby.ts'
+import { COUNTDOWN_MS, type Connection, FpsLobby, INTERMISSION_MS, type MatchResult } from './lobby.ts'
 import {
     BUTTON,
+    DEFAULT_RULES,
     encodeFrame,
     type InputFrame,
     MAX_PLAYERS,
@@ -26,6 +19,9 @@ const world = testWorld([
     { name: 'north', position: [0, 0, -2], yaw: Math.PI },
     { name: 'south', position: [0, 0, 2], yaw: 0 },
 ])
+
+const FRAG_LIMIT = DEFAULT_RULES.fragLimit
+const MATCH_MS = DEFAULT_RULES.minutes * 60_000
 
 let now: number
 let results: MatchResult[]
@@ -97,8 +93,10 @@ function kill(shooter: Client, target: Client): void {
     expect(down).toBe(true)
 }
 
+/** Everyone joins; the first (the host) starts a match with the default rules. */
 function startMatch(...clients: Client[]): void {
     for (const c of clients) lobby.join(c, { playerId: Number(c.id.replace(/\D/g, '')) || null, name: c.id })
+    lobby.start(clients[0]!.id, DEFAULT_RULES)
     play(COUNTDOWN_MS + STEP_MS)
     expect(clients[0]!.last('match')!.match.phase).toBe('playing')
     // Past the spawn shields.
@@ -112,16 +110,28 @@ beforeEach(() => {
 })
 
 describe('one game, joined on the fly', () => {
-    test('alone, you warm up; a second player starts the countdown, then the match', () => {
+    test('you warm up until the host (the first in) starts a match: a countdown, then the match', () => {
         const a = client('a1')
         lobby.join(a, { playerId: 1, name: 'Ann' })
-        expect(a.last('welcome')!.match.phase).toBe('warmup')
+        expect(a.last('welcome')!.match).toMatchObject({ phase: 'warmup', host: 'a1' })
+
+        // Alone, there's no one to play.
+        lobby.start(a.id, DEFAULT_RULES)
+        expect(a.last('error')).toEqual({ type: 'error', code: 'NOT_ENOUGH' })
 
         const b = client('b2')
         lobby.join(b, { playerId: 2, name: 'Bob' })
-        expect(a.last('match')!.match.phase).toBe('countdown')
+        play(30_000)
+        expect(a.last('match')!.match.phase).toBe('warmup')
         expect(a.last('roster')!.players.map(p => p.name)).toEqual(['Ann', 'Bob'])
 
+        // Only the host starts.
+        lobby.start(b.id, DEFAULT_RULES)
+        expect(b.last('error')).toEqual({ type: 'error', code: 'NOT_HOST' })
+        expect(a.last('match')!.match.phase).toBe('warmup')
+
+        lobby.start(a.id, DEFAULT_RULES)
+        expect(b.last('match')!.match.phase).toBe('countdown')
         play(COUNTDOWN_MS + STEP_MS)
         const match = b.last('match')!.match
         expect(match.phase).toBe('playing')
@@ -170,7 +180,7 @@ describe('one game, joined on the fly', () => {
         expect(feed).toHaveLength(FRAG_LIMIT)
     })
 
-    test('after the scoreboard, the next match starts by itself with fresh scores', () => {
+    test('after the scoreboard, everyone warms up again until the host starts the next', () => {
         const [a, b] = [client('a1'), client('b2')]
         startMatch(a, b)
         kill(a, b)
@@ -178,10 +188,41 @@ describe('one game, joined on the fly', () => {
         expect(a.last('match')!.match.phase).toBe('intermission')
         expect(results[0]!.players[0]!.kills).toBe(1)
 
-        play(INTERMISSION_MS + STEP_MS)
+        play(INTERMISSION_MS + 60_000)
+        expect(a.last('match')!.match.phase).toBe('warmup')
+        expect(results).toHaveLength(1)
+
+        lobby.start(a.id, DEFAULT_RULES)
+        play(COUNTDOWN_MS + STEP_MS)
         const match = a.last('match')!.match
         expect(match.phase).toBe('playing')
         expect(match.scores.every(s => s.kills === 0 && s.deaths === 0)).toBe(true)
+    })
+
+    test('the host picks the rules: a shorter kill limit ends it sooner, and the results say so', () => {
+        const [a, b] = [client('a1'), client('b2')]
+        lobby.join(a, { playerId: 1, name: 'a1' })
+        lobby.join(b, { playerId: 2, name: 'b2' })
+        lobby.start(a.id, { fragLimit: 5, minutes: 10 })
+        expect(b.last('match')!.match).toMatchObject({ phase: 'countdown', fragLimit: 5, minutes: 10 })
+        play(COUNTDOWN_MS + STEP_MS + SHIELD_STEPS * STEP_MS + 100)
+
+        for (let k = 0; k < 5; k++) {
+            kill(a, b)
+            if (k < 4) play((RESPAWN_STEPS + SHIELD_STEPS) * STEP_MS + 100)
+        }
+        expect(a.last('match')!.match.phase).toBe('intermission')
+        expect(results[0]!.rules).toEqual({ fragLimit: 5, minutes: 10 })
+    })
+
+    test('the host passes to the next longest seated when they leave', () => {
+        const [a, b, c] = [client('a1'), client('b2'), client('c3')]
+        for (const x of [a, b, c]) lobby.join(x, { playerId: Number(x.id.slice(1)), name: x.id })
+        lobby.leave(a.id)
+
+        expect(c.last('match')!.match.host).toBe('b2')
+        lobby.start(b.id, DEFAULT_RULES)
+        expect(c.last('match')!.match.phase).toBe('countdown')
     })
 
     test('warmup kills count for nothing', () => {
@@ -189,11 +230,35 @@ describe('one game, joined on the fly', () => {
         lobby.join(a, { playerId: 1, name: 'a1' })
         lobby.join(b, { playerId: 2, name: 'b2' })
         play(SHIELD_STEPS * STEP_MS + 100)
-        expect(a.last('match')!.match.phase).toBe('countdown')
         kill(a, b)
 
-        play(COUNTDOWN_MS)
+        lobby.start(a.id, DEFAULT_RULES)
+        play(COUNTDOWN_MS + STEP_MS)
         expect(a.last('match')!.match.scores.every(s => s.kills === 0)).toBe(true)
+    })
+
+    test("a match's stats: shots, hits, streaks, time played, and every kill", () => {
+        const [a, b] = [client('a1'), client('b2')]
+        startMatch(a, b)
+        kill(a, b)
+        play((RESPAWN_STEPS + SHIELD_STEPS) * STEP_MS + 100)
+        kill(a, b)
+        play(MATCH_MS)
+
+        const [ann, bob] = results[0]!.players
+        expect(ann).toMatchObject({ playerId: 1, kills: 2, deaths: 0, bestStreak: 2, meleeKills: 0 })
+        expect(ann!.shots).toBeGreaterThanOrEqual(10)
+        expect(ann!.hits).toBe(10)
+        expect(ann!.damage).toBe(200)
+        expect(bob).toMatchObject({ playerId: 2, kills: 0, deaths: 2, shots: 0, hits: 0, bestStreak: 0 })
+        // The whole match, give or take a step.
+        expect(Math.abs(ann!.playedMs - MATCH_MS)).toBeLessThan(100)
+        expect(results[0]!.playerCount).toBe(2)
+        expect(results[0]!.kills).toEqual([
+            expect.objectContaining({ killerId: 1, victimId: 2, weapon: 'blaster', backstab: false }),
+            expect.objectContaining({ killerId: 1, victimId: 2, weapon: 'blaster' }),
+        ])
+        expect(results[0]!.kills[1]!.atMs).toBeGreaterThan(results[0]!.kills[0]!.atMs)
     })
 
     test('fewer than two left calls the match off: no results', () => {
@@ -248,6 +313,7 @@ describe('one game, joined on the fly', () => {
         const [a, guest] = [client('a1'), client('guest')]
         lobby.join(a, { playerId: 1, name: 'Ann' })
         lobby.join(guest, { playerId: null, name: 'Guest' })
+        lobby.start(a.id, DEFAULT_RULES)
         play(COUNTDOWN_MS + STEP_MS)
         play(MATCH_MS)
 
@@ -262,7 +328,7 @@ describe('one game, joined on the fly', () => {
         lobby.join(later, { playerId: 21, name: 'later' })
 
         expect(late.last('welcome')!.players.find(p => p.id === 'p20')!.watching).toBe(true)
-        expect(lobby.summary()).toEqual({ phase: 'countdown', players: MAX_PLAYERS, watching: 2 })
+        expect(lobby.summary()).toEqual({ phase: 'warmup', players: MAX_PLAYERS, watching: 2 })
         play(STEP_MS * 3)
         expect(late.last('snap')!.you).toBeNull()
         lobby.input(late.id, [{ seq: 1, forward: 1, strafe: 0, yaw: 0, pitch: 0, buttons: 0, view: 0 }])
@@ -339,12 +405,27 @@ describe('messages', () => {
             pitch: -0.3,
             buttons: BUTTON.fire | BUTTON.jet,
             view: 120,
+            weapon: 'stapler' as const,
         }
 
         expect(parseClientMessage(JSON.stringify({ type: 'input', frames: [encodeFrame(frame)] }))).toEqual({
             type: 'input',
             frames: [frame],
         })
+        // A 7-long frame (no weapon) holds the blaster.
+        expect(parseClientMessage(JSON.stringify({ type: 'input', frames: [[1, 0, 0, 0, 0, 0, 0]] }))).toEqual({
+            type: 'input',
+            frames: [{ seq: 1, forward: 0, strafe: 0, yaw: 0, pitch: 0, buttons: 0, view: 0, weapon: 'blaster' }],
+        })
+    })
+
+    test("the host's start carries rules from the allowed lists only", () => {
+        const start = (rules: unknown) => parseClientMessage(JSON.stringify({ type: 'start', rules }))
+
+        expect(start({ fragLimit: 25, minutes: 10 })).toEqual({ type: 'start', rules: { fragLimit: 25, minutes: 10 } })
+        expect(start({ fragLimit: 7, minutes: 10 })).toBeNull()
+        expect(start({ fragLimit: 25, minutes: 1 })).toBeNull()
+        expect(start(null)).toBeNull()
     })
 
     test('bad messages are refused', () => {
@@ -358,6 +439,8 @@ describe('messages', () => {
             { type: 'input', frames: [[1, 0, 0, 0, 2, 0, 0]] },
             { type: 'input', frames: [[1, 0, 0, 0, 0, 16, 0]] },
             { type: 'input', frames: [[1, 0, 0, null, 0, 0, 0]] },
+            { type: 'input', frames: [[1, 0, 0, 0, 0, 0, 0, 2]] },
+            { type: 'input', frames: [[1, 0, 0, 0, 0, 0, 0, 0, 0]] },
             { type: 'hello', playerId: 0 },
             { type: 'hello', playerId: 'x' },
             { type: 'nope' },

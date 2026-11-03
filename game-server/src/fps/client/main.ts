@@ -5,11 +5,14 @@ import {
     encodeFrame,
     type GameEvent,
     type InputFrame,
+    type MatchView,
     type PlayerInfo,
+    type Rules,
     type SelfState,
     type ServerMessage,
+    type Weapon,
 } from '../protocol.ts'
-import { aimDirection, eyeOf, WEAPON } from '../sim/combat.ts'
+import { aimDirection, eyeOf, STAPLER, SWITCH_MS, WEAPON } from '../sim/combat.ts'
 import { PLAYER, STEP_MS } from '../sim/movement.ts'
 import { rayDistance, worldFrom } from '../sim/world.ts'
 import { Avatars } from './avatars.ts'
@@ -17,6 +20,7 @@ import { Controls } from './controls.ts'
 import { Effects, Viewmodel } from './effects.ts'
 import { escape, Hud } from './hud.ts'
 import { Prediction } from './prediction.ts'
+import { aimFov, loadSettings, saveSettings } from './settings.ts'
 import { targetUnderCrosshair } from './targeting.ts'
 import { Interpolator, type Pose, ServerClock } from './timeline.ts'
 import { aimFromCamera, thirdPersonCamera } from './view.ts'
@@ -71,8 +75,18 @@ addEventListener('resize', () => {
     camera.updateProjectionMatrix()
 })
 
-const hud = new Hud(config.backUrl)
+let settings = loadSettings()
+const hud = new Hud(config.backUrl, {
+    settings,
+    onSettings: changed => {
+        settings = changed
+        saveSettings(changed)
+        controls.invertY = changed.invertY
+    },
+    onStart: rules => startMatch(rules),
+})
 const controls = new Controls(renderer.domElement, locked => hud.card(locked ? 'playing' : 'paused'))
+controls.invertY = settings.invertY
 const avatars = new Avatars(scene)
 const effects = new Effects(scene)
 let viewmodel: Viewmodel | null = null
@@ -81,6 +95,7 @@ let viewmodel: Viewmodel | null = null
 let socket: WebSocket | null = null
 let me: string | null = null
 let roster = new Map<string, PlayerInfo>()
+let match: MatchView | null = null
 let self: SelfState | null = null
 let wasAlive = false
 let killer: string | null = null
@@ -92,6 +107,10 @@ let others = new Interpolator()
 /** How far the camera still is from the predicted body after a correction; it fades. */
 const smoothing = new Vector3()
 let nextLocalShot = 0
+let nextLocalSwing = 0
+/** The weapon in hand here, and when it can be used (as the server counts it). */
+let held: Weapon = 'blaster'
+let readyAt = 0
 let closedForGood = false
 /** Your jetpack burning on your last frame (drawn on your own trooper in third person). */
 let jetting = false
@@ -147,15 +166,20 @@ function receive(message: ServerMessage): void {
             outbox = []
             self = null
             wasAlive = false
+            match = message.match
             hud.setMatch(message.match, now)
             hud.card(controls.locked ? 'playing' : 'paused')
             viewmodel ??= new Viewmodel(camera, roster.get(me)?.color ?? '#ffd166')
+            updateHost()
             return
         case 'roster':
             roster = new Map(message.players.map(p => [p.id, p]))
+            updateHost()
             return
         case 'match':
+            match = message.match
             hud.setMatch(message.match, now)
+            updateHost()
             return
         case 'snap':
             snapshot(message, now)
@@ -170,8 +194,21 @@ function receive(message: ServerMessage): void {
                 closedForGood = true
                 hud.card('unknown')
             }
+            if (message.code === 'NOT_ENOUGH') hud.notice('Needs a second player.')
+            if (message.code === 'NOT_HOST') hud.notice('Only the host can start a match.')
             return
     }
+}
+
+/** Who hosts (the longest seated), for the menu's Start and the warmup line. */
+function updateHost(): void {
+    const host = match?.host ?? null
+    const seated = [...roster.values()].filter(p => !p.watching).length
+    hud.setHost({ isHost: host !== null && host === me, name: host ? (roster.get(host)?.name ?? null) : null, seated })
+}
+
+function startMatch(rules: Rules): void {
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'start', rules }))
 }
 
 function snapshot(snap: Extract<ServerMessage, { type: 'snap' }>, now: number): void {
@@ -215,8 +252,24 @@ function onEvent(event: GameEvent, now: number): void {
         // Hit: which way it came from.
         if (event.hit === me && event.damage > 0) hud.damageFrom(bearingTo(event.from))
     }
+    if (event.type === 'swing') {
+        if (event.hit && event.damage > 0) avatars.flash(event.hit, now)
+        if (event.by === me) {
+            // The chop was drawn when swung; the server says what it hit.
+            const struck = event.hit ? avatars.centerOf(event.hit) : null
+            if (event.hit && event.damage > 0) hud.hitMarker(event.backstab)
+            const at = struck ? toScreen(new Vector3(struck.x, struck.y, struck.z)) : null
+            if (event.hit && at) hud.damageNumber(event.damage, event.backstab, at.x, at.y)
+            return
+        }
+        avatars.swing(event.by, now)
+        const from = avatars.centerOf(event.by)
+        if (event.hit === me && event.damage > 0 && from) hud.damageFrom(bearingTo([from.x, from.y, from.z]))
+    }
     if (event.type === 'kill') {
-        const how = `<span style="opacity:.7">${event.headshot ? '⌖' : '→'}</span>`
+        const icon =
+            event.weapon === 'stapler' ? (event.backstab ? '📎 from behind' : '📎') : event.headshot ? '⌖' : '→'
+        const how = `<span style="opacity:.7">${icon}</span>`
         hud.killFeed(`${colored(event.killer)} ${how} ${colored(event.victim)}`)
         // Still drawn where they fell (they disappear on the next frame).
         const fell = avatars.centerOf(event.victim)
@@ -280,20 +333,33 @@ function step(now: number): void {
         pitch: aim.pitch,
         buttons: keys.buttons,
         view: Math.max(0, Math.floor(clock.renderStep(now) ?? 0)),
+        weapon: controls.weapon,
     }
     jetting = Boolean(input.buttons & BUTTON.jet) && (body?.fuel ?? 0) > 0
     prediction.apply(input, self.alive)
     outbox.push(input)
     if (outbox.length >= SEND_EVERY) flush()
 
-    // Your own shot shows at once: the server's answer only says whether it hit.
-    if (input.buttons & BUTTON.fire && self.alive && !self.reloading && self.ammo > 0 && now >= nextLocalShot) {
+    // A new weapon in hand: like the server, it can't be used for a moment.
+    if (controls.weapon !== held) {
+        held = controls.weapon
+        readyAt = now + SWITCH_MS
+        if (viewmodel) viewmodel.weapon = held
+    }
+    const firing = Boolean(input.buttons & BUTTON.fire) && self.alive && now >= readyAt
+    // Your own shot or swing shows at once: the server's answer only says what it hit.
+    if (firing && held === 'blaster' && !self.reloading && self.ammo > 0 && now >= nextLocalShot) {
         nextLocalShot = now + WEAPON.intervalMs
         const eye = eyeOf(prediction.body!)
         const direction = aimDirection(input.yaw, input.pitch)
         const end = eye.clone().addScaledVector(direction, rayDistance(world, eye, direction, WEAPON.range))
         viewmodel?.fire(now)
         effects.tracer(viewmodel && !thirdPerson ? viewmodel.muzzleIn(camera) : eye, end, 0xffd080, now, false)
+    }
+    if (firing && held === 'stapler' && now >= nextLocalSwing) {
+        nextLocalSwing = now + STAPLER.intervalMs
+        viewmodel?.swing(now)
+        if (me) avatars.swing(me, now)
     }
 }
 
@@ -316,14 +382,12 @@ document.addEventListener('visibilitychange', () => {
 })
 function sendIdle(): void {
     if (!me || !self) return
-    outbox.push({ seq: ++seq, forward: 0, strafe: 0, yaw: controls.yaw, pitch: controls.pitch, buttons: 0, view: 0 })
+    const { yaw, pitch } = controls
+    outbox.push({ seq: ++seq, forward: 0, strafe: 0, yaw, pitch, buttons: 0, view: 0, weapon: held })
     flush()
 }
 
 let lastDraw = performance.now()
-/** Field of view (degrees): from the hip, and aiming down the sights. */
-const HIP_FOV = 78
-const AIM_FOV = 45
 /** 0 at the hip … 1 aiming, eased. */
 let aimBlend = 0
 
@@ -346,15 +410,18 @@ function draw(now: number): void {
         camera.position.set(Math.sin(a) * 14, 16, Math.cos(a) * 9)
         camera.lookAt(0, 0, 0)
     }
-    // Aiming (right mouse): the view zooms in, the mouse slows to match, the blaster centres.
-    const aimingNow = controls.aiming && Boolean(self?.alive)
+    // Aiming (right mouse, the blaster only): the view zooms in, the mouse slows to match (times
+    // your aiming sensitivity), the blaster centres on its sights.
+    const aimingNow = controls.aiming && Boolean(self?.alive) && held === 'blaster'
     aimBlend += ((aimingNow ? 1 : 0) - aimBlend) * Math.min(1, dt * 14)
-    const fov = HIP_FOV + (AIM_FOV - HIP_FOV) * aimBlend
+    const hipFov = settings.fov
+    const fov = hipFov + (aimFov(hipFov) - hipFov) * aimBlend
     if (Math.abs(camera.fov - fov) > 0.01) {
         camera.fov = fov
         camera.updateProjectionMatrix()
     }
-    controls.sensitivityScale = fov / HIP_FOV
+    const aimedSensitivity = 1 + (settings.aimSensitivity - 1) * aimBlend
+    controls.sensitivityScale = settings.sensitivity * (fov / hipFov) * aimedSensitivity
     hud.aiming = aimingNow
     if (viewmodel) {
         viewmodel.visible = Boolean(self?.alive) && !third
@@ -376,6 +443,7 @@ function draw(now: number): void {
             health: self.health,
             jet: jetting,
             shielded: self.shielded,
+            weapon: held,
         }
         poses.set(me, { ...where, ...facing, state })
     }

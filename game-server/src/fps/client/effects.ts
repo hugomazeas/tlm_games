@@ -13,6 +13,8 @@ import {
     SphereGeometry,
     Vector3,
 } from 'three'
+import type { Weapon } from '../protocol.ts'
+import { STAPLER, SWITCH_MS } from '../sim/combat.ts'
 
 /** Tracers, impact puffs, and your own blaster in front of the camera with its kick and flash. */
 
@@ -118,6 +120,12 @@ export const SIGHT_LINE = BODY_TOP + 0.013
 /** Your blaster, held at the bottom right of the view. */
 export class Viewmodel {
     private readonly root = new Group()
+    private readonly blaster = new Group()
+    private readonly stapler = new Group()
+    private readonly staplerArm: Group
+    private held: Weapon = 'blaster'
+    private switchAt = -1e9
+    private swingAt = -1e9
     private readonly flash: Mesh
     private readonly light = new PointLight(0xffc070, 0, 1.2)
     private kickAt = -1e9
@@ -173,11 +181,31 @@ export class Viewmodel {
         this.flash.position.copy(this.muzzle).add(new Vector3(0, 0, -0.02))
         this.flash.visible = false
         this.light.position.copy(this.muzzle)
-        this.root.add(body, ...stripes, grip, barrel, ...rear, ...front, tip, this.flash, this.light)
+        this.blaster.add(body, ...stripes, grip, barrel, ...rear, ...front, tip, this.flash, this.light)
         // Drawn over the world so it never sinks into a wall you hug. Without depth, order decides:
         // the body first, then what sits on it (stripes, sights), then the sight's glowing tip.
         for (const mesh of [...stripes, ...rear, ...front]) mesh.renderOrder = 11
         tip.renderOrder = 12
+
+        // The stapler: a dark base, the top arm in your colour, a chrome hinge and strike plate.
+        // It pivots at its back end for the swing.
+        const chrome = new MeshStandardMaterial({ color: 0xc9ced4, roughness: 0.25, metalness: 0.9 })
+        const swingArm = new Group()
+        swingArm.position.set(x, top - 0.02, -0.05)
+        swingArm.add(
+            box([0.026, 0.01, 0.11], sightMetal, [0, -0.008, -0.05]),
+            box([0.022, 0.016, 0.1], trim, [0, 0.006, -0.048]),
+            box([0.028, 0.004, 0.02], chrome, [0, -0.0145, -0.098])
+        )
+        const hinge = new Mesh(new CylinderGeometry(0.005, 0.005, 0.03, 10), chrome)
+        hinge.rotation.z = Math.PI / 2
+        hinge.position.set(0, 0, 0.002)
+        swingArm.add(hinge, box([0.02, 0.03, 0.025], metal, [0, -0.03, 0.005]))
+        this.stapler.add(swingArm)
+        this.staplerArm = swingArm
+        this.stapler.visible = false
+
+        this.root.add(this.blaster, this.stapler)
         this.root.traverse(o => {
             if (o instanceof Mesh) {
                 o.renderOrder = Math.max(o.renderOrder, 10)
@@ -191,8 +219,20 @@ export class Viewmodel {
         this.kickAt = now
     }
 
+    /** A stapler swing: a chop forward and down. */
+    swing(now: number): void {
+        this.swingAt = now
+    }
+
     set visible(on: boolean) {
         this.root.visible = on
+    }
+
+    /** The weapon in hand: the other one drops away and this one comes up. */
+    set weapon(weapon: Weapon) {
+        if (weapon === this.held) return
+        this.held = weapon
+        this.switchAt = performance.now()
     }
 
     /**
@@ -203,11 +243,25 @@ export class Viewmodel {
         const since = now - this.kickAt
         const kick = Math.max(0, 1 - since / 90) * (1 - aim * 0.6)
         const bob = moving ? Math.sin(now * 0.012) * 0.003 * (1 - aim) : 0
+        // Just switched: the new weapon rises from below.
+        const raise = Math.min(1, (now - this.switchAt) / SWITCH_MS)
+        const lowered = (1 - raise) * 0.07
         // Aimed, the sights' line runs through the middle of the view: the crosshair sits on the front post.
-        this.root.position.set(-GUN_X * aim, bob - SIGHT_LINE * aim, kick * 0.02)
+        this.root.position.set(-GUN_X * aim, bob - SIGHT_LINE * aim - lowered, kick * 0.02)
         this.root.rotation.x = kick * 0.12
-        this.flash.visible = since < 45
-        this.light.intensity = since < 45 ? 0.6 : 0
+        this.blaster.visible = this.held === 'blaster'
+        this.stapler.visible = this.held === 'stapler'
+        this.flash.visible = this.held === 'blaster' && since < 45
+        this.light.intensity = this.flash.visible ? 0.6 : 0
+
+        // The swing: back a little (wind-up), then a fast chop forward and down, then back.
+        const t = (now - this.swingAt) / STAPLER.intervalMs
+        let chop = 0
+        if (t < 0.15) chop = (-t / 0.15) * 0.35
+        else if (t < 0.35) chop = -0.35 + ((t - 0.15) / 0.2) * 1.45
+        else if (t < 1) chop = 1.1 * (1 - (t - 0.35) / 0.65)
+        this.staplerArm.rotation.x = -chop
+        this.staplerArm.position.z = -0.05 - Math.max(0, chop) * 0.03
     }
 
     /** The muzzle in the world. */

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { createRng } from '../../sim/rng.ts'
 import { BUTTON, type InputFrame } from '../protocol.ts'
 import { Arena, MAX_BURST, SHIELD_STEPS } from './arena.ts'
+import { STAPLER } from './combat.ts'
 import { type Body, bodyAt, MOVE, moveOf, stepBody } from './movement.ts'
 import { testWorld } from './testing.ts'
 
@@ -123,5 +124,91 @@ describe('inputs are used as they arrive, never queued', () => {
         // Frames 1, 10, 19 and 28: one every 150 ms of theirs.
         expect(shots).toHaveLength(4)
         expect(a.self('me')!.ammo).toBe(8)
+    })
+})
+
+describe('the stapler', () => {
+    /**
+     * Two minis `gap` apart on the Z axis, facing as given (yaw π faces +Z, 0 faces -Z). The one
+     * at z = 0 swings at the one further along, aiming +Z at their chest.
+     */
+    function standOff(nearYaw: number, farYaw: number, gap = 0.5) {
+        const a = new Arena(
+            testWorld([
+                { name: 'near', position: [0, 0, 0], yaw: nearYaw },
+                { name: 'far', position: [0, 0, gap], yaw: farYaw },
+            ]),
+            createRng(2)
+        )
+        a.add('x')
+        a.add('y')
+        const near = a.self('x')!.body.z < gap / 2 ? 'x' : 'y'
+        const far = near === 'x' ? 'y' : 'x'
+        let seq = 0
+        const frame = (buttons: number, weapon: 'blaster' | 'stapler' = 'stapler'): InputFrame => ({
+            seq: ++seq,
+            forward: 0,
+            strafe: 0,
+            yaw: Math.PI,
+            pitch: Math.atan2(0.2 - 0.34, gap),
+            buttons,
+            view: a.step,
+            weapon,
+        })
+        /** One step of the near one's frame; the events it gave. */
+        const step = (buttons: number, weapon?: 'blaster' | 'stapler') => {
+            a.queue(near, [frame(buttons, weapon)])
+            return a.advance()
+        }
+        // Stapler out, past the spawn shields.
+        for (let i = 0; i < SHIELD_STEPS + 1; i++) step(0)
+
+        return { a, near, far, step }
+    }
+
+    test('face to face: half their health a swing, two swings down, and a cooldown in between', () => {
+        const { a, near, far, step } = standOff(Math.PI, 0)
+        expect(step(BUTTON.fire)).toContainEqual({
+            type: 'swing',
+            by: near,
+            hit: far,
+            damage: STAPLER.damage,
+            backstab: false,
+        })
+        expect(a.states().find(s => s.id === far)!.health).toBe(100 - STAPLER.damage)
+
+        // Again at once: still swinging.
+        expect(step(BUTTON.fire).filter(e => e.type === 'swing')).toEqual([])
+        let events: ReturnType<typeof step> = []
+        for (let i = 0; i < 60 && !events.some(e => e.type === 'swing'); i++) events = step(BUTTON.fire)
+        expect(events).toContainEqual(
+            expect.objectContaining({ type: 'kill', killer: near, victim: far, weapon: 'stapler', backstab: false })
+        )
+    })
+
+    test('from behind: a backstab, down in one', () => {
+        const { near, far, step } = standOff(Math.PI, Math.PI)
+        const events = step(BUTTON.fire)
+
+        expect(events).toContainEqual({ type: 'swing', by: near, hit: far, damage: STAPLER.backstab, backstab: true })
+        expect(events).toContainEqual(expect.objectContaining({ type: 'kill', weapon: 'stapler', backstab: true }))
+    })
+
+    test('out of reach: a swing at the air', () => {
+        const { near, step } = standOff(Math.PI, 0, 1.2)
+        expect(step(BUTTON.fire)).toContainEqual({ type: 'swing', by: near, hit: null, damage: 0, backstab: false })
+    })
+
+    test('switching weapons takes a moment before the new one works', () => {
+        const { a, near, step } = standOff(Math.PI, 0)
+        // To the blaster and fire at once: nothing yet.
+        expect(step(BUTTON.fire, 'blaster').filter(e => e.type === 'shot')).toEqual([])
+        expect(a.self(near)!.weapon).toBe('blaster')
+        let fired = false
+        let waited = 0
+        for (; waited < 60 && !fired; waited++) fired = step(BUTTON.fire, 'blaster').some(e => e.type === 'shot')
+        expect(fired).toBe(true)
+        expect(waited).toBeGreaterThan(10)
+        expect(a.states().find(s => s.id === near)!.weapon).toBe('blaster')
     })
 })

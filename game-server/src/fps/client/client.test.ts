@@ -8,9 +8,32 @@ import { INTERP_STEPS, Interpolator, ServerClock } from './timeline.ts'
 import { aimFromCamera, THIRD_PERSON, thirdPersonCamera } from './view.ts'
 import { targetUnderCrosshair } from './targeting.ts'
 import { Viewmodel } from './effects.ts'
+import { aimFov, DEFAULT_SETTINGS, LIMITS, parseSettings } from './settings.ts'
 import { PerspectiveCamera } from 'three'
 import { Vector3 } from 'three'
 import { aimDirection, fireShot } from '../sim/combat.ts'
+
+describe('settings', () => {
+    test('read back as saved, the defaults for anything missing or broken, numbers clamped', () => {
+        expect(parseSettings(null)).toEqual(DEFAULT_SETTINGS)
+        expect(parseSettings('not json')).toEqual(DEFAULT_SETTINGS)
+        expect(parseSettings(JSON.stringify({ sensitivity: 2.5, invertY: true }))).toEqual({
+            ...DEFAULT_SETTINGS,
+            sensitivity: 2.5,
+            invertY: true,
+        })
+        expect(parseSettings(JSON.stringify({ sensitivity: 99, fov: 10, aimSensitivity: 'x', invertY: 1 }))).toEqual({
+            ...DEFAULT_SETTINGS,
+            sensitivity: LIMITS.sensitivity.max,
+            fov: LIMITS.fov.min,
+        })
+    })
+
+    test('aiming zooms in to a bit over half the field of view', () => {
+        expect(aimFov(78)).toBe(45)
+        expect(aimFov(100)).toBe(58)
+    })
+})
 
 describe('iron sights', () => {
     test('fully aimed, the front sight sits on the crosshair; at the hip, low and to the right', () => {
@@ -183,6 +206,7 @@ describe('drawing the others', () => {
         pitch: 0,
         alive,
         health: 100,
+        weapon: 'blaster',
         jet: false,
         shielded: false,
     })

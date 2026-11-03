@@ -1,4 +1,5 @@
 import type { ChatEvent, ChatLine, UnsavedLine } from './chat.ts'
+import type { MatchResult } from './fps/lobby.ts'
 import { lookFrom } from './cosmetics.ts'
 import type { PlayerInfo } from './protocol.ts'
 import type { GateSpec } from './race/map/courses.ts'
@@ -156,6 +157,41 @@ export class LaravelClient {
             })),
         })
         if (!response.ok) throw new Error(`Saving race results failed with ${response.status}`)
+    }
+
+    /** A finished office FPS match: its rules, each Hub player's line and every kill. */
+    async postFpsResults(result: MatchResult): Promise<void> {
+        const response = await this.request('POST', '/internal/office-fps/results', {
+            started_at: new Date(result.startedAt).toISOString(),
+            ended_at: new Date(result.endedAt).toISOString(),
+            frag_limit: result.rules.fragLimit,
+            minutes: result.rules.minutes,
+            player_count: result.playerCount,
+            players: result.players.map(p => ({
+                player_id: p.playerId,
+                place: p.place,
+                kills: p.kills,
+                deaths: p.deaths,
+                headshots: p.headshots,
+                damage: p.damage,
+                shots: p.shots,
+                hits: p.hits,
+                melee_kills: p.meleeKills,
+                backstabs: p.backstabs,
+                best_streak: p.bestStreak,
+                played_ms: Math.round(p.playedMs),
+                left: p.left,
+            })),
+            kills: result.kills.map(k => ({
+                killer_id: k.killerId,
+                victim_id: k.victimId,
+                weapon: k.weapon,
+                headshot: k.headshot,
+                backstab: k.backstab,
+                at_ms: Math.round(k.atMs),
+            })),
+        })
+        if (!response.ok) throw new Error(`Saving the office FPS match failed with ${response.status}`)
     }
 
     private request(method: 'GET' | 'POST', path: string, body?: unknown): Promise<Response> {

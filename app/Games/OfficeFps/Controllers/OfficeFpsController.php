@@ -2,6 +2,7 @@
 
 namespace App\Games\OfficeFps\Controllers;
 
+use App\Games\OfficeFps\Services\OfficeFpsStats;
 use App\Http\Controllers\Controller;
 use App\Models\Player;
 use Illuminate\Http\Request;
@@ -25,5 +26,11 @@ class OfficeFpsController extends Controller
         }
 
         return view('games.office-fps.play', ['player' => $player]);
+    }
+
+    /** A player's office FPS record: totals, rates, records, weapons, rivals, recent matches. */
+    public function stats(Player $player, OfficeFpsStats $stats): View
+    {
+        return view('games.office-fps.stats', ['player' => $player, 'stats' => $stats->forPlayer($player)]);
     }
 }

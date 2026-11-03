@@ -14,6 +14,21 @@ export const WEAPON = {
     reloadMs: 1200,
 } as const
 
+/** The melee weapon: a heavy-duty stapler, swung. */
+export const STAPLER = {
+    damage: 50,
+    /** From behind (the victim's back within ~60° of you): twice the damage, one hit. */
+    backstab: 100,
+    /** Reach from the eyes to the target's capsule (m): a mini's arm and a stapler. */
+    reach: 0.45,
+    /** Half-angle of the swing's cone (rad, about 35°). */
+    arc: 0.6,
+    intervalMs: 550,
+} as const
+
+/** Changing weapons: the new one can't be used for this long. */
+export const SWITCH_MS = 250
+
 export const MAX_HEALTH = 100
 
 /** Hits on the capsule's top part (from here up, as a share of its height) are headshots. */
@@ -37,6 +52,52 @@ export interface Target {
     x: number
     y: number
     z: number
+    /** Where they face (radians, 0 toward -Z), for a stapler from behind. */
+    yaw?: number
+}
+
+/**
+ * A stapler swing from `eye` along `direction`: the nearest target whose capsule is within reach
+ * inside the swing's cone, with no wall in between. From behind it's a backstab.
+ */
+export function swingStapler(
+    world: FpsWorld,
+    eye: Vector3,
+    direction: Vector3,
+    targets: readonly Target[]
+): { id: string; backstab: boolean } | null {
+    let best: { id: string; backstab: boolean } | null = null
+    let bestDistance = Infinity
+    const to = new Vector3()
+    for (const target of targets) {
+        // The nearest point of their capsule's axis to the eyes.
+        const axisY = Math.max(target.y + PLAYER.radius, Math.min(target.y + PLAYER.height - PLAYER.radius, eye.y))
+        to.set(target.x - eye.x, axisY - eye.y, target.z - eye.z)
+        const distance = to.length()
+        if (distance - PLAYER.radius > STAPLER.reach || distance >= bestDistance) continue
+        const toward = to.clone().normalize()
+        // Right up against them, any aim counts; otherwise they must be in the cone.
+        const angle = Math.acos(Math.max(-1, Math.min(1, toward.dot(direction))))
+        if (distance > PLAYER.radius && angle > STAPLER.arc) continue
+        const blocked = distance > 0.01 && rayDistance(world, eye, toward, distance) < distance - PLAYER.radius
+        if (blocked) continue
+        best = { id: target.id, backstab: isBehind(target, eye) }
+        bestDistance = distance
+    }
+
+    return best
+}
+
+/** Is `from` behind the target (within 60° of straight behind them)? */
+function isBehind(target: Target, from: Vector3): boolean {
+    if (target.yaw === undefined) return false
+    const dx = from.x - target.x
+    const dz = from.z - target.z
+    const length = Math.hypot(dx, dz)
+    if (length < 1e-6) return false
+    // Their facing is (-sin yaw, -cos yaw); behind means the attacker is the other way.
+    const facing = (-Math.sin(target.yaw) * dx - Math.cos(target.yaw) * dz) / length
+    return facing < -0.5
 }
 
 export interface ShotResult {
