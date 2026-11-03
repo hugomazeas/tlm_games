@@ -51,6 +51,9 @@ const shape = {
     flame: new ConeGeometry(0.022, 0.12, 10).rotateX(Math.PI).translate(0, -0.06, 0),
     core: new ConeGeometry(0.011, 0.07, 8).rotateX(Math.PI).translate(0, -0.035, 0),
     gun: new RoundedBoxGeometry(0.032, 0.04, 0.13, 2, 0.008),
+    // Iron sights on top: a notched rear block, a thin front post.
+    rearSight: new BoxGeometry(0.018, 0.009, 0.01),
+    frontSight: new BoxGeometry(0.004, 0.012, 0.005),
     barrel: new CylinderGeometry(0.009, 0.009, 0.06, 10).rotateX(Math.PI / 2),
     muzzle: new CylinderGeometry(0.012, 0.012, 0.012, 10).rotateX(Math.PI / 2),
     shield: new SphereGeometry(0.29, 24, 16),
@@ -231,6 +234,7 @@ export class Avatars {
         gun.position.set(0.03, -0.035, -0.11)
         gun.add(part(shape.gun, metal))
         gun.add(part(shape.barrel, dark, 0, 0.006, -0.09), part(shape.muzzle, glow, 0, 0.006, -0.12))
+        gun.add(part(shape.rearSight, dark, 0, 0.024, 0.045), part(shape.frontSight, dark, 0, 0.026, -0.05))
         aim.add(gun)
         body.add(aim)
 

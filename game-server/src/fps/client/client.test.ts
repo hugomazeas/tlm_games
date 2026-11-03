@@ -7,8 +7,32 @@ import { Prediction } from './prediction.ts'
 import { INTERP_STEPS, Interpolator, ServerClock } from './timeline.ts'
 import { aimFromCamera, THIRD_PERSON, thirdPersonCamera } from './view.ts'
 import { targetUnderCrosshair } from './targeting.ts'
+import { Viewmodel } from './effects.ts'
+import { PerspectiveCamera } from 'three'
 import { Vector3 } from 'three'
 import { aimDirection, fireShot } from '../sim/combat.ts'
+
+describe('iron sights', () => {
+    test('fully aimed, the front sight sits on the crosshair; at the hip, low and to the right', () => {
+        const camera = new PerspectiveCamera(78, 1, 0.01, 100)
+        const blaster = new Viewmodel(camera, '#e4572e')
+        const tipInView = () => {
+            camera.updateMatrixWorld(true)
+            return camera.worldToLocal(blaster.sightTip.getWorldPosition(new Vector3()))
+        }
+
+        blaster.update(0, false, 1)
+        const aimed = tipInView()
+        expect(Math.abs(aimed.x)).toBeLessThan(1e-9)
+        expect(Math.abs(aimed.y)).toBeLessThan(1e-9)
+        expect(aimed.z).toBeLessThan(0)
+
+        blaster.update(0, false, 0)
+        const hip = tipInView()
+        expect(hip.x).toBeGreaterThan(0.02)
+        expect(hip.y).toBeLessThan(0)
+    })
+})
 
 describe('who the crosshair is on', () => {
     // A wall across x = 2, nothing else.
