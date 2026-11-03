@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * Deploys only pull and restart (no image rebuild), so the app container must
@@ -23,6 +24,21 @@ class SupervisorConfigTest extends TestCase
         $config = file_get_contents(dirname(__DIR__, 2).'/docker/supervisor/supervisord.conf');
 
         $this->assertStringContainsString('cp /var/www/docker/nginx/default.conf /etc/nginx/http.d/default.conf', $config);
+    }
+
+    /**
+     * A compose file that doesn't parse stops every deploy step after the pull (migrate, restart):
+     * a ": " inside the game server's unquoted command once did exactly that in production.
+     */
+    public function test_the_compose_files_parse_and_keep_the_game_servers_command(): void
+    {
+        foreach (['docker-compose.yml', 'docker-compose.camera.yml'] as $file) {
+            $parsed = Yaml::parseFile(dirname(__DIR__, 2).'/'.$file);
+            $this->assertIsArray($parsed['services'] ?? null, "{$file} has no services");
+        }
+
+        $compose = Yaml::parseFile(dirname(__DIR__, 2).'/docker-compose.yml');
+        $this->assertStringContainsString('exec bun game-server/src/server.ts', $compose['services']['hot-potato']['command']);
     }
 
     public function test_the_hot_potato_server_runs_from_the_mounted_repo(): void
