@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Games\OfficeFps\Models\OfficeFpsMatch;
+use App\Games\OfficeFps\Services\OfficeFpsStats;
 use App\Models\Player;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -156,6 +157,100 @@ class OfficeFpsStatsTest extends TestCase
         $this->assertCount(2, $stats['recent']);
 
         $response->assertSee('Nemesis')->assertSee('Bob')->assertSee('Stapler');
+    }
+
+    /**
+     * A team deathmatch: blue (Bob, Cat) beat red (Ann), though Ann topped the scoreboard.
+     *
+     * @return array<string, mixed>
+     */
+    private function teamMatch(): array
+    {
+        $match = $this->match(['mode' => 'tdm']);
+        $match['players'][0] += ['team' => 'red', 'won' => false, 'zone_ms' => 0, 'pickups' => 4];
+        $match['players'][1] += ['team' => 'blue', 'won' => true, 'zone_ms' => 0, 'pickups' => 2];
+        $match['players'][2] += ['team' => 'blue', 'won' => true, 'zone_ms' => 0, 'pickups' => 0];
+
+        return $match;
+    }
+
+    public function test_a_team_deathmatch_saves_its_mode_teams_and_winners(): void
+    {
+        $this->postJson('/internal/office-fps/results', $this->teamMatch(), $this->secret())->assertCreated();
+
+        $this->assertSame('tdm', OfficeFpsMatch::sole()->mode);
+        $this->assertDatabaseHas('office_fps_results', ['player_id' => $this->ann->id, 'team' => 'red', 'won' => false, 'pickups' => 4]);
+        $this->assertDatabaseHas('office_fps_results', ['player_id' => $this->cat->id, 'team' => 'blue', 'won' => true]);
+    }
+
+    public function test_wins_come_from_the_won_flag_not_the_place(): void
+    {
+        $this->postJson('/internal/office-fps/results', $this->teamMatch(), $this->secret())->assertCreated();
+
+        $ann = $this->get('/games/office-fps/players/'.$this->ann->id)->assertOk()->assertSee('Team deathmatch')->assertSee('Team red')->viewData('stats');
+        $this->assertSame(0, $ann['totals']['wins']);
+        $this->assertSame(0.0, $ann['totals']['win_rate']);
+
+        $cat = $this->get('/games/office-fps/players/'.$this->cat->id)->viewData('stats');
+        $this->assertSame(1, $cat['totals']['wins']);
+        $this->assertSame(100.0, $cat['totals']['win_rate']);
+        $this->assertSame(['matches' => 1, 'wins' => 1], $cat['modes']['tdm']);
+        $this->assertSame(['matches' => 0, 'wins' => 0], $cat['modes']['ffa']);
+
+        $board = app(OfficeFpsStats::class)->leaderboard()->keyBy('player_name');
+        $this->assertSame([0, 1, 1], [$board['Ann']['wins'], $board['Bob']['wins'], $board['Cat']['wins']]);
+    }
+
+    public function test_zone_time_and_pickups_add_up_across_modes(): void
+    {
+        $this->postJson('/internal/office-fps/results', $this->teamMatch(), $this->secret())->assertCreated();
+        $koth = $this->match(['mode' => 'koth']);
+        $koth['players'][0] += ['zone_ms' => 90_000, 'pickups' => 3, 'won' => true];
+        $this->postJson('/internal/office-fps/results', $koth, $this->secret())->assertCreated();
+        $koth['players'][0]['zone_ms'] = 45_000;
+        $this->postJson('/internal/office-fps/results', $koth, $this->secret())->assertCreated();
+
+        $stats = $this->get('/games/office-fps/players/'.$this->ann->id)
+            ->assertOk()
+            ->assertSee('King of the meeting room')
+            ->assertSee('Zone time')
+            ->viewData('stats');
+        $this->assertSame(135_000, $stats['totals']['zone_ms']);
+        $this->assertSame(10, $stats['totals']['pickups']);
+        $this->assertSame(2, $stats['totals']['wins']);
+        $this->assertSame([
+            'ffa' => ['matches' => 0, 'wins' => 0],
+            'tdm' => ['matches' => 1, 'wins' => 0],
+            'koth' => ['matches' => 2, 'wins' => 2],
+        ], $stats['modes']);
+    }
+
+    public function test_a_post_without_modes_is_a_free_for_all_won_by_first_place(): void
+    {
+        $this->postJson('/internal/office-fps/results', $this->match(), $this->secret())->assertCreated();
+
+        $this->assertSame('ffa', OfficeFpsMatch::sole()->mode);
+        $this->assertDatabaseHas('office_fps_results', ['player_id' => $this->ann->id, 'team' => null, 'won' => true, 'zone_ms' => 0, 'pickups' => 0]);
+        $this->assertDatabaseHas('office_fps_results', ['player_id' => $this->bob->id, 'won' => false]);
+        $this->get('/games/office-fps/players/'.$this->ann->id)->assertOk()->assertSee('Free for all');
+    }
+
+    public function test_unknown_modes_and_teams_are_refused(): void
+    {
+        $this->postJson('/internal/office-fps/results', $this->match(['mode' => 'deathmatch']), $this->secret())
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('mode');
+
+        $bad = $this->teamMatch();
+        $bad['players'][0]['team'] = 'green';
+        $this->postJson('/internal/office-fps/results', $bad, $this->secret())->assertJsonValidationErrors('players.0.team');
+
+        $bad = $this->teamMatch();
+        $bad['players'][0]['zone_ms'] = -1;
+        $bad['players'][1]['pickups'] = 10_001;
+        $this->postJson('/internal/office-fps/results', $bad, $this->secret())->assertJsonValidationErrors(['players.0.zone_ms', 'players.1.pickups']);
+
+        $this->assertSame(0, OfficeFpsMatch::count());
     }
 
     public function test_someone_who_never_played_has_an_empty_page(): void

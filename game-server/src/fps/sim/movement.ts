@@ -1,5 +1,6 @@
 import { Line3, Vector3 } from 'three'
 import { BUTTON } from '../protocol.ts'
+import { JETPACK_FACTOR } from './places.ts'
 import { collideCapsule, type FpsWorld } from './world.ts'
 
 /**
@@ -53,6 +54,8 @@ export interface Body {
     dashLeft: number
     /** Steps until the next dodge is ready. */
     dashCooldown: number
+    /** Steps left of a jetpack extender (0: none): flight burns its fuel JETPACK_FACTOR times slower. */
+    jetBoost: number
 }
 
 export interface MoveInput {
@@ -79,7 +82,7 @@ export function moveOf(frame: { forward: number; strafe: number; yaw: number; bu
 }
 
 export function bodyAt(x: number, y: number, z: number): Body {
-    return { x, y, z, vx: 0, vy: 0, vz: 0, onGround: false, fuel: 1, dashLeft: 0, dashCooldown: 0 }
+    return { x, y, z, vx: 0, vy: 0, vz: 0, onGround: false, fuel: 1, dashLeft: 0, dashCooldown: 0, jetBoost: 0 }
 }
 
 /** Is the jetpack burning this step? Held with fuel left, or in a dodge's burst. */
@@ -124,7 +127,9 @@ export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
     }
 
     const jetting = input.jet && next.fuel > 0
-    const fuelRate = jetting ? -MOVE.fuelUse : body.onGround && next.dashLeft === 0 ? MOVE.fuelRegen : 0
+    next.jetBoost = Math.max(0, body.jetBoost - 1)
+    const burn = MOVE.fuelUse / (body.jetBoost > 0 ? JETPACK_FACTOR : 1)
+    const fuelRate = jetting ? -burn : body.onGround && next.dashLeft === 0 ? MOVE.fuelRegen : 0
     next.fuel = Math.max(0, Math.min(1, next.fuel + fuelRate * STEP_S))
 
     const h = STEP_S / SUBSTEPS

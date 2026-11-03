@@ -13,8 +13,9 @@ import {
     TorusGeometry,
 } from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
-import type { PlayerInfo } from '../protocol.ts'
+import { type PlayerInfo, TEAM_COLORS } from '../protocol.ts'
 import { PLAYER } from '../sim/movement.ts'
+import { BUFF_COLORS } from './hud.ts'
 import type { Pose } from './timeline.ts'
 
 /**
@@ -59,6 +60,7 @@ const shape = {
     barrel: new CylinderGeometry(0.009, 0.009, 0.06, 10).rotateX(Math.PI / 2),
     muzzle: new CylinderGeometry(0.012, 0.012, 0.012, 10).rotateX(Math.PI / 2),
     shield: new SphereGeometry(0.29, 24, 16),
+    halo: new TorusGeometry(0.07, 0.008, 6, 28),
 }
 const metal = new MeshStandardMaterial({ color: 0x3b4048, roughness: 0.35, metalness: 0.75 })
 const dark = new MeshStandardMaterial({ color: 0x1d2026, roughness: 0.55, metalness: 0.2 })
@@ -87,6 +89,7 @@ interface Avatar {
     head: Group
     flames: Group[]
     shield: Mesh
+    halo: Mesh
     suit: MeshStandardMaterial
     trim: MeshStandardMaterial
     name: string
@@ -111,7 +114,9 @@ export class Avatars {
         for (const [id, pose] of poses) {
             if (id === hidden) continue
             const info = roster.get(id)
-            const avatar = this.avatarFor(id, info?.name ?? '?', info?.color ?? '#cccccc')
+            // In team deathmatch they wear their side's colour.
+            const color = pose.state.team ? TEAM_COLORS[pose.state.team] : (info?.color ?? '#cccccc')
+            const avatar = this.avatarFor(id, info?.name ?? '?', color)
             avatar.root.visible = pose.state.alive
             if (!pose.state.alive) {
                 avatar.last = null
@@ -181,6 +186,14 @@ export class Avatars {
             if (pose.state.jet) flame.scale.set(1, flicker, 1)
         }
         avatar.shield.visible = pose.state.shielded
+        // Powers show: a spinning halo over the head, in the colour of the most dangerous one.
+        const buff = (['headshot', 'jetpack', 'magazine'] as const).find(b => pose.state.buffs.includes(b))
+        avatar.halo.visible = buff !== undefined
+        if (buff) {
+            ;(avatar.halo.material as MeshBasicMaterial).color.set(BUFF_COLORS[buff])
+            avatar.halo.rotation.z = now * 0.004
+            avatar.halo.position.y = PLAYER.height + 0.05 + Math.sin(now * 0.005) * 0.01
+        }
         if (pose.state.shielded) avatar.shield.rotation.y = now * 0.002
 
         const hit = now < avatar.flashUntil
@@ -277,6 +290,14 @@ export class Avatars {
         }
         body.add(pack)
 
+        const halo = new Mesh(
+            shape.halo,
+            new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false })
+        )
+        halo.rotation.x = Math.PI / 2
+        halo.visible = false
+        root.add(halo)
+
         const shield = new Mesh(shape.shield, shieldMaterial)
         shield.position.y = PLAYER.height / 2
         root.add(shield)
@@ -291,6 +312,7 @@ export class Avatars {
             head,
             flames,
             shield,
+            halo,
             suit,
             trim,
             name,

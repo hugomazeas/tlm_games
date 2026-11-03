@@ -246,15 +246,31 @@ Playable at `/games/office-fps`.
 - **Stats:** when a match ends the game server posts it to `/internal/office-fps/results`
   (`OfficeFpsInternalController`, the shared secret): `office_fps_matches` (rules, size),
   `office_fps_results` (one row per Hub player: place, kills, deaths, headshots, damage, shots,
-  hits, melee kills, backstabs, best streak, time played, left) and `office_fps_kills` (who killed
-  whom with what; a guest's side null). `OfficeFpsStats` adds them up: the leaderboard (mode
+  hits, melee kills, backstabs, best streak, time played, left, won, team, zone time, pickups)
+  and `office_fps_kills` (who killed whom with what; a guest's side null). Matches carry their
+  `mode`. `OfficeFpsStats` adds them up: the leaderboard (mode
   `kills`: kills, K/D, wins, matches, accuracy; also the home card's podium and the player
   profile's line) and each player's page `/games/office-fps/players/{player}` (totals and rates,
-  records, per weapon, nemesis and favourite target, recent matches). The `game_types` and
+  records, per weapon, per mode, nemesis and favourite target, recent matches). The `game_types` and
   `game_modes` rows come from migrations (deploys don't seed).
 - **Host and rules:** no match starts by itself. Everyone warms up until the host (the longest
-  seated; it passes on when they leave) picks a kill limit and a length (`FRAG_LIMITS`,
-  `MATCH_MINUTES`) on their Esc menu and sends `start`; after the scoreboard it's warmup again.
+  seated; it passes on when they leave) picks a mode, a limit and a length (`Rules`: `MODES`,
+  `FRAG_LIMITS`, `MATCH_MINUTES`) on their Esc menu and sends `start`; after the scoreboard
+  (12 s, with awards) it's warmup again.
+- **Modes** (`lobby.ts`): `ffa` free-for-all; `tdm` red vs blue (shuffled at the start, a
+  latecomer joins the smaller side, no friendly fire, spawns away from enemies only, first team
+  to the limit); `koth` King of the meeting room: one of four `ZONES` (`sim/places.ts`) is live,
+  moving every `ZONE_MS` (60 s); alone in it you score a second a second (`points`), contested
+  scores nobody; the limit is ×`ZONE_SECONDS_PER_POINT` seconds, else most zone time at the
+  end. Snapshots carry `zone`; the HUD shows a status line and an on-screen marker (`showZone`).
+- **Pickups** (`sim/places.ts`: `PICKUP_SPOTS`, `PICKUPS`; collected in `arena.ts`, part of
+  `FpsWorld` so test rooms have none): health (+50, only when hurt), big magazine (×1.5, 60 s),
+  jetpack extender (fuel ×4 via `Body.jetBoost`, 60 s), headshot rounds (any headshot kills,
+  30 s). Timed ones are lost on death and shown to everyone (`PlayerState.buffs`: a halo on the
+  avatar, icons on the target label, a kill-feed line on `pickup`).
+- **Callouts** (`client/callouts.ts`, pure): kill events carry `killerStreak`, `victimStreak`,
+  `firstBlood`; `announce` turns them into feed lines and your banner (double kill … shutdown),
+  `taunt` the line under "Fragged by". Awards (`awardsFor` in `lobby.ts`) show on the scoreboard.
 - **Weapons:** 1 the blaster, 2 the stapler (or the wheel), sent in each frame (`weapon`,
   the 8th element); a switch takes `SWITCH_MS` before the new one works. The stapler
   (`swingStapler`): 0.45 m reach in a ~35° cone, 50 damage, 100 from behind (a backstab), a

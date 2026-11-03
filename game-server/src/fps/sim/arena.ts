@@ -1,5 +1,15 @@
 import type { Rng } from '../../sim/rng.ts'
-import { BUTTON, type GameEvent, type InputFrame, type PlayerState, type SelfState, type Weapon } from '../protocol.ts'
+import {
+    type BuffKind,
+    BUTTON,
+    type GameEvent,
+    type InputFrame,
+    type PlayerState,
+    type SelfState,
+    type Team,
+    type Weapon,
+} from '../protocol.ts'
+import { HEALTH_PACK, MAGAZINE_FACTOR, PICKUP_HEIGHT, PICKUP_REACH, PICKUPS } from './places.ts'
 import {
     aimDirection,
     eyeOf,
@@ -75,6 +85,13 @@ interface Fighter {
     budget: number
     /** Steps since their last frame. */
     starved: number
+    /** Their side in team deathmatch (teammates can't hurt each other), null otherwise. */
+    team: Team | null
+    /** Kills since they last went down. */
+    lifeKills: number
+    /** Powers from pickups, until these steps (0: none); all lost going down. The jetpack's lives in the body. */
+    magazineUntil: number
+    headshotUntil: number
 }
 
 export type ArenaEvent = GameEvent | { type: 'damage'; by: string; target: string; amount: number; headshot: boolean }
@@ -85,11 +102,15 @@ export class Arena {
     private readonly fighters = new Map<string, Fighter>()
     /** Everyone's feet at each of the last steps, for rewinding shots. */
     private readonly history: Array<{ step: number; at: Map<string, Target> }> = []
+    /** Each pickup spot: there to take from this step on. */
+    private readonly pickupAt: number[]
 
     constructor(
         private readonly world: FpsWorld,
         private readonly random: Rng
-    ) {}
+    ) {
+        this.pickupAt = world.pickups.map(() => 0)
+    }
 
     has(id: string): boolean {
         return this.fighters.has(id)
@@ -99,8 +120,8 @@ export class Arena {
         return [...this.fighters.keys()]
     }
 
-    /** In, at the spawn point furthest from everyone. */
-    add(id: string): ArenaEvent[] {
+    /** In (on a side, in team deathmatch), at the spawn point furthest from the enemy. */
+    add(id: string, team: Team | null = null): ArenaEvent[] {
         if (this.fighters.has(id)) return []
         const fighter: Fighter = {
             id,
@@ -124,6 +145,10 @@ export class Arena {
             ackSeq: 0,
             budget: 0,
             starved: 0,
+            team,
+            lifeKills: 0,
+            magazineUntil: 0,
+            headshotUntil: 0,
         }
         this.fighters.set(id, fighter)
 
@@ -134,13 +159,29 @@ export class Arena {
         this.fighters.delete(id)
     }
 
-    /** Everyone back at a spawn, fresh: a new match. */
+    /** Puts someone on a side (team deathmatch), or on none. */
+    setTeam(id: string, team: Team | null): void {
+        const fighter = this.fighters.get(id)
+        if (fighter) fighter.team = team
+    }
+
+    teamOf(id: string): Team | null {
+        return this.fighters.get(id)?.team ?? null
+    }
+
+    /** Everyone back at a spawn, fresh, and every pickup back: a new match. */
     respawnAll(): ArenaEvent[] {
         const events: ArenaEvent[] = []
+        this.pickupAt.fill(0)
         for (const fighter of this.fighters.values()) fighter.alive = false
         for (const fighter of this.fighters.values()) events.push(this.spawn(fighter))
 
         return events
+    }
+
+    /** Which pickups are there to take, by spot. */
+    pickups(): boolean[] {
+        return this.pickupAt.map(at => this.step >= at)
     }
 
     /** A player's frames, in order; old and repeated ones are dropped. */
@@ -179,6 +220,12 @@ export class Arena {
                 fighter.body = stepBody(this.world, fighter.body, moveOf({ ...IDLE, yaw: fighter.yaw }))
                 fighter.jetting = false
             }
+            if (fighter.alive) this.collect(fighter, events)
+            // A big magazine running out: back to the usual size.
+            if (fighter.magazineUntil > 0 && this.step >= fighter.magazineUntil) {
+                fighter.magazineUntil = 0
+                fighter.ammo = Math.min(fighter.ammo, WEAPON.magazine)
+            }
         }
         for (const fighter of this.fighters.values()) {
             if (!fighter.alive && this.step >= fighter.respawnAt) events.push(this.spawn(fighter))
@@ -210,6 +257,8 @@ export class Arena {
             jet: f.alive && f.jetting,
             shielded: this.shielded(f),
             weapon: f.weapon,
+            team: f.team,
+            buffs: f.alive ? this.buffsOf(f).map(b => b.kind) : [],
         }))
     }
 
@@ -228,7 +277,46 @@ export class Arena {
             shielded: this.shielded(f),
             weapon: f.weapon,
             respawnInMs: f.alive ? null : Math.max(0, Math.round((f.respawnAt - this.step) * STEP_MS)),
+            magazine: this.magazineOf(f),
+            buffs: f.alive ? this.buffsOf(f) : [],
         }
+    }
+
+    /** Their powers and what's left of each. */
+    private buffsOf(f: Fighter): Array<{ kind: BuffKind; leftMs: number }> {
+        const buffs: Array<{ kind: BuffKind; leftMs: number }> = []
+        const left = (until: number) => Math.round((until - this.step) * STEP_MS)
+        if (f.magazineUntil > this.step) buffs.push({ kind: 'magazine', leftMs: left(f.magazineUntil) })
+        if (f.body.jetBoost > 0) buffs.push({ kind: 'jetpack', leftMs: Math.round(f.body.jetBoost * STEP_MS) })
+        if (f.headshotUntil > this.step) buffs.push({ kind: 'headshot', leftMs: left(f.headshotUntil) })
+        return buffs
+    }
+
+    private magazineOf(f: Fighter): number {
+        return f.magazineUntil > this.step ? Math.round(WEAPON.magazine * MAGAZINE_FACTOR) : WEAPON.magazine
+    }
+
+    /** Takes any pickup they're standing on (health only when hurt), and sets it to come back later. */
+    private collect(f: Fighter, events: ArenaEvent[]): void {
+        this.world.pickups.forEach((spot, index) => {
+            if (this.step < this.pickupAt[index]!) return
+            const near = Math.hypot(f.body.x - spot.x, f.body.z - spot.z) <= PICKUP_REACH
+            if (!near || f.body.y > PICKUP_HEIGHT) return
+            if (spot.kind === 'health' && f.health >= MAX_HEALTH) return
+
+            const info = PICKUPS[spot.kind]
+            const until = this.step + steps(info.durationMs ?? 0)
+            if (spot.kind === 'health') f.health = Math.min(MAX_HEALTH, f.health + HEALTH_PACK)
+            if (spot.kind === 'magazine') {
+                f.magazineUntil = until
+                f.ammo = this.magazineOf(f)
+                f.reloadUntil = 0
+            }
+            if (spot.kind === 'jetpack') f.body = { ...f.body, jetBoost: steps(info.durationMs ?? 0), fuel: 1 }
+            if (spot.kind === 'headshot') f.headshotUntil = until
+            this.pickupAt[index] = this.step + steps(info.respawnMs)
+            events.push({ type: 'pickup', by: f.id, spot: index })
+        })
     }
 
     /** The last frame of theirs the server used. */
@@ -263,14 +351,15 @@ export class Arena {
 
     private blaster(fighter: Fighter, frame: InputFrame, events: ArenaEvent[]): void {
         const now = fighter.clock
+        const magazine = this.magazineOf(fighter)
         if (fighter.reloadUntil > 0 && now >= fighter.reloadUntil) {
             fighter.reloadUntil = 0
-            fighter.ammo = WEAPON.magazine
+            fighter.ammo = magazine
         }
         // Empty (a reload cut short by a switch, say): it reloads by itself.
         if (fighter.ammo === 0 && fighter.reloadUntil === 0) fighter.reloadUntil = now + RELOAD_STEPS
         const reloading = fighter.reloadUntil > 0
-        if (frame.buttons & BUTTON.reload && !reloading && fighter.ammo < WEAPON.magazine) {
+        if (frame.buttons & BUTTON.reload && !reloading && fighter.ammo < magazine) {
             fighter.reloadUntil = now + RELOAD_STEPS
             return
         }
@@ -286,7 +375,13 @@ export class Arena {
         const shot = fireShot(this.world, origin, direction, this.targetsAt(frame.view, fighter.id))
         const victim = shot.hit ? this.fighters.get(shot.hit.id) : undefined
         const headshot = shot.hit?.headshot ?? false
-        const amount = this.hurts(victim) ? WEAPON.damage * (headshot ? WEAPON.headshot : 1) : 0
+        // Headshot rounds: any headshot kills.
+        const oneShot = headshot && fighter.headshotUntil > this.step
+        const amount = this.hurts(victim)
+            ? oneShot
+                ? MAX_HEALTH
+                : WEAPON.damage * (headshot ? WEAPON.headshot : 1)
+            : 0
         events.push({
             type: 'shot',
             by: fighter.id,
@@ -337,16 +432,34 @@ export class Arena {
         victim.alive = false
         victim.jetting = false
         victim.respawnAt = this.step + RESPAWN_STEPS
-        events.push({ type: 'kill', killer: by.id, victim: victim.id, ...how })
+        // Their powers go with them (the jetpack's with their body, at the respawn).
+        victim.magazineUntil = 0
+        victim.headshotUntil = 0
+        const victimStreak = victim.lifeKills
+        victim.lifeKills = 0
+        by.lifeKills++
+        events.push({
+            type: 'kill',
+            killer: by.id,
+            victim: victim.id,
+            ...how,
+            killerStreak: by.lifeKills,
+            victimStreak,
+        })
     }
 
-    /** The others where the shooter saw them: `view` steps back, at most MAX_REWIND_STEPS, alive then and now. */
+    /**
+     * The others where the shooter saw them: `view` steps back, at most MAX_REWIND_STEPS, alive then
+     * and now. Teammates aren't targets: shots and swings go through them.
+     */
     private targetsAt(view: number, shooter: string): Target[] {
         const wanted = Math.max(this.step - MAX_REWIND_STEPS, Math.min(this.step, Math.round(view)))
         const past = this.history.find(h => h.step === wanted)
+        const team = this.fighters.get(shooter)?.team ?? null
         const targets: Target[] = []
         for (const fighter of this.fighters.values()) {
             if (fighter.id === shooter || !fighter.alive) continue
+            if (team !== null && fighter.team === team) continue
             targets.push(past?.at.get(fighter.id) ?? { id: fighter.id, ...fighter.body })
         }
 
@@ -376,14 +489,20 @@ export class Arena {
         fighter.nextShotAt = 0
         fighter.nextSwingAt = 0
         fighter.readyAt = 0
+        fighter.lifeKills = 0
+        fighter.magazineUntil = 0
+        fighter.headshotUntil = 0
 
         return { type: 'spawn', id: fighter.id }
     }
 
-    /** The spawn point furthest from the nearest other living player (a random one when alone). */
+    /** The spawn point furthest from the nearest living enemy (a random one when there's none). */
     private spawnPoint(id: string) {
         const points = this.world.spawnPoints
-        const others = [...this.fighters.values()].filter(f => f.id !== id && f.alive)
+        const team = this.fighters.get(id)?.team ?? null
+        const others = [...this.fighters.values()].filter(
+            f => f.id !== id && f.alive && (team === null || f.team !== team)
+        )
         if (others.length === 0) return points[Math.floor(this.random() * points.length)]!
 
         let best = points[0]!

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { createRng } from '../../sim/rng.ts'
-import { BUTTON, type InputFrame } from '../protocol.ts'
+import { BUTTON, type InputFrame, type Team } from '../protocol.ts'
+import type { PickupSpot } from './places.ts'
 import { Arena, MAX_BURST, SHIELD_STEPS } from './arena.ts'
 import { STAPLER, WEAPON } from './combat.ts'
 import { type Body, bodyAt, MOVE, moveOf, stepBody } from './movement.ts'
@@ -157,6 +158,143 @@ describe('reloading', () => {
         wait(40)
         const done = a.self('me')!
         expect([done.reloading, done.reloadLeftMs, done.ammo]).toEqual([false, null, WEAPON.magazine])
+    })
+})
+
+/**
+ * Two minis 4 m apart on the Z axis (`a` at -2 facing +Z, `b` at +2 facing -Z), pickups wherever
+ * given, teams as given. `step(frames)` runs one step with each one's frame; `aimAt` fires a's
+ * blaster at b's chest or head.
+ */
+function duel(pickups: PickupSpot[] = [], teams: [Team | null, Team | null] = [null, null]) {
+    const a = new Arena(
+        testWorld(
+            [
+                { name: 'north', position: [0, 0, -2], yaw: Math.PI },
+                { name: 'south', position: [0, 0, 2], yaw: 0 },
+            ],
+            [],
+            pickups
+        ),
+        createRng(1)
+    )
+    a.add('a', teams[0])
+    a.add('b', teams[1])
+    // Name them by where they stand, whichever spawn each got.
+    const north = a.self('a')!.body.z < 0 ? 'a' : 'b'
+    const south = north === 'a' ? 'b' : 'a'
+    const seqs: Record<string, number> = { a: 0, b: 0 }
+    const frame = (id: string, f: Partial<InputFrame> = {}): InputFrame => ({
+        seq: ++seqs[id]!,
+        forward: 0,
+        strafe: 0,
+        yaw: 0,
+        pitch: 0,
+        buttons: 0,
+        view: a.step,
+        ...f,
+    })
+    const step = (frames: Record<string, Partial<InputFrame>> = {}) => {
+        for (const id of ['a', 'b']) a.queue(id, [frame(id, frames[id])])
+        return a.advance()
+    }
+    /** North fires at south's chest (or head). */
+    const shoot = (head = false) =>
+        step({ [north]: { yaw: Math.PI, pitch: Math.atan2((head ? 0.36 : 0.2) - 0.34, 4), buttons: BUTTON.fire } })
+    const waitShields = () => {
+        for (let i = 0; i < SHIELD_STEPS + 1; i++) step()
+    }
+
+    return { a, north, south, step, shoot, waitShields }
+}
+
+describe('pickups', () => {
+    const at = (kind: PickupSpot['kind'], x: number, z: number): PickupSpot => ({ kind, x, z, room: 'here' })
+
+    test('walking onto a big magazine fills 18 rounds for a minute, then back to 12', () => {
+        // Right where north spawns.
+        const { a, north, step } = duel([at('magazine', 0, -2)])
+        const events = step()
+        expect(events).toContainEqual({ type: 'pickup', by: north, spot: 0 })
+        expect(a.self(north)).toMatchObject({ ammo: 18, magazine: 18 })
+        expect(a.self(north)!.buffs).toEqual([{ kind: 'magazine', leftMs: expect.any(Number) }])
+        expect(a.states().find(s => s.id === north)!.buffs).toEqual(['magazine'])
+        // Gone until it comes back.
+        expect(a.pickups()).toEqual([false])
+
+        // Off the pad (a metre toward +Z), so it isn't taken again when it comes back; then a minute.
+        for (let i = 0; i < 30; i++) step({ [north]: { forward: 1, yaw: Math.PI } })
+        for (let i = 0; i < 60 * 60; i++) step()
+        expect(a.self(north)).toMatchObject({ magazine: 12, buffs: [] })
+        expect(a.self(north)!.ammo).toBeLessThanOrEqual(12)
+        expect(a.pickups()).toEqual([true])
+    })
+
+    test('a jetpack extender: four times the flight for a minute, in the body (predicted)', () => {
+        const { a, north, step } = duel([at('jetpack', 0, -2)])
+        step()
+        const body = a.self(north)!.body
+        expect(body.jetBoost).toBeGreaterThan(60 * 60 - 5)
+        expect(a.self(north)!.buffs.map(b => b.kind)).toEqual(['jetpack'])
+    })
+
+    test('a health pack heals 50, but only someone hurt takes it', () => {
+        // Half a metre beside south.
+        const { a, south, step, shoot, waitShields } = duel([at('health', 0.5, 2)])
+        waitShields()
+        // Full health: south walks over it (to its right, +X, with yaw 0), it stays.
+        for (let i = 0; i < 20; i++) step({ [south]: { strafe: 1 } })
+        expect(a.pickups()).toEqual([true])
+        for (let i = 0; i < 20; i++) step({ [south]: { strafe: -1 } })
+
+        // Hurt by a few body shots, back over it: 50 more.
+        for (let i = 0; i < 30; i++) shoot()
+        const hurt = a.self(south)!.health
+        expect(hurt).toBeLessThan(100)
+        let took = false
+        for (let i = 0; i < 40 && !took; i++) took = step({ [south]: { strafe: 1 } }).some(e => e.type === 'pickup')
+        expect(took).toBe(true)
+        expect(a.self(south)!.health).toBe(Math.min(100, hurt + 50))
+    })
+
+    test('headshot rounds: one headshot kills, and every power goes with you when you go down', () => {
+        const { a, north, south, step, shoot, waitShields } = duel([at('headshot', 0, -2)])
+        step()
+        expect(a.self(north)!.buffs.map(b => b.kind)).toEqual(['headshot'])
+        waitShields()
+
+        const events = shoot(true)
+        expect(events).toContainEqual(
+            expect.objectContaining({ type: 'kill', killer: north, victim: south, headshot: true })
+        )
+        expect(a.states().find(s => s.id === south)!.alive).toBe(false)
+    })
+})
+
+describe('teams and streaks', () => {
+    test("teammates' shots go through each other; enemies' don't", () => {
+        const same = duel([], ['red', 'red'])
+        same.waitShields()
+        expect(same.shoot().find(e => e.type === 'shot')).toMatchObject({ hit: null })
+
+        const enemies = duel([], ['red', 'blue'])
+        enemies.waitShields()
+        expect(enemies.shoot().find(e => e.type === 'shot')).toMatchObject({ hit: enemies.south })
+    })
+
+    test('a kill says how many the killer has this life, and how many the victim had', () => {
+        const { a, north, south, step, shoot, waitShields } = duel()
+        waitShields()
+        let kill: ReturnType<typeof step> = []
+        for (let i = 0; i < 200 && kill.length === 0; i++) kill = shoot().filter(e => e.type === 'kill')
+        expect(kill[0]).toMatchObject({ killer: north, victim: south, killerStreak: 1, victimStreak: 0 })
+
+        // South back (after the respawn and its shield), and down again: north's second in a row.
+        for (let i = 0; i < 3 * 60 + SHIELD_STEPS + 2; i++) step()
+        kill = []
+        for (let i = 0; i < 200 && kill.length === 0; i++) kill = shoot().filter(e => e.type === 'kill')
+        expect(kill[0]).toMatchObject({ killerStreak: 2 })
+        expect(a.states().find(s => s.id === north)!.alive).toBe(true)
     })
 })
 

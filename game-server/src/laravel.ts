@@ -164,12 +164,17 @@ export class LaravelClient {
         const response = await this.request('POST', '/internal/office-fps/results', {
             started_at: new Date(result.startedAt).toISOString(),
             ended_at: new Date(result.endedAt).toISOString(),
+            mode: result.rules.mode,
             frag_limit: result.rules.fragLimit,
             minutes: result.rules.minutes,
             player_count: result.playerCount,
             players: result.players.map(p => ({
                 player_id: p.playerId,
                 place: p.place,
+                won: p.won,
+                team: p.team,
+                zone_ms: p.zoneMs,
+                pickups: p.pickups,
                 kills: p.kills,
                 deaths: p.deaths,
                 headshots: p.headshots,

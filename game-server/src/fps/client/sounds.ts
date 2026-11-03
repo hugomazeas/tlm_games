@@ -177,6 +177,55 @@ export class Sounds {
         for (const [i, f] of [784, 659, 523].entries()) this.tone('triangle', f, f, 0.3, 0.25, i * 0.16)
     }
 
+    /** Your side or you won: a bright rising fanfare. Lost: a sad trombone of a slide. */
+    result(won: boolean): void {
+        if (won) {
+            for (const [i, f] of [523, 659, 784, 1047].entries()) this.tone('square', f, f, 0.22, 0.12, i * 0.11)
+            this.tone('sawtooth', 1047, 1047, 0.6, 0.08, 0.44)
+        } else {
+            for (const [i, f] of [392, 370, 349].entries()) this.tone('sawtooth', f, f * 0.98, 0.3, 0.12, i * 0.3)
+            this.tone('sawtooth', 330, 220, 0.8, 0.12, 0.9)
+        }
+    }
+
+    /** A pickup, its own chime: health a warm rise, ammo a metal clack, jetpack a whoosh up, headshot rounds an ominous ring. */
+    pickup(kind: 'health' | 'magazine' | 'jetpack' | 'headshot'): void {
+        if (kind === 'health') {
+            this.tone('sine', 440, 880, 0.25, 0.3)
+            this.tone('sine', 660, 1320, 0.25, 0.15, 0.05)
+        } else if (kind === 'magazine') {
+            this.burst(0.04, 'bandpass', 3000, 2500, 0.35)
+            this.burst(0.04, 'bandpass', 3400, 3000, 0.35, 0.09)
+            this.tone('triangle', 880, 1320, 0.15, 0.2, 0.1)
+        } else if (kind === 'jetpack') {
+            this.burst(0.35, 'lowpass', 300, 3000, 0.3)
+            this.tone('sine', 300, 900, 0.35, 0.2)
+        } else {
+            this.tone('square', 220, 220, 0.5, 0.15)
+            this.tone('sine', 1760, 1700, 0.6, 0.12, 0.05)
+            this.tone('sine', 1320, 1300, 0.6, 0.1, 0.1)
+        }
+    }
+
+    /** The announcer's stinger for a callout, bigger with its level (1 … 4). */
+    callout(level: number): void {
+        const notes = [523, 659, 784, 1047, 1319].slice(0, level + 1)
+        notes.forEach((f, i) => this.tone('sawtooth', f, f, 0.18, 0.1 + level * 0.02, i * 0.07))
+        this.burst(0.15, 'lowpass', 200, 120, 0.4 + level * 0.1)
+        if (level >= 3) this.tone('square', 98, 98, 0.5, 0.18)
+    }
+
+    /** The zone moved: two beeps. */
+    zoneMoved(): void {
+        this.tone('square', 1200, 1200, 0.08, 0.15)
+        this.tone('square', 1600, 1600, 0.12, 0.15, 0.12)
+    }
+
+    /** A second held in the zone: a soft tick. */
+    zoneTick(): void {
+        this.tone('sine', 1500, 1500, 0.05, 0.12)
+    }
+
     // --- The makings ------------------------------------------------------------------------
 
     /** A gain and stereo pan for a placed sound, into the master. */

@@ -31,13 +31,17 @@ afterAll(() => {
 const result: MatchResult = {
     startedAt: Date.UTC(2026, 10, 3, 10, 0, 0),
     endedAt: Date.UTC(2026, 10, 3, 10, 5, 0),
-    rules: { fragLimit: 15, minutes: 5 },
+    rules: { mode: 'tdm', fragLimit: 15, minutes: 5 },
     playerCount: 3,
     players: [
         {
             playerId: 36,
             name: 'Ann',
             place: 1,
+            won: true,
+            team: 'blue',
+            zoneMs: 4200,
+            pickups: 2,
             kills: 3,
             deaths: 1,
             headshots: 1,
@@ -63,6 +67,7 @@ describe('saving a match in the Hub', () => {
         expect(received!.body).toEqual({
             started_at: '2026-11-03T10:00:00.000Z',
             ended_at: '2026-11-03T10:05:00.000Z',
+            mode: 'tdm',
             frag_limit: 15,
             minutes: 5,
             player_count: 3,
@@ -70,6 +75,10 @@ describe('saving a match in the Hub', () => {
                 {
                     player_id: 36,
                     place: 1,
+                    won: true,
+                    team: 'blue',
+                    zone_ms: 4200,
+                    pickups: 2,
                     kills: 3,
                     deaths: 1,
                     headshots: 1,

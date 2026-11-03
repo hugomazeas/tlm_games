@@ -9,6 +9,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** One Hub player's match: their place and everything they did in it. */
 class OfficeFpsResult extends Model
 {
+    /** The sides in team deathmatch (a result's team is null in the other modes). */
+    public const TEAMS = ['red', 'blue'];
+
     protected $table = 'office_fps_results';
 
     protected $fillable = [
@@ -26,12 +29,17 @@ class OfficeFpsResult extends Model
         'best_streak',
         'played_ms',
         'left',
+        'team',
+        'won',
+        'zone_ms',
+        'pickups',
     ];
 
     protected function casts(): array
     {
         return [
             'left' => 'boolean',
+            'won' => 'boolean',
         ];
     }
 

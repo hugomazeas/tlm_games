@@ -10,9 +10,68 @@ import { targetUnderCrosshair } from './targeting.ts'
 import { Viewmodel } from './effects.ts'
 import { aimFov, DEFAULT_SETTINGS, LIMITS, parseSettings } from './settings.ts'
 import { reloadProgress, spatial } from './sounds.ts'
+import { announce, streakCallout, taunt } from './callouts.ts'
+import type { GameEvent } from '../protocol.ts'
 import { PerspectiveCamera } from 'three'
 import { Vector3 } from 'three'
 import { aimDirection, fireShot } from '../sim/combat.ts'
+
+describe('the announcer', () => {
+    const names: Record<string, string> = { me: 'Ann', bob: 'Bob', cat: 'Cat' }
+    const name = (id: string | null) => (id ? (names[id] ?? '?') : '?')
+    const kill = (over: Partial<Extract<GameEvent, { type: 'kill' }>> = {}): Extract<GameEvent, { type: 'kill' }> => ({
+        type: 'kill',
+        killer: 'me',
+        victim: 'bob',
+        headshot: false,
+        weapon: 'blaster',
+        backstab: false,
+        killerStreak: 1,
+        victimStreak: 0,
+        ...over,
+    })
+
+    test('streaks are called at 2, 3, 5, 7, 10 and 15 kills in a life, and only then', () => {
+        expect([1, 2, 3, 4, 5, 6, 7, 10, 15].map(n => streakCallout(n)?.title ?? null)).toEqual([
+            null,
+            'DOUBLE KILL',
+            'TRIPLE KILL',
+            null,
+            'RAMPAGE',
+            null,
+            'UNSTOPPABLE',
+            'OFFICE TYRANT',
+            'EXCEEDS EXPECTATIONS',
+        ])
+    })
+
+    test('your streak is your banner; everyone reads it in the feed', () => {
+        const yours = announce(kill({ killerStreak: 5 }), 'me', name)
+        expect(yours.banner).toMatchObject({ title: 'RAMPAGE' })
+        expect(yours.feed).toEqual(['🔥 Ann is on a rampage'])
+
+        const theirs = announce(kill({ killerStreak: 5 }), 'cat', name)
+        expect(theirs.banner).toBeNull()
+        expect(theirs.feed).toEqual(['🔥 Ann is on a rampage'])
+    })
+
+    test('ending a streak of 3 or more is a shutdown; the first kill is first blood', () => {
+        expect(announce(kill({ victimStreak: 4 }), 'me', name)).toEqual({
+            banner: { title: 'SHUTDOWN', sub: 'Bob had 4 in a row', level: 3 },
+            feed: ["🛑 Ann ended Bob's 4-kill streak"],
+        })
+        expect(announce(kill({ victimStreak: 2 }), 'me', name)).toEqual({ banner: null, feed: [] })
+        expect(announce(kill({ firstBlood: true }), 'me', name).banner).toMatchObject({ title: 'FIRST BLOOD' })
+    })
+
+    test('the taunt fits how you went down', () => {
+        const first = () => 0
+        expect(taunt(kill({ weapon: 'stapler', backstab: true }), first)).toContain('back')
+        expect(taunt(kill({ weapon: 'stapler' }), first)).toContain('Stapled')
+        expect(taunt(kill({ headshot: true }), first)).toContain('quarterly')
+        expect(typeof taunt(kill(), () => 0.999)).toBe('string')
+    })
+})
 
 describe('sound placement and the reload ring', () => {
     // Looking toward -Z (yaw 0): +X is to the right.
@@ -236,6 +295,8 @@ describe('drawing the others', () => {
         alive,
         health: 100,
         weapon: 'blaster',
+        team: null,
+        buffs: [],
         jet: false,
         shielded: false,
     })

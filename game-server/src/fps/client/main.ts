@@ -10,15 +10,21 @@ import {
     type Rules,
     type SelfState,
     type ServerMessage,
+    type Team,
+    TEAM_COLORS,
     type Weapon,
+    type ZoneState,
 } from '../protocol.ts'
 import { aimDirection, eyeOf, STAPLER, SWITCH_MS, WEAPON } from '../sim/combat.ts'
 import { MOVE, PLAYER, STEP_MS } from '../sim/movement.ts'
+import { PICKUP_SPOTS, type PickupKind, PICKUPS, ZONES } from '../sim/places.ts'
 import { rayDistance, worldFrom } from '../sim/world.ts'
 import { Avatars } from './avatars.ts'
+import { announce, taunt } from './callouts.ts'
 import { Controls } from './controls.ts'
 import { Effects, Viewmodel } from './effects.ts'
-import { escape, Hud } from './hud.ts'
+import { BUFF_LABELS, escape, Hud } from './hud.ts'
+import { PICKUP_COLORS, PickupViews, ZoneView } from './pickups.ts'
 import { Prediction } from './prediction.ts'
 import { aimFov, loadSettings, saveSettings } from './settings.ts'
 import { reloadProgress, Sounds, spatial } from './sounds.ts'
@@ -70,6 +76,8 @@ camera.rotation.order = 'YXZ'
 scene.add(camera)
 const office = buildOffice(scene, renderer)
 const world = worldFrom(office)
+const pickupViews = new PickupViews(scene)
+const zoneView = new ZoneView(scene)
 addEventListener('resize', () => {
     renderer.setSize(innerWidth, innerHeight)
     camera.aspect = innerWidth / innerHeight
@@ -108,6 +116,15 @@ let match: MatchView | null = null
 let self: SelfState | null = null
 let wasAlive = false
 let killer: string | null = null
+/** The line under "Fragged by …", picked when you go down. */
+let deathTaunt: string | null = null
+/** The latest snapshot's pickups (which are there) and zone. */
+let pickupsReady: boolean[] = []
+let zone: ZoneState | null = null
+/** When `zone` came (its `movesInMs` counts from then). */
+let zoneAt = 0
+/** Everyone's side, from the latest snapshot (team deathmatch). */
+let teams = new Map<string, Team | null>()
 let seq = 0
 let outbox: InputFrame[] = []
 let prediction = new Prediction(world)
@@ -198,12 +215,16 @@ function receive(message: ServerMessage): void {
             return
         case 'match': {
             const before = match?.phase
+            const pointsBefore = match?.scores.find(s => s.id === me)?.points ?? 0
             match = message.match
             matchAt = now
             hud.setMatch(message.match, now)
             updateHost()
             if (before === 'countdown' && match.phase === 'playing') sounds.countdown(true)
-            if (before === 'playing' && match.phase === 'intermission') sounds.matchOver()
+            if (before === 'playing' && match.phase === 'intermission') sounds.result(iWon(match))
+            // A second more in the zone: a soft tick.
+            const points = match.scores.find(s => s.id === me)?.points ?? 0
+            if (match.phase === 'playing' && points > pointsBefore) sounds.zoneTick()
             return
         }
         case 'snap':
@@ -232,6 +253,16 @@ function updateHost(): void {
     hud.setHost({ isHost: host !== null && host === me, name: host ? (roster.get(host)?.name ?? null) : null, seated })
 }
 
+/** Did you (or your side) win the match that just ended? */
+function iWon(view: MatchView): boolean {
+    if (view.mode === 'tdm' && view.teams) {
+        const mine = view.scores.find(s => s.id === me)?.team
+        const other = mine === 'red' ? 'blue' : 'red'
+        return mine !== undefined && mine !== null && view.teams[mine] > view.teams[other]
+    }
+    return view.scores[0]?.id === me
+}
+
 function startMatch(rules: Rules): void {
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'start', rules }))
 }
@@ -257,16 +288,45 @@ function snapshot(snap: Extract<ServerMessage, { type: 'snap' }>, now: number): 
             const at = snap.players.find(p => p.id === me)
             if (at) controls.face(at.yaw)
             killer = null
+            deathTaunt = null
         }
         wasAlive = self.alive
     }
+    teams = new Map(snap.players.map(p => [p.id, p.team]))
+    pickupsReady = snap.pickups
+    // The zone moved on: two beeps and a word.
+    if (snap.zone && zone && snap.zone.index !== zone.index) {
+        sounds.zoneMoved()
+        hud.toast(`ZONE MOVED: ${ZONES[snap.zone.index]!.name.toUpperCase()}`, '#ffffff')
+    }
+    zone = snap.zone
+    zoneAt = now
     for (const event of snap.events) onEvent(event, now)
+}
+
+/** Someone's colour: their side's in team deathmatch, their own otherwise. */
+function colorOf(id: string | null): string {
+    if (!id) return '#ffffff'
+    const team = teams.get(id)
+    return team ? TEAM_COLORS[team] : (roster.get(id)?.color ?? '#ffffff')
 }
 
 function onEvent(event: GameEvent, now: number): void {
     const name = (id: string | null) => (id && roster.get(id)?.name) || '?'
-    const colored = (id: string | null) =>
-        `<span style="color:${(id && roster.get(id)?.color) || '#fff'}">${escape(name(id))}</span>`
+    const colored = (id: string | null) => `<span style="color:${colorOf(id)}">${escape(name(id))}</span>`
+    if (event.type === 'pickup') {
+        const spot = PICKUP_SPOTS[event.spot]
+        if (!spot) return
+        const { name: what } = PICKUPS[spot.kind]
+        hud.killFeed(
+            `${colored(event.by)} <span style="opacity:.7">grabbed</span> <b style="color:${PICKUP_COLORS[spot.kind]}">${what}</b> <span style="opacity:.6">in ${spot.room}</span>`
+        )
+        if (event.by === me) {
+            hud.toast(PICKUP_TOASTS[spot.kind], PICKUP_COLORS[spot.kind])
+            sounds.pickup(spot.kind)
+        }
+        return
+    }
     if (event.type === 'shot') {
         if (event.hit && event.damage > 0) avatars.flash(event.hit, now)
         if (event.by === me) {
@@ -326,14 +386,31 @@ function onEvent(event: GameEvent, now: number): void {
         hud.killFeed(`${colored(event.killer)} ${how} ${colored(event.victim)}`)
         // Still drawn where they fell (they disappear on the next frame).
         const fell = avatars.centerOf(event.victim)
-        if (fell) effects.burst(fell, roster.get(event.victim)?.color ?? '#ffffff', now)
-        if (event.victim === me) killer = event.killer ? name(event.killer) : null
+        if (fell) effects.burst(fell, colorOf(event.victim), now)
+        if (event.victim === me) {
+            killer = event.killer ? name(event.killer) : null
+            deathTaunt = event.killer && event.killer !== me ? taunt(event, Math.random) : null
+        }
         if (event.killer === me && event.victim !== me) {
             hud.hitMarker(event.headshot, true)
             hud.eliminated(name(event.victim))
             sounds.kill()
         }
+        // Streaks, shutdowns, first blood: lines for everyone, a banner for whoever did it.
+        const said = announce(event, me, id => escape(name(id)))
+        for (const line of said.feed) hud.killFeed(`<span style="color:#ffd166">${line}</span>`)
+        if (said.banner) {
+            hud.callout(said.banner.title, said.banner.sub, said.banner.level)
+            sounds.callout(said.banner.level)
+        }
     }
+}
+
+const PICKUP_TOASTS: Record<PickupKind, string> = {
+    health: '+50 HEALTH',
+    magazine: 'BIG MAGAZINE: 18 ROUNDS FOR 60 s',
+    jetpack: 'JETPACK ×4 FOR 60 s',
+    headshot: 'ONE-SHOT HEADSHOTS FOR 30 s',
 }
 
 /** A point in the world on screen (px), or null when it's behind the camera. */
@@ -525,14 +602,54 @@ function draw(now: number): void {
             jet: jetting,
             shielded: self.shielded,
             weapon: held,
+            team: teams.get(me) ?? null,
+            buffs: self.buffs.map(b => b.kind),
         }
         poses.set(me, { ...where, ...facing, state })
     }
     avatars.update(poses, roster, third ? null : me, now)
     effects.update(now)
+    pickupViews.update(pickupsReady, now)
+    zoneView.update(zone, colorOf, zone !== null && zone.holder === me, now)
+    showZone(now)
     showTarget(poses)
-    hud.update(now, { me, self, killer, tab: controls.scoreboardHeld, roster })
+    hud.update(now, { me, self, killer, taunt: deathTaunt, tab: controls.scoreboardHeld, roster })
     renderer.render(scene, camera)
+}
+
+/** King of the meeting room: who holds the zone, and a marker pointing at it (kept on screen). */
+function showZone(now: number): void {
+    if (!zone || match?.phase !== 'playing' || !self?.alive) return hud.zone(null, null)
+    const place = ZONES[zone.index]!
+    const holder = zone.holder
+    const status = zone.contested
+        ? { text: 'ZONE CONTESTED', color: '#ff9f1c' }
+        : holder === me
+          ? { text: 'HOLDING THE ZONE', color: '#3ddc84' }
+          : holder
+            ? { text: `${roster.get(holder)?.name ?? '?'} HOLDS THE ZONE`, color: colorOf(holder) }
+            : { text: 'TAKE THE ZONE', color: '#ffffff' }
+    camera.updateMatrixWorld()
+    const centre = new Vector3(place.x, 1.0, place.z)
+    const p = centre.clone().project(camera)
+    // Behind you: flip it so the marker sits on the side you'd turn to.
+    const behind = p.z > 1
+    let x = behind ? -p.x : p.x
+    let y = behind ? -p.y : p.y
+    if (behind || Math.abs(x) > 0.92 || Math.abs(y) > 0.85) {
+        const scale = Math.max(Math.abs(x) / 0.92, Math.abs(y) / 0.85, behind ? 1 : 0)
+        x /= scale
+        y /= scale
+    }
+    const body = prediction.body
+    const metres = body ? Math.hypot(place.x - body.x, place.z - body.z) : 0
+    const moves = Math.max(0, Math.ceil((zone.movesInMs - (now - zoneAt)) / 1000))
+    hud.zone(status, {
+        x: (x * 0.5 + 0.5) * innerWidth,
+        y: (-y * 0.5 + 0.5) * innerHeight,
+        label: `${place.name} · ${metres.toFixed(0)} m · moves in ${moves} s`,
+        color: zone.contested ? '#ff9f1c' : holder ? colorOf(holder) : '#ffffff',
+    })
 }
 
 /** The name and health of whoever the crosshair is on, over their head. */
@@ -548,5 +665,7 @@ function showTarget(poses: Map<string, Pose>): void {
     const at = pose ? toScreen(new Vector3(pose.x, pose.y + PLAYER.height + 0.08, pose.z)) : null
     if (!id || !pose || !at) return hud.target(null)
     const info = roster.get(id)
-    hud.target({ name: info?.name ?? '?', color: info?.color ?? '#ffffff', health: pose.state.health }, at.x, at.y)
+    const buffs = pose.state.buffs.map(kind => BUFF_LABELS[kind].icon).join('')
+    const label = `${info?.name ?? '?'}${buffs ? ` ${buffs}` : ''}`
+    hud.target({ name: label, color: colorOf(id), health: pose.state.health }, at.x, at.y)
 }

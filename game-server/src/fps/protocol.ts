@@ -22,14 +22,55 @@ export const BUTTON = { dash: 1, jet: 2, fire: 4, reload: 8 } as const
 export const WEAPONS = ['blaster', 'stapler'] as const
 export type Weapon = (typeof WEAPONS)[number]
 
-/** What the host may pick for a match. */
+/**
+ * The modes: free for all, team deathmatch (red against blue), and king of the meeting room (hold
+ * the active zone alone; the zone moves around the office).
+ */
+export const MODES = ['ffa', 'tdm', 'koth'] as const
+export type Mode = (typeof MODES)[number]
+export const MODE_NAMES: Record<Mode, string> = {
+    ffa: 'Free for all',
+    tdm: 'Team deathmatch',
+    koth: 'King of the meeting room',
+}
+export const TEAMS = ['red', 'blue'] as const
+export type Team = (typeof TEAMS)[number]
+export const TEAM_COLORS: Record<Team, string> = { red: '#e4572e', blue: '#29a3e0' }
+
+/**
+ * What the host may pick for a match. `fragLimit` is kills in free for all, the team's kills in team
+ * deathmatch, and in king of the meeting room ten times that in seconds holding the zone.
+ */
 export const FRAG_LIMITS = [5, 10, 15, 20, 25, 30, 50] as const
 export const MATCH_MINUTES = [3, 5, 10, 15, 20] as const
 export interface Rules {
+    mode: Mode
     fragLimit: number
     minutes: number
 }
-export const DEFAULT_RULES: Rules = { fragLimit: 15, minutes: 5 }
+export const DEFAULT_RULES: Rules = { mode: 'ffa', fragLimit: 15, minutes: 5 }
+/** King of the meeting room: seconds in the zone to win, per point of the limit. */
+export const ZONE_SECONDS_PER_POINT = 10
+
+export type BuffKind = 'magazine' | 'jetpack' | 'headshot'
+
+/** A standout of the match, on the scoreboard after it. */
+export interface Award {
+    title: string
+    /** What earned it ("62% accuracy"). */
+    detail: string
+    name: string
+    color: string
+}
+
+/** The active zone (king of the meeting room): which, who holds it alone (null: nobody), whether it's contested. */
+export interface ZoneState {
+    index: number
+    holder: string | null
+    contested: boolean
+    /** Until it moves to the next one. */
+    movesInMs: number
+}
 
 /** One step's input: what the keys and the mouse said, and which server step the shooter was looking at. */
 export interface InputFrame {
@@ -70,6 +111,10 @@ export interface PlayerState {
     /** Just spawned: can't be hurt until it runs out or they fire. */
     shielded: boolean
     weapon: Weapon
+    /** Their side in team deathmatch, null otherwise. */
+    team: Team | null
+    /** The pickups' powers they carry (everyone sees them). */
+    buffs: BuffKind[]
 }
 
 /** You, in full: your browser predicts from it. */
@@ -85,6 +130,10 @@ export interface SelfState {
     weapon: Weapon
     /** Until you're back (ms), while you're down. */
     respawnInMs: number | null
+    /** Rounds a full magazine holds (more with a big magazine). */
+    magazine: number
+    /** Your powers, with what's left of each (ms). */
+    buffs: Array<{ kind: BuffKind; leftMs: number }>
 }
 
 export type GameEvent =
@@ -100,8 +149,22 @@ export type GameEvent =
       }
     /** A stapler swing: who it hit (null: air), for how much, and whether it was from behind. */
     | { type: 'swing'; by: string; hit: string | null; damage: number; backstab: boolean }
-    | { type: 'kill'; killer: string | null; victim: string; headshot: boolean; weapon: Weapon; backstab: boolean }
+    | {
+          type: 'kill'
+          killer: string | null
+          victim: string
+          headshot: boolean
+          weapon: Weapon
+          backstab: boolean
+          /** The killer's kills this life (with this one), and what the victim's run was. */
+          killerStreak: number
+          victimStreak: number
+          /** The match's first kill. */
+          firstBlood?: boolean
+      }
     | { type: 'spawn'; id: string }
+    /** Someone took the pickup at `spot` (an index into PICKUP_SPOTS). */
+    | { type: 'pickup'; by: string; spot: number }
 
 export interface Score {
     /** The connection's id while they're here, null once they left the match. */
@@ -110,6 +173,9 @@ export interface Score {
     color: string
     kills: number
     deaths: number
+    team: Team | null
+    /** Seconds holding the zone (king of the meeting room). */
+    points: number
 }
 
 export interface MatchView {
@@ -117,12 +183,17 @@ export interface MatchView {
     /** Until the phase moves on (ms; null in warmup). */
     remainingMs: number | null
     /** The match's rules: the one being played, or (in warmup) the last one's. */
+    mode: Mode
     fragLimit: number
     minutes: number
     /** Who starts the next match and picks its rules (a connection id): the longest seated. */
     host: string | null
     /** Best first. In warmup, nobody's counted. */
     scores: Score[]
+    /** Team deathmatch: each side's kills. */
+    teams: Record<Team, number> | null
+    /** After a match: its standouts. */
+    awards: Award[] | null
 }
 
 export type ErrorCode = 'BAD_MESSAGE' | 'NOT_JOINED' | 'UNKNOWN_PLAYER' | 'UNAVAILABLE' | 'NOT_HOST' | 'NOT_ENOUGH'
@@ -137,7 +208,18 @@ export type ServerMessage =
     | { type: 'welcome'; you: string; step: number; players: PlayerInfo[]; match: MatchView }
     | { type: 'roster'; players: PlayerInfo[] }
     | { type: 'match'; match: MatchView }
-    | { type: 'snap'; step: number; ack: number; you: SelfState | null; players: PlayerState[]; events: GameEvent[] }
+    | {
+          type: 'snap'
+          step: number
+          ack: number
+          you: SelfState | null
+          players: PlayerState[]
+          events: GameEvent[]
+          /** Which pickups are there to take (by spot). */
+          pickups: boolean[]
+          /** King of the meeting room, while it's played. */
+          zone: ZoneState | null
+      }
     /** You joined from another tab; this one is closed. */
     | { type: 'replaced' }
     | { type: 'error'; code: ErrorCode }
@@ -175,9 +257,11 @@ export function parseClientMessage(raw: string): ClientMessage | null {
         const rules = message.rules as Record<string, unknown> | null | undefined
         const fragLimit = FRAG_LIMITS.find(n => n === rules?.fragLimit)
         const minutes = MATCH_MINUTES.find(n => n === rules?.minutes)
-        if (fragLimit === undefined || minutes === undefined) return null
+        // No mode (an older tab): free for all.
+        const mode = rules?.mode === undefined ? 'ffa' : MODES.find(m => m === rules.mode)
+        if (fragLimit === undefined || minutes === undefined || mode === undefined) return null
 
-        return { type: 'start', rules: { fragLimit, minutes } }
+        return { type: 'start', rules: { mode, fragLimit, minutes } }
     }
 
     return null
