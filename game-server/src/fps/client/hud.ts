@@ -43,7 +43,7 @@ const CSS = `
 #fps-hud .callout small { display: block; font-size: 14px; letter-spacing: .06em; color: #fff; font-weight: 600; }
 #fps-hud .toast { position: absolute; left: 50%; top: calc(50% + 70px); transform: translateX(-50%); font-weight: 800; font-size: 16px; letter-spacing: .08em; text-shadow: 0 2px 4px rgba(0,0,0,.85); opacity: 0; white-space: nowrap; }
 #fps-hud .buffs { position: absolute; left: 20px; bottom: 96px; display: flex; flex-direction: column; gap: 4px; }
-#fps-hud .buffs div { background: rgba(12,14,18,.62); border-left: 3px solid; border-radius: 6px; padding: 3px 8px; font-size: 13px; }
+#fps-hud .buffs div { background: rgba(12,14,18,.62); border-radius: 6px; padding: 3px 8px; font-size: 13px; }
 #fps-hud .buffs b { font-variant-numeric: tabular-nums; margin-left: 4px; }
 #fps-hud .zone-status { position: absolute; left: 50%; top: calc(50% + 96px); transform: translateX(-50%); font-weight: 800; font-size: 14px; letter-spacing: .14em; text-shadow: 0 2px 4px rgba(0,0,0,.85); white-space: nowrap; }
 #fps-hud .zone-marker { position: absolute; width: 18px; height: 18px; margin: -9px; border: 3px solid; transform: rotate(45deg); box-shadow: 0 0 6px rgba(0,0,0,.6); }
@@ -352,7 +352,7 @@ export class Hud {
         this.el.buffs!.innerHTML = self.buffs
             .map(b => {
                 const { icon, label } = BUFF_LABELS[b.kind]
-                return `<div style="border-color:${BUFF_COLORS[b.kind]}">${icon} ${label} <b>${Math.ceil(b.leftMs / 1000)} s</b></div>`
+                return `<div>${icon} ${label} <b style="color:${BUFF_COLORS[b.kind]}">${Math.ceil(b.leftMs / 1000)} s</b></div>`
             })
             .join('')
     }
