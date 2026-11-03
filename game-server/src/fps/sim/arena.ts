@@ -224,6 +224,7 @@ export class Arena {
             health: f.health,
             ammo: f.ammo,
             reloading: f.reloadUntil > f.clock,
+            reloadLeftMs: f.reloadUntil > f.clock ? Math.round((f.reloadUntil - f.clock) * STEP_MS) : null,
             shielded: this.shielded(f),
             weapon: f.weapon,
             respawnInMs: f.alive ? null : Math.max(0, Math.round((f.respawnAt - this.step) * STEP_MS)),

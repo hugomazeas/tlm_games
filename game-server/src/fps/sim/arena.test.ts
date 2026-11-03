@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { createRng } from '../../sim/rng.ts'
 import { BUTTON, type InputFrame } from '../protocol.ts'
 import { Arena, MAX_BURST, SHIELD_STEPS } from './arena.ts'
-import { STAPLER } from './combat.ts'
+import { STAPLER, WEAPON } from './combat.ts'
 import { type Body, bodyAt, MOVE, moveOf, stepBody } from './movement.ts'
 import { testWorld } from './testing.ts'
 
@@ -124,6 +124,39 @@ describe('inputs are used as they arrive, never queued', () => {
         // Frames 1, 10, 19 and 28: one every 150 ms of theirs.
         expect(shots).toHaveLength(4)
         expect(a.self('me')!.ammo).toBe(8)
+    })
+})
+
+describe('reloading', () => {
+    test('an empty magazine reloads by itself, counting down what is left, then refills', () => {
+        const a = arena()
+        for (let i = 0; i < 30; i++) a.advance()
+        // Twelve shots, one every 9 frames, a frame a step: the last one empties it.
+        for (let i = 0; i < 12 * 9 - 8; i++) {
+            a.queue('me', frames(i + 1, 1, BUTTON.fire))
+            a.advance()
+        }
+
+        const started = a.self('me')!
+        expect(started.ammo).toBe(0)
+        expect(started.reloading).toBe(true)
+        expect(started.reloadLeftMs).toBeGreaterThan(WEAPON.reloadMs - 200)
+        expect(started.reloadLeftMs).toBeLessThanOrEqual(WEAPON.reloadMs)
+
+        // Half way through: about half left.
+        let seq = 12 * 9 - 7
+        const wait = (steps: number) => {
+            for (let i = 0; i < steps; i++) {
+                a.queue('me', frames(seq++, 1))
+                a.advance()
+            }
+        }
+        wait(36)
+        expect(a.self('me')!.reloadLeftMs).toBeCloseTo(started.reloadLeftMs! - 600, -2)
+
+        wait(40)
+        const done = a.self('me')!
+        expect([done.reloading, done.reloadLeftMs, done.ammo]).toEqual([false, null, WEAPON.magazine])
     })
 })
 

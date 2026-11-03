@@ -29,6 +29,13 @@ const CSS = `
 #fps-hud .target .name { font-size: 13px; padding: 2px 8px; border-radius: 6px; background: rgba(12,14,18,.7); white-space: nowrap; }
 #fps-hud .target .bar { width: 70px; height: 5px; margin: 4px auto 0; border-radius: 3px; background: rgba(0,0,0,.55); overflow: hidden; }
 #fps-hud .target .bar div { height: 100%; transition: width .15s; }
+#fps-hud .reload { position: absolute; left: calc(50% + 18px); top: calc(50% + 18px); width: 30px; height: 30px; }
+#fps-hud .reload circle { fill: none; stroke-width: 3.5; }
+#fps-hud .reload .track { stroke: rgba(0,0,0,.45); }
+#fps-hud .reload .fill { stroke: #ffd166; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%; filter: drop-shadow(0 0 2px rgba(0,0,0,.7)); }
+#fps-hud .hs-dealt { position: absolute; left: 50%; top: calc(50% - 56px); transform: translateX(-50%); font: 900 16px system-ui, sans-serif; letter-spacing: .2em; color: #ffd166; text-shadow: 0 0 8px rgba(255,180,0,.8), 0 2px 3px rgba(0,0,0,.8); opacity: 0; }
+#fps-hud .hs-taken { position: absolute; left: 50%; top: 20%; transform: translateX(-50%); font: 900 28px system-ui, sans-serif; letter-spacing: .25em; color: #ff3b3b; text-shadow: 0 0 12px rgba(255,0,0,.7), 0 2px 4px rgba(0,0,0,.9); opacity: 0; }
+#fps-hud .hs-flash { position: absolute; inset: 0; box-shadow: inset 0 0 0 6px rgba(255,40,40,.85), inset 0 0 160px rgba(255,0,0,.55); opacity: 0; }
 #fps-hud.aiming .cross { width: 3px; height: 3px; margin: -1.5px; }
 #fps-hud .health { position: absolute; left: 20px; bottom: 20px; font-size: 30px; min-width: 120px; }
 #fps-hud .health small, #fps-hud .ammo small { display: block; font-size: 11px; opacity: .65; letter-spacing: .12em; text-transform: uppercase; }
@@ -110,6 +117,13 @@ export class Hud {
             <div class="hurt" data-el="hurt"></div>
             <div class="cross" data-el="cross"></div><div class="hit" data-el="hit"></div>
             <div class="elim" data-el="elim"></div>
+            <div class="hs-flash" data-el="hsFlash"></div>
+            <div class="hs-dealt" data-el="hsDealt">HEADSHOT</div>
+            <div class="hs-taken" data-el="hsTaken">HEADSHOT</div>
+            <svg class="reload hidden" data-el="reload" viewBox="0 0 30 30" aria-hidden="true">
+                <circle class="track" cx="15" cy="15" r="11"></circle>
+                <circle class="fill" cx="15" cy="15" r="11" data-el="reloadFill" stroke-dasharray="${RING} ${RING}" stroke-dashoffset="${RING}"></circle>
+            </svg>
             <div class="target hidden" data-el="target"><div class="name"></div><div class="bar"><div></div></div></div>
             <div class="panel top" data-el="top"></div>
             <div class="feed" data-el="feed"></div>
@@ -202,11 +216,13 @@ export class Hud {
                 <input type="range" data-setting="${key}" min="${min}" max="${max}" step="${step}" value="${s[key]}"></label>`
         }
         const times = (v: number) => `${v.toFixed(2)}×`
+        const percent = (v: number) => (v === 0 ? 'off' : `${Math.round(v * 100)}%`)
         panel.innerHTML = `
             <h2>Settings</h2>
             ${slider('sensitivity', 'Mouse sensitivity', times)}
             ${slider('aimSensitivity', 'While aiming', times)}
             ${slider('fov', 'Field of view', v => `${v}°`)}
+            ${slider('volume', 'Sound', percent)}
             <label class="check"><input type="checkbox" data-setting="invertY" ${s.invertY ? 'checked' : ''}> Invert mouse Y</label>
             <button type="button" data-reset>Defaults</button>`
         const show = (key: keyof typeof LIMITS, text: string) => {
@@ -219,6 +235,7 @@ export class Hud {
                 sensitivity: value('sensitivity'),
                 aimSensitivity: value('aimSensitivity'),
                 fov: value('fov'),
+                volume: value('volume'),
                 invertY: panel.querySelector<HTMLInputElement>('[data-setting="invertY"]')!.checked,
             }
         }
@@ -227,6 +244,7 @@ export class Hud {
             show('sensitivity', times(settings.sensitivity))
             show('aimSensitivity', times(settings.aimSensitivity))
             show('fov', `${settings.fov}°`)
+            show('volume', percent(settings.volume))
             this.hooks.onSettings(settings)
         })
         panel.querySelector('[data-reset]')!.addEventListener('click', () => {
@@ -286,6 +304,19 @@ export class Hud {
             pop.style.opacity = '0'
         })
         setTimeout(() => pop.remove(), 750)
+    }
+
+    /** The ring by the crosshair, filling as a reload goes (0 … 1), or hidden (null). */
+    reload(progress: number | null): void {
+        this.el.reload!.classList.toggle('hidden', progress === null)
+        if (progress !== null) this.el.reloadFill!.setAttribute('stroke-dashoffset', String(RING * (1 - progress)))
+    }
+
+    /** A headshot: one you landed (gold, by the crosshair), or one you took (red, with a flash round the screen). */
+    headshot(who: 'dealt' | 'taken'): void {
+        if (who === 'dealt') return fadeOut(this.el.hsDealt!, 700)
+        fadeOut(this.el.hsTaken!, 1100)
+        fadeOut(this.el.hsFlash!, 600)
     }
 
     /** You took someone down. */
@@ -413,6 +444,9 @@ function clock(ms: number): string {
     const s = Math.ceil(ms / 1000)
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
+
+/** The reload ring's circumference (r = 11 in its 30 × 30 box). */
+const RING = 2 * Math.PI * 11
 
 /** Shows an element at once, then fades it out over `ms`. */
 function fadeOut(element: HTMLElement, ms: number): void {

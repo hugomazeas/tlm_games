@@ -9,9 +9,38 @@ import { aimFromCamera, THIRD_PERSON, thirdPersonCamera } from './view.ts'
 import { targetUnderCrosshair } from './targeting.ts'
 import { Viewmodel } from './effects.ts'
 import { aimFov, DEFAULT_SETTINGS, LIMITS, parseSettings } from './settings.ts'
+import { reloadProgress, spatial } from './sounds.ts'
 import { PerspectiveCamera } from 'three'
 import { Vector3 } from 'three'
 import { aimDirection, fireShot } from '../sim/combat.ts'
+
+describe('sound placement and the reload ring', () => {
+    // Looking toward -Z (yaw 0): +X is to the right.
+    const me = { x: 0, z: 0, yaw: 0 }
+
+    test('a sound to your right pans right, to your left pans left, ahead is centred', () => {
+        expect(spatial(me, { x: 3, z: 0 }).pan).toBeCloseTo(1, 6)
+        expect(spatial(me, { x: -3, z: 0 }).pan).toBeCloseTo(-1, 6)
+        expect(spatial(me, { x: 0, z: -3 }).pan).toBeCloseTo(0, 6)
+        // Turned to face +X (yaw -π/2), that sound is now ahead.
+        expect(spatial({ ...me, yaw: -Math.PI / 2 }, { x: 3, z: 0 }).pan).toBeCloseTo(0, 6)
+    })
+
+    test('nearer is louder, never quite silent across the office', () => {
+        const near = spatial(me, { x: 0.5, z: 0 }).gain
+        const far = spatial(me, { x: 15, z: 0 }).gain
+        expect(near).toBeGreaterThan(far)
+        expect(spatial(me, { x: 0, z: 0 }).gain).toBe(1)
+        expect(spatial(me, { x: 200, z: 0 }).gain).toBeGreaterThan(0)
+    })
+
+    test("the reload ring fills as what's left runs down", () => {
+        expect(reloadProgress(null, 1200)).toBeNull()
+        expect(reloadProgress(1200, 1200)).toBe(0)
+        expect(reloadProgress(300, 1200)).toBeCloseTo(0.75, 6)
+        expect(reloadProgress(0, 1200)).toBe(1)
+    })
+})
 
 describe('settings', () => {
     test('read back as saved, the defaults for anything missing or broken, numbers clamped', () => {

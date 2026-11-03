@@ -260,7 +260,13 @@ Playable at `/games/office-fps`.
   (`swingStapler`): 0.45 m reach in a ~35° cone, 50 damage, 100 from behind (a backstab), a
   swing every 0.55 s; `swing` events, kills carry `weapon` and `backstab`.
 - **Settings** (`client/settings.ts`, in this browser): sensitivity, aiming sensitivity, field
-  of view, invert Y, on the Esc menu.
+  of view, invert Y, sound volume, on the Esc menu.
+- **Sound** (`client/sounds.ts`): every effect synthesized with Web Audio (oscillator sweeps and
+  filtered noise, no files), unlocked by the click that takes the mouse. Others' shots and
+  swings are panned and faded by `spatial()`. Reloads: `SelfState.reloadLeftMs` drives the ring
+  by the crosshair (`reloadProgress`) and the blaster's animation (tilt, magazine out and in).
+  Headshots: gold "HEADSHOT" by the crosshair when you land one, red across the screen with a
+  flash when you take one.
 - **In the game server:** `fps/live.ts` (the one `FpsLobby`, players looked up with
   `findPlayer`, ticked every 4 ms: steps run on their own 60 Hz clock), `fps/serve.ts` (the
   bundle), wired into `server.ts` at `/games/office-fps/live/ws`; nginx proxies the prefix to the

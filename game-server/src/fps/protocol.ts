@@ -79,6 +79,8 @@ export interface SelfState {
     health: number
     ammo: number
     reloading: boolean
+    /** What's left of the reload (ms), for the ring by the crosshair; null when not reloading. */
+    reloadLeftMs: number | null
     shielded: boolean
     weapon: Weapon
     /** Until you're back (ms), while you're down. */

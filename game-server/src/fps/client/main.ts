@@ -13,7 +13,7 @@ import {
     type Weapon,
 } from '../protocol.ts'
 import { aimDirection, eyeOf, STAPLER, SWITCH_MS, WEAPON } from '../sim/combat.ts'
-import { PLAYER, STEP_MS } from '../sim/movement.ts'
+import { MOVE, PLAYER, STEP_MS } from '../sim/movement.ts'
 import { rayDistance, worldFrom } from '../sim/world.ts'
 import { Avatars } from './avatars.ts'
 import { Controls } from './controls.ts'
@@ -21,6 +21,7 @@ import { Effects, Viewmodel } from './effects.ts'
 import { escape, Hud } from './hud.ts'
 import { Prediction } from './prediction.ts'
 import { aimFov, loadSettings, saveSettings } from './settings.ts'
+import { reloadProgress, Sounds, spatial } from './sounds.ts'
 import { targetUnderCrosshair } from './targeting.ts'
 import { Interpolator, type Pose, ServerClock } from './timeline.ts'
 import { aimFromCamera, thirdPersonCamera } from './view.ts'
@@ -76,17 +77,25 @@ addEventListener('resize', () => {
 })
 
 let settings = loadSettings()
+const sounds = new Sounds()
 const hud = new Hud(config.backUrl, {
     settings,
     onSettings: changed => {
         settings = changed
         saveSettings(changed)
         controls.invertY = changed.invertY
+        sounds.setVolume(changed.volume)
     },
     onStart: rules => startMatch(rules),
 })
-const controls = new Controls(renderer.domElement, locked => hud.card(locked ? 'playing' : 'paused'))
+const controls = new Controls(renderer.domElement, locked => {
+    hud.card(locked ? 'playing' : 'paused')
+    // The click that takes the mouse is the one browsers need before any sound.
+    if (locked) sounds.unlock()
+    else sounds.jetting(false)
+})
 controls.invertY = settings.invertY
+sounds.setVolume(settings.volume)
 const avatars = new Avatars(scene)
 const effects = new Effects(scene)
 let viewmodel: Viewmodel | null = null
@@ -108,6 +117,14 @@ let others = new Interpolator()
 const smoothing = new Vector3()
 let nextLocalShot = 0
 let nextLocalSwing = 0
+let wasFiring = false
+/** When your reload ends on this clock (null: not reloading); the ring and the animation run to it. */
+let reloadEndsAt: number | null = null
+/** Seen alive once already: later spawns get their chime (not the first one, on joining). */
+let wasConnectedAlive = false
+/** When the last match message came (its remainingMs counts from then), and the last countdown beep. */
+let matchAt = 0
+let lastBeep = 0
 /** The weapon in hand here, and when it can be used (as the server counts it). */
 let held: Weapon = 'blaster'
 let readyAt = 0
@@ -166,7 +183,10 @@ function receive(message: ServerMessage): void {
             outbox = []
             self = null
             wasAlive = false
+            wasConnectedAlive = false
+            reloadEndsAt = null
             match = message.match
+            matchAt = now
             hud.setMatch(message.match, now)
             hud.card(controls.locked ? 'playing' : 'paused')
             viewmodel ??= new Viewmodel(camera, roster.get(me)?.color ?? '#ffd166')
@@ -176,11 +196,16 @@ function receive(message: ServerMessage): void {
             roster = new Map(message.players.map(p => [p.id, p]))
             updateHost()
             return
-        case 'match':
+        case 'match': {
+            const before = match?.phase
             match = message.match
+            matchAt = now
             hud.setMatch(message.match, now)
             updateHost()
+            if (before === 'countdown' && match.phase === 'playing') sounds.countdown(true)
+            if (before === 'playing' && match.phase === 'intermission') sounds.matchOver()
             return
+        }
         case 'snap':
             snapshot(message, now)
             return
@@ -214,10 +239,16 @@ function startMatch(rules: Rules): void {
 function snapshot(snap: Extract<ServerMessage, { type: 'snap' }>, now: number): void {
     clock.heard(snap.step, now)
     others.push(snap.step, snap.players)
+    const wasReloading = self?.reloading ?? false
     self = snap.you
     hud.setSelf(self)
     if (self) {
+        // The reload's end, on this clock (the ring and the animation run to it between snapshots).
+        reloadEndsAt = self.reloadLeftMs === null ? null : now + self.reloadLeftMs
+        if (self.reloading && !wasReloading && self.reloadLeftMs !== null) sounds.reload(self.reloadLeftMs)
         const spawned = self.alive && !wasAlive
+        if (spawned && wasConnectedAlive) sounds.spawn()
+        wasConnectedAlive = true
         const correction = prediction.reconcile(snap.ack, self.body, self.alive)
         const off = Math.hypot(correction.x, correction.y, correction.z)
         if (spawned || off > SNAP_DISTANCE) smoothing.set(0, 0, 0)
@@ -242,6 +273,12 @@ function onEvent(event: GameEvent, now: number): void {
             // Drawn already when fired; the server says whether it hit, and for how much.
             if (event.hit) {
                 if (event.damage > 0) hud.hitMarker(event.headshot)
+                if (event.damage > 0 && event.headshot) {
+                    hud.headshot('dealt')
+                    sounds.headshot()
+                } else if (event.damage > 0) {
+                    sounds.hit()
+                }
                 const at = toScreen(new Vector3(...event.to))
                 if (at) hud.damageNumber(event.damage, event.headshot, at.x, at.y)
             }
@@ -249,22 +286,38 @@ function onEvent(event: GameEvent, now: number): void {
         }
         const color = parseInt((roster.get(event.by)?.color ?? '#ffffff').slice(1), 16)
         effects.tracer(new Vector3(...event.from), new Vector3(...event.to), color, now, event.hit !== null)
-        // Hit: which way it came from.
-        if (event.hit === me && event.damage > 0) hud.damageFrom(bearingTo(event.from))
+        sounds.otherShot(spatial(listener(), { x: event.from[0], z: event.from[2] }))
+        // Hit: which way it came from, and how hard.
+        if (event.hit === me && event.damage > 0) {
+            hud.damageFrom(bearingTo(event.from))
+            if (event.headshot) {
+                hud.headshot('taken')
+                sounds.headshotTaken()
+            } else {
+                sounds.hurt()
+            }
+        }
     }
     if (event.type === 'swing') {
         if (event.hit && event.damage > 0) avatars.flash(event.hit, now)
         if (event.by === me) {
             // The chop was drawn when swung; the server says what it hit.
             const struck = event.hit ? avatars.centerOf(event.hit) : null
-            if (event.hit && event.damage > 0) hud.hitMarker(event.backstab)
+            if (event.hit && event.damage > 0) {
+                hud.hitMarker(event.backstab)
+                sounds.swingHit(event.backstab)
+            }
             const at = struck ? toScreen(new Vector3(struck.x, struck.y, struck.z)) : null
             if (event.hit && at) hud.damageNumber(event.damage, event.backstab, at.x, at.y)
             return
         }
         avatars.swing(event.by, now)
         const from = avatars.centerOf(event.by)
-        if (event.hit === me && event.damage > 0 && from) hud.damageFrom(bearingTo([from.x, from.y, from.z]))
+        if (from) sounds.swing(spatial(listener(), from))
+        if (event.hit === me && event.damage > 0) {
+            if (from) hud.damageFrom(bearingTo([from.x, from.y, from.z]))
+            sounds.hurt()
+        }
     }
     if (event.type === 'kill') {
         const icon =
@@ -278,6 +331,7 @@ function onEvent(event: GameEvent, now: number): void {
         if (event.killer === me && event.victim !== me) {
             hud.hitMarker(event.headshot, true)
             hud.eliminated(name(event.victim))
+            sounds.kill()
         }
     }
 }
@@ -287,6 +341,13 @@ function toScreen(point: Vector3): { x: number; y: number } | null {
     const p = point.clone().project(camera)
     if (p.z > 1) return null
     return { x: (p.x * 0.5 + 0.5) * innerWidth, y: (-p.y * 0.5 + 0.5) * innerHeight }
+}
+
+/** Where you hear from: your body (or the camera, watching) and where you look. */
+function listener(): { x: number; z: number; yaw: number } {
+    const body = prediction.body
+    const at = body ?? camera.position
+    return { x: at.x, z: at.z, yaw: controls.yaw }
 }
 
 /** Which way a point is from where you look: radians, 0 ahead, π/2 to your right. */
@@ -339,6 +400,9 @@ function step(now: number): void {
     prediction.apply(input, self.alive)
     outbox.push(input)
     if (outbox.length >= SEND_EVERY) flush()
+    // A dodge that went off (the body just started one), and the jetpack's rumble while it burns.
+    if (self.alive && prediction.body?.dashLeft === MOVE.dashSteps) sounds.dash()
+    sounds.jetting(jetting && self.alive && controls.locked)
 
     // A new weapon in hand: like the server, it can't be used for a moment.
     if (controls.weapon !== held) {
@@ -347,7 +411,9 @@ function step(now: number): void {
         if (viewmodel) viewmodel.weapon = held
     }
     const firing = Boolean(input.buttons & BUTTON.fire) && self.alive && now >= readyAt
-    // Your own shot or swing shows at once: the server's answer only says what it hit.
+    const pulled = firing && !wasFiring
+    wasFiring = firing
+    // Your own shot or swing shows (and sounds) at once: the server's answer only says what it hit.
     if (firing && held === 'blaster' && !self.reloading && self.ammo > 0 && now >= nextLocalShot) {
         nextLocalShot = now + WEAPON.intervalMs
         const eye = eyeOf(prediction.body!)
@@ -355,11 +421,15 @@ function step(now: number): void {
         const end = eye.clone().addScaledVector(direction, rayDistance(world, eye, direction, WEAPON.range))
         viewmodel?.fire(now)
         effects.tracer(viewmodel && !thirdPerson ? viewmodel.muzzleIn(camera) : eye, end, 0xffd080, now, false)
+        sounds.shot()
+    } else if (pulled && held === 'blaster' && (self.reloading || self.ammo === 0)) {
+        sounds.empty()
     }
     if (firing && held === 'stapler' && now >= nextLocalSwing) {
         nextLocalSwing = now + STAPLER.intervalMs
         viewmodel?.swing(now)
         if (me) avatars.swing(me, now)
+        sounds.swing()
     }
 }
 
@@ -423,10 +493,21 @@ function draw(now: number): void {
     const aimedSensitivity = 1 + (settings.aimSensitivity - 1) * aimBlend
     controls.sensitivityScale = settings.sensitivity * (fov / hipFov) * aimedSensitivity
     hud.aiming = aimingNow
+    // A reload: the ring by the crosshair and the blaster's animation, run to its end between snapshots.
+    const reloading = Boolean(self?.alive && self.reloading && held === 'blaster' && reloadEndsAt !== null)
+    const reload = reloading ? reloadProgress(Math.max(0, reloadEndsAt! - now), WEAPON.reloadMs) : null
+    hud.reload(reload)
     if (viewmodel) {
         viewmodel.visible = Boolean(self?.alive) && !third
         const moving = Boolean(body && body.onGround && Math.hypot(body.vx, body.vz) > 0.5)
-        viewmodel.update(now, moving, aimBlend)
+        viewmodel.update(now, moving, aimBlend, reload)
+    }
+
+    // The countdown's last three seconds tick.
+    if (match?.phase === 'countdown' && match.remainingMs !== null) {
+        const seconds = Math.ceil((match.remainingMs - (now - matchAt)) / 1000)
+        if (seconds !== lastBeep && seconds >= 1 && seconds <= 3) sounds.countdown(false)
+        lastBeep = seconds
     }
 
     const at = clock.renderStep(now)
