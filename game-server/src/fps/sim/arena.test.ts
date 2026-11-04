@@ -436,6 +436,39 @@ describe('the guns', () => {
         expect(head).toContainEqual(expect.objectContaining({ type: 'kill', weapon: 'sniper', headshot: true }))
     })
 
+    test('the victim learns how they died: the gun, the distance, the killer’s health and rounds, the hits', () => {
+        const sniper = { primary: 'sniper', secondary: 'pistol' } as const
+        const { a, north, south, shoot, waitShields } = duel([], [null, null], sniper)
+        waitShields()
+        const apart = () => {
+            const [n, s] = [north, south].map(id => a.states().find(p => p.id === id)!)
+            return Math.hypot(n!.x - s!.x, n!.y - s!.y, n!.z - s!.z)
+        }
+        // A body shot, then a headshot.
+        let events: ReturnType<typeof shoot> = []
+        for (let i = 0; i < 30 && !events.some(e => e.type === 'shot'); i++) events = shoot(false, 'primary', true)
+        const distance = apart()
+        events = []
+        for (let i = 0; i < 120 && !events.some(e => e.type === 'kill'); i++) events = shoot(true, 'primary', true)
+        const kill = events.find(e => e.type === 'kill')
+
+        expect(kill).toMatchObject({ killer: north, victim: south, weapon: 'sniper' })
+        const recap = (kill as Extract<typeof kill, { type: 'kill' }>).recap!
+        expect(recap).toMatchObject({
+            killerHealth: 100,
+            ammo: GUNS.sniper.magazine - 2,
+            magazine: GUNS.sniper.magazine,
+            buffs: [],
+            hits: 2,
+            // The headshot only had 20 health left to take.
+            damage: 100,
+            headshots: 1,
+            othersDamage: 0,
+        })
+        expect(recap.distance).toBeCloseTo(distance, 0)
+        expect(recap.timeMs).toBeGreaterThanOrEqual(GUNS.sniper.intervalMs - 50)
+    })
+
     test("the shotgun's pellets spread, and hurt far less from across the room than up close", () => {
         const pellets = (gap: number) => {
             const a = new Arena(

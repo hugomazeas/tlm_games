@@ -15,6 +15,52 @@ import type { GameEvent } from '../protocol.ts'
 import { PerspectiveCamera } from 'three'
 import { Vector3 } from 'three'
 import { aimDirection, fireShot } from '../sim/combat.ts'
+import { deathRecap } from './hud.ts'
+
+describe('the death recap', () => {
+    const recap = {
+        distance: 12.4,
+        killerHealth: 37,
+        ammo: 18,
+        magazine: 30,
+        buffs: [],
+        hits: 4,
+        damage: 100,
+        headshots: 2,
+        timeMs: 620,
+        othersDamage: 0,
+    }
+
+    test('tells the gun, the range, what your killer had left and what it took them', () => {
+        const html = deathRecap({ weapon: 'rifle', headshot: true, backstab: false, recap })
+        const parts = ['Assault rifle', 'headshot', '12.4 m away', '37 / 100', '18 / 30', '4 for 100 damage']
+        for (const part of [...parts, '2 to the head', '0.6 s']) expect(html).toContain(part)
+        expect(html).not.toContain('From others')
+        expect(html).not.toContain('Their powers')
+    })
+
+    test('an empty magazine, help from others, powers; the stapler has no magazine; one shot is one shot', () => {
+        const empty = deathRecap({
+            weapon: 'sniper',
+            headshot: true,
+            backstab: false,
+            recap: { ...recap, ammo: 0, magazine: 5, hits: 1, othersDamage: 30, buffs: ['headshot'] },
+        })
+        expect(empty).toContain('empty')
+        expect(empty).toContain('30 damage')
+        expect(empty).toContain('One-shot headshots')
+        expect(empty).toContain('one shot')
+
+        const stapler = { ...recap, ammo: null, magazine: null }
+        const stapled = deathRecap({ weapon: 'stapler', headshot: false, backstab: true, recap: stapler })
+        expect(stapled).toContain('from behind')
+        expect(stapled).not.toContain('Their magazine')
+    })
+
+    test('your own rocket: just the gun', () => {
+        expect(deathRecap({ weapon: 'launcher', headshot: false, backstab: false })).toContain('Launcher')
+    })
+})
 
 describe('the announcer', () => {
     const names: Record<string, string> = { me: 'Ann', bob: 'Bob', cat: 'Cat' }

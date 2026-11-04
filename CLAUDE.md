@@ -326,7 +326,11 @@ Playable at `/games/office-fps`.
   marker (gold on a headshot), the number where it landed, a big red marker and "Eliminated"
   on a kill. Hits on you: a red arc toward the shooter. Names and health show only over the
   player under your crosshair (`client/targeting.ts`: nearest the view's centre within a body's
-  width, not through walls); `PlayerState.health` is sent for it.
+  width, not through walls); `PlayerState.health` is sent for it. Going down, the death screen
+  shows a recap under "Fragged by" (`deathRecap` in `hud.ts`): the kill event's `recap`
+  (`KillRecap`, built by `Arena.recap` from each fighter's `taken` this life) gives the distance,
+  the killer's health, rounds left and powers, their hits and damage on you, the time it took, and
+  damage from others.
 
 - **The map** (`fps/map/office.js`, typed by `office.d.ts`; brought over from `~/office-map`,
   this copy is the source): `buildOfficeGeometry()` runs anywhere (no DOM) and gives the exact
