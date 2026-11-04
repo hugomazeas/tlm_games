@@ -19,18 +19,22 @@ const SUBSTEPS = 4
 export const PLAYER = { radius: 0.12, height: 0.4, eye: 0.34 } as const
 
 export const MOVE = {
-    walk: 2.8,
+    /** Slow enough to track: a mini is only 24 cm wide (at 2.8 they crossed 12 body widths a second). */
+    walk: 2,
     /** The dodge (Shift + a direction): a jetpack burst that way. */
-    dashSpeed: 7,
+    dashSpeed: 5,
     /** How long the burst carries you before the keys take over again. */
     dashSteps: 12,
-    /** Steps before the next dodge (0.75 s), and the fuel each one burns. */
-    dashCooldown: 45,
+    /** Steps before the next dodge (1.5 s), and the fuel each one burns. */
+    dashCooldown: 90,
     dashFuel: 0.2,
     /** A little lift, so a dodge clears a cable or a chair leg. */
     dashLift: 1.2,
-    /** How fast velocity follows the keys: snappy on the ground, floaty in the air. */
-    groundResponse: 14,
+    /**
+     * How fast velocity follows the keys: firm on the ground (soft enough that a change of direction
+     * shows before it happens, so strafing isn't twitchy), floaty in the air.
+     */
+    groundResponse: 8,
     airResponse: 3,
     gravity: -9.8,
     /** Upward acceleration while the jetpack burns (m/s²), against gravity's 9.8. */

@@ -318,8 +318,8 @@ Playable at `/games/office-fps`.
   is each frame's `view`. Your shot's tracer is drawn at once; the server's event only adds the
   hit marker. A hidden tab sends one idle frame first (the server repeats your last frame).
 - **Controls:** WASD walk, Space jetpack, Shift + a direction (either order: the key that
-  completes the pair fires it) dodges (`BUTTON.dash`: a 7 m/s burst for 12 steps that way,
-  20% fuel, 0.75 s cooldown, in `stepBody` so it's predicted and checked), click fires,
+  completes the pair fires it) dodges (`BUTTON.dash`: a 5 m/s burst for 12 steps that way,
+  20% fuel, 1.5 s cooldown; walking is 2 m/s, kept slow enough to track a 24 cm mini, in `stepBody` so it's predicted and checked), click fires,
   right-click aims (the gun's zoom, mouse slowed to match, the gun on its sights), V
   first/third person.
 - **Feedback:** shot events carry the `damage` they did (0 on a spawn shield). Your hits: a
@@ -340,7 +340,8 @@ Playable at `/games/office-fps`.
   the geometry, never in the materials, or the server's collision drifts from what's drawn.
 - **Sim** (`fps/sim/`, pure): `movement.ts` steps a body at 60 Hz (4 collision sub-steps;
   walk/run/jetpack tuning at the top), shared with the browser for prediction; `combat.ts` has
-  the guns and hitscan (walls and glass stop shots, headshots on the top of the capsule);
+  the guns and hitscan (walls and glass stop shots, headshots on the top of the capsule, which
+  shots take `HITBOX_SCALE` 1.25× wider than it collides);
   `arena.ts` runs everyone: one input frame per step (the last one repeated, without firing,
   when none came), shots judged where the shooter saw the target (up to 200 ms back), respawns
   at the spawn point furthest from everyone with a short shield.
