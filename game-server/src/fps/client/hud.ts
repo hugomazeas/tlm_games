@@ -1,6 +1,7 @@
 import {
     type BuffKind,
     FRAG_LIMITS,
+    type KillRecap,
     type Loadout,
     PRIMARIES,
     SECONDARIES,
@@ -18,6 +19,7 @@ import {
     type Team,
     TEAM_COLORS,
     TEAMS,
+    type Weapon,
     ZONE_SECONDS_PER_POINT,
 } from '../protocol.ts'
 import { magazineOf, MAX_HEALTH } from '../sim/combat.ts'
@@ -54,6 +56,12 @@ const CSS = `
 #fps-hud .zone-marker { position: absolute; width: 18px; height: 18px; margin: -9px; border: 3px solid; transform: rotate(45deg); box-shadow: 0 0 6px rgba(0,0,0,.6); }
 #fps-hud .zone-marker span { position: absolute; left: 50%; top: 24px; transform: rotate(-45deg) translateX(-50%); transform-origin: 0 0; white-space: nowrap; font-size: 12px; text-shadow: 0 1px 3px #000; }
 #fps-hud .middle .taunt { font-style: italic; color: #ffd166; opacity: 1; }
+#fps-hud .recap { margin: 12px auto 10px; padding: 10px 14px; width: max-content; max-width: 90vw; background: rgba(12,14,18,.7); border-radius: 10px; font-size: 14px; text-shadow: none; }
+#fps-hud .recap-head { font-weight: 700; margin-bottom: 6px; }
+#fps-hud .recap-head .hs { color: #ffb020; }
+#fps-hud .recap-rows { display: grid; grid-template-columns: auto auto; gap: 3px 18px; text-align: left; }
+#fps-hud .recap-rows span { opacity: .65; }
+#fps-hud .recap-rows b { font-variant-numeric: tabular-nums; font-weight: 600; }
 #fps-hud .board h3 { margin: 10px 0 2px; font-size: 13px; letter-spacing: .12em; }
 #fps-hud .awards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; margin-bottom: 10px; }
 #fps-hud .awards div { background: rgba(255,255,255,.06); border-radius: 8px; padding: 6px 8px; }
@@ -132,6 +140,8 @@ export interface HudFrame {
     killer: string | null
     /** The line under "Fragged by …". */
     taunt: string | null
+    /** How they did it (null: no kill to tell). */
+    cause: DeathCause | null
     tab: boolean
     roster: Map<string, PlayerInfo>
 }
@@ -585,7 +595,8 @@ export class Hud {
             const taunt = opts.taunt ? `<small class="taunt">${escape(opts.taunt)}</small>` : ''
             const next = opts.self.nextLoadout
             const guns = `${WEAPON_NAMES[next.primary]} + ${WEAPON_NAMES[next.secondary]}`
-            middle = `${by}${taunt}<small>Back in ${Math.ceil((opts.self.respawnInMs ?? 0) / 1000)} with ${escape(guns)} · <kbd>Esc</kbd> to change</small>`
+            const recap = opts.cause ? deathRecap(opts.cause) : ''
+            middle = `${by}${taunt}${recap}<small>Back in ${Math.ceil((opts.self.respawnInMs ?? 0) / 1000)} with ${escape(guns)} · <kbd>Esc</kbd> to change</small>`
         } else if (match.phase === 'countdown') {
             middle = `${Math.ceil((left ?? 0) / 1000)}<small>Warmup kills don't count</small>`
         }
@@ -698,6 +709,44 @@ export const BUFF_LABELS: Record<BuffKind, { icon: string; label: string }> = {
     headshot: { icon: '🎯', label: 'One-shot headshots' },
 }
 export const BUFF_COLORS: Record<BuffKind, string> = { magazine: '#f2b134', jetpack: '#29a3e0', headshot: '#ff3b3b' }
+
+/** How you went down, as the kill event told it. */
+export interface DeathCause {
+    weapon: Weapon
+    headshot: boolean
+    backstab: boolean
+    recap?: KillRecap
+}
+
+/**
+ * The death screen's recap (HTML): the gun and the range, then what the killer had left and what
+ * it took them.
+ */
+export function deathRecap(cause: DeathCause): string {
+    const r = cause.recap
+    const head = [
+        WEAPON_NAMES[cause.weapon],
+        ...(cause.headshot ? ['<b class="hs">headshot</b>'] : []),
+        ...(cause.backstab ? ['<b class="hs">from behind</b>'] : []),
+        ...(r ? [`${r.distance.toFixed(1)} m away`] : []),
+    ].join(' · ')
+    if (!r) return `<div class="recap"><div class="recap-head">${head}</div></div>`
+
+    const rows: Array<[string, string]> = [['Their health', `${r.killerHealth} / ${MAX_HEALTH}`]]
+    if (r.ammo !== null && r.magazine !== null) {
+        rows.push(['Their magazine', r.ammo === 0 ? 'empty' : `${r.ammo} / ${r.magazine}`])
+    }
+    const headshots = r.headshots > 0 ? ` (${r.headshots} to the head)` : ''
+    rows.push(['Their hits on you', `${r.hits} for ${r.damage} damage${headshots}`])
+    rows.push(['Time to kill', r.hits <= 1 ? 'one shot' : `${(r.timeMs / 1000).toFixed(1)} s`])
+    if (r.othersDamage > 0) rows.push(['From others', `${r.othersDamage} damage`])
+    if (r.buffs.length > 0) {
+        rows.push(['Their powers', r.buffs.map(b => `${BUFF_LABELS[b].icon} ${BUFF_LABELS[b].label}`).join(', ')])
+    }
+    const cells = rows.map(([label, value]) => `<span>${label}</span><b>${value}</b>`).join('')
+
+    return `<div class="recap"><div class="recap-head">${head}</div><div class="recap-rows">${cells}</div></div>`
+}
 
 /** The reload ring's circumference (r = 11 in its 30 × 30 box). */
 const RING = 2 * Math.PI * 11

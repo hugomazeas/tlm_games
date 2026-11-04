@@ -31,8 +31,10 @@ describe('a mini in the office', () => {
         // Yaw π/2 looks toward -X.
         const end = run(start, { ...IDLE, forward: 1, yaw: Math.PI / 2 }, 30)
 
-        expect(start.x - end.x).toBeGreaterThan(MOVE.walk * 0.5 * 0.85)
+        // Up to speed in about a quarter of a second, so the first half second covers a bit less.
+        expect(start.x - end.x).toBeGreaterThan(MOVE.walk * 0.5 * 0.7)
         expect(start.x - end.x).toBeLessThan(MOVE.walk * 0.5 * 1.02)
+        expect(Math.hypot(end.vx, end.vz)).toBeGreaterThan(MOVE.walk * 0.95)
         expect(Math.abs(end.z - start.z)).toBeLessThan(0.01)
     })
 
@@ -43,7 +45,9 @@ describe('a mini in the office', () => {
         const dodged = run(stepBody(officeWorld(), start, { ...right, dash: true }), right, 11)
         const walked = run(start, right, 12)
 
-        expect(start.z - dodged.z).toBeGreaterThan(1.1)
+        // About a metre: two and a half body lengths, not a teleport.
+        expect(start.z - dodged.z).toBeGreaterThan(0.8)
+        expect(start.z - dodged.z).toBeLessThan(1.2)
         expect(start.z - dodged.z).toBeGreaterThan(2 * (start.z - walked.z))
         expect(Math.abs(dodged.x - start.x)).toBeLessThan(0.05)
         expect(dodged.fuel).toBeCloseTo(1 - MOVE.dashFuel, 2)

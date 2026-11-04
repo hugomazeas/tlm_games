@@ -274,15 +274,22 @@ export function fireShot(
 }
 
 /**
- * Where a ray meets a player's capsule: its distance along the ray, and how high up the capsule's
- * axis (0 bottom … 1 top). Null when it passes by or is behind the ray.
+ * Shots take a player as this much wider than they collide (as tall): a 24 cm mini on the move is
+ * a small target, and a slightly generous hitbox doesn't show.
+ */
+export const HITBOX_SCALE = 1.25
+export const HIT_RADIUS = PLAYER.radius * HITBOX_SCALE
+
+/**
+ * Where a ray meets a player's hit capsule (`HIT_RADIUS` wide, their height): its distance along the
+ * ray, and how high up it (0 bottom … 1 top). Null when it passes by or is behind the ray.
  */
 export function rayCapsule(
     origin: Vector3,
     direction: Vector3,
     feet: { x: number; y: number; z: number }
 ): { distance: number; along: number } | null {
-    const r = PLAYER.radius
+    const r = HIT_RADIUS
     const a = new Vector3(feet.x, feet.y + r, feet.z)
     const axis = new Vector3(0, PLAYER.height - 2 * r, 0)
     const axisLength = axis.length()

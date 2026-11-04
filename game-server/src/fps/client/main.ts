@@ -39,8 +39,8 @@ import { rayDistance, worldFrom } from '../sim/world.ts'
 import { Avatars } from './avatars.ts'
 import { announce, taunt } from './callouts.ts'
 import { Controls } from './controls.ts'
-import { Effects, Viewmodel } from './effects.ts'
-import { BUFF_LABELS, escape, Hud } from './hud.ts'
+import { Effects } from './effects.ts'
+import { BUFF_LABELS, type DeathCause, escape, Hud } from './hud.ts'
 import { PICKUP_COLORS, PickupViews, ZoneView } from './pickups.ts'
 import { Prediction } from './prediction.ts'
 import { aimFov, loadSettings, saveSettings } from './settings.ts'
@@ -48,6 +48,7 @@ import { reloadProgress, Sounds, spatial } from './sounds.ts'
 import { targetUnderCrosshair } from './targeting.ts'
 import { Interpolator, type Pose, ServerClock } from './timeline.ts'
 import { aimFromCamera, thirdPersonCamera } from './view.ts'
+import { Viewmodel } from './viewmodel.ts'
 
 /**
  * The office FPS in the browser. The Hub's page sets window.officeFpsConfig and loads this module
@@ -145,6 +146,8 @@ let wasAlive = false
 let killer: string | null = null
 /** The line under "Fragged by …", picked when you go down. */
 let deathTaunt: string | null = null
+/** How you went down (the gun, the range, what your killer had left), for the death screen. */
+let deathCause: DeathCause | null = null
 /** The latest snapshot's pickups (which are there) and zone. */
 let pickupsReady: boolean[] = []
 let zone: ZoneState | null = null
@@ -247,7 +250,10 @@ function receive(message: ServerMessage): void {
             matchAt = now
             hud.setMatch(message.match, now)
             hud.card(controls.locked ? 'playing' : 'paused')
-            viewmodel ??= new Viewmodel(camera, roster.get(me)?.color ?? '#ffd166')
+            if (!viewmodel) {
+                viewmodel = new Viewmodel(roster.get(me)?.color ?? '#ffd166')
+                viewmodel.follow(camera)
+            }
             updateHost()
             return
         case 'roster':
@@ -330,6 +336,7 @@ function snapshot(snap: Extract<ServerMessage, { type: 'snap' }>, now: number): 
             if (at) controls.face(at.yaw)
             killer = null
             deathTaunt = null
+            deathCause = null
         }
         wasAlive = self.alive
     }
@@ -474,6 +481,8 @@ function onEvent(event: GameEvent, now: number): void {
         if (event.victim === me) {
             killer = event.killer ? name(event.killer) : null
             deathTaunt = event.killer && event.killer !== me ? taunt(event, Math.random) : null
+            const { weapon, headshot, backstab, recap } = event
+            deathCause = { weapon, headshot, backstab, recap }
         }
         if (event.killer === me && event.victim !== me) {
             hud.hitMarker(event.headshot, true)
@@ -570,7 +579,7 @@ function step(now: number): void {
     if (wanted !== held) {
         held = wanted
         readyAt = now + SWITCH_MS
-        if (viewmodel) viewmodel.weapon = held
+        viewmodel?.hold(held, now)
     }
     // As the server does: a click waits for the gun until it's used or let go.
     const holding = Boolean(input.buttons & BUTTON.fire) && self.alive
@@ -614,7 +623,7 @@ function fireLocally(gun: Gun, input: InputFrame, now: number): void {
     const eye = eyeOf(body)
     const aim = aimDirection(input.yaw, input.pitch)
     const cone = spreadOf(spec, Boolean(input.buttons & BUTTON.aim), body)
-    const from = viewmodel && !thirdPerson ? viewmodel.muzzleIn(camera) : eye
+    const from = viewmodel && !thirdPerson ? viewmodel.muzzleIn() : eye
     for (let pellet = 0; pellet < spec.pellets; pellet++) {
         const direction = spreadDirection(aim, cone, input.seq, pellet)
         const end = eye.clone().addScaledVector(direction, rayDistance(world, eye, direction, spec.range))
@@ -740,8 +749,9 @@ function draw(now: number): void {
     zoneView.update(zone, colorOf, zone !== null && zone.holder === me, now)
     showZone(now)
     showTarget(poses)
-    hud.update(now, { me, self, killer, taunt: deathTaunt, tab: controls.scoreboardHeld, roster })
+    hud.update(now, { me, self, killer, taunt: deathTaunt, cause: deathCause, tab: controls.scoreboardHeld, roster })
     renderer.render(scene, camera)
+    viewmodel?.render(renderer, camera)
 }
 
 /** King of the meeting room: who holds the zone, and a marker pointing at it (kept on screen). */

@@ -1,6 +1,16 @@
 import { describe, expect, test } from 'bun:test'
 import { Vector3 } from 'three'
-import { aimDirection, damageAt, fireShot, GUNS, magazineOf, rayCapsule, spreadDirection, spreadOf } from './combat.ts'
+import {
+    aimDirection,
+    damageAt,
+    fireShot,
+    GUNS,
+    HIT_RADIUS,
+    magazineOf,
+    rayCapsule,
+    spreadDirection,
+    spreadOf,
+} from './combat.ts'
 import { bodyAt, PLAYER } from './movement.ts'
 import { testWorld } from './testing.ts'
 import { officeWorld } from './world.ts'
@@ -11,8 +21,16 @@ describe('shots', () => {
     test('a shot at the body hits the capsule at its surface', () => {
         const hit = rayCapsule(new Vector3(0, 0.2, -2), new Vector3(0, 0, 1), AT_ORIGIN)
 
-        expect(hit!.distance).toBeCloseTo(2 - PLAYER.radius, 5)
+        expect(hit!.distance).toBeCloseTo(2 - HIT_RADIUS, 5)
         expect(hit!.along).toBeCloseTo(0.5, 5)
+    })
+
+    test('shots take a mini a little wider than they are (no taller)', () => {
+        expect(HIT_RADIUS).toBeGreaterThan(PLAYER.radius)
+        const beside = (x: number) => rayCapsule(new Vector3(x, 0.2, -2), new Vector3(0, 0, 1), AT_ORIGIN)
+        expect(beside(PLAYER.radius + 0.01)).not.toBeNull()
+        expect(beside(HIT_RADIUS + 0.005)).toBeNull()
+        expect(rayCapsule(new Vector3(0, PLAYER.height + 0.005, -2), new Vector3(0, 0, 1), AT_ORIGIN)).toBeNull()
     })
 
     test('the top of the capsule is the head', () => {
@@ -62,7 +80,7 @@ describe('shots', () => {
         ])
 
         expect(shot.hit?.id).toBe('first')
-        expect(shot.end.z).toBeCloseTo(1.6 - PLAYER.radius, 4)
+        expect(shot.end.z).toBeCloseTo(1.6 - HIT_RADIUS, 4)
     })
 
     test('a gun reaches its range, not further', () => {

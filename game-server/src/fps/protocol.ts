@@ -218,10 +218,33 @@ export type GameEvent =
           victimStreak: number
           /** The match's first kill. */
           firstBlood?: boolean
+          /** How it happened, for the victim's death screen (absent when nobody killed them). */
+          recap?: KillRecap
       }
     | { type: 'spawn'; id: string }
     /** Someone took the pickup at `spot` (an index into PICKUP_SPOTS). */
     | { type: 'pickup'; by: string; spot: number }
+
+/** What the victim learns about the one who killed them. */
+export interface KillRecap {
+    /** Between them when it happened (m, one decimal). */
+    distance: number
+    /** The killer's health then. */
+    killerHealth: number
+    /** Rounds left in the killer's gun after the kill, and its magazine (null: the stapler). */
+    ammo: number | null
+    magazine: number | null
+    /** The killer's powers then. */
+    buffs: BuffKind[]
+    /** The killer's hits on the victim this life, the damage they did, how many were headshots. */
+    hits: number
+    damage: number
+    headshots: number
+    /** From the killer's first hit this life to the kill (ms). */
+    timeMs: number
+    /** Damage the victim took from anyone else this life (a helping hand). */
+    othersDamage: number
+}
 
 export interface Score {
     /** The connection's id while they're here, null once they left the match. */
