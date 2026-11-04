@@ -298,7 +298,14 @@ Playable at `/games/office-fps`.
   reload frame by frame, slow time, turn the gun round (inspect). It rebuilds and reloads itself
   when a file under `src/fps` is saved, keeping its state in the URL's hash (`#gun=rifle&t=0.42`),
   so `tools/aerial/shot.mjs` can render stills of it (`… http://localhost:8097 900 600 out.png
-  "gun=sniper&view=inspect&speed=0"`).
+  "gun=sniper&view=inspect&speed=0"`; shot.mjs hides everything but the canvas, panel included).
+  **Debug mode** (the panel's checkbox, `debug=1`): a target mini at a set distance (its hit capsule,
+  head band in gold, the mini inside) on a 10 cm grid, the crosshair on its head or body; the cone
+  as a circle round the crosshair (in 3D when inspecting); each round drawn and dotted where it
+  stops, with a tally; and the numbers (spread by hip/aim/moving/air, hit chance, damage and
+  falloff graph, pulls and time to kill, rate, live state, fps and draws). The numbers come from
+  `client/gun-debug.ts` (pure, tested), which fires through `combat.ts`'s own seeded spread and
+  `rayCapsule`, so they are what the server would judge.
 - **Settings** (`client/settings.ts`, in this browser): sensitivity, aiming sensitivity, field
   of view, invert Y, sound volume, on the Esc menu.
 - **Sound** (`client/sounds.ts`): every effect synthesized with Web Audio (oscillator sweeps and

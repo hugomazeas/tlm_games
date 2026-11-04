@@ -1,23 +1,56 @@
 import {
     ACESFilmicToneMapping,
     BoxGeometry,
+    BufferGeometry,
+    CapsuleGeometry,
     Color,
+    ConeGeometry,
     DirectionalLight,
+    DoubleSide,
+    GridHelper,
+    Group,
     HemisphereLight,
+    LineBasicMaterial,
+    LineLoop,
     Mesh,
+    MeshBasicMaterial,
     MeshStandardMaterial,
     Object3D,
     PerspectiveCamera,
+    Plane,
     PlaneGeometry,
     PMREMGenerator,
     Scene,
+    SphereGeometry,
     Vector3,
     WebGLRenderer,
 } from 'three'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { type Gun, WEAPON_NAMES, type Weapon } from '../protocol.ts'
-import { GUNS, LAUNCHER, magazineOf, reloadMsOf, STAPLER } from '../sim/combat.ts'
+import {
+    damageAt,
+    GUNS,
+    HEAD_FROM,
+    HIT_RADIUS,
+    LAUNCHER,
+    MAX_HEALTH,
+    magazineOf,
+    reloadMsOf,
+    STAPLER,
+} from '../sim/combat.ts'
+import { PLAYER } from '../sim/movement.ts'
 import { Effects } from './effects.ts'
+import {
+    aimHeight,
+    aimPitch,
+    coneOf,
+    falloffCurve,
+    gunMetrics,
+    type Metric,
+    meleeMetrics,
+    roundsOf,
+    type Situation,
+} from './gun-debug.ts'
 import { Sounds } from './sounds.ts'
 import { Viewmodel } from './viewmodel.ts'
 
@@ -46,6 +79,12 @@ interface LabState {
     yaw: number
     pitch: number
     distance: number
+    /** The debug overlay: the cone, a target mini, where rounds land, the numbers. */
+    debug: boolean
+    /** Debugging: firing in the air, at a mini this far ahead (m), on their head or body. */
+    air: boolean
+    range: number
+    at: 'head' | 'body'
 }
 
 const DEFAULTS: LabState = {
@@ -61,6 +100,10 @@ const DEFAULTS: LabState = {
     yaw: 0.9,
     pitch: 0.25,
     distance: 0.55,
+    debug: false,
+    air: false,
+    range: 6,
+    at: 'body',
 }
 
 function readHash(): LabState {
@@ -83,6 +126,10 @@ function readHash(): LabState {
         yaw: num('yaw', DEFAULTS.yaw),
         pitch: num('pitch', DEFAULTS.pitch),
         distance: num('distance', DEFAULTS.distance),
+        debug: p.get('debug') === '1',
+        air: p.get('air') === '1',
+        range: Math.max(0.5, Math.min(40, num('range', DEFAULTS.range))),
+        at: p.get('at') === 'head' ? 'head' : 'body',
     }
 }
 
@@ -102,6 +149,10 @@ function writeHash(state: LabState): void {
         p.set('pitch', state.pitch.toFixed(2))
         p.set('distance', state.distance.toFixed(2))
     }
+    if (state.debug) p.set('debug', '1')
+    if (state.air) p.set('air', '1')
+    if (state.range !== DEFAULTS.range) p.set('range', String(state.range))
+    if (state.at !== DEFAULTS.at) p.set('at', state.at)
     history.replaceState(null, '', `#${p}`)
 }
 
@@ -113,6 +164,8 @@ const renderer = new WebGLRenderer({ antialias: true })
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
 renderer.setSize(innerWidth, innerHeight)
 renderer.toneMapping = ACESFilmicToneMapping
+// Reset once a frame (frame()), so the stats count the world and the gun's own pass.
+renderer.info.autoReset = false
 document.body.append(renderer.domElement)
 
 const scene = new Scene()
@@ -124,7 +177,7 @@ const sun = new DirectionalLight(0xffe8c8, 2.5)
 sun.position.set(-3, 6, 2)
 scene.add(sun)
 const surface = (color: number) => new MeshStandardMaterial({ color, roughness: 0.85 })
-const floor = new Mesh(new PlaneGeometry(40, 40), surface(0x6d7178))
+const floor = new Mesh(new PlaneGeometry(40, 100), surface(0x6d7178))
 floor.rotation.x = -Math.PI / 2
 scene.add(floor)
 const wall = new Mesh(new PlaneGeometry(40, 6), surface(0xd9d4ca))
@@ -154,6 +207,111 @@ let viewmodel = new Viewmodel(state.color)
 const effects = new Effects(scene)
 const sounds = new Sounds()
 
+// --- Debug: a target mini, a board behind it, where rounds land, the cone ------------------------
+
+renderer.localClippingEnabled = true
+const debugGroup = new Group()
+scene.add(debugGroup)
+/** The target: its hit capsule (what shots take) split at the head line, the mini's own body inside. */
+const target = new Group()
+debugGroup.add(target)
+const headY = PLAYER.height * HEAD_FROM
+const hitShape = new CapsuleGeometry(HIT_RADIUS, PLAYER.height - 2 * HIT_RADIUS, 8, 24)
+const see = (color: number, clip: Plane) =>
+    new MeshBasicMaterial({ color, transparent: true, opacity: 0.4, depthWrite: false, clippingPlanes: [clip] })
+for (const [color, clip] of [
+    [0x4aa3ff, new Plane(new Vector3(0, -1, 0), headY)],
+    [0xffc940, new Plane(new Vector3(0, 1, 0), -headY)],
+] as const) {
+    const part = new Mesh(hitShape, see(color, clip))
+    part.position.y = PLAYER.height / 2
+    target.add(part)
+}
+const core = new Mesh(new CapsuleGeometry(PLAYER.radius, PLAYER.height - 2 * PLAYER.radius, 8, 24), surface(0x2f3640))
+core.position.y = PLAYER.height / 2
+target.add(core)
+/** A 2 m board of 10 cm squares across the target's middle, centred on the crosshair. */
+const board = new GridHelper(2, 20, 0xffffff, 0xffffff)
+board.rotation.x = Math.PI / 2
+const boardMaterial = board.material as LineBasicMaterial
+boardMaterial.transparent = true
+boardMaterial.opacity = 0.3
+debugGroup.add(board)
+/** The cone shots land in, from the eyes (inspecting: from the eyes the camera is at in the hands). */
+const cone = new Group()
+const coneShape = new ConeGeometry(1, 1, 48, 1, true)
+coneShape.translate(0, -0.5, 0)
+coneShape.rotateX(Math.PI / 2)
+cone.add(
+    new Mesh(
+        coneShape,
+        new MeshBasicMaterial({
+            color: 0xff4d6d,
+            transparent: true,
+            opacity: 0.12,
+            side: DoubleSide,
+            depthWrite: false,
+        })
+    )
+)
+const around = (i: number) => (i / 64) * Math.PI * 2
+const rim = new BufferGeometry().setFromPoints(
+    Array.from({ length: 64 }, (_, i) => new Vector3(Math.cos(around(i)), Math.sin(around(i)), -1))
+)
+cone.add(new LineLoop(rim, new LineBasicMaterial({ color: 0xff4d6d })))
+cone.position.copy(EYE)
+debugGroup.add(cone)
+/** Where each round stopped: gold on the head, white on the body, red a miss. */
+const impactShape = new SphereGeometry(0.006, 8, 6)
+const impactLooks = {
+    head: new MeshBasicMaterial({ color: 0xffc940 }),
+    body: new MeshBasicMaterial({ color: 0xffffff }),
+    miss: new MeshBasicMaterial({ color: 0xff3b3b }),
+}
+const impacts: Mesh[] = []
+/** What the debug shots did since the last clear. */
+let tally = { pulls: 0, rounds: 0, head: 0, body: 0, miss: 0, damage: 0, downAt: null as number | null }
+/** The frame number each debug pull is seeded with (the game's input seq). */
+let shotSeq = 0
+
+function situation(): Situation {
+    // The game's aim button is on or off: the slider counts as aimed from halfway.
+    return { aiming: state.aim >= 0.5, moving: state.moving, air: state.air, distance: state.range, aimAt: state.at }
+}
+
+function clearShots(): void {
+    for (const impact of impacts) debugGroup.remove(impact)
+    impacts.length = 0
+    tally = { pulls: 0, rounds: 0, head: 0, body: 0, miss: 0, damage: 0, downAt: null }
+}
+
+/** A pull in debug: every round where the server would send it, its tracer, where it stopped, the tally. */
+function debugShot(gun: Gun): void {
+    const rounds = roundsOf(gun, situation(), ++shotSeq)
+    const from = state.view === 'hands' ? viewmodel.muzzleIn() : EYE.clone()
+    const now = performance.now()
+    tally.pulls++
+    for (const round of rounds) {
+        const end = EYE.clone().addScaledVector(round.direction, round.distance)
+        const color = round.hit === 'head' ? 0xffc940 : round.hit ? 0xffffff : 0xff6a5a
+        effects.tracer(from, end, color, now, round.hit !== null, { width: gun === 'sniper' ? 2 : 1 })
+        const impact = new Mesh(impactShape, impactLooks[round.hit ?? 'miss'])
+        impact.position.copy(end)
+        debugGroup.add(impact)
+        impacts.push(impact)
+        if (impacts.length > 600) debugGroup.remove(impacts.shift()!)
+        tally.rounds++
+        tally[round.hit ?? 'miss']++
+        if (round.hit) {
+            const spec = gun === 'launcher' ? null : GUNS[gun]
+            tally.damage += spec
+                ? damageAt(spec, round.distance) * (round.hit === 'head' ? spec.headshot : 1)
+                : LAUNCHER.damage
+        }
+    }
+    if (tally.downAt === null && tally.damage >= MAX_HEALTH) tally.downAt = tally.pulls
+}
+
 addEventListener('resize', () => {
     renderer.setSize(innerWidth, innerHeight)
     camera.aspect = innerWidth / innerHeight
@@ -176,6 +334,7 @@ function gunOf(weapon: Weapon): Gun | null {
 }
 
 function select(weapon: Weapon): void {
+    if (weapon !== state.weapon) clearShots()
     state.weapon = weapon
     const gun = gunOf(weapon)
     if (gun) ammo = magazineOf(gun)
@@ -212,7 +371,8 @@ function pull(): void {
     nextShot = clock + (gun === 'launcher' ? LAUNCHER.intervalMs : GUNS[gun].intervalMs)
     viewmodel.fire(clock)
     sounds.shot(gun)
-    if (gun !== 'launcher' && state.view === 'hands') {
+    if (state.debug) debugShot(gun)
+    else if (gun !== 'launcher' && state.view === 'hands') {
         const from = viewmodel.muzzleIn()
         const to = camera.getWorldDirection(new Vector3()).multiplyScalar(6).add(camera.position)
         effects.tracer(from, to, gun === 'sniper' ? 0xfff2c0 : 0xffd27a, performance.now(), false, {
@@ -228,7 +388,24 @@ style.textContent = `
     body { margin: 0; overflow: hidden; background: #b9c2cc; font: 13px/1.4 system-ui, sans-serif; }
     canvas { display: block; }
     .lab { position: fixed; top: 12px; left: 12px; width: 268px; padding: 12px; border-radius: 10px;
-        background: rgba(18, 20, 24, 0.86); color: #e8eaed; display: grid; gap: 10px; user-select: none; }
+        background: rgba(18, 20, 24, 0.86); color: #e8eaed; display: grid; gap: 10px; user-select: none;
+        max-height: calc(100vh - 48px); overflow-y: auto; }
+    .lab .debug { display: grid; gap: 8px; padding-top: 8px; border-top: 1px solid #3a3f47; }
+    .lab .debug[hidden], .lab canvas[hidden] { display: none; }
+    .lab .metrics { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; font-size: 12px;
+        font-variant-numeric: tabular-nums; }
+    .lab .metrics b { grid-column: 1 / -1; margin-top: 4px; color: #ff8a65; font-weight: 600; }
+    .lab .metrics .k { color: #a9afb8; }
+    .lab .metrics .k.sub { padding-left: 10px; }
+    .lab .metrics .v { text-align: right; }
+    .lab canvas { width: 244px; height: 72px; }
+    .cone { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 50%;
+        border: 1.5px solid rgba(255, 77, 109, 0.95); pointer-events: none; box-sizing: border-box; }
+    .cone.melee { border-style: dashed; border-color: rgba(120, 220, 255, 0.9); }
+    .cone span { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 4px); white-space: nowrap;
+        font: 11px system-ui, sans-serif; color: #fff; text-shadow: 0 1px 2px #000; }
+    .dot { position: fixed; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%;
+        background: #fff; box-shadow: 0 0 2px #000; pointer-events: none; }
     .lab h1 { margin: 0; font-size: 14px; font-weight: 650; }
     .lab .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
     .lab button { font: inherit; padding: 4px 8px; border-radius: 6px; border: 1px solid #3a3f47;
@@ -267,6 +444,19 @@ panel.innerHTML = `
     </div>
     <label>Colour <input type="color" data-color></label>
     <div class="stats" data-stats></div>
+    <label><input type="checkbox" data-debug> <b>Debug mode</b></label>
+    <div class="debug" data-debug-panel>
+        <div class="row">
+            <label><input type="checkbox" data-air> In the air</label>
+            <label>Aim at <select data-at><option value="body">body</option><option value="head">head</option></select></label>
+        </div>
+        <label>Target <input type="range" min="0.5" max="40" step="0.5" data-range><span data-range-value></span></label>
+        <div class="row"><button data-act="clear">Clear shots</button><span class="help">rounds leave from the eyes</span></div>
+        <canvas width="488" height="144" data-falloff></canvas>
+        <div class="metrics" data-metrics></div>
+        <div class="metrics" data-live></div>
+        <div class="metrics" data-tally></div>
+    </div>
     <div class="help">
         <kbd>1</kbd>–<kbd>6</kbd> weapon · click or <kbd>Space</kbd> fire · <kbd>R</kbd> reload ·
         right-click aim · <kbd>V</kbd> inspect · <kbd>P</kbd> pause · <kbd>,</kbd> <kbd>.</kbd> step a held frame.
@@ -290,6 +480,24 @@ const fovInput = $<HTMLInputElement>('[data-fov]')
 const loopInput = $<HTMLInputElement>('[data-loop]')
 const movingInput = $<HTMLInputElement>('[data-moving]')
 const colorInput = $<HTMLInputElement>('[data-color]')
+const debugInput = $<HTMLInputElement>('[data-debug]')
+const debugPanel = $('[data-debug-panel]')
+const airInput = $<HTMLInputElement>('[data-air]')
+const atInput = $<HTMLSelectElement>('[data-at]')
+const rangeInput = $<HTMLInputElement>('[data-range]')
+const falloffCanvas = $<HTMLCanvasElement>('[data-falloff]')
+/** The cone on the screen (hands view): a circle round the crosshair, and its dot. */
+const coneRing = document.createElement('div')
+coneRing.className = 'cone'
+coneRing.append(document.createElement('span'))
+const coneDot = document.createElement('div')
+coneDot.className = 'dot'
+document.body.append(coneRing, coneDot)
+
+debugInput.addEventListener('change', () => ((state.debug = debugInput.checked), save()))
+airInput.addEventListener('change', () => ((state.air = airInput.checked), save()))
+atInput.addEventListener('change', () => ((state.at = atInput.value === 'head' ? 'head' : 'body'), save()))
+rangeInput.addEventListener('input', () => ((state.range = Number(rangeInput.value)), save()))
 
 scrub.addEventListener('input', () => {
     state.t = Number(scrub.value)
@@ -313,6 +521,7 @@ panel.addEventListener('click', event => {
     if (act === 'fire') pull()
     if (act === 'reload') startReload()
     if (act === 'view') toggleView()
+    if (act === 'clear') clearShots()
     if (act === 'play') {
         state.t = null
         startReload()
@@ -340,6 +549,12 @@ function showPanel(): void {
     loopInput.checked = state.loop
     movingInput.checked = state.moving
     colorInput.value = state.color
+    debugInput.checked = state.debug
+    debugPanel.hidden = !state.debug
+    airInput.checked = state.air
+    atInput.value = state.at
+    rangeInput.value = String(state.range)
+    $('[data-range-value]').textContent = `${state.range} m`
 }
 
 function showStats(progress: number | null): void {
@@ -425,19 +640,171 @@ document.addEventListener('keyup', event => {
     if (event.key === ' ') triggerDown = false
 })
 addEventListener('hashchange', () => {
-    const before = state.color
+    const before = state
     state = readHash()
-    if (state.color !== before) viewmodel = new Viewmodel(state.color)
+    if (state.color !== before.color) viewmodel = new Viewmodel(state.color)
+    if (state.weapon !== before.weapon) {
+        // Another gun from the address: its own magazine and a clean tally, as from the buttons.
+        clearShots()
+        const gun = gunOf(state.weapon)
+        if (gun) ammo = magazineOf(gun)
+        reloadAt = null
+    }
     viewmodel.hold(state.weapon, -1e9)
     showPanel()
 })
+
+// --- Debug, every frame -------------------------------------------------------------------------
+
+function metricsHtml(rows: Metric[]): string {
+    return rows
+        .map(row => {
+            if (row.group) return `<b>${row.label}</b>`
+            const sub = row.label.startsWith('  ')
+            return `<span class="k${sub ? ' sub' : ''}">${row.label.trim()}</span><span class="v">${row.value}</span>`
+        })
+        .join('')
+}
+
+let debugKey = ''
+let liveAt = 0
+let fps = 60
+let draws = { calls: 0, triangles: 0 }
+
+/** The gun's numbers and the falloff graph: only when what they depend on changes. */
+function showGunNumbers(gun: Gun | null): void {
+    const s = situation()
+    const key = `${state.weapon}|${s.aiming}|${s.moving}|${s.air}|${s.distance}|${s.aimAt}`
+    if (key === debugKey) return
+    debugKey = key
+    $('[data-metrics]').innerHTML = metricsHtml(gun ? gunMetrics(gun, s) : meleeMetrics(s.distance))
+    drawFalloff(gun)
+}
+
+function drawFalloff(gun: Gun | null): void {
+    const curve = gun ? falloffCurve(gun) : []
+    const context = falloffCanvas.getContext('2d')!
+    const { width: w, height: h } = falloffCanvas
+    context.clearRect(0, 0, w, h)
+    falloffCanvas.hidden = curve.length === 0
+    if (!curve.length) return
+    const pad = 20
+    const furthest = curve.at(-1)![0]
+    const most = curve[0]![1]
+    const x = (d: number) => pad + (d / furthest) * (w - 2 * pad)
+    const y = (damage: number) => h - pad - (damage / most) * (h - 2 * pad)
+    context.strokeStyle = '#3a3f47'
+    context.lineWidth = 2
+    context.strokeRect(pad, pad, w - 2 * pad, h - 2 * pad)
+    context.strokeStyle = '#ff8a65'
+    context.lineWidth = 3
+    context.beginPath()
+    for (const [i, [d, damage]] of curve.entries()) {
+        if (i === 0) context.moveTo(x(d), y(damage))
+        else context.lineTo(x(d), y(damage))
+    }
+    context.stroke()
+    if (state.range <= furthest) {
+        context.strokeStyle = '#4aa3ff'
+        context.beginPath()
+        context.moveTo(x(state.range), pad)
+        context.lineTo(x(state.range), h - pad)
+        context.stroke()
+    }
+    context.fillStyle = '#a9afb8'
+    context.font = '20px system-ui, sans-serif'
+    // Top right: the curve is at its lowest there.
+    context.fillText(`${Math.round(most)} dmg a pull`, w - pad - 150, pad + 22)
+    context.fillText(`0 – ${furthest} m`, w - pad - 110, h - 2)
+}
+
+/** Places the debug scene and the on-screen cone; writes the live numbers ten times a second. */
+function showDebug(gun: Gun | null, progress: number | null, real: number, dt: number): void {
+    debugGroup.visible = state.debug
+    wall.position.z = state.debug ? -Math.max(6, state.range + 2) : -6
+    const hands = state.view === 'hands'
+    if (!state.debug) {
+        coneRing.hidden = coneDot.hidden = true
+        return
+    }
+    const s = situation()
+    const half = gun ? coneOf(gun, s).total : STAPLER.arc
+    target.position.set(0, 0, -state.range)
+    board.position.set(0, aimHeight(state.at), -state.range)
+    // The 3D cone only shows from outside it: inspecting.
+    const length = state.range
+    cone.visible = !hands && gun !== null && half > 0
+    cone.scale.set(Math.tan(half) * length, Math.tan(half) * length, length)
+    cone.rotation.set(aimPitch(s), 0, 0)
+
+    // On the screen: radius = tan(cone) / tan(half the view) × half the screen's height.
+    const radius = (Math.tan(half) / Math.tan(((camera.fov / 2) * Math.PI) / 180)) * (innerHeight / 2)
+    coneRing.hidden = coneDot.hidden = !hands
+    coneRing.classList.toggle('melee', gun === null)
+    const size = Math.max(6, radius * 2)
+    coneRing.style.width = coneRing.style.height = `${size}px`
+    coneRing.firstElementChild!.textContent = gun
+        ? `${((half * 180) / Math.PI).toFixed(2)}° · ${(2 * state.range * Math.tan(half) * 100).toFixed(1)} cm at ${state.range} m`
+        : `stapler arc ${((half * 180) / Math.PI).toFixed(0)}° · reach ${STAPLER.reach * 100} cm`
+
+    showGunNumbers(gun)
+    fps += (1000 / Math.max(1, dt) - fps) * 0.05
+    if (real - liveAt < 100) return
+    liveAt = real
+    const interval = gun ? (gun === 'launcher' ? LAUNCHER.intervalMs : GUNS[gun].intervalMs) : STAPLER.intervalMs
+    const reloadLeft = gun && progress !== null && reloadAt !== null ? (1 - progress) * reloadMsOf(gun) : null
+    const weaponState =
+        progress !== null
+            ? `reloading ${Math.round(progress * 100)}%${reloadLeft !== null ? ` (${Math.round(reloadLeft)} ms left)` : ' (held)'}`
+            : clock < nextShot
+              ? `next shot in ${Math.round(nextShot - clock)} ms`
+              : gun && ammo === 0
+                ? 'empty'
+                : 'ready'
+    $('[data-live]').innerHTML = metricsHtml([
+        { label: 'Live', value: '', group: true },
+        { label: 'Weapon', value: weaponState },
+        { label: 'Rounds', value: gun ? `${ammo} / ${magazineOf(gun)}` : '—' },
+        { label: 'Interval', value: `${interval} ms` },
+        {
+            label: 'Firing as',
+            value: `${s.aiming ? 'aimed' : 'hip'}${s.moving ? ', walking' : ''}${s.air ? ', in the air' : ''}`,
+        },
+        { label: 'Aim pitch', value: `${((aimPitch(s) * 180) / Math.PI).toFixed(2)}°` },
+        { label: 'Camera FOV', value: `${camera.fov.toFixed(1)}°` },
+        { label: 'Cone on screen', value: hands ? `${radius.toFixed(1)} px radius` : 'inspecting: 3D cone' },
+        { label: 'Lab clock', value: `${(clock / 1000).toFixed(2)} s at ${state.speed}×` },
+        { label: 'Frame', value: `${fps.toFixed(0)} fps · ${dt.toFixed(1)} ms` },
+        { label: 'Draws', value: `${draws.calls} calls · ${draws.triangles.toLocaleString()} tris` },
+    ])
+    const share = (n: number) => (tally.rounds ? ` (${Math.round((n / tally.rounds) * 100)}%)` : '')
+    $('[data-tally]').innerHTML = metricsHtml([
+        { label: 'Shots fired', value: '', group: true },
+        { label: 'Pulls · rounds', value: `${tally.pulls} · ${tally.rounds}` },
+        { label: 'Head', value: `${tally.head}${share(tally.head)}` },
+        { label: 'Body', value: `${tally.body}${share(tally.body)}` },
+        { label: 'Missed', value: `${tally.miss}${share(tally.miss)}` },
+        { label: 'Damage', value: tally.damage.toFixed(0) },
+        {
+            label: 'Target',
+            value:
+                tally.downAt !== null
+                    ? `down on pull ${tally.downAt}`
+                    : `${Math.max(0, MAX_HEALTH - tally.damage).toFixed(0)} health left`,
+        },
+    ])
+}
 
 // --- Every frame ------------------------------------------------------------------------------
 
 function frame(): void {
     const real = performance.now()
-    clock += (real - lastFrame) * state.speed
+    const dt = real - lastFrame
+    clock += dt * state.speed
     lastFrame = real
+    // Last frame's draws (both passes), before counting this one's.
+    draws = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }
+    renderer.info.reset()
 
     // Firing: held for automatics, a click a shot for the rest.
     const gun = gunOf(state.weapon)
@@ -462,9 +829,12 @@ function frame(): void {
 
     camera.fov = state.view === 'hands' ? state.fov - state.aim * state.fov * 0.42 : 40
     camera.updateProjectionMatrix()
+    // Debugging, the crosshair goes on the target (its head or its body).
+    const pitch = state.debug ? aimPitch(situation()) : 0
+    stand.rotation.set(pitch, 0, 0)
     if (state.view === 'hands') {
         camera.position.copy(EYE)
-        camera.rotation.set(0, 0, 0)
+        camera.rotation.set(pitch, 0, 0)
         viewmodel.follow(camera)
     } else {
         // Round the gun's middle, which sits a little ahead of and below the eyes.
@@ -481,6 +851,7 @@ function frame(): void {
     viewmodel.update(clock, state.moving, state.aim, progress)
     effects.update(real)
     showStats(progress)
+    showDebug(gun, progress, real, dt)
 
     renderer.render(scene, camera)
     viewmodel.render(renderer, camera)
