@@ -287,6 +287,18 @@ Playable at `/games/office-fps`.
   Laravel keeps `blaster` for older matches (`OfficeFpsKill::RETIRED_WEAPONS`). The stapler
   (`swingStapler`): 0.45 m reach in a ~35° cone, 50 damage, 100 from behind (a backstab), a
   swing every 0.55 s; `swing` events, kills carry `weapon` and `backstab`.
+- **Your gun in your hands** (`client/viewmodel.ts`, models in `client/guns.ts`): drawn in its own
+  little scene with its own light after the world, over a cleared depth (`Viewmodel.render`), so it
+  never sinks into walls. Each gun is data plus an `animate` that poses its moving parts and says
+  where the gloved hands go (`HandPoses`, keyframed with `keyed` on the reload's 0–1 progress; the
+  sleeves run from fixed elbows); static parts are merged per material. Spent cases fly from
+  `eject`; reloads swing the gun up and round (`reloadPose`) so the hands' work shows.
+- **Gun lab** (`bun run fps:guns`, http://localhost:8097, `FPS_LAB_PORT`): the viewmodel alone on a
+  page (`client/gun-lab.ts`, served by `fps/gun-lab.ts`): pick a weapon, fire, reload, aim, scrub a
+  reload frame by frame, slow time, turn the gun round (inspect). It rebuilds and reloads itself
+  when a file under `src/fps` is saved, keeping its state in the URL's hash (`#gun=rifle&t=0.42`),
+  so `tools/aerial/shot.mjs` can render stills of it (`… http://localhost:8097 900 600 out.png
+  "gun=sniper&view=inspect&speed=0"`).
 - **Settings** (`client/settings.ts`, in this browser): sensitivity, aiming sensitivity, field
   of view, invert Y, sound volume, on the Esc menu.
 - **Sound** (`client/sounds.ts`): every effect synthesized with Web Audio (oscillator sweeps and
