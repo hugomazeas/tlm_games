@@ -545,13 +545,13 @@ function buildPistol(kit: Kit): GunModel {
                 [0.69, shifted(under, [0, 0.03, -0.01])],
                 [0.86, left],
             ])
-            falling(dropped, t, 0.1, gripAt, reloadMs, 2)
-            const pulled = 1 - between(t, 0.08, 0.14)
-            // Down the grip's line to drop, then the new one from below.
-            if (t < 0.36) inGun.visible = false
+            // The old one slides down the grip's line and falls free; the new one comes up from below.
+            const released = gripAt.clone().addScaledVector(down, 0.012)
+            falling(dropped, t, 0.1, released, reloadMs, 2)
+            if (t < 0.1) inGun.position.copy(gripAt).addScaledVector(down, between(t, 0.03, 0.1) * 0.012)
+            else if (t < 0.36) inGun.visible = false
             else if (t < 0.62) inGun.position.copy(hand.at).add(new Vector3(0.002, 0.008, 0.002))
             else inGun.position.copy(gripAt).addScaledVector(down, (1 - between(t, 0.6, 0.64)) * 0.006)
-            if (t < 0.1) inGun.position.copy(gripAt).addScaledVector(down, (1 - pulled) * 0.01)
 
             return { left: hand, right }
         },
