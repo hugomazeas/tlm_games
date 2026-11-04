@@ -7,7 +7,7 @@ import { Prediction } from './prediction.ts'
 import { INTERP_STEPS, Interpolator, ServerClock } from './timeline.ts'
 import { aimFromCamera, THIRD_PERSON, thirdPersonCamera } from './view.ts'
 import { targetUnderCrosshair } from './targeting.ts'
-import { Viewmodel } from './effects.ts'
+import { Viewmodel } from './viewmodel.ts'
 import { aimFov, DEFAULT_SETTINGS, LIMITS, parseSettings } from './settings.ts'
 import { reloadProgress, spatial } from './sounds.ts'
 import { announce, streakCallout, taunt } from './callouts.ts'
@@ -124,24 +124,44 @@ describe('settings', () => {
 })
 
 describe('iron sights', () => {
-    test('fully aimed, the front sight sits on the crosshair; at the hip, low and to the right', () => {
+    test('fully aimed, every gun’s front sight sits on the crosshair; at the hip, low and to the right', () => {
         const camera = new PerspectiveCamera(78, 1, 0.01, 100)
-        const blaster = new Viewmodel(camera, '#e4572e')
+        camera.position.set(3, 0.3, -2)
+        camera.rotation.set(0.2, 1.1, 0, 'YXZ')
+        const hands = new Viewmodel('#e4572e')
+        hands.follow(camera)
         const tipInView = () => {
             camera.updateMatrixWorld(true)
-            return camera.worldToLocal(blaster.sightTip.getWorldPosition(new Vector3()))
+            return camera.worldToLocal(hands.sightTip.getWorldPosition(new Vector3()))
         }
 
-        blaster.update(0, false, 1)
-        const aimed = tipInView()
-        expect(Math.abs(aimed.x)).toBeLessThan(1e-9)
-        expect(Math.abs(aimed.y)).toBeLessThan(1e-9)
-        expect(aimed.z).toBeLessThan(0)
+        for (const gun of ['rifle', 'sniper', 'shotgun', 'pistol', 'launcher'] as const) {
+            hands.hold(gun, -1e6)
+            hands.update(0, false, 1)
+            const aimed = tipInView()
+            expect(Math.abs(aimed.x)).toBeLessThan(1e-6)
+            expect(Math.abs(aimed.y)).toBeLessThan(1e-6)
+            expect(aimed.z).toBeLessThan(0)
 
-        blaster.update(0, false, 0)
-        const hip = tipInView()
-        expect(hip.x).toBeGreaterThan(0.02)
-        expect(hip.y).toBeLessThan(0)
+            hands.update(0, false, 0)
+            const hip = tipInView()
+            expect(hip.x).toBeGreaterThan(0.02)
+            expect(hip.y).toBeLessThan(0)
+        }
+    })
+
+    test('every gun runs through its reload, its hands always somewhere sensible', () => {
+        const hands = new Viewmodel('#e4572e')
+        for (const gun of ['rifle', 'sniper', 'shotgun', 'pistol', 'launcher'] as const) {
+            hands.hold(gun, -1e6)
+            for (let t = 0; t <= 1; t += 0.01) hands.update(1000, false, 0, t)
+            hands.update(1000, false, 0, null)
+        }
+        // Each hand stays within reach of the view (nothing NaN, nothing flung away).
+        hands.scene.traverse(o => {
+            expect(Number.isFinite(o.position.x + o.position.y + o.position.z)).toBe(true)
+            expect(o.position.length()).toBeLessThan(5)
+        })
     })
 })
 
