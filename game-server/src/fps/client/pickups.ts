@@ -1,7 +1,9 @@
 import {
     AdditiveBlending,
     BoxGeometry,
+    CircleGeometry,
     Color,
+    ConeGeometry,
     CylinderGeometry,
     DoubleSide,
     Group,
@@ -15,7 +17,7 @@ import {
 } from 'three'
 import type { ZoneState } from '../protocol.ts'
 import { H } from '../map/office.js'
-import { PICKUP_SPOTS, type PickupKind, ZONES } from '../sim/places.ts'
+import { PAD, type Pad, PICKUP_SPOTS, type PickupKind, type Portal, PORTAL, ZONES } from '../sim/places.ts'
 
 /**
  * The pickups and the zone, in the office. Each pickup is a pad on the floor in its colour (always
@@ -24,11 +26,19 @@ import { PICKUP_SPOTS, type PickupKind, ZONES } from '../sim/places.ts'
  * white when nobody holds it, the holder's colour, orange and pulsing when contested.
  */
 
+/** The pickups' colours (a power's is its buff's in hud.ts too). */
 export const PICKUP_COLORS: Record<PickupKind, string> = {
     health: '#5ad16b',
     magazine: '#f2b134',
     jetpack: '#29a3e0',
     headshot: '#ff3b3b',
+    overtime: '#ff7a1a',
+    promotion: '#b06bff',
+    firewall: '#33e0ff',
+    espresso: '#c08552',
+    intern: '#b4f06b',
+    bonus: '#ff4fa3',
+    orgchart: '#e8ecf2',
 }
 
 export class PickupViews {
@@ -103,14 +113,183 @@ function model(kind: PickupKind): Group {
         const nozzle = new Mesh(new CylinderGeometry(0.02, 0.03, 0.03, 12), material(0x333a44, 0.1))
         nozzle.position.y = -0.075
         group.add(tank, cap, nozzle)
-    } else {
+    } else if (kind === 'headshot') {
         const red = material(0xff3b3b, 0.7)
         group.add(new Mesh(new TorusGeometry(0.06, 0.01, 8, 24), red))
         group.add(new Mesh(new TorusGeometry(0.035, 0.008, 8, 20), red))
         group.add(new Mesh(new SphereGeometry(0.014, 10, 8), red))
+    } else if (kind === 'overtime') {
+        // A wall clock: an orange rim, a white face, two hands.
+        const face = new Mesh(new CylinderGeometry(0.06, 0.06, 0.015, 24), material(0xf4f4f0, 0.2))
+        face.rotation.x = Math.PI / 2
+        const dark = material(0x222222, 0)
+        const long = new Mesh(new BoxGeometry(0.006, 0.045, 0.004), dark)
+        long.position.set(0, 0.02, 0.01)
+        const short = new Mesh(new BoxGeometry(0.03, 0.006, 0.004), dark)
+        short.position.set(0.013, 0, 0.01)
+        group.add(face, new Mesh(new TorusGeometry(0.06, 0.009, 8, 28), material(0xff7a1a, 0.6)), long, short)
+    } else if (kind === 'promotion') {
+        // An arrow up, in purple.
+        const purple = material(0xb06bff, 0.6)
+        const head = new Mesh(new ConeGeometry(0.05, 0.06, 4), purple)
+        head.position.y = 0.04
+        const shaft = new Mesh(new BoxGeometry(0.035, 0.07, 0.035), purple)
+        shaft.position.y = -0.025
+        group.add(head, shaft)
+    } else if (kind === 'firewall') {
+        // A cyan shield: a flattened, faceted disc with a brick line across.
+        const shield = new Mesh(new CylinderGeometry(0.06, 0.045, 0.02, 6), material(0x33e0ff, 0.6))
+        shield.rotation.x = Math.PI / 2
+        const brick = new Mesh(new BoxGeometry(0.09, 0.008, 0.024), material(0xff7a1a, 0.6))
+        group.add(shield, brick)
+    } else if (kind === 'espresso') {
+        // A little cup on a saucer.
+        const white = material(0xf4f4f0, 0.2)
+        const cup = new Mesh(new CylinderGeometry(0.035, 0.028, 0.05, 16), white)
+        const coffee = new Mesh(new CylinderGeometry(0.031, 0.031, 0.004, 16), material(0x5b3a1e, 0.2))
+        coffee.position.y = 0.022
+        const handle = new Mesh(new TorusGeometry(0.014, 0.004, 6, 12), white)
+        handle.position.x = 0.04
+        const saucer = new Mesh(new CylinderGeometry(0.055, 0.05, 0.006, 20), material(0xc08552, 0.4))
+        saucer.position.y = -0.028
+        group.add(cup, coffee, handle, saucer)
+    } else if (kind === 'intern') {
+        // A name badge on a lanyard.
+        const badge = new Mesh(new BoxGeometry(0.06, 0.08, 0.008), material(0xf4f4f0, 0.2))
+        const stripe = new Mesh(new BoxGeometry(0.06, 0.02, 0.01), material(0xb4f06b, 0.6))
+        stripe.position.y = 0.03
+        const lanyard = new Mesh(new TorusGeometry(0.045, 0.004, 6, 20, Math.PI), material(0xb4f06b, 0.5))
+        lanyard.position.y = 0.04
+        group.add(badge, stripe, lanyard)
+    } else if (kind === 'bonus') {
+        // A stack of pink-gold coins.
+        const coin = material(0xff4fa3, 0.6)
+        for (let i = 0; i < 4; i++) {
+            const c = new Mesh(new CylinderGeometry(0.035, 0.035, 0.012, 18), coin)
+            c.position.set((i % 2) * 0.006, -0.03 + i * 0.016, 0)
+            group.add(c)
+        }
+    } else {
+        // An org chart: a box on top, three under it, joined by lines.
+        const white = material(0xe8ecf2, 0.4)
+        const top = new Mesh(new BoxGeometry(0.04, 0.025, 0.012), white)
+        top.position.y = 0.04
+        group.add(top)
+        const line = new Mesh(new BoxGeometry(0.004, 0.03, 0.004), white)
+        line.position.y = 0.015
+        const bar = new Mesh(new BoxGeometry(0.1, 0.004, 0.004), white)
+        group.add(line, bar)
+        for (const x of [-0.05, 0, 0.05]) {
+            const box = new Mesh(new BoxGeometry(0.03, 0.022, 0.012), white)
+            box.position.set(x, -0.02, 0)
+            group.add(box)
+        }
     }
 
     return group
+}
+
+/** The jump pads: a glowing disc with chevrons pointing up, and a ring that keeps rising off it. */
+export class PadViews {
+    private readonly rings: Array<{ ring: Mesh; material: MeshBasicMaterial }> = []
+
+    constructor(scene: Scene, pads: readonly Pad[]) {
+        for (const pad of pads) {
+            const base = new Mesh(
+                new CylinderGeometry(PAD.radius + 0.04, PAD.radius + 0.06, 0.02, 32),
+                new MeshStandardMaterial({ color: 0x2b313a, roughness: 0.5, metalness: 0.6 })
+            )
+            base.position.set(pad.x, 0.01, pad.z)
+            const disc = new Mesh(
+                new CircleGeometry(PAD.radius, 32),
+                new MeshBasicMaterial({ color: 0x7cf7d4, transparent: true, opacity: 0.85 })
+            )
+            disc.rotation.x = -Math.PI / 2
+            disc.position.set(pad.x, 0.022, pad.z)
+            scene.add(base, disc)
+            // Three chevrons rising out of it, and a ring that runs up and fades.
+            for (let i = 0; i < 3; i++) {
+                const chevron = new Mesh(
+                    new ConeGeometry(0.06, 0.05, 4, 1, true),
+                    new MeshBasicMaterial({ color: 0x7cf7d4, transparent: true, opacity: 0.5, depthWrite: false })
+                )
+                chevron.position.set(pad.x, 0.08 + i * 0.07, pad.z)
+                scene.add(chevron)
+            }
+            const material = new MeshBasicMaterial({
+                color: 0x7cf7d4,
+                transparent: true,
+                opacity: 0.6,
+                blending: AdditiveBlending,
+                depthWrite: false,
+                side: DoubleSide,
+            })
+            const ring = new Mesh(new RingGeometry(PAD.radius - 0.02, PAD.radius, 32), material)
+            ring.rotation.x = -Math.PI / 2
+            ring.position.set(pad.x, 0.03, pad.z)
+            scene.add(ring)
+            this.rings.push({ ring, material })
+        }
+    }
+
+    update(now: number): void {
+        for (const [i, { ring, material }] of this.rings.entries()) {
+            const t = (((now * 0.0008 + i * 0.37) % 1) + 1) % 1
+            ring.position.y = 0.03 + t * 0.5
+            material.opacity = 0.6 * (1 - t)
+        }
+    }
+}
+
+/**
+ * The portals: a standing ring facing its way out, filled with a swirling disc; each pair in its own
+ * colour (orange and blue for the first), so you can tell where it leads.
+ */
+export class PortalViews {
+    private readonly swirls: Mesh[] = []
+
+    constructor(scene: Scene, portals: readonly Portal[]) {
+        const PAIR_COLORS = [0xff9a3c, 0x3ca8ff]
+        for (const [i, portal] of portals.entries()) {
+            const color = PAIR_COLORS[Math.floor(i / 2) % PAIR_COLORS.length]!
+            const group = new Group()
+            group.position.set(portal.x, 0.36, portal.z)
+            // The ring stands across its way out: its face looks along `out`.
+            group.rotation.y = Math.atan2(portal.out[0], portal.out[1])
+            const rim = new Mesh(
+                new TorusGeometry(0.34, 0.03, 10, 40),
+                new MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.2, roughness: 0.3 })
+            )
+            const swirl = new Mesh(
+                new CircleGeometry(0.32, 40),
+                new MeshBasicMaterial({
+                    color,
+                    transparent: true,
+                    opacity: 0.45,
+                    blending: AdditiveBlending,
+                    depthWrite: false,
+                    side: DoubleSide,
+                })
+            )
+            const glow = new Mesh(
+                new RingGeometry(0.0, PORTAL.radius + 0.12, 32),
+                new MeshBasicMaterial({ color, transparent: true, opacity: 0.3, depthWrite: false, side: DoubleSide })
+            )
+            glow.rotation.x = -Math.PI / 2
+            glow.position.set(portal.x, 0.006, portal.z)
+            group.add(rim, swirl)
+            scene.add(group, glow)
+            this.swirls.push(swirl)
+        }
+    }
+
+    update(now: number): void {
+        for (const [i, swirl] of this.swirls.entries()) {
+            swirl.rotation.z = now * 0.003 * (i % 2 ? -1 : 1)
+            const material = swirl.material as MeshBasicMaterial
+            material.opacity = 0.35 + Math.sin(now * 0.004 + i) * 0.12
+        }
+    }
 }
 
 export class ZoneView {

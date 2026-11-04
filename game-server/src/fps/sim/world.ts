@@ -1,6 +1,6 @@
 import { Box3, DoubleSide, Line3, Ray, Vector3 } from 'three'
 import { buildOfficeGeometry, type CollisionMesh, type OfficeCollision, type SpawnPoint } from '../map/office.js'
-import { PICKUP_SPOTS, type PickupSpot } from './places.ts'
+import { PADS, type Pad, PICKUP_SPOTS, type PickupSpot, type Portal, PORTALS } from './places.ts'
 
 /**
  * What the game needs of the office: its exact collision triangles (with their BVH) and where
@@ -13,6 +13,9 @@ export interface FpsWorld {
     spawnPoints: readonly SpawnPoint[]
     /** Where the pickups lie (the office's; none in a test room unless it says so). */
     pickups: readonly PickupSpot[]
+    /** Jump pads and portals (the office's; likewise none in a test room unless asked). */
+    pads: readonly Pad[]
+    portals: readonly Portal[]
 }
 
 let office: FpsWorld | null = null
@@ -32,6 +35,8 @@ export function worldFrom(built: { collision: OfficeCollision | null; spawnPoint
         meshes: [built.collision.solid, built.collision.glass],
         spawnPoints: built.spawnPoints,
         pickups: PICKUP_SPOTS,
+        pads: PADS,
+        portals: PORTALS,
     }
 }
 

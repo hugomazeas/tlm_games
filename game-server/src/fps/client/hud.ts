@@ -22,7 +22,7 @@ import {
     type Weapon,
     ZONE_SECONDS_PER_POINT,
 } from '../protocol.ts'
-import { magazineOf, MAX_HEALTH } from '../sim/combat.ts'
+import { magazineOf, MAX_HEALTH, maxHealthOf, powersOf } from '../sim/combat.ts'
 import { DEFAULT_SETTINGS, LIMITS, type Settings } from './settings.ts'
 
 /**
@@ -152,6 +152,7 @@ export class Hud {
     private match: MatchView | null = null
     private matchAt = 0
     private lastHealth = MAX_HEALTH
+    private lastFull = MAX_HEALTH
     private boardForced = false
 
     private cardState = 'connecting'
@@ -400,7 +401,12 @@ export class Hud {
         const hide = self === null
         for (const name of ['health', 'ammo', 'fuelBar', 'cross']) this.el[name]!.classList.toggle('hidden', hide)
         if (!self) return
-        this.el.health!.innerHTML = `<small>Health</small>${self.alive ? self.health : 0}`
+        // Out of the usual (a Promotion, Overtime, an Intern): what full is now. The firewall: on top, in its colour.
+        const full = maxHealthOf(powersOf(self.buffs.map(b => b.kind)))
+        const outOf = full !== MAX_HEALTH ? `<span style="opacity:.5;font-size:16px"> / ${full}</span>` : ''
+        const wall = self.buffs.find(b => b.kind === 'firewall')?.points
+        const shield = wall ? `<span style="color:${BUFF_COLORS.firewall};font-size:18px"> +${wall}</span>` : ''
+        this.el.health!.innerHTML = `<small>Health</small>${self.alive ? self.health : 0}${outOf}${shield}`
         const slot = (n: number, slotName: 'primary' | 'secondary' | 'melee') =>
             `<b class="${weaponIn(slotName, self.loadout) === self.weapon ? 'on' : ''}">${n}</b>`
         const slots = `<span class="slots">${slot(1, 'primary')}${slot(2, 'secondary')}${slot(3, 'melee')}</span>`
@@ -409,9 +415,12 @@ export class Hud {
             this.el.ammo!.innerHTML = `<small>${name} ${slots}</small><span style="font-size:22px">📎 swing</span>`
         } else {
             const big = self.magazine > magazineOf(self.weapon) ? ' style="color:#f2b134"' : ''
-            const rounds = self.reloading
-                ? '<span style="opacity:.6">reloading</span>'
-                : `<span${big}>${self.ammo}</span><span style="opacity:.5;font-size:16px"> / ${self.magazine}</span>`
+            const endless = self.buffs.some(b => b.kind === 'overtime')
+            const rounds = endless
+                ? `<span style="color:${BUFF_COLORS.overtime}">∞</span>`
+                : self.reloading
+                  ? '<span style="opacity:.6">reloading</span>'
+                  : `<span${big}>${self.ammo}</span><span style="opacity:.5;font-size:16px"> / ${self.magazine}</span>`
             this.el.ammo!.innerHTML = `<small>${name} ${slots}</small>${rounds}`
         }
         // A new loadout in hand (a spawn): the picker stops saying it waits.
@@ -425,13 +434,16 @@ export class Hud {
         }
         this.el.fuel!.style.width = `${Math.round(self.body.fuel * 100)}%`
         this.el.fuel!.style.background = self.body.jetBoost > 0 ? 'linear-gradient(90deg,#29a3e0,#7fd1ff)' : ''
-        if (self.alive && self.health < this.lastHealth) this.flashHurt()
+        // Hurt, not a power ending (a Promotion's 500 back down to 100) or an Intern's lower ceiling.
+        if (self.alive && self.health < this.lastHealth && full >= this.lastFull) this.flashHurt()
         this.lastHealth = self.alive ? self.health : MAX_HEALTH
+        this.lastFull = full
         // Your powers, each with its time left.
         this.el.buffs!.innerHTML = self.buffs
             .map(b => {
                 const { icon, label } = BUFF_LABELS[b.kind]
-                return `<div>${icon} ${label} <b style="color:${BUFF_COLORS[b.kind]}">${Math.ceil(b.leftMs / 1000)} s</b></div>`
+                const left = b.points !== undefined ? `${b.points} · ` : ''
+                return `<div>${icon} ${label} <b style="color:${BUFF_COLORS[b.kind]}">${left}${Math.ceil(b.leftMs / 1000)} s</b></div>`
             })
             .join('')
     }
@@ -542,7 +554,7 @@ export class Hud {
     }
 
     /** Over the player your crosshair is on (screen px of the top of their head), or hidden. */
-    target(who: { name: string; color: string; health: number } | null, x = 0, y = 0): void {
+    target(who: { name: string; color: string; health: number; maxHealth: number } | null, x = 0, y = 0): void {
         const target = this.el.target!
         target.classList.toggle('hidden', who === null)
         if (!who) return
@@ -552,7 +564,7 @@ export class Hud {
         if (name.textContent !== who.name) name.textContent = who.name
         name.style.boxShadow = `inset 0 -2px 0 ${who.color}`
         const bar = target.querySelector<HTMLElement>('.bar div')!
-        const share = Math.max(0, Math.min(1, who.health / MAX_HEALTH))
+        const share = Math.max(0, Math.min(1, who.health / who.maxHealth))
         bar.style.width = `${share * 100}%`
         bar.style.background = share > 0.6 ? '#5ad16b' : share > 0.3 ? '#f2b134' : '#ff4d4d'
     }
@@ -707,8 +719,26 @@ export const BUFF_LABELS: Record<BuffKind, { icon: string; label: string }> = {
     magazine: { icon: '📦', label: 'Big magazine' },
     jetpack: { icon: '🚀', label: 'Jetpack ×4' },
     headshot: { icon: '🎯', label: 'One-shot headshots' },
+    overtime: { icon: '⏰', label: 'Overtime' },
+    promotion: { icon: '📈', label: 'Promotion' },
+    firewall: { icon: '🛡️', label: 'Firewall' },
+    espresso: { icon: '☕', label: 'Espresso' },
+    intern: { icon: '🧑‍🎓', label: 'Intern' },
+    bonus: { icon: '💰', label: 'Bonus ×2' },
+    orgchart: { icon: '🗂️', label: 'Org chart' },
 }
-export const BUFF_COLORS: Record<BuffKind, string> = { magazine: '#f2b134', jetpack: '#29a3e0', headshot: '#ff3b3b' }
+export const BUFF_COLORS: Record<BuffKind, string> = {
+    magazine: '#f2b134',
+    jetpack: '#29a3e0',
+    headshot: '#ff3b3b',
+    overtime: '#ff7a1a',
+    promotion: '#b06bff',
+    firewall: '#33e0ff',
+    espresso: '#c08552',
+    intern: '#b4f06b',
+    bonus: '#ff4fa3',
+    orgchart: '#e8ecf2',
+}
 
 /** How you went down, as the kill event told it. */
 export interface DeathCause {
@@ -732,7 +762,7 @@ export function deathRecap(cause: DeathCause): string {
     ].join(' · ')
     if (!r) return `<div class="recap"><div class="recap-head">${head}</div></div>`
 
-    const rows: Array<[string, string]> = [['Their health', `${r.killerHealth} / ${MAX_HEALTH}`]]
+    const rows: Array<[string, string]> = [['Their health', `${r.killerHealth} / ${maxHealthOf(powersOf(r.buffs))}`]]
     if (r.ammo !== null && r.magazine !== null) {
         rows.push(['Their magazine', r.ammo === 0 ? 'empty' : `${r.ammo} / ${r.magazine}`])
     }

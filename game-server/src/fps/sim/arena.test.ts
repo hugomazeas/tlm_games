@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import { createRng } from '../../sim/rng.ts'
 import { BUTTON, DEFAULT_LOADOUT, type InputFrame, type Loadout, type Slot, type Team } from '../protocol.ts'
-import type { PickupSpot } from './places.ts'
-import { Arena, MAX_BURST, SHIELD_STEPS } from './arena.ts'
+import { BONUS, FIREWALL, INTERN, OVERTIME, type PickupSpot, PROMOTION } from './places.ts'
+import { Arena, MAX_BURST, RESPAWN_STEPS, SHIELD_STEPS } from './arena.ts'
 import { GUNS, LAUNCHER, STAPLER } from './combat.ts'
 
 const RIFLE = GUNS.rifle
@@ -284,6 +284,89 @@ describe('pickups', () => {
             expect.objectContaining({ type: 'kill', killer: north, victim: south, headshot: true })
         )
         expect(a.states().find(s => s.id === south)!.alive).toBe(false)
+    })
+})
+
+describe('the office powers', () => {
+    const at = (kind: PickupSpot['kind'], x: number, z: number): PickupSpot => ({ kind, x, z, room: 'here' })
+    /** North fires (aimed) at this height on south, 4 m away. */
+    const aimAt = (height: number) => ({
+        yaw: Math.PI,
+        pitch: Math.atan2(height - 0.34, 4),
+        buttons: BUTTON.fire | BUTTON.aim,
+    })
+    const shotOf = (events: ReturnType<Arena['advance']>) => events.find(e => e.type === 'shot')
+
+    test('Promotion: three times the size and 500 health, so a shot over a mini’s head finds them', () => {
+        const { a, north, south, step, waitShields } = duel([at('promotion', 0, 2)])
+        step()
+        expect(a.self(south)).toMatchObject({ health: PROMOTION.health })
+        expect(a.self(south)!.body.big).toBeGreaterThan(0)
+        expect(a.states().find(s => s.id === south)!.buffs).toEqual(['promotion'])
+        waitShields()
+        expect(shotOf(step({ [north]: aimAt(0.7) }))).toMatchObject({ hit: south })
+
+        // The same shot at a plain mini goes over their head.
+        const plain = duel()
+        plain.waitShields()
+        expect(shotOf(plain.step({ [plain.north]: aimAt(0.7) }))).toMatchObject({ hit: null })
+    })
+
+    test('Firewall: the first 75 damage never reaches you, then it breaks', () => {
+        const { a, north, south, step, waitShields } = duel([at('firewall', 0, 2)])
+        step()
+        expect(a.self(south)!.buffs).toEqual([{ kind: 'firewall', leftMs: expect.any(Number), points: FIREWALL }])
+        waitShields()
+        let raw = 0
+        for (let i = 0; i < 60; i++) {
+            const shot = shotOf(step({ [north]: aimAt(0.2) }))
+            if (shot?.type === 'shot' && shot.hit === south) raw += shot.damage
+        }
+        expect(raw).toBeGreaterThan(FIREWALL)
+        expect(a.self(south)!.health).toBe(100 - (raw - FIREWALL))
+        expect(a.self(south)!.buffs).toEqual([])
+    })
+
+    test('Bonus: double damage', () => {
+        const { north, step, waitShields } = duel([at('bonus', 0, -2)])
+        step()
+        waitShields()
+        expect(shotOf(step({ [north]: aimAt(0.2) }))).toMatchObject({ damage: GUNS.rifle.damage * BONUS })
+    })
+
+    test('Overtime: 100 more health, and the magazine never runs down', () => {
+        const { a, north, step, waitShields } = duel([at('overtime', 0, -2)])
+        step()
+        expect(a.self(north)!.health).toBe(100 + OVERTIME.health)
+        waitShields()
+        let fired = 0
+        for (let i = 0; i < 300; i++) if (shotOf(step({ [north]: aimAt(0.2) }))) fired++
+        expect(fired).toBeGreaterThan(GUNS.rifle.magazine)
+        expect(a.self(north)).toMatchObject({ ammo: GUNS.rifle.magazine, reloading: false })
+    })
+
+    test('Intern: 60 health at most, and small enough that a head-height shot misses', () => {
+        const { a, north, south, step, waitShields } = duel([at('intern', 0, 2)])
+        step()
+        expect(a.self(south)!.health).toBe(INTERN.health)
+        waitShields()
+        expect(shotOf(step({ [north]: aimAt(0.36) }))).toMatchObject({ hit: null })
+        // Lower, on their middle, it lands.
+        for (let i = 0; i < 10; i++) step()
+        expect(shotOf(step({ [north]: aimAt(0.08) }))).toMatchObject({ hit: south })
+    })
+
+    test('headshot rounds still fell a Promotion in one, and every power goes with them', () => {
+        const { a, north, south, step, waitShields } = duel([at('headshot', 0, -2), at('promotion', 0, 2)])
+        step()
+        waitShields()
+        const events = step({ [north]: aimAt(1.1) })
+        expect(events).toContainEqual(
+            expect.objectContaining({ type: 'kill', killer: north, victim: south, headshot: true })
+        )
+        for (let i = 0; i < RESPAWN_STEPS + 1; i++) step()
+        expect(a.self(south)).toMatchObject({ alive: true, health: 100, buffs: [] })
+        expect(a.self(south)!.body.big).toBe(0)
     })
 })
 

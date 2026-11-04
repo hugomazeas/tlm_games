@@ -1,6 +1,7 @@
 import { Vector3 } from 'three'
-import type { Gun } from '../protocol.ts'
-import { type Body, PLAYER } from './movement.ts'
+import type { BuffKind, Gun } from '../protocol.ts'
+import { type Body, PLAYER, type Powers, scaleOf, sizeAt } from './movement.ts'
+import { INTERN, OVERTIME, PROMOTION } from './places.ts'
 import { type FpsWorld, rayDistance } from './world.ts'
 
 /**
@@ -175,12 +176,27 @@ export const SWITCH_MS = 250
 
 export const MAX_HEALTH = 100
 
+/** Full health with these powers: a Promotion's or an Intern's instead of the usual, Overtime's on top. */
+export function maxHealthOf(powers: Powers): number {
+    const base = powers.big > 0 ? PROMOTION.health : powers.small > 0 ? INTERN.health : MAX_HEALTH
+    return base + (powers.overtime > 0 ? OVERTIME.health : 0)
+}
+
+/** The powers that size someone, from the buffs everyone sees them with. */
+export function powersOf(buffs: readonly BuffKind[]): Powers {
+    return {
+        overtime: buffs.includes('overtime') ? 1 : 0,
+        big: buffs.includes('promotion') ? 1 : 0,
+        small: buffs.includes('intern') ? 1 : 0,
+    }
+}
+
 /** Hits on the capsule's top part (from here up, as a share of its height) are headshots. */
 export const HEAD_FROM = 0.72
 
-/** Where a player's eyes are, from their feet. */
-export function eyeOf(feet: { x: number; y: number; z: number }): Vector3 {
-    return new Vector3(feet.x, feet.y + PLAYER.eye, feet.z)
+/** Where a player's eyes are, from their feet (higher on a Promotion, lower as an Intern). */
+export function eyeOf(feet: { x: number; y: number; z: number; big?: number; small?: number }): Vector3 {
+    return new Vector3(feet.x, feet.y + PLAYER.eye * scaleOf(feet), feet.z)
 }
 
 /** The unit vector a camera with this yaw and pitch looks along (three.js 'YXZ' order). */
@@ -198,32 +214,36 @@ export interface Target {
     z: number
     /** Where they face (radians, 0 toward -Z), for a stapler from behind. */
     yaw?: number
+    /** Their size (1 when absent): a Promotion is a big target, an Intern a small one. */
+    scale?: number
 }
 
 /**
- * A stapler swing from `eye` along `direction`: the nearest target whose capsule is within reach
+ * A stapler swing from `eye` along `direction`: the nearest target whose capsule is within `reach`
  * inside the swing's cone, with no wall in between. From behind it's a backstab.
  */
 export function swingStapler(
     world: FpsWorld,
     eye: Vector3,
     direction: Vector3,
-    targets: readonly Target[]
+    targets: readonly Target[],
+    reach: number = STAPLER.reach
 ): { id: string; backstab: boolean } | null {
     let best: { id: string; backstab: boolean } | null = null
     let bestDistance = Infinity
     const to = new Vector3()
     for (const target of targets) {
+        const size = sizeAt(target.scale ?? 1)
         // The nearest point of their capsule's axis to the eyes.
-        const axisY = Math.max(target.y + PLAYER.radius, Math.min(target.y + PLAYER.height - PLAYER.radius, eye.y))
+        const axisY = Math.max(target.y + size.radius, Math.min(target.y + size.height - size.radius, eye.y))
         to.set(target.x - eye.x, axisY - eye.y, target.z - eye.z)
         const distance = to.length()
-        if (distance - PLAYER.radius > STAPLER.reach || distance >= bestDistance) continue
+        if (distance - size.radius > reach || distance >= bestDistance) continue
         const toward = to.clone().normalize()
         // Right up against them, any aim counts; otherwise they must be in the cone.
         const angle = Math.acos(Math.max(-1, Math.min(1, toward.dot(direction))))
-        if (distance > PLAYER.radius && angle > STAPLER.arc) continue
-        const blocked = distance > 0.01 && rayDistance(world, eye, toward, distance) < distance - PLAYER.radius
+        if (distance > size.radius && angle > STAPLER.arc) continue
+        const blocked = distance > 0.01 && rayDistance(world, eye, toward, distance) < distance - size.radius
         if (blocked) continue
         best = { id: target.id, backstab: isBehind(target, eye) }
         bestDistance = distance
@@ -281,17 +301,20 @@ export const HITBOX_SCALE = 1.25
 export const HIT_RADIUS = PLAYER.radius * HITBOX_SCALE
 
 /**
- * Where a ray meets a player's hit capsule (`HIT_RADIUS` wide, their height): its distance along the
- * ray, and how high up it (0 bottom … 1 top). Null when it passes by or is behind the ray.
+ * Where a ray meets a player's hit capsule (`HIT_RADIUS` wide, their height, both times their
+ * `scale`): its distance along the ray, and how high up it (0 bottom … 1 top). Null when it passes
+ * by or is behind the ray.
  */
 export function rayCapsule(
     origin: Vector3,
     direction: Vector3,
-    feet: { x: number; y: number; z: number }
+    feet: { x: number; y: number; z: number; scale?: number }
 ): { distance: number; along: number } | null {
-    const r = HIT_RADIUS
+    const scale = feet.scale ?? 1
+    const height = PLAYER.height * scale
+    const r = HIT_RADIUS * scale
     const a = new Vector3(feet.x, feet.y + r, feet.z)
-    const axis = new Vector3(0, PLAYER.height - 2 * r, 0)
+    const axis = new Vector3(0, height - 2 * r, 0)
     const axisLength = axis.length()
     axis.divideScalar(axisLength)
 
@@ -319,5 +342,5 @@ export function rayCapsule(
 
     const hitY = origin.y + direction.y * distance
 
-    return { distance, along: Math.max(0, Math.min(1, (hitY - feet.y) / PLAYER.height)) }
+    return { distance, along: Math.max(0, Math.min(1, (hitY - feet.y) / height)) }
 }

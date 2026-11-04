@@ -90,7 +90,18 @@ export const DEFAULT_RULES: Rules = { mode: 'ffa', fragLimit: 15, minutes: 5 }
 /** King of the meeting room: seconds in the zone to win, per point of the limit. */
 export const ZONE_SECONDS_PER_POINT = 10
 
-export type BuffKind = 'magazine' | 'jetpack' | 'headshot'
+/** A pickup's power while it lasts (every pickup but the health pack). */
+export type BuffKind =
+    | 'magazine'
+    | 'jetpack'
+    | 'headshot'
+    | 'overtime'
+    | 'promotion'
+    | 'firewall'
+    | 'espresso'
+    | 'intern'
+    | 'bonus'
+    | 'orgchart'
 
 /** A standout of the match, on the scoreboard after it. */
 export interface Award {
@@ -143,7 +154,7 @@ export interface PlayerState {
     yaw: number
     pitch: number
     alive: boolean
-    /** 0–MAX_HEALTH, shown over them when someone's crosshair is on them. */
+    /** 0–their full health (maxHealthOf their buffs' powers), shown over them when someone's crosshair is on them. */
     health: number
     jet: boolean
     /** Just spawned: can't be hurt until it runs out or they fire. */
@@ -176,8 +187,8 @@ export interface SelfState {
     respawnInMs: number | null
     /** Rounds a full magazine of the gun in hand holds (more with a big magazine). */
     magazine: number
-    /** Your powers, with what's left of each (ms). */
-    buffs: Array<{ kind: BuffKind; leftMs: number }>
+    /** Your powers, with what's left of each (ms; the firewall also its damage left to soak, `points`). */
+    buffs: Array<{ kind: BuffKind; leftMs: number; points?: number }>
 }
 
 export type GameEvent =

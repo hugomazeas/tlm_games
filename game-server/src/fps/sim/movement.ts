@@ -1,6 +1,6 @@
 import { Line3, Vector3 } from 'three'
 import { BUTTON } from '../protocol.ts'
-import { JETPACK_FACTOR } from './places.ts'
+import { ESPRESSO, INTERN, JETPACK_FACTOR, OVERTIME, PAD, PORTAL, partnerOf, PROMOTION } from './places.ts'
 import { collideCapsule, type FpsWorld } from './world.ts'
 
 /**
@@ -60,6 +60,41 @@ export interface Body {
     dashCooldown: number
     /** Steps left of a jetpack extender (0: none): flight burns its fuel JETPACK_FACTOR times slower. */
     jetBoost: number
+    /**
+     * Steps left of the pickups that change how you move (0: none), stepped here so your browser
+     * predicts them: Overtime (slow, grounded), Espresso (fast), Promotion (big), Intern (small).
+     */
+    overtime: number
+    espresso: number
+    big: number
+    small: number
+    /** Steps until a portal takes you again. */
+    portalCooldown: number
+}
+
+/** The powers that change a body's size and health (a body, or one rebuilt from a player's buffs). */
+export interface Powers {
+    overtime: number
+    big: number
+    small: number
+}
+
+/** How much bigger than a usual mini (Promotion 3, Intern ½). */
+export function scaleOf(powers: { big?: number; small?: number }): number {
+    if ((powers.big ?? 0) > 0) return PROMOTION.scale
+    if ((powers.small ?? 0) > 0) return INTERN.scale
+    return 1
+}
+
+/** A mini's capsule at a size: radius, height and eyes, from the feet. */
+export function sizeAt(scale: number): { radius: number; height: number; eye: number } {
+    return { radius: PLAYER.radius * scale, height: PLAYER.height * scale, eye: PLAYER.eye * scale }
+}
+
+/** Walking pace, for the powers they have. */
+export function walkOf(body: Body): number {
+    const pace = body.overtime > 0 ? OVERTIME.walk : body.espresso > 0 ? ESPRESSO.walk : 1
+    return MOVE.walk * pace * (body.big > 0 ? PROMOTION.walk : 1)
 }
 
 export interface MoveInput {
@@ -86,21 +121,54 @@ export function moveOf(frame: { forward: number; strafe: number; yaw: number; bu
 }
 
 export function bodyAt(x: number, y: number, z: number): Body {
-    return { x, y, z, vx: 0, vy: 0, vz: 0, onGround: false, fuel: 1, dashLeft: 0, dashCooldown: 0, jetBoost: 0 }
+    return {
+        x,
+        y,
+        z,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        onGround: false,
+        fuel: 1,
+        dashLeft: 0,
+        dashCooldown: 0,
+        jetBoost: 0,
+        overtime: 0,
+        espresso: 0,
+        big: 0,
+        small: 0,
+        portalCooldown: 0,
+    }
 }
 
-/** Is the jetpack burning this step? Held with fuel left, or in a dodge's burst. */
+/** Is the jetpack burning this step? Held with fuel left (not on Overtime), or in a dodge's burst. */
 export function isJetting(body: Body, input: MoveInput): boolean {
-    return (input.jet && body.fuel > 0) || body.dashLeft > 0
+    return (input.jet && body.fuel > 0 && body.overtime === 0) || body.dashLeft > 0
 }
 
 const seg = new Line3()
 const before = new Vector3()
 const pushed = new Vector3()
 
+/** Does a capsule of this size stand clear at the body's feet? */
+function fits(world: FpsWorld, body: Body, scale: number): boolean {
+    const size = sizeAt(scale)
+    seg.start.set(body.x, body.y + size.radius, body.z)
+    seg.end.set(body.x, body.y + size.height - size.radius, body.z)
+    return !collideCapsule(world, seg, size.radius)
+}
+
 /** The body one step later. Pure: the input body is left as it was. */
 export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
     const next = { ...body }
+    next.overtime = Math.max(0, body.overtime - 1)
+    next.espresso = Math.max(0, body.espresso - 1)
+    next.big = Math.max(0, body.big - 1)
+    next.small = Math.max(0, body.small - 1)
+    next.portalCooldown = Math.max(0, body.portalCooldown - 1)
+    // An intern grows back only where a mini fits (not under a chair): until then they stay small.
+    if (body.small === 1 && !fits(world, body, 1)) next.small = 1
+    const grounded = body.overtime > 0
 
     // The keys' wish, in the world: forward is where the camera looks, flattened.
     const fx = -Math.sin(input.yaw)
@@ -111,42 +179,50 @@ export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
     // The dodge: a burst the keys' way (forward when none are held), if it's ready and there's fuel.
     next.dashCooldown = Math.max(0, body.dashCooldown - 1)
     next.dashLeft = Math.max(0, body.dashLeft - 1)
-    if (input.dash && body.dashCooldown === 0 && body.fuel >= MOVE.dashFuel) {
+    if (input.dash && !grounded && body.dashCooldown === 0 && body.fuel >= MOVE.dashFuel) {
         const [dx, dz] = length > 0 ? [wx / length, wz / length] : [fx, fz]
         next.vx = dx * MOVE.dashSpeed
         next.vz = dz * MOVE.dashSpeed
         next.vy = Math.max(next.vy, MOVE.dashLift)
         next.fuel -= MOVE.dashFuel
         next.dashLeft = MOVE.dashSteps
-        next.dashCooldown = MOVE.dashCooldown
+        next.dashCooldown = Math.round(MOVE.dashCooldown * (body.espresso > 0 ? ESPRESSO.dashCooldown : 1))
     } else if (body.dashLeft === 0) {
         // The keys steer, unless a dodge is carrying you.
         if (length > 0) {
-            wx = (wx / length) * MOVE.walk
-            wz = (wz / length) * MOVE.walk
+            const walk = walkOf(body)
+            wx = (wx / length) * walk
+            wz = (wz / length) * walk
         }
         const follow = 1 - Math.exp(-(body.onGround ? MOVE.groundResponse : MOVE.airResponse) * STEP_S)
         next.vx += (wx - next.vx) * follow
         next.vz += (wz - next.vz) * follow
     }
+    // A jump pad under your feet: thrown up, no fuel used.
+    if (body.onGround && body.y <= PAD.height) {
+        for (const pad of world.pads) {
+            if (Math.hypot(body.x - pad.x, body.z - pad.z) <= PAD.radius) next.vy = Math.max(next.vy, PAD.launch)
+        }
+    }
 
-    const jetting = input.jet && next.fuel > 0
+    const jetting = input.jet && next.fuel > 0 && !grounded
     next.jetBoost = Math.max(0, body.jetBoost - 1)
     const burn = MOVE.fuelUse / (body.jetBoost > 0 ? JETPACK_FACTOR : 1)
     const fuelRate = jetting ? -burn : body.onGround && next.dashLeft === 0 ? MOVE.fuelRegen : 0
     next.fuel = Math.max(0, Math.min(1, next.fuel + fuelRate * STEP_S))
 
     const h = STEP_S / SUBSTEPS
+    const size = sizeAt(scaleOf(next))
     next.onGround = false
     for (let s = 0; s < SUBSTEPS; s++) {
         next.vy += (MOVE.gravity + (jetting ? MOVE.thrust : 0)) * h
         next.x += next.vx * h
         next.y += next.vy * h
         next.z += next.vz * h
-        seg.start.set(next.x, next.y + PLAYER.radius, next.z)
-        seg.end.set(next.x, next.y + PLAYER.height - PLAYER.radius, next.z)
+        seg.start.set(next.x, next.y + size.radius, next.z)
+        seg.end.set(next.x, next.y + size.height - size.radius, next.z)
         before.copy(seg.start)
-        if (!collideCapsule(world, seg, PLAYER.radius)) continue
+        if (!collideCapsule(world, seg, size.radius)) continue
 
         pushed.subVectors(seg.start, before)
         next.x += pushed.x
@@ -164,6 +240,19 @@ export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
             next.vy -= pushed.y * into
             next.vz -= pushed.z * into
         }
+    }
+
+    // Into a portal: out of its partner, on its far side, moving as you were.
+    if (next.portalCooldown === 0) {
+        world.portals.forEach((portal, index) => {
+            if (next.portalCooldown > 0 || next.y > PORTAL.height) return
+            if (Math.hypot(next.x - portal.x, next.z - portal.z) > PORTAL.radius) return
+            const exit = world.portals[partnerOf(index)]
+            if (!exit) return
+            next.x = exit.x + exit.out[0] * PORTAL.exit
+            next.z = exit.z + exit.out[1] * PORTAL.exit
+            next.portalCooldown = PORTAL.cooldownSteps
+        })
     }
 
     return next
