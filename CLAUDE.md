@@ -330,6 +330,8 @@ Playable at `/games/office-fps`.
   falloff graph, pulls and time to kill, rate, live state, fps and draws). The numbers come from
   `client/gun-debug.ts` (pure, tested), which fires through `combat.ts`'s own seeded spread and
   `rayCapsule`, so they are what the server would judge.
+- **Stats** (top left, `hud.stats`): frames a second and the ping (a frame sent → the snapshot
+  acknowledging it, smoothed), green / yellow / red.
 - **Settings** (`client/settings.ts`, in this browser): sensitivity, aiming sensitivity, field
   of view, invert Y, sound volume, on the Esc menu.
 - **Sound** (`client/sounds.ts`): every effect synthesized with Web Audio (oscillator sweeps and
@@ -376,8 +378,10 @@ Playable at `/games/office-fps`.
   `buildOffice(scene, renderer)` adds the browser's canvas textures, sky, sun and baking on top.
   Both place everything from the same seeded random numbers: keep anything that calls `R()` in
   the geometry, never in the materials, or the server's collision drifts from what's drawn.
-- **Sim** (`fps/sim/`, pure): `movement.ts` steps a body at 60 Hz (4 collision sub-steps;
-  walk/run/jetpack tuning at the top), shared with the browser for prediction; `combat.ts` has
+- **Sim** (`fps/sim/`, pure): `movement.ts` steps a body at 60 Hz (collision sub-steps by speed,
+  `SUBSTEP_REACH` of the radius each: one walking, up to 8 falling; collision is most of the
+  server's time, so keep `collideCapsule` allocation-free; walk/run/jetpack tuning at the top),
+  shared with the browser for prediction; `combat.ts` has
   the guns and hitscan (walls and glass stop shots, headshots on the top of the capsule, which
   shots take `HITBOX_SCALE` 1.25× wider than it collides);
   `arena.ts` runs everyone: one input frame per step (the last one repeated, without firing,

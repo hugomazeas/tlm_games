@@ -1,4 +1,5 @@
 import { Box3, DoubleSide, Line3, Ray, Vector3 } from 'three'
+import type { ExtendedTriangle } from 'three-mesh-bvh'
 import { buildOfficeGeometry, type CollisionMesh, type OfficeCollision, type SpawnPoint } from '../map/office.js'
 import { PADS, type Pad, PICKUP_SPOTS, type PickupSpot, type Portal, PORTALS } from './places.ts'
 
@@ -51,6 +52,8 @@ const push = new Vector3()
  */
 export function collideCapsule(world: FpsWorld, seg: Line3, radius: number): boolean {
     let hit = false
+    cast.seg = seg
+    cast.radius = radius
     for (const mesh of world.meshes) {
         for (let pass = 0; pass < 2; pass++) {
             box.makeEmpty()
@@ -58,28 +61,33 @@ export function collideCapsule(world: FpsWorld, seg: Line3, radius: number): boo
             box.expandByPoint(seg.end)
             box.min.addScalar(-radius)
             box.max.addScalar(radius)
-            let touched = false
-            mesh.geometry.boundsTree.shapecast({
-                intersectsBounds: bounds => bounds.intersectsBox(box),
-                intersectsTriangle: triangle => {
-                    // Out of reach on one axis: further than the radius, so the exact test (most of a step's time) can't push.
-                    if (beyondReach(triangle, seg, radius)) return
-                    const distance = triangle.closestPointToSegment(seg, onTriangle, onSegment)
-                    if (distance >= radius) return
-                    if (distance > 1e-6) push.subVectors(onSegment, onTriangle).divideScalar(distance)
-                    else triangle.getNormal(push)
-                    seg.start.addScaledVector(push, radius - distance)
-                    seg.end.addScaledVector(push, radius - distance)
-                    touched = true
-                },
-            })
-            hit ||= touched
+            cast.touched = false
+            mesh.geometry.boundsTree.shapecast(capsuleCast)
+            hit ||= cast.touched
             // Nothing moved the capsule: a second pass would find the same nothing.
-            if (!touched) break
+            if (!cast.touched) break
         }
     }
 
     return hit
+}
+
+/** The capsule being pushed out, for `capsuleCast`: one shared set of callbacks, not new ones (garbage) per call. */
+const cast = { seg: new Line3(), radius: 0, touched: false }
+const capsuleCast = {
+    intersectsBounds: (bounds: Box3) => bounds.intersectsBox(box),
+    intersectsTriangle: (triangle: ExtendedTriangle): void => {
+        const { seg, radius } = cast
+        // Out of reach on one axis: further than the radius, so the exact test (most of a step's time) can't push.
+        if (beyondReach(triangle, seg, radius)) return
+        const distance = triangle.closestPointToSegment(seg, onTriangle, onSegment)
+        if (distance >= radius) return
+        if (distance > 1e-6) push.subVectors(onSegment, onTriangle).divideScalar(distance)
+        else triangle.getNormal(push)
+        seg.start.addScaledVector(push, radius - distance)
+        seg.end.addScaledVector(push, radius - distance)
+        cast.touched = true
+    },
 }
 
 /** The triangle's box and the segment's are further apart than `radius` on some axis. */

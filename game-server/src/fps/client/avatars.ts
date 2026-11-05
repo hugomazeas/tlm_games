@@ -651,11 +651,9 @@ export class Avatars {
         }
         for (const gun of Object.values(guns)) {
             gun.group.visible = false
-            // The sight's glowing dot is for your own eye.
+            // The sight's glowing dot is for your own eye. The gun casts no shadow: a few pixels
+            // of it on the floor would cost a draw of each of its parts in the shadow map.
             gun.tip.visible = false
-            gun.group.traverse(o => {
-                if (o instanceof Mesh) o.castShadow = true
-            })
             inner.add(gun.group)
         }
         inner.add(flash.group, ...Object.values(cases).flat())

@@ -324,6 +324,7 @@ function startMatch(rules: Rules): void {
 
 function snapshot(snap: Extract<ServerMessage, { type: 'snap' }>, now: number): void {
     clock.heard(snap.step, now)
+    measurePing(snap.ack)
     others.push(snap.step, snap.players)
     const wasReloading = self?.reloading ?? false
     self = snap.you
@@ -567,6 +568,7 @@ function frame(now: number): void {
         step(now)
     }
     draw(now)
+    countFrame(now)
     requestAnimationFrame(frame)
 }
 requestAnimationFrame(frame)
@@ -672,7 +674,34 @@ function aimThirdPerson(eye: Vector3): { yaw: number; pitch: number } {
 function flush(): void {
     if (outbox.length === 0 || socket?.readyState !== WebSocket.OPEN) return
     socket.send(JSON.stringify({ type: 'input', frames: outbox.map(encodeFrame) }))
+    sentAt.push({ seq: outbox.at(-1)!.seq, at: performance.now() })
+    if (sentAt.length > 240) sentAt.shift()
     outbox = []
+}
+
+// --- Ping and frame rate (top left) --------------------------------------------------------------
+/** Frames sent and when, until a snapshot acknowledges them: the round trip is the ping. */
+const sentAt: Array<{ seq: number; at: number }> = []
+let pingMs: number | null = null
+let framesCounted = 0
+let countedSince = performance.now()
+
+/** A snapshot acknowledged frames up to `ack`: the newest of them gives the round trip (smoothed). */
+function measurePing(ack: number): void {
+    let newest: number | null = null
+    while (sentAt.length > 0 && sentAt[0]!.seq <= ack) newest = sentAt.shift()!.at
+    if (newest === null) return
+    const rtt = performance.now() - newest
+    pingMs = pingMs === null ? rtt : pingMs + (rtt - pingMs) * 0.2
+}
+
+/** Counts a drawn frame; twice a second, shows the rate and the ping. */
+function countFrame(now: number): void {
+    framesCounted++
+    if (now - countedSince < 500) return
+    hud.stats((framesCounted * 1000) / (now - countedSince), pingMs)
+    framesCounted = 0
+    countedSince = now
 }
 
 // A hidden tab sends nothing, and the server would keep you moving on your last keys: stop first.

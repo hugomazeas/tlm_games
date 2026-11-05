@@ -12,8 +12,13 @@ import { collideCapsule, type FpsWorld } from './world.ts'
 /** One step of the simulation. */
 export const STEP_MS = 1000 / 60
 const STEP_S = STEP_MS / 1000
-/** Collision sub-steps per step (240 Hz): a fast mini can't tunnel through a desk's edge. */
-const SUBSTEPS = 4
+/**
+ * Collision sub-steps: as many as keep each move under this share of the body's radius, so a fast
+ * mini can't tunnel through a desk's edge, up to `MAX_SUBSTEPS`. Walking takes one, a dodge two, a
+ * fall or a rocket jump more: collision is most of the server's time, spent only where it's needed.
+ */
+const SUBSTEP_REACH = 0.4
+const MAX_SUBSTEPS = 8
 
 /** A 40 cm mini: what the office's collision was tuned for. Feet at the body's position. */
 export const PLAYER = { radius: 0.12, height: 0.4, eye: 0.34 } as const
@@ -211,10 +216,14 @@ export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
     const fuelRate = jetting ? -burn : body.onGround && next.dashLeft === 0 ? MOVE.fuelRegen : 0
     next.fuel = Math.max(0, Math.min(1, next.fuel + fuelRate * STEP_S))
 
-    const h = STEP_S / SUBSTEPS
     const size = sizeAt(scaleOf(next))
+    // The furthest this step can carry it: its speed, plus what gravity or the jetpack add.
+    const accel = Math.abs(MOVE.gravity + (jetting ? MOVE.thrust : 0))
+    const reach = (Math.hypot(next.vx, next.vy, next.vz) + accel * STEP_S) * STEP_S
+    const substeps = Math.min(MAX_SUBSTEPS, Math.max(1, Math.ceil(reach / (size.radius * SUBSTEP_REACH))))
+    const h = STEP_S / substeps
     next.onGround = false
-    for (let s = 0; s < SUBSTEPS; s++) {
+    for (let s = 0; s < substeps; s++) {
         next.vy += (MOVE.gravity + (jetting ? MOVE.thrust : 0)) * h
         next.x += next.vx * h
         next.y += next.vy * h
