@@ -165,6 +165,28 @@ describe('reloading', () => {
         const done = a.self('me')!
         expect([done.reloading, done.reloadLeftMs, done.ammo]).toEqual([false, null, RIFLE.magazine])
     })
+
+    test('the others see it too: how far through the reload, and whether they aim', () => {
+        const a = arena()
+        for (let i = 0; i < 30; i++) a.advance()
+        const seen = () => a.states().find(s => s.id === 'me')!
+        expect([seen().reload, seen().aiming]).toEqual([null, false])
+
+        a.queue('me', frames(1, 1, BUTTON.fire))
+        a.advance()
+        a.queue('me', frames(2, 1, BUTTON.reload | BUTTON.aim))
+        a.advance()
+        expect(seen().reload).toBe(0)
+        expect(seen().aiming).toBe(true)
+
+        const half = (RIFLE.reloadMs * 60) / 2000
+        for (let i = 0; i < half; i++) {
+            a.queue('me', frames(3 + i, 1))
+            a.advance()
+        }
+        expect(seen().reload).toBeCloseTo(0.5, 1)
+        expect(seen().aiming).toBe(false)
+    })
 })
 
 /**

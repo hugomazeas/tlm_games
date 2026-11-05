@@ -12,9 +12,10 @@ import { aimFov, DEFAULT_SETTINGS, LIMITS, parseSettings } from './settings.ts'
 import { reloadProgress, spatial } from './sounds.ts'
 import { announce, streakCallout, taunt } from './callouts.ts'
 import type { GameEvent } from '../protocol.ts'
-import { PerspectiveCamera } from 'three'
+import { PerspectiveCamera, Scene } from 'three'
+import { Avatars, fallAngle, hitRock, reloadStart } from './avatars.ts'
 import { Vector3 } from 'three'
-import { aimDirection, fireShot } from '../sim/combat.ts'
+import { aimDirection, fireShot, reloadMsOf } from '../sim/combat.ts'
 import { deathRecap } from './hud.ts'
 
 describe('the death recap', () => {
@@ -399,6 +400,8 @@ describe('drawing the others', () => {
         alive,
         health: 100,
         weapon: 'rifle',
+        aiming: false,
+        reload: null,
         team: null,
         buffs: [],
         jet: false,
@@ -430,5 +433,80 @@ describe('drawing the others', () => {
         timeline.push(32, [{ ...at('a', 0), yaw: -3.1 }])
 
         expect(Math.abs(timeline.sample(31).get('a')!.yaw)).toBeGreaterThan(3.1)
+    })
+
+    describe('their troopers', () => {
+        const roster = new Map([['a', { id: 'a', name: 'A', color: '#ff0000', playerId: null, watching: false }]])
+        const posed = (state: Partial<PlayerState>) => {
+            const s = { ...at('a', 0), ...state }
+            return new Map([['a', { x: s.x, y: s.y, z: s.z, yaw: s.yaw, pitch: s.pitch, state: s }]])
+        }
+        const scene = () => new Scene()
+
+        test('a reload plays smoothly from the reports, restarting only when they disagree', () => {
+            // Reported 25% through a 2 s reload at 1000: it started at 500.
+            expect(reloadStart(null, 0.25, 2000, 1000)).toBe(500)
+            // A later report a little off: the smooth clock is kept.
+            expect(reloadStart(500, 0.5, 2000, 1560)).toBe(500)
+            // Far off (a new reload): restarted.
+            expect(reloadStart(500, 0.1, 2000, 3000)).toBe(2800)
+            expect(reloadStart(500, null, 2000, 3000)).toBeNull()
+        })
+
+        test('a hit rocks them and lets go; a fall speeds up to the floor and settles there', () => {
+            expect(hitRock(-1)).toBe(0)
+            expect(hitRock(50)).toBeCloseTo(1, 6)
+            expect(hitRock(1000)).toBe(0)
+            expect(fallAngle(0)).toBe(0)
+            expect(fallAngle(100)).toBeLessThan(fallAngle(300) / 3)
+            expect(fallAngle(3000)).toBeCloseTo(Math.PI / 2, 3)
+        })
+
+        test("others' tracers start at their gun's muzzle, ahead of them, at chest height", () => {
+            const avatars = new Avatars(scene())
+            avatars.update(posed({}), roster, null, 1000)
+            const muzzle = avatars.muzzleOf('a')!
+            // They face -Z: the muzzle is out in front, between the belt and the eyes.
+            expect(muzzle.z).toBeLessThan(-0.2)
+            expect(muzzle.y).toBeGreaterThan(0.15)
+            expect(muzzle.y).toBeLessThan(0.34)
+
+            // Aiming brings it up toward the eye.
+            for (let now = 1016; now < 1600; now += 16) avatars.update(posed({ aiming: true }), roster, null, now)
+            expect(avatars.muzzleOf('a')!.y).toBeGreaterThan(muzzle.y + 0.04)
+            // The stapler has no muzzle.
+            avatars.update(posed({ weapon: 'stapler' }), roster, null, 1700)
+            expect(avatars.muzzleOf('a')).toBeNull()
+        })
+
+        test('killed, they stay to fall and lie a moment, then are gone until they are back', () => {
+            const avatars = new Avatars(scene())
+            avatars.update(posed({}), roster, null, 1000)
+            avatars.hit('a', 1000, [0, 0.3, -3])
+            avatars.update(posed({ alive: false }), roster, null, 1050)
+            expect(avatars.centerOf('a')).not.toBeNull()
+            expect(avatars.muzzleOf('a')).toBeNull()
+            avatars.update(posed({ alive: false }), roster, null, 5000)
+            expect(avatars.centerOf('a')).toBeNull()
+            avatars.update(posed({ x: 2 }), roster, null, 6000)
+            expect(avatars.centerOf('a')!.x).toBe(2)
+            expect(avatars.muzzleOf('a')).not.toBeNull()
+        })
+
+        test('a reload is heard once, from its start (not when they come into view half way through)', () => {
+            const heard: Array<[string, string, number]> = []
+            const avatars = new Avatars(scene(), (id, gun, msLeft) => heard.push([id, gun, Math.round(msLeft)]))
+            avatars.update(posed({ reload: 0.6 }), roster, null, 1000)
+            avatars.update(posed({}), roster, null, 1100)
+            avatars.update(posed({ reload: 0 }), roster, null, 1200)
+            avatars.update(posed({ reload: 0.02 }), roster, null, 1240)
+            expect(heard).toEqual([['a', 'rifle', reloadMsOf('rifle')]])
+        })
+
+        test('seen dead the first time, they are not drawn falling', () => {
+            const avatars = new Avatars(scene())
+            avatars.update(posed({ alive: false }), roster, null, 1000)
+            expect(avatars.centerOf('a')).toBeNull()
+        })
     })
 })

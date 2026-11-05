@@ -160,6 +160,10 @@ export interface PlayerState {
     /** Just spawned: can't be hurt until it runs out or they fire. */
     shielded: boolean
     weapon: Weapon
+    /** Aiming down their sights (their gun comes up to the eye). */
+    aiming: boolean
+    /** 0–1 through reloading the gun in hand, null when not: their trooper plays the reload. */
+    reload: number | null
     /** Their side in team deathmatch, null otherwise. */
     team: Team | null
     /** The pickups' powers they carry (everyone sees them). */

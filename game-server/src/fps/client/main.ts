@@ -136,7 +136,11 @@ const controls = new Controls(renderer.domElement, locked => {
 })
 controls.invertY = settings.invertY
 sounds.setVolume(settings.volume)
-const avatars = new Avatars(scene)
+// Others' reloads are heard where they are (yours already is, from your own state).
+const avatars = new Avatars(scene, (id, _gun, msLeft) => {
+    const at = id === me ? null : avatars.centerOf(id)
+    if (at) sounds.reload(msLeft, spatial(listener(), at))
+})
 const effects = new Effects(scene)
 let viewmodel: Viewmodel | null = null
 
@@ -386,7 +390,7 @@ function onEvent(event: GameEvent, now: number): void {
         return
     }
     if (event.type === 'shot') {
-        if (event.hit && event.damage > 0) avatars.flash(event.hit, now)
+        if (event.hit && event.damage > 0) avatars.hit(event.hit, now, event.from, event.headshot)
         if (event.by === me) {
             // Drawn already when fired; the server says whether it hit, and for how much.
             if (event.hit) {
@@ -408,6 +412,7 @@ function onEvent(event: GameEvent, now: number): void {
         // Judged from their eyes, drawn from their gun's muzzle (the eyes while they aren't drawn).
         const from = avatars.muzzleOf(event.by) ?? new Vector3(...event.from)
         for (const to of event.to) effects.tracer(from, new Vector3(...to), color, now, event.hit !== null, style)
+        avatars.fire(event.by, event.weapon, now)
         sounds.otherShot(event.weapon, spatial(listener(), { x: event.from[0], z: event.from[2] }))
         // Hit: which way it came from, and how hard.
         if (event.hit === me && event.damage > 0) {
@@ -421,8 +426,11 @@ function onEvent(event: GameEvent, now: number): void {
         }
     }
     if (event.type === 'launch') {
-        // Yours was heard when fired.
-        if (event.by !== me) sounds.otherShot('launcher', spatial(listener(), { x: event.from[0], z: event.from[2] }))
+        // Yours was heard (and kicked) when fired.
+        if (event.by !== me) {
+            avatars.fire(event.by, 'launcher', now)
+            sounds.otherShot('launcher', spatial(listener(), { x: event.from[0], z: event.from[2] }))
+        }
         return
     }
     if (event.type === 'explode') {
@@ -430,7 +438,7 @@ function onEvent(event: GameEvent, now: number): void {
         effects.explosion(at, now)
         sounds.explosion(spatial(listener(), at))
         for (const hit of event.hits) {
-            avatars.flash(hit.id, now)
+            avatars.hit(hit.id, now, event.at, false, true)
             if (hit.id === me && event.by !== me) {
                 hud.damageFrom(bearingTo(event.at))
                 sounds.hurt()
@@ -446,7 +454,10 @@ function onEvent(event: GameEvent, now: number): void {
         return
     }
     if (event.type === 'swing') {
-        if (event.hit && event.damage > 0) avatars.flash(event.hit, now)
+        if (event.hit && event.damage > 0) {
+            const by = avatars.centerOf(event.by)
+            avatars.hit(event.hit, now, by ? [by.x, by.y, by.z] : null)
+        }
         if (event.by === me) {
             // The chop was drawn when swung; the server says what it hit.
             const struck = event.hit ? avatars.centerOf(event.hit) : null
@@ -633,6 +644,8 @@ function step(now: number): void {
  */
 function fireLocally(gun: Gun, input: InputFrame, now: number): void {
     viewmodel?.fire(now)
+    // Your trooper too (seen in third person).
+    if (me) avatars.fire(me, gun, now)
     sounds.shot(gun)
     if (gun === 'launcher') return
     const spec = GUNS[gun]
@@ -764,6 +777,8 @@ function draw(now: number): void {
             jet: jetting,
             shielded: self.shielded,
             weapon: held,
+            aiming: aimingNow,
+            reload,
             team: teams.get(me) ?? null,
             buffs: self.buffs.map(b => b.kind),
         }

@@ -125,6 +125,8 @@ interface Fighter {
     nextSwingAt: number
     /** Fire was held in their last frame (a click-a-shot gun waits for a new click). */
     wasFiring: boolean
+    /** Aim was held in their last frame (the others see their gun come up). */
+    aiming: boolean
     /** A click not yet used by a click-a-shot gun. */
     clicked: boolean
     queue: InputFrame[]
@@ -205,6 +207,7 @@ export class Arena {
             guns: { primary: freshGun(0), secondary: freshGun(0) },
             nextSwingAt: 0,
             wasFiring: false,
+            aiming: false,
             clicked: false,
             queue: [],
             queuedSeq: 0,
@@ -366,6 +369,8 @@ export class Arena {
             jet: f.alive && f.jetting,
             shielded: this.shielded(f),
             weapon: weaponIn(f.slot, f.loadout),
+            aiming: f.alive && f.aiming && f.slot !== 'melee',
+            reload: f.alive ? reloadOf(f) : null,
             team: f.team,
             buffs: f.alive ? this.buffsOf(f).map(b => b.kind) : [],
         }))
@@ -530,6 +535,7 @@ export class Arena {
         if (firing && !fighter.wasFiring) fighter.clicked = true
         if (!firing) fighter.clicked = false
         fighter.wasFiring = firing
+        fighter.aiming = Boolean(frame.buttons & BUTTON.aim)
         if (fighter.clock < fighter.readyAt) return
         if (fighter.slot === 'melee') this.stapler(fighter, frame, events)
         else this.gun(fighter, fighter.slot, frame, events)
@@ -938,6 +944,16 @@ function freshGun(ammo: number): GunState {
 /** The gun in a slot of theirs. */
 function gunIn(fighter: Fighter, slot: 'primary' | 'secondary'): Gun {
     return slot === 'primary' ? fighter.loadout.primary : fighter.loadout.secondary
+}
+
+/** How far through reloading the gun in hand (0–1, two decimals), null when not reloading. */
+function reloadOf(fighter: Fighter): number | null {
+    if (fighter.slot === 'melee') return null
+    const until = fighter.guns[fighter.slot].reloadUntil
+    if (until <= fighter.clock) return null
+    const total = steps(reloadMsOf(gunIn(fighter, fighter.slot)))
+
+    return round(Math.max(0, Math.min(1, 1 - (until - fighter.clock) / total)), 2)
 }
 
 function round(value: number, decimals: number): number {

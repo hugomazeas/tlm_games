@@ -310,6 +310,13 @@ Playable at `/games/office-fps`.
   where the gloved hands go (`HandPoses`, keyframed with `keyed` on the reload's 0–1 progress; the
   sleeves run from fixed elbows); static parts are merged per material. Spent cases fly from
   `eject`; reloads swing the gun up and round (`reloadPose`) so the hands' work shows.
+- **Others' troopers** (`client/avatars.ts`): they hold the same gun models (`buildGuns`, at
+  `GUN_SCALE`), animated by the same `animate`, the arms stretched to where it puts the hands, so a
+  reload plays as in yours: `PlayerState.reload` (0–1) and `aiming` come from the server, the reload
+  run smoothly on this browser's clock (`reloadStart`). The gun sits at the chest, comes to the eye
+  aiming, dips on a switch, drops in a dodge; shots and launches kick it, flash and throw cases
+  (`fire`). Hits rock them away from the shooter, the head back on a headshot (`hit`); killed, they
+  fall that way, drop their gun and sink away before the respawn.
 - **Gun lab** (`bun run fps:guns`, http://localhost:8097, `FPS_LAB_PORT`): the viewmodel alone on a
   page (`client/gun-lab.ts`, served by `fps/gun-lab.ts`): pick a weapon, fire, reload, aim, scrub a
   reload frame by frame, slow time, turn the gun round (inspect). It rebuilds and reloads itself
