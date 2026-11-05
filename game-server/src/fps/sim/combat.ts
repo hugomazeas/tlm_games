@@ -176,7 +176,7 @@ export const SWITCH_MS = 250
 export const MAX_HEALTH = 100
 
 /** Hits on the capsule's top part (from here up, as a share of its height) are headshots. */
-const HEAD_FROM = 0.72
+export const HEAD_FROM = 0.72
 
 /** Where a player's eyes are, from their feet. */
 export function eyeOf(feet: { x: number; y: number; z: number }): Vector3 {
