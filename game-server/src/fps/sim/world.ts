@@ -58,22 +58,41 @@ export function collideCapsule(world: FpsWorld, seg: Line3, radius: number): boo
             box.expandByPoint(seg.end)
             box.min.addScalar(-radius)
             box.max.addScalar(radius)
+            let touched = false
             mesh.geometry.boundsTree.shapecast({
                 intersectsBounds: bounds => bounds.intersectsBox(box),
                 intersectsTriangle: triangle => {
+                    // Out of reach on one axis: further than the radius, so the exact test (most of a step's time) can't push.
+                    if (beyondReach(triangle, seg, radius)) return
                     const distance = triangle.closestPointToSegment(seg, onTriangle, onSegment)
                     if (distance >= radius) return
                     if (distance > 1e-6) push.subVectors(onSegment, onTriangle).divideScalar(distance)
                     else triangle.getNormal(push)
                     seg.start.addScaledVector(push, radius - distance)
                     seg.end.addScaledVector(push, radius - distance)
-                    hit = true
+                    touched = true
                 },
             })
+            hit ||= touched
+            // Nothing moved the capsule: a second pass would find the same nothing.
+            if (!touched) break
         }
     }
 
     return hit
+}
+
+/** The triangle's box and the segment's are further apart than `radius` on some axis. */
+function beyondReach(t: { a: Vector3; b: Vector3; c: Vector3 }, seg: Line3, radius: number): boolean {
+    const { start: s, end: e } = seg
+    return (
+        Math.min(t.a.x, t.b.x, t.c.x) > Math.max(s.x, e.x) + radius ||
+        Math.max(t.a.x, t.b.x, t.c.x) < Math.min(s.x, e.x) - radius ||
+        Math.min(t.a.y, t.b.y, t.c.y) > Math.max(s.y, e.y) + radius ||
+        Math.max(t.a.y, t.b.y, t.c.y) < Math.min(s.y, e.y) - radius ||
+        Math.min(t.a.z, t.b.z, t.c.z) > Math.max(s.z, e.z) + radius ||
+        Math.max(t.a.z, t.b.z, t.c.z) < Math.min(s.z, e.z) - radius
+    )
 }
 
 const ray = new Ray()
