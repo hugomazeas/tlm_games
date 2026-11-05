@@ -405,9 +405,9 @@ function onEvent(event: GameEvent, now: number): void {
         }
         const color = parseInt((roster.get(event.by)?.color ?? '#ffffff').slice(1), 16)
         const style = event.weapon === 'sniper' ? SNIPER_TRACER : {}
-        for (const to of event.to) {
-            effects.tracer(new Vector3(...event.from), new Vector3(...to), color, now, event.hit !== null, style)
-        }
+        // Judged from their eyes, drawn from their gun's muzzle (the eyes while they aren't drawn).
+        const from = avatars.muzzleOf(event.by) ?? new Vector3(...event.from)
+        for (const to of event.to) effects.tracer(from, new Vector3(...to), color, now, event.hit !== null, style)
         sounds.otherShot(event.weapon, spatial(listener(), { x: event.from[0], z: event.from[2] }))
         // Hit: which way it came from, and how hard.
         if (event.hit === me && event.damage > 0) {
@@ -640,7 +640,8 @@ function fireLocally(gun: Gun, input: InputFrame, now: number): void {
     const eye = eyeOf(body)
     const aim = aimDirection(input.yaw, input.pitch)
     const cone = spreadOf(spec, Boolean(input.buttons & BUTTON.aim), body)
-    const from = viewmodel && !thirdPerson ? viewmodel.muzzleIn() : eye
+    // From the gun in your hands; in third person, your trooper's.
+    const from = viewmodel && !thirdPerson ? viewmodel.muzzleIn() : ((me ? avatars.muzzleOf(me) : null) ?? eye)
     for (let pellet = 0; pellet < spec.pellets; pellet++) {
         const direction = spreadDirection(aim, cone, input.seq, pellet)
         const end = eye.clone().addScaledVector(direction, rayDistance(world, eye, direction, spec.range))
@@ -676,6 +677,8 @@ function sendIdle(): void {
 let lastDraw = performance.now()
 /** 0 at the hip … 1 aiming, eased. */
 let aimBlend = 0
+/** The crosshair's cone on the screen (px from the middle), eased; null: no gun cone. */
+let spreadPx: number | null = null
 
 function draw(now: number): void {
     const dt = Math.min(0.1, (now - lastDraw) / 1000)
@@ -716,6 +719,15 @@ function draw(now: number): void {
     const aimedSensitivity = 1 + (settings.aimSensitivity - 1) * aimBlend
     controls.sensitivityScale = settings.sensitivity * (fov / hipFov) * aimedSensitivity
     hud.aiming = aimingNow
+    // The crosshair's ticks on the hip-fire cone (wider moving, wider still in the air), eased.
+    const cone =
+        self?.alive && body && held !== 'stapler' && held !== 'launcher' ? spreadOf(GUNS[held], false, body) : null
+    if (cone === null) spreadPx = null
+    else {
+        const target = (Math.tan(cone) / Math.tan((camera.fov * Math.PI) / 360)) * (innerHeight / 2)
+        spreadPx = spreadPx === null ? target : spreadPx + (target - spreadPx) * Math.min(1, dt * 14)
+    }
+    hud.spread(spreadPx)
     // A reload: the ring by the crosshair and the gun's animation, run to its end between snapshots.
     const reloading = Boolean(
         self?.alive && self.reloading && held !== 'stapler' && self.weapon === held && reloadEndsAt !== null

@@ -176,6 +176,9 @@ export const SWITCH_MS = 250
 
 export const MAX_HEALTH = 100
 
+/** Health comes back by itself: `delayMs` after it last went down, `perSecond`, up to `upTo` (never past full). */
+export const REGEN = { delayMs: 3000, perSecond: 10, upTo: 80 } as const
+
 /** Full health with these powers: a Promotion's or an Intern's instead of the usual, Overtime's on top. */
 export function maxHealthOf(powers: Powers): number {
     const base = powers.big > 0 ? PROMOTION.health : powers.small > 0 ? INTERN.health : MAX_HEALTH

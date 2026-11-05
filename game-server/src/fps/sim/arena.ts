@@ -38,6 +38,7 @@ import {
     MAX_HEALTH,
     maxHealthOf,
     rayCapsule,
+    REGEN,
     reloadMsOf,
     spreadDirection,
     spreadOf,
@@ -58,6 +59,8 @@ const steps = (ms: number): number => Math.round(ms / STEP_MS)
 
 export const RESPAWN_STEPS = steps(3000)
 export const SHIELD_STEPS = steps(1500)
+const REGEN_DELAY_STEPS = steps(REGEN.delayMs)
+const REGEN_PER_STEP = (REGEN.perSecond * STEP_MS) / 1000
 /** How far back a shot may be judged (200 ms): further, and the shooter's lag is their problem. */
 export const MAX_REWIND_STEPS = steps(200)
 /** Inputs waiting per player (half a second); a flood drops the oldest. */
@@ -147,6 +150,8 @@ interface Fighter {
     /** The firewall: damage it still soaks, until it breaks or this step. */
     firewall: number
     firewallUntil: number
+    /** The step their health last went down: it comes back REGEN.delayMs after. */
+    hurtAt: number
     /** Who hurt them this life (for the death recap): hits, damage, headshots, the step of the first. */
     taken: Map<string, { hits: number; damage: number; headshots: number; since: number }>
 }
@@ -214,6 +219,7 @@ export class Arena {
             orgchartUntil: 0,
             firewall: 0,
             firewallUntil: 0,
+            hurtAt: 0,
             taken: new Map(),
         }
         this.fighters.set(id, fighter)
@@ -315,6 +321,7 @@ export class Arena {
             if (fighter.alive) this.collect(fighter, events)
             // A Promotion or Overtime running out: their health back down to what they can hold now.
             fighter.health = Math.min(fighter.health, maxHealthOf(fighter.body))
+            if (fighter.alive) this.regenerate(fighter)
             if (fighter.firewallUntil > 0 && this.step >= fighter.firewallUntil) {
                 fighter.firewall = 0
                 fighter.firewallUntil = 0
@@ -355,7 +362,7 @@ export class Arena {
             yaw: round(f.yaw, 3),
             pitch: round(f.pitch, 3),
             alive: f.alive,
-            health: f.alive ? f.health : 0,
+            health: f.alive ? Math.ceil(f.health) : 0,
             jet: f.alive && f.jetting,
             shielded: this.shielded(f),
             weapon: weaponIn(f.slot, f.loadout),
@@ -376,7 +383,8 @@ export class Arena {
         return {
             body: { ...f.body },
             alive: f.alive,
-            health: f.health,
+            // Regenerating, it climbs in fractions: whole points, rounded up (still alive shows at least 1).
+            health: Math.ceil(f.health),
             ammo: gun.ammo,
             reloading: gun.reloadUntil > f.clock,
             reloadLeftMs: gun.reloadUntil > f.clock ? Math.round((gun.reloadUntil - f.clock) * STEP_MS) : null,
@@ -418,6 +426,13 @@ export class Arena {
 
     private magazineOf(f: Fighter, gun: Gun): number {
         return magazineOf(gun, f.magazineUntil > this.step ? MAGAZINE_FACTOR : 1)
+    }
+
+    /** Left alone for REGEN.delayMs, health climbs back REGEN.perSecond, up to REGEN.upTo (or full, if less). */
+    private regenerate(f: Fighter): void {
+        const ceiling = Math.min(REGEN.upTo, maxHealthOf(f.body))
+        if (f.health >= ceiling || this.step - f.hurtAt < REGEN_DELAY_STEPS) return
+        f.health = Math.min(ceiling, f.health + REGEN_PER_STEP)
     }
 
     /** Takes any pickup they're standing on (health only when hurt), and sets it to come back later. */
@@ -760,6 +775,7 @@ export class Arena {
         }
         const dealt = Math.min(victim.health, amount)
         victim.health = Math.max(0, victim.health - amount)
+        victim.hurtAt = this.step
         if (by && by !== victim) {
             events.push({ type: 'damage', by: by.id, target: victim.id, amount, headshot: how.headshot })
             const tally = victim.taken.get(by.id) ?? { hits: 0, damage: 0, headshots: 0, since: this.step }

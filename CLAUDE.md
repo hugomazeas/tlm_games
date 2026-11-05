@@ -346,6 +346,13 @@ Playable at `/games/office-fps`.
   20% fuel, 1.5 s cooldown; walking is 2 m/s, kept slow enough to track a 24 cm mini, in `stepBody` so it's predicted and checked), click fires,
   right-click aims (the gun's zoom, mouse slowed to match, the gun on its sights), V
   first/third person.
+- **Health comes back** (`REGEN` in `sim/combat.ts`, `Arena.regenerate`): 3 s after it last went
+  down, 10 a second, up to 80 (never past full). Health is sent rounded up. Under 50 the screen's
+  edges bleed (`.blood` in `hud.ts`, `LOW_HEALTH`), under 30 with a heartbeat and the health blinking.
+- **Crosshair:** four ticks on the hip-fire cone (`spreadOf` through the camera's field of view,
+  `hud.spread`): wider walking and in the air, gone while aiming. Shots are judged from the eyes,
+  but every tracer is drawn from a muzzle: yours from the viewmodel's, others' from their trooper's
+  gun (`Avatars.muzzleOf`); the gun lab's 3D cone runs from the muzzle to the circle at the target.
 - **Feedback:** shot events carry the `damage` they did (0 on a spawn shield). Your hits: a
   marker (gold on a headshot), the number where it landed, a big red marker and "Eliminated"
   on a kill. Hits on you: a red arc toward the shooter. Names and health show only over the

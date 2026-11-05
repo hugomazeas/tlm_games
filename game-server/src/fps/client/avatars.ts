@@ -12,6 +12,7 @@ import {
     type Scene,
     SphereGeometry,
     TorusGeometry,
+    Vector3,
 } from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import { type BuffKind, type Gun, type PlayerInfo, TEAM_COLORS } from '../protocol.ts'
@@ -104,6 +105,14 @@ const firewallMaterial = new MeshBasicMaterial({
     wireframe: true,
     depthWrite: false,
 })
+/** The tip of each gun's muzzle in its model (where others' tracers start): the muzzle parts' fronts below. */
+const MUZZLES: Record<Gun, Vector3> = {
+    rifle: new Vector3(0, 0.006, -0.196),
+    sniper: new Vector3(0, 0.004, -0.276),
+    shotgun: new Vector3(0, 0.008, -0.171),
+    pistol: new Vector3(0, 0.004, -0.046),
+    launcher: new Vector3(0, 0, -0.16),
+}
 /** Halo colours in order of how much they matter to whoever faces them (sizes and the firewall show for themselves). */
 const HALO_ORDER: readonly BuffKind[] = ['bonus', 'headshot', 'overtime', 'espresso', 'orgchart', 'jetpack', 'magazine']
 
@@ -189,6 +198,18 @@ export class Avatars {
         if (!avatar?.root.visible) return null
         const { x, y, z } = avatar.root.position
         return { x, y: y + (PLAYER.height / 2) * avatar.root.scale.y, z }
+    }
+
+    /** The muzzle of the gun in someone's hands, in the world, while they're drawn holding one. */
+    muzzleOf(id: string): Vector3 | null {
+        const avatar = this.avatars.get(id)
+        if (!avatar?.root.visible) return null
+        for (const [gun, model] of Object.entries(avatar.guns) as Array<[Gun, Group]>) {
+            if (!model.visible) continue
+            model.updateWorldMatrix(true, false)
+            return model.localToWorld(MUZZLES[gun].clone())
+        }
+        return null
     }
 
     private pose(avatar: Avatar, pose: Pose, now: number): void {

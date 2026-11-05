@@ -3,7 +3,7 @@ import { createRng } from '../../sim/rng.ts'
 import { BUTTON, DEFAULT_LOADOUT, type InputFrame, type Loadout, type Slot, type Team } from '../protocol.ts'
 import { BONUS, FIREWALL, INTERN, OVERTIME, type PickupSpot, PROMOTION } from './places.ts'
 import { Arena, MAX_BURST, RESPAWN_STEPS, SHIELD_STEPS } from './arena.ts'
-import { GUNS, LAUNCHER, STAPLER } from './combat.ts'
+import { GUNS, LAUNCHER, REGEN, STAPLER } from './combat.ts'
 
 const RIFLE = GUNS.rifle
 /** Frames between two rifle shots. */
@@ -284,6 +284,52 @@ describe('pickups', () => {
             expect.objectContaining({ type: 'kill', killer: north, victim: south, headshot: true })
         )
         expect(a.states().find(s => s.id === south)!.alive).toBe(false)
+    })
+})
+
+describe('health comes back', () => {
+    const SECOND = 60
+    /** North's rifle at south's chest until south is under `below`. */
+    const hurtBelow = (d: ReturnType<typeof duel>, below: number) => {
+        for (let i = 0; i < 200 && d.a.self(d.south)!.health >= below; i++) d.shoot()
+        return d.a.self(d.south)!.health
+    }
+
+    test(`after ${REGEN.delayMs / 1000} s untouched, ${REGEN.perSecond} a second, up to ${REGEN.upTo}`, () => {
+        const d = duel()
+        d.waitShields()
+        const hurt = hurtBelow(d, 40)
+        expect(hurt).toBeLessThan(40)
+        // Just short of the delay: nothing yet.
+        for (let i = 0; i < (REGEN.delayMs / 1000) * SECOND - 2; i++) d.step()
+        expect(d.a.self(d.south)!.health).toBe(hurt)
+        // A second past it: about ten more.
+        for (let i = 0; i < SECOND + 2; i++) d.step()
+        expect(d.a.self(d.south)!.health).toBeGreaterThanOrEqual(hurt + REGEN.perSecond - 1)
+        expect(d.a.self(d.south)!.health).toBeLessThanOrEqual(hurt + REGEN.perSecond + 1)
+        // Long after: 80, never full.
+        for (let i = 0; i < 10 * SECOND; i++) d.step()
+        expect(d.a.self(d.south)!.health).toBe(REGEN.upTo)
+        expect(d.a.states().find(s => s.id === d.south)!.health).toBe(REGEN.upTo)
+    })
+
+    test('a hit starts the wait again, and health over 80 stays where it is', () => {
+        const d = duel()
+        d.waitShields()
+        // One rifle round: 86, over the line, so it never climbs.
+        d.shoot()
+        expect(d.a.self(d.south)!.health).toBe(100 - RIFLE.damage)
+        for (let i = 0; i < 6 * SECOND; i++) d.step()
+        expect(d.a.self(d.south)!.health).toBe(100 - RIFLE.damage)
+
+        const hurt = hurtBelow(d, 50)
+        for (let i = 0; i < 2 * SECOND; i++) d.step()
+        // Hit again two seconds in: three more seconds from now before anything comes back.
+        d.shoot()
+        const again = d.a.self(d.south)!.health
+        expect(again).toBeLessThan(hurt)
+        for (let i = 0; i < (REGEN.delayMs / 1000) * SECOND - 2; i++) d.step()
+        expect(d.a.self(d.south)!.health).toBe(again)
     })
 })
 

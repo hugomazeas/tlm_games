@@ -101,6 +101,24 @@ const CSS = `
 #fps-hud .board tr.me td { color: #ffd166; }
 #fps-hud .board tr.gone td { opacity: .45; }
 #fps-hud .hurt { position: absolute; inset: 0; box-shadow: inset 0 0 120px rgba(220,30,30,.75); opacity: 0; transition: opacity .35s; }
+#fps-hud .blood { position: absolute; inset: 0; opacity: 0; transition: opacity .6s; background:
+    radial-gradient(circle at 0 0, rgba(95,0,0,.95), rgba(95,0,0,0) 28vmax),
+    radial-gradient(circle at 100% 8%, rgba(110,0,0,.85), rgba(110,0,0,0) 22vmax),
+    radial-gradient(circle at 4% 100%, rgba(110,0,0,.9), rgba(110,0,0,0) 25vmax),
+    radial-gradient(circle at 96% 96%, rgba(95,0,0,.95), rgba(95,0,0,0) 30vmax),
+    radial-gradient(ellipse at 50% 50%, rgba(80,0,0,0) 48%, rgba(120,0,0,.55) 78%, rgba(70,0,0,.9) 100%); }
+#fps-hud .blood::after { content: ''; position: absolute; inset: 0; box-shadow: inset 0 0 140px 30px rgba(170,0,0,.8); opacity: 0; }
+#fps-hud .blood.pulse::after { animation: fps-heartbeat 1.1s ease-out infinite; }
+@keyframes fps-heartbeat { 0% { opacity: 0; } 12% { opacity: .9; } 24% { opacity: .25; } 36% { opacity: .7; } 100% { opacity: 0; } }
+#fps-hud .health.low { animation: fps-low-health 1.1s ease-in-out infinite; }
+@keyframes fps-low-health { 0%, 100% { color: #f4f6f8; } 50% { color: #ff6b6b; background: rgba(110,12,12,.6); } }
+#fps-hud .spread { position: absolute; left: 50%; top: 50%; width: 0; height: 0; --r: 8px; }
+#fps-hud .spread i { position: absolute; background: rgba(255,255,255,.85); box-shadow: 0 0 0 1px rgba(0,0,0,.45); }
+#fps-hud .spread i:nth-child(1) { left: -1px; top: calc(-1 * var(--r) - 7px); width: 2px; height: 7px; }
+#fps-hud .spread i:nth-child(2) { left: -1px; top: var(--r); width: 2px; height: 7px; }
+#fps-hud .spread i:nth-child(3) { top: -1px; left: calc(-1 * var(--r) - 7px); width: 7px; height: 2px; }
+#fps-hud .spread i:nth-child(4) { top: -1px; left: var(--r); width: 7px; height: 2px; }
+#fps-hud.aiming .spread { display: none; }
 #fps-hud .card { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); text-align: center; pointer-events: auto; max-width: 420px; padding: 22px 26px; }
 #fps-hud .card h1 { font-size: 22px; margin: 0 0 4px; }
 #fps-hud .card p { margin: 6px 0; opacity: .85; font-weight: 500; }
@@ -177,8 +195,10 @@ export class Hud {
         this.root.id = 'fps-hud'
         this.root.innerHTML = `
             <div class="scope hidden" data-el="scope"></div>
+            <div class="blood" data-el="blood"></div>
             <div class="hurt" data-el="hurt"></div>
-            <div class="cross" data-el="cross"></div><div class="hit" data-el="hit"></div>
+            <div class="cross" data-el="cross"></div>
+            <div class="spread hidden" data-el="spread"><i></i><i></i><i></i><i></i></div><div class="hit" data-el="hit"></div>
             <div class="elim" data-el="elim"></div>
             <div class="callout" data-el="callout"></div>
             <div class="toast" data-el="toast"></div>
@@ -400,6 +420,7 @@ export class Hud {
     setSelf(self: SelfState | null): void {
         const hide = self === null
         for (const name of ['health', 'ammo', 'fuelBar', 'cross']) this.el[name]!.classList.toggle('hidden', hide)
+        this.lowHealth(self && self.alive ? self.health : null)
         if (!self) return
         // Out of the usual (a Promotion, Overtime, an Intern): what full is now. The firewall: on top, in its colour.
         const full = maxHealthOf(powersOf(self.buffs.map(b => b.kind)))
@@ -524,6 +545,29 @@ export class Hud {
     reload(progress: number | null): void {
         this.el.reload!.classList.toggle('hidden', progress === null)
         if (progress !== null) this.el.reloadFill!.setAttribute('stroke-dashoffset', String(RING * (1 - progress)))
+    }
+
+    /**
+     * The hip-fire cone round the crosshair: four ticks this many px from the middle (what the
+     * rounds may stray to), or none (null: the stapler, the launcher, down).
+     */
+    spread(radius: number | null): void {
+        const el = this.el.spread!
+        el.classList.toggle('hidden', radius === null)
+        if (radius !== null) el.style.setProperty('--r', `${Math.max(4, radius).toFixed(1)}px`)
+    }
+
+    /**
+     * Low on health (null: not playing): blood round the screen, thicker the lower you are, a
+     * heartbeat in it and the health blinking from LOW_HEALTH.blink down.
+     */
+    private lowHealth(health: number | null): void {
+        const { from, blink } = LOW_HEALTH
+        const strength = health === null ? 0 : Math.max(0, Math.min(1, (from - health) / (from - 10)))
+        this.el.blood!.style.opacity = strength.toFixed(2)
+        const low = health !== null && health <= blink
+        this.el.blood!.classList.toggle('pulse', low)
+        this.el.health!.classList.toggle('low', low)
     }
 
     /** A headshot: one you landed (gold, by the crosshair), or one you took (red, with a flash round the screen). */
@@ -780,6 +824,9 @@ export function deathRecap(cause: DeathCause): string {
 
 /** The reload ring's circumference (r = 11 in its 30 × 30 box). */
 const RING = 2 * Math.PI * 11
+
+/** Blood starts showing under `from` health (full by 10); under `blink` it beats and the health blinks. */
+const LOW_HEALTH = { from: 50, blink: 30 } as const
 
 /** One line on each gun, for the loadout picker. */
 const GUN_BLURBS = {

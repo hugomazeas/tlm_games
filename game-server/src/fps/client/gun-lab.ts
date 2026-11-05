@@ -28,6 +28,7 @@ import {
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { type Gun, WEAPON_NAMES, type Weapon } from '../protocol.ts'
 import {
+    aimDirection,
     damageAt,
     GUNS,
     HEAD_FROM,
@@ -63,6 +64,8 @@ import { Viewmodel } from './viewmodel.ts'
 
 const WEAPONS: Weapon[] = ['rifle', 'sniper', 'shotgun', 'pistol', 'launcher', 'stapler']
 const EYE = new Vector3(0, 0.34, 0)
+/** The way the cone's model points. */
+const FORWARD = new Vector3(0, 0, -1)
 
 interface LabState {
     weapon: Weapon
@@ -237,7 +240,7 @@ const boardMaterial = board.material as LineBasicMaterial
 boardMaterial.transparent = true
 boardMaterial.opacity = 0.3
 debugGroup.add(board)
-/** The cone shots land in, from the eyes (inspecting: from the eyes the camera is at in the hands). */
+/** The cone shots land in: from the gun's muzzle to the circle they land in at the target (inspecting). */
 const cone = new Group()
 const coneShape = new ConeGeometry(1, 1, 48, 1, true)
 coneShape.translate(0, -0.5, 0)
@@ -259,7 +262,6 @@ const rim = new BufferGeometry().setFromPoints(
     Array.from({ length: 64 }, (_, i) => new Vector3(Math.cos(around(i)), Math.sin(around(i)), -1))
 )
 cone.add(new LineLoop(rim, new LineBasicMaterial({ color: 0xff4d6d })))
-cone.position.copy(EYE)
 debugGroup.add(cone)
 /** Where each round stopped: gold on the head, white on the body, red a miss. */
 const impactShape = new SphereGeometry(0.006, 8, 6)
@@ -288,7 +290,8 @@ function clearShots(): void {
 /** A pull in debug: every round where the server would send it, its tracer, where it stopped, the tally. */
 function debugShot(gun: Gun): void {
     const rounds = roundsOf(gun, situation(), ++shotSeq)
-    const from = state.view === 'hands' ? viewmodel.muzzleIn() : EYE.clone()
+    // Judged from the eyes (as the server does), drawn from the muzzle.
+    const from = viewmodel.muzzleIn()
     const now = performance.now()
     tally.pulls++
     for (const round of rounds) {
@@ -731,11 +734,18 @@ function showDebug(gun: Gun | null, progress: number | null, real: number, dt: n
     const half = gun ? coneOf(gun, s).total : STAPLER.arc
     target.position.set(0, 0, -state.range)
     board.position.set(0, aimHeight(state.at), -state.range)
-    // The 3D cone only shows from outside it: inspecting.
-    const length = state.range
+    // The 3D cone only shows from outside it: inspecting. From the gun's muzzle to the circle the
+    // rounds land in at the target (they're judged from the eyes, so that circle is the true one).
     cone.visible = !hands && gun !== null && half > 0
-    cone.scale.set(Math.tan(half) * length, Math.tan(half) * length, length)
-    cone.rotation.set(aimPitch(s), 0, 0)
+    if (cone.visible) {
+        const muzzle = viewmodel.muzzleIn()
+        const spot = EYE.clone().addScaledVector(aimDirection(0, aimPitch(s)), state.range)
+        const along = spot.clone().sub(muzzle)
+        const ring = Math.tan(half) * state.range
+        cone.position.copy(muzzle)
+        cone.quaternion.setFromUnitVectors(FORWARD, along.clone().normalize())
+        cone.scale.set(ring, ring, along.length())
+    }
 
     // On the screen: radius = tan(cone) / tan(half the view) × half the screen's height.
     const radius = (Math.tan(half) / Math.tan(((camera.fov / 2) * Math.PI) / 180)) * (innerHeight / 2)
