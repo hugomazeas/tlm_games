@@ -76,6 +76,12 @@ function agrees(a: Body, b: Body): boolean {
         a.onGround === b.onGround &&
         a.dashLeft === b.dashLeft &&
         a.dashCooldown === b.dashCooldown &&
-        a.jetBoost === b.jetBoost
+        a.jetBoost === b.jetBoost &&
+        // The powers in the body: a pickup the server gave you has to reach your prediction.
+        a.overtime === b.overtime &&
+        a.espresso === b.espresso &&
+        a.big === b.big &&
+        a.small === b.small &&
+        a.portalCooldown === b.portalCooldown
     )
 }

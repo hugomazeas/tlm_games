@@ -1,4 +1,5 @@
 import type { Gun } from '../protocol.ts'
+import type { PickupKind } from '../sim/places.ts'
 
 /**
  * Every sound in the game, made on the spot with Web Audio: oscillators with pitch sweeps and
@@ -178,6 +179,19 @@ export class Sounds {
         if (this.jet) this.jet.gain.gain.setTargetAtTime(on ? 0.18 : 0, this.ctx.currentTime, on ? 0.04 : 0.08)
     }
 
+    /** A jump pad throws you: a springy boing. */
+    pad(): void {
+        this.tone('sine', 180, 700, 0.25, 0.3)
+        this.tone('triangle', 360, 1400, 0.2, 0.12, 0.03)
+    }
+
+    /** Through a portal: a falling warble and a whoosh. */
+    portal(): void {
+        this.tone('sine', 1400, 200, 0.4, 0.2)
+        this.tone('sine', 1500, 240, 0.4, 0.12, 0.04)
+        this.burst(0.35, 'bandpass', 800, 3000, 0.3)
+    }
+
     /** Back in after being down. */
     spawn(): void {
         for (const [i, f] of [523, 659, 784].entries()) this.tone('sine', f, f, 0.18, 0.18, i * 0.07)
@@ -205,8 +219,37 @@ export class Sounds {
     }
 
     /** A pickup, its own chime: health a warm rise, ammo a metal clack, jetpack a whoosh up, headshot rounds an ominous ring. */
-    pickup(kind: 'health' | 'magazine' | 'jetpack' | 'headshot'): void {
-        if (kind === 'health') {
+    pickup(kind: PickupKind): void {
+        if (kind === 'overtime') {
+            // A heavy clock: two deep tocks and a grinding hum.
+            this.tone('square', 110, 110, 0.12, 0.25)
+            this.tone('square', 98, 98, 0.12, 0.25, 0.25)
+            this.tone('sawtooth', 55, 70, 0.6, 0.12, 0.1)
+        } else if (kind === 'promotion') {
+            // Growing: a long slide down, then a fanfare.
+            this.tone('sawtooth', 600, 120, 0.5, 0.15)
+            for (const [i, f] of [392, 523, 659].entries()) this.tone('square', f, f, 0.2, 0.12, 0.45 + i * 0.09)
+        } else if (kind === 'firewall') {
+            this.tone('sine', 300, 1200, 0.3, 0.2)
+            this.burst(0.3, 'highpass', 4000, 6000, 0.2)
+        } else if (kind === 'espresso') {
+            // A quick, jittery trill.
+            for (let i = 0; i < 6; i++) {
+                const f = 900 + (i % 2) * 300
+                this.tone('triangle', f, f, 0.05, 0.15, i * 0.04)
+            }
+        } else if (kind === 'intern') {
+            // Shrinking: a slide up into a squeak.
+            this.tone('sine', 300, 1800, 0.35, 0.2)
+            this.tone('square', 2400, 2600, 0.06, 0.08, 0.35)
+        } else if (kind === 'bonus') {
+            // Coins.
+            for (const [i, f] of [1568, 2093, 2637].entries()) this.tone('square', f, f, 0.08, 0.1, i * 0.06)
+        } else if (kind === 'orgchart') {
+            // A sonar ping.
+            this.tone('sine', 1200, 1150, 0.7, 0.2)
+            this.tone('sine', 1200, 1150, 0.5, 0.08, 0.35)
+        } else if (kind === 'health') {
             this.tone('sine', 440, 880, 0.25, 0.3)
             this.tone('sine', 660, 1320, 0.25, 0.15, 0.05)
         } else if (kind === 'magazine') {

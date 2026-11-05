@@ -4,6 +4,7 @@ import {
     Color,
     ConeGeometry,
     CylinderGeometry,
+    GreaterDepth,
     Group,
     Mesh,
     MeshBasicMaterial,
@@ -11,10 +12,12 @@ import {
     type Scene,
     SphereGeometry,
     TorusGeometry,
+    Vector3,
 } from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
-import { type Gun, type PlayerInfo, TEAM_COLORS } from '../protocol.ts'
-import { PLAYER } from '../sim/movement.ts'
+import { type BuffKind, type Gun, type PlayerInfo, TEAM_COLORS } from '../protocol.ts'
+import { powersOf } from '../sim/combat.ts'
+import { PLAYER, scaleOf } from '../sim/movement.ts'
 import { BUFF_COLORS } from './hud.ts'
 import type { Pose } from './timeline.ts'
 
@@ -75,7 +78,10 @@ const shape = {
     warhead: new ConeGeometry(0.022, 0.045, 12).rotateX(-Math.PI / 2),
     ringSight: new TorusGeometry(0.012, 0.002, 6, 16),
     shield: new SphereGeometry(0.29, 24, 16),
+    firewall: new SphereGeometry(0.27, 6, 4),
     halo: new TorusGeometry(0.07, 0.008, 6, 28),
+    // The Org chart's silhouette: the capsule shots take, seen through anything.
+    xray: new CapsuleGeometry(PLAYER.radius, PLAYER.height - 2 * PLAYER.radius, 4, 12),
 }
 const metal = new MeshStandardMaterial({ color: 0x3b4048, roughness: 0.35, metalness: 0.75 })
 const dark = new MeshStandardMaterial({ color: 0x1d2026, roughness: 0.55, metalness: 0.2 })
@@ -91,6 +97,24 @@ const red = new MeshStandardMaterial({ color: 0xc8372d, roughness: 0.45 })
 const flameMaterial = new MeshBasicMaterial({ color: 0xff8a2a, transparent: true, opacity: 0.8, depthWrite: false })
 const coreMaterial = new MeshBasicMaterial({ color: 0xfff1b0, transparent: true, opacity: 0.95, depthWrite: false })
 const shieldMaterial = new MeshBasicMaterial({ color: 0x9fe3ff, transparent: true, opacity: 0.16, depthWrite: false })
+/** The firewall: a faceted cyan cage, wireframe over a faint fill. */
+const firewallMaterial = new MeshBasicMaterial({
+    color: 0x33e0ff,
+    transparent: true,
+    opacity: 0.55,
+    wireframe: true,
+    depthWrite: false,
+})
+/** The tip of each gun's muzzle in its model (where others' tracers start): the muzzle parts' fronts below. */
+const MUZZLES: Record<Gun, Vector3> = {
+    rifle: new Vector3(0, 0.006, -0.196),
+    sniper: new Vector3(0, 0.004, -0.276),
+    shotgun: new Vector3(0, 0.008, -0.171),
+    pistol: new Vector3(0, 0.004, -0.046),
+    launcher: new Vector3(0, 0, -0.16),
+}
+/** Halo colours in order of how much they matter to whoever faces them (sizes and the firewall show for themselves). */
+const HALO_ORDER: readonly BuffKind[] = ['bonus', 'headshot', 'overtime', 'espresso', 'orgchart', 'jetpack', 'magazine']
 
 interface Avatar {
     root: Group
@@ -107,7 +131,9 @@ interface Avatar {
     head: Group
     flames: Group[]
     shield: Mesh
+    firewall: Mesh
     halo: Mesh
+    xray: Mesh
     suit: MeshStandardMaterial
     trim: MeshStandardMaterial
     name: string
@@ -124,8 +150,17 @@ export class Avatars {
 
     constructor(private readonly scene: Scene) {}
 
-    /** Draws everyone in `poses` but `hidden` (you, in first person); forgets who's gone. `now` in ms. */
-    update(poses: Map<string, Pose>, roster: Map<string, PlayerInfo>, hidden: string | null, now: number): void {
+    /**
+     * Draws everyone in `poses` but `hidden` (you, in first person); forgets who's gone. `now` in ms.
+     * `xray` (your Org chart): everyone also shows through walls.
+     */
+    update(
+        poses: Map<string, Pose>,
+        roster: Map<string, PlayerInfo>,
+        hidden: string | null,
+        now: number,
+        xray = false
+    ): void {
         for (const [id, avatar] of this.avatars) {
             if (!poses.has(id) || id === hidden) this.remove(id, avatar)
         }
@@ -141,6 +176,7 @@ export class Avatars {
                 continue
             }
             this.pose(avatar, pose, now)
+            avatar.xray.visible = xray
         }
     }
 
@@ -161,13 +197,27 @@ export class Avatars {
         const avatar = this.avatars.get(id)
         if (!avatar?.root.visible) return null
         const { x, y, z } = avatar.root.position
-        return { x, y: y + PLAYER.height / 2, z }
+        return { x, y: y + (PLAYER.height / 2) * avatar.root.scale.y, z }
+    }
+
+    /** The muzzle of the gun in someone's hands, in the world, while they're drawn holding one. */
+    muzzleOf(id: string): Vector3 | null {
+        const avatar = this.avatars.get(id)
+        if (!avatar?.root.visible) return null
+        for (const [gun, model] of Object.entries(avatar.guns) as Array<[Gun, Group]>) {
+            if (!model.visible) continue
+            model.updateWorldMatrix(true, false)
+            return model.localToWorld(MUZZLES[gun].clone())
+        }
+        return null
     }
 
     private pose(avatar: Avatar, pose: Pose, now: number): void {
         const { root } = avatar
         root.position.set(pose.x, pose.y, pose.z)
         root.rotation.y = pose.yaw
+        // A Promotion or an Intern: drawn at their size (the capsule the server uses grows the same).
+        root.scale.setScalar(scaleOf(powersOf(pose.state.buffs)))
 
         // Speed over the ground, from how far they moved since the last frame (smoothed).
         const dt = avatar.last ? Math.max(1, now - avatar.last.at) / 1000 : 0
@@ -205,7 +255,9 @@ export class Avatars {
         }
         avatar.shield.visible = pose.state.shielded
         // Powers show: a spinning halo over the head, in the colour of the most dangerous one.
-        const buff = (['headshot', 'jetpack', 'magazine'] as const).find(b => pose.state.buffs.includes(b))
+        const buff = HALO_ORDER.find(b => pose.state.buffs.includes(b))
+        avatar.firewall.visible = pose.state.buffs.includes('firewall')
+        if (avatar.firewall.visible) avatar.firewall.rotation.y = -now * 0.0015
         avatar.halo.visible = buff !== undefined
         if (buff) {
             ;(avatar.halo.material as MeshBasicMaterial).color.set(BUFF_COLORS[buff])
@@ -378,6 +430,26 @@ export class Avatars {
         const shield = new Mesh(shape.shield, shieldMaterial)
         shield.position.y = PLAYER.height / 2
         root.add(shield)
+        const firewall = new Mesh(shape.firewall, firewallMaterial)
+        firewall.position.y = PLAYER.height / 2
+        firewall.visible = false
+        root.add(firewall)
+        // While you hold the Org chart they show through walls: drawn last, and only where something
+        // already drawn is in front of them (out in the open you see the mini itself, not this).
+        const xray = new Mesh(
+            shape.xray,
+            new MeshBasicMaterial({
+                color: new Color(color),
+                transparent: true,
+                opacity: 0.55,
+                depthFunc: GreaterDepth,
+                depthWrite: false,
+            })
+        )
+        xray.position.y = PLAYER.height / 2
+        xray.renderOrder = 10
+        xray.visible = false
+        root.add(xray)
 
         this.scene.add(root)
         const avatar: Avatar = {
@@ -389,7 +461,9 @@ export class Avatars {
             head,
             flames,
             shield,
+            firewall,
             halo,
+            xray,
             suit,
             trim,
             name,
@@ -411,6 +485,7 @@ export class Avatars {
         this.scene.remove(avatar.root)
         avatar.suit.dispose()
         avatar.trim.dispose()
+        ;(avatar.xray.material as MeshBasicMaterial).dispose()
         this.avatars.delete(id)
     }
 }

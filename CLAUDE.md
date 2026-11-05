@@ -263,11 +263,28 @@ Playable at `/games/office-fps`.
   moving every `ZONE_MS` (60 s); alone in it you score a second a second (`points`), contested
   scores nobody; the limit is ×`ZONE_SECONDS_PER_POINT` seconds, else most zone time at the
   end. Snapshots carry `zone`; the HUD shows a status line and an on-screen marker (`showZone`).
-- **Pickups** (`sim/places.ts`: `PICKUP_SPOTS`, `PICKUPS`; collected in `arena.ts`, part of
-  `FpsWorld` so test rooms have none): health (+50, only when hurt), big magazine (×1.5, 60 s),
-  jetpack extender (fuel ×4 via `Body.jetBoost`, 60 s), headshot rounds (any headshot kills,
-  30 s). Timed ones are lost on death and shown to everyone (`PlayerState.buffs`: a halo on the
-  avatar, icons on the target label, a kill-feed line on `pickup`).
+- **Pickups** (`sim/places.ts`: `PICKUP_SPOTS`, `PICKUPS` and each power's numbers; collected in
+  `arena.ts`, part of `FpsWorld` so test rooms have none): health (+50, only when hurt), big
+  magazine (×1.5, 60 s), jetpack extender (fuel ×4, 60 s), headshot rounds (any headshot kills,
+  a giant and a firewall too, 30 s), and the office powers: **Overtime** (walk ×0.6, no jetpack or
+  dodge, +100 health, never reloads, 30 s), **Promotion** (3× the size, 500 health, walk ×0.8,
+  20 s), **Firewall** (soaks the next 75 damage, ≤30 s), **Espresso** (walk ×1.6, dodge cooldown
+  halved, 20 s), **Intern** (half size, 60 health, 30 s), **Bonus** (double damage, 15 s), **Org
+  chart** (everyone shows through walls, to you, 15 s). Opposites end each other (Overtime /
+  Espresso, Promotion / Intern). Powers that change how you move live in the `Body`
+  (`jetBoost`, `overtime`, `espresso`, `big`, `small`: steps left), so `stepBody` runs them and your
+  browser predicts them; the rest are the fighter's. Size (`scaleOf`, `sizeAt`) scales the collision
+  capsule, the eyes (`eyeOf`), the hit capsule (`Target.scale` in `rayCapsule`, the rewind keeps
+  it), the stapler's reach and the avatar; an Intern grows back only where a mini fits. Full health
+  is `maxHealthOf` (from the body, or from a player's buffs via `powersOf`). All lost on death and
+  shown to everyone (`PlayerState.buffs`: a halo, the firewall's cage, the size, icons on the target
+  label, a kill-feed line on `pickup`; your own buffs carry the firewall's `points`).
+- **Jump pads and portals** (`PADS`, `PORTALS` in `sim/places.ts`, in `FpsWorld`; drawn by
+  `PadViews` / `PortalViews` in `client/pickups.ts`): standing on a pad throws you about 2 m up, no
+  fuel; a portal (in pairs: 0 ↔ 1, the kitchen ↔ the far end of office 2) puts you out of its
+  partner on its `out` side, moving as you were, and none takes you again for a second. Both are in
+  `stepBody`, so they're predicted; `places.test.ts` keeps them on open floor (giant-sized at the
+  portals' exits and the big powers' spots) and clear of spawns and pickups.
 - **Callouts** (`client/callouts.ts`, pure): kill events carry `killerStreak`, `victimStreak`,
   `firstBlood`; `announce` turns them into feed lines and your banner (double kill … shutdown),
   `taunt` the line under "Fragged by". Awards (`awardsFor` in `lobby.ts`) show on the scoreboard.
@@ -329,6 +346,13 @@ Playable at `/games/office-fps`.
   20% fuel, 1.5 s cooldown; walking is 2 m/s, kept slow enough to track a 24 cm mini, in `stepBody` so it's predicted and checked), click fires,
   right-click aims (the gun's zoom, mouse slowed to match, the gun on its sights), V
   first/third person.
+- **Health comes back** (`REGEN` in `sim/combat.ts`, `Arena.regenerate`): 3 s after it last went
+  down, 10 a second, up to 80 (never past full). Health is sent rounded up. Under 50 the screen's
+  edges bleed (`.blood` in `hud.ts`, `LOW_HEALTH`), under 30 with a heartbeat and the health blinking.
+- **Crosshair:** four ticks on the hip-fire cone (`spreadOf` through the camera's field of view,
+  `hud.spread`): wider walking and in the air, gone while aiming. Shots are judged from the eyes,
+  but every tracer is drawn from a muzzle: yours from the viewmodel's, others' from their trooper's
+  gun (`Avatars.muzzleOf`); the gun lab's 3D cone runs from the muzzle to the circle at the target.
 - **Feedback:** shot events carry the `damage` they did (0 on a spawn shield). Your hits: a
   marker (gold on a headshot), the number where it landed, a big red marker and "Eliminated"
   on a kill. Hits on you: a red arc toward the shooter. Names and health show only over the

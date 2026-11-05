@@ -334,6 +334,19 @@ describe('prediction', () => {
         expect(prediction.unacknowledged).toBe(110)
     })
 
+    test('a power the server gave (a pickup) reaches the prediction, even where it agrees on the rest', () => {
+        const all = frames(20)
+        const prediction = new Prediction(world)
+        prediction.body = bodyAt(0, 0, 0)
+        for (const f of all) prediction.apply(f, true)
+        let server = bodyAt(0, 0, 0)
+        for (const f of all.slice(0, 10)) server = stepBody(world, server, moveOf(f))
+
+        // A Promotion taken on frame 10: same place, same speed, but a giant from here on.
+        prediction.reconcile(10, { ...server, big: 1200 }, true)
+        expect(prediction.body!.big).toBe(1200 - 10)
+    })
+
     test('when the server disagrees (a respawn), the browser follows it and says how far it jumped', () => {
         const prediction = new Prediction(world)
         prediction.body = bodyAt(0, 0, 0)

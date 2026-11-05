@@ -20,14 +20,14 @@ export const THIRD_PERSON = {
     margin: 0.05,
 }
 
-/** Where the camera sits for eyes at `eye` looking along yaw/pitch. */
-export function thirdPersonCamera(world: FpsWorld, eye: Vector3, yaw: number, pitch: number): Vector3 {
+/** Where the camera sits for eyes at `eye` looking along yaw/pitch, for a mini `scale` times the usual size. */
+export function thirdPersonCamera(world: FpsWorld, eye: Vector3, yaw: number, pitch: number, scale = 1): Vector3 {
     const look = aimDirection(yaw, pitch)
     const right = new Vector3(Math.cos(yaw), 0, -Math.sin(yaw))
-    const offset = right.multiplyScalar(THIRD_PERSON.shoulder).add(new Vector3(0, THIRD_PERSON.up, 0))
+    const offset = right.multiplyScalar(THIRD_PERSON.shoulder * scale).add(new Vector3(0, THIRD_PERSON.up * scale, 0))
     const pivot = eye.clone().add(along(world, eye, offset))
 
-    return pivot.add(along(world, pivot, look.multiplyScalar(-THIRD_PERSON.back)))
+    return pivot.add(along(world, pivot, look.multiplyScalar(-THIRD_PERSON.back * scale)))
 }
 
 /** The yaw and pitch that send a shot from `eye` to what the camera's centre sees. */

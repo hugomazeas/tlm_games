@@ -27,21 +27,23 @@ import {
     eyeOf,
     GUNS,
     LAUNCHER,
+    maxHealthOf,
+    powersOf,
     reloadMsOf,
     spreadDirection,
     spreadOf,
     STAPLER,
     SWITCH_MS,
 } from '../sim/combat.ts'
-import { MOVE, PLAYER, STEP_MS } from '../sim/movement.ts'
-import { PICKUP_SPOTS, type PickupKind, PICKUPS, ZONES } from '../sim/places.ts'
+import { MOVE, PLAYER, scaleOf, STEP_MS } from '../sim/movement.ts'
+import { PICKUP_SPOTS, type PickupKind, PICKUPS, PORTAL, ZONES } from '../sim/places.ts'
 import { rayDistance, worldFrom } from '../sim/world.ts'
 import { Avatars } from './avatars.ts'
 import { announce, taunt } from './callouts.ts'
 import { Controls } from './controls.ts'
 import { Effects } from './effects.ts'
 import { BUFF_LABELS, type DeathCause, escape, Hud } from './hud.ts'
-import { PICKUP_COLORS, PickupViews, ZoneView } from './pickups.ts'
+import { PadViews, PICKUP_COLORS, PickupViews, PortalViews, ZoneView } from './pickups.ts'
 import { Prediction } from './prediction.ts'
 import { aimFov, loadSettings, saveSettings } from './settings.ts'
 import { reloadProgress, Sounds, spatial } from './sounds.ts'
@@ -97,6 +99,8 @@ scene.add(camera)
 const office = buildOffice(scene, renderer)
 const world = worldFrom(office)
 const pickupViews = new PickupViews(scene)
+const padViews = new PadViews(scene, world.pads)
+const portalViews = new PortalViews(scene, world.portals)
 const zoneView = new ZoneView(scene)
 addEventListener('resize', () => {
     renderer.setSize(innerWidth, innerHeight)
@@ -401,9 +405,9 @@ function onEvent(event: GameEvent, now: number): void {
         }
         const color = parseInt((roster.get(event.by)?.color ?? '#ffffff').slice(1), 16)
         const style = event.weapon === 'sniper' ? SNIPER_TRACER : {}
-        for (const to of event.to) {
-            effects.tracer(new Vector3(...event.from), new Vector3(...to), color, now, event.hit !== null, style)
-        }
+        // Judged from their eyes, drawn from their gun's muzzle (the eyes while they aren't drawn).
+        const from = avatars.muzzleOf(event.by) ?? new Vector3(...event.from)
+        for (const to of event.to) effects.tracer(from, new Vector3(...to), color, now, event.hit !== null, style)
         sounds.otherShot(event.weapon, spatial(listener(), { x: event.from[0], z: event.from[2] }))
         // Hit: which way it came from, and how hard.
         if (event.hit === me && event.damage > 0) {
@@ -504,6 +508,13 @@ const PICKUP_TOASTS: Record<PickupKind, string> = {
     magazine: 'BIG MAGAZINE: 18 ROUNDS FOR 60 s',
     jetpack: 'JETPACK ×4 FOR 60 s',
     headshot: 'ONE-SHOT HEADSHOTS FOR 30 s',
+    overtime: 'OVERTIME: 200 HEALTH, NO RELOADS, GROUNDED, 30 s',
+    promotion: 'PROMOTION: 3× BIGGER, 500 HEALTH, 20 s',
+    firewall: 'FIREWALL: SOAKS 75 DAMAGE',
+    espresso: 'ESPRESSO: FASTER, QUICKER DODGE, 20 s',
+    intern: 'INTERN: HALF SIZE, 60 HEALTH, 30 s',
+    bonus: 'BONUS: DOUBLE DAMAGE FOR 15 s',
+    orgchart: 'ORG CHART: SEE EVERYONE THROUGH WALLS, 15 s',
 }
 
 /** A point in the world on screen (px), or null when it's behind the camera. */
@@ -566,12 +577,18 @@ function step(now: number): void {
         view: Math.max(0, Math.floor(clock.renderStep(now) ?? 0)),
         slot: controls.slot,
     }
-    jetting = Boolean(input.buttons & BUTTON.jet) && (body?.fuel ?? 0) > 0
+    // Overtime grounds you: no jetpack.
+    jetting = Boolean(input.buttons & BUTTON.jet) && (body?.fuel ?? 0) > 0 && (body?.overtime ?? 0) === 0
+    const before = prediction.body
     prediction.apply(input, self.alive)
     outbox.push(input)
     if (outbox.length >= SEND_EVERY) flush()
     // A dodge that went off (the body just started one), and the jetpack's rumble while it burns.
-    if (self.alive && prediction.body?.dashLeft === MOVE.dashSteps) sounds.dash()
+    const after = prediction.body
+    if (self.alive && after?.dashLeft === MOVE.dashSteps) sounds.dash()
+    // A jump pad threw you (nothing else kicks you up that hard from the floor), or a portal took you.
+    if (self.alive && before?.onGround && after && after.vy - before.vy > 4) sounds.pad()
+    if (self.alive && after?.portalCooldown === PORTAL.cooldownSteps) sounds.portal()
     sounds.jetting(jetting && self.alive && controls.locked)
 
     // A new weapon in hand: like the server, it can't be used for a moment.
@@ -623,7 +640,8 @@ function fireLocally(gun: Gun, input: InputFrame, now: number): void {
     const eye = eyeOf(body)
     const aim = aimDirection(input.yaw, input.pitch)
     const cone = spreadOf(spec, Boolean(input.buttons & BUTTON.aim), body)
-    const from = viewmodel && !thirdPerson ? viewmodel.muzzleIn() : eye
+    // From the gun in your hands; in third person, your trooper's.
+    const from = viewmodel && !thirdPerson ? viewmodel.muzzleIn() : ((me ? avatars.muzzleOf(me) : null) ?? eye)
     for (let pellet = 0; pellet < spec.pellets; pellet++) {
         const direction = spreadDirection(aim, cone, input.seq, pellet)
         const end = eye.clone().addScaledVector(direction, rayDistance(world, eye, direction, spec.range))
@@ -634,7 +652,8 @@ function fireLocally(gun: Gun, input: InputFrame, now: number): void {
 /** In third person the camera isn't at your eyes: aim them at what the crosshair is on. */
 function aimThirdPerson(eye: Vector3): { yaw: number; pitch: number } {
     const { yaw, pitch } = controls
-    return aimFromCamera(world, eye, thirdPersonCamera(world, eye, yaw, pitch), yaw, pitch)
+    const scale = prediction.body ? scaleOf(prediction.body) : 1
+    return aimFromCamera(world, eye, thirdPersonCamera(world, eye, yaw, pitch, scale), yaw, pitch)
 }
 
 function flush(): void {
@@ -658,6 +677,8 @@ function sendIdle(): void {
 let lastDraw = performance.now()
 /** 0 at the hip … 1 aiming, eased. */
 let aimBlend = 0
+/** The crosshair's cone on the screen (px from the middle), eased; null: no gun cone. */
+let spreadPx: number | null = null
 
 function draw(now: number): void {
     const dt = Math.min(0.1, (now - lastDraw) / 1000)
@@ -668,8 +689,10 @@ function draw(now: number): void {
     office.ceiling.visible = Boolean(self)
     const third = thirdPerson && Boolean(self?.alive)
     if (self && body) {
-        const eye = new Vector3(body.x, body.y + PLAYER.eye, body.z).add(smoothing)
-        camera.position.copy(third ? thirdPersonCamera(world, eye, controls.yaw, controls.pitch) : eye)
+        // Your eyes at your size (high on a Promotion, low as an Intern); the third-person camera keeps its distance in proportion.
+        const eye = eyeOf(body).add(smoothing)
+        const behind = thirdPersonCamera(world, eye, controls.yaw, controls.pitch, scaleOf(body))
+        camera.position.copy(third ? behind : eye)
         camera.rotation.set(self.alive ? controls.pitch : -0.5, controls.yaw, 0)
         if (!self.alive) camera.position.y += 0.4
     } else if (me) {
@@ -696,6 +719,15 @@ function draw(now: number): void {
     const aimedSensitivity = 1 + (settings.aimSensitivity - 1) * aimBlend
     controls.sensitivityScale = settings.sensitivity * (fov / hipFov) * aimedSensitivity
     hud.aiming = aimingNow
+    // The crosshair's ticks on the hip-fire cone (wider moving, wider still in the air), eased.
+    const cone =
+        self?.alive && body && held !== 'stapler' && held !== 'launcher' ? spreadOf(GUNS[held], false, body) : null
+    if (cone === null) spreadPx = null
+    else {
+        const target = (Math.tan(cone) / Math.tan((camera.fov * Math.PI) / 360)) * (innerHeight / 2)
+        spreadPx = spreadPx === null ? target : spreadPx + (target - spreadPx) * Math.min(1, dt * 14)
+    }
+    hud.spread(spreadPx)
     // A reload: the ring by the crosshair and the gun's animation, run to its end between snapshots.
     const reloading = Boolean(
         self?.alive && self.reloading && held !== 'stapler' && self.weapon === held && reloadEndsAt !== null
@@ -737,7 +769,9 @@ function draw(now: number): void {
         }
         poses.set(me, { ...where, ...facing, state })
     }
-    avatars.update(poses, roster, third ? null : me, now)
+    // The Org chart: everyone shows through the walls.
+    const xray = Boolean(self?.alive && self.buffs.some(b => b.kind === 'orgchart'))
+    avatars.update(poses, roster, third ? null : me, now, xray)
     effects.update(now)
     // Rockets fly straight: from the last snapshot, ahead by their speed.
     const ahead = (now - rocketsAt) / 1000
@@ -746,6 +780,8 @@ function draw(now: number): void {
         now
     )
     pickupViews.update(pickupsReady, now)
+    padViews.update(now)
+    portalViews.update(now)
     zoneView.update(zone, colorOf, zone !== null && zone.holder === me, now)
     showZone(now)
     showTarget(poses)
@@ -796,13 +832,16 @@ function showTarget(poses: Map<string, Pose>): void {
     const look = camera.getWorldDirection(new Vector3())
     const candidates = [...poses.values()]
         .filter(p => p.state.id !== me)
-        .map(p => ({ ...p, id: p.state.id, alive: p.state.alive }))
+        .map(p => ({ ...p, id: p.state.id, alive: p.state.alive, scale: scaleOf(powersOf(p.state.buffs)) }))
     const id = targetUnderCrosshair(world, camera.position, look, candidates)
     const pose = id ? poses.get(id) : undefined
-    const at = pose ? toScreen(new Vector3(pose.x, pose.y + PLAYER.height + 0.08, pose.z)) : null
-    if (!id || !pose || !at) return hud.target(null)
+    const powers = pose ? powersOf(pose.state.buffs) : null
+    const top = pose && powers ? pose.y + PLAYER.height * scaleOf(powers) + 0.08 : 0
+    const at = pose ? toScreen(new Vector3(pose.x, top, pose.z)) : null
+    if (!id || !pose || !powers || !at) return hud.target(null)
     const info = roster.get(id)
     const buffs = pose.state.buffs.map(kind => BUFF_LABELS[kind].icon).join('')
     const label = `${info?.name ?? '?'}${buffs ? ` ${buffs}` : ''}`
-    hud.target({ name: label, color: colorOf(id), health: pose.state.health }, at.x, at.y)
+    const who = { name: label, color: colorOf(id), health: pose.state.health, maxHealth: maxHealthOf(powers) }
+    hud.target(who, at.x, at.y)
 }

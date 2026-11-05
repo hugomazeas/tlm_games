@@ -20,6 +20,8 @@ export interface Candidate {
     y: number
     z: number
     alive: boolean
+    /** Their size (1 when absent). */
+    scale?: number
 }
 
 export function targetUnderCrosshair(
@@ -33,14 +35,15 @@ export function targetUnderCrosshair(
     const to = new Vector3()
     for (const other of others) {
         if (!other.alive) continue
-        to.set(other.x, other.y + PLAYER.height / 2, other.z).sub(origin)
+        const scale = other.scale ?? 1
+        to.set(other.x, other.y + (PLAYER.height / 2) * scale, other.z).sub(origin)
         const distance = to.length()
         if (distance < 0.05 || distance > TARGET_RANGE) continue
         to.divideScalar(distance)
         const angle = Math.acos(Math.max(-1, Math.min(1, to.dot(direction))))
-        if (angle > Math.atan2(LEEWAY, distance) || angle >= bestAngle) continue
+        if (angle > Math.atan2(LEEWAY * scale, distance) || angle >= bestAngle) continue
         // A wall, glass or a desk in between: you can't see who it is.
-        if (rayDistance(world, origin, to, distance) < distance - PLAYER.radius) continue
+        if (rayDistance(world, origin, to, distance) < distance - PLAYER.radius * scale) continue
         best = other.id
         bestAngle = angle
     }

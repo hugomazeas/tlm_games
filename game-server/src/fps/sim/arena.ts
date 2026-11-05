@@ -17,7 +17,16 @@ import {
     type Weapon,
     weaponIn,
 } from '../protocol.ts'
-import { HEALTH_PACK, MAGAZINE_FACTOR, PICKUP_HEIGHT, PICKUP_REACH, PICKUPS } from './places.ts'
+import {
+    BONUS,
+    FIREWALL,
+    HEALTH_PACK,
+    MAGAZINE_FACTOR,
+    OVERTIME,
+    PICKUP_HEIGHT,
+    PICKUP_REACH,
+    PICKUPS,
+} from './places.ts'
 import {
     aimDirection,
     damageAt,
@@ -27,7 +36,9 @@ import {
     LAUNCHER,
     magazineOf,
     MAX_HEALTH,
+    maxHealthOf,
     rayCapsule,
+    REGEN,
     reloadMsOf,
     spreadDirection,
     spreadOf,
@@ -36,7 +47,7 @@ import {
     swingStapler,
     type Target,
 } from './combat.ts'
-import { type Body, bodyAt, isJetting, moveOf, PLAYER, STEP_MS, stepBody } from './movement.ts'
+import { type Body, bodyAt, isJetting, moveOf, scaleOf, sizeAt, STEP_MS, stepBody } from './movement.ts'
 import { type FpsWorld, rayDistance } from './world.ts'
 
 /**
@@ -48,6 +59,8 @@ const steps = (ms: number): number => Math.round(ms / STEP_MS)
 
 export const RESPAWN_STEPS = steps(3000)
 export const SHIELD_STEPS = steps(1500)
+const REGEN_DELAY_STEPS = steps(REGEN.delayMs)
+const REGEN_PER_STEP = (REGEN.perSecond * STEP_MS) / 1000
 /** How far back a shot may be judged (200 ms): further, and the shooter's lag is their problem. */
 export const MAX_REWIND_STEPS = steps(200)
 /** Inputs waiting per player (half a second); a flood drops the oldest. */
@@ -126,9 +139,19 @@ interface Fighter {
     team: Team | null
     /** Kills since they last went down. */
     lifeKills: number
-    /** Powers from pickups, until these steps (0: none); all lost going down. The jetpack's lives in the body. */
+    /**
+     * Powers from pickups, until these steps (0: none); all lost going down. Those that change how
+     * you move (the jetpack's, Overtime, Espresso, Promotion, Intern) live in the body.
+     */
     magazineUntil: number
     headshotUntil: number
+    bonusUntil: number
+    orgchartUntil: number
+    /** The firewall: damage it still soaks, until it breaks or this step. */
+    firewall: number
+    firewallUntil: number
+    /** The step their health last went down: it comes back REGEN.delayMs after. */
+    hurtAt: number
     /** Who hurt them this life (for the death recap): hits, damage, headshots, the step of the first. */
     taken: Map<string, { hits: number; damage: number; headshots: number; since: number }>
 }
@@ -192,6 +215,11 @@ export class Arena {
             lifeKills: 0,
             magazineUntil: 0,
             headshotUntil: 0,
+            bonusUntil: 0,
+            orgchartUntil: 0,
+            firewall: 0,
+            firewallUntil: 0,
+            hurtAt: 0,
             taken: new Map(),
         }
         this.fighters.set(id, fighter)
@@ -291,6 +319,13 @@ export class Arena {
                 fighter.jetting = false
             }
             if (fighter.alive) this.collect(fighter, events)
+            // A Promotion or Overtime running out: their health back down to what they can hold now.
+            fighter.health = Math.min(fighter.health, maxHealthOf(fighter.body))
+            if (fighter.alive) this.regenerate(fighter)
+            if (fighter.firewallUntil > 0 && this.step >= fighter.firewallUntil) {
+                fighter.firewall = 0
+                fighter.firewallUntil = 0
+            }
             // A big magazine running out: back to the usual size.
             if (fighter.magazineUntil > 0 && this.step >= fighter.magazineUntil) {
                 fighter.magazineUntil = 0
@@ -327,7 +362,7 @@ export class Arena {
             yaw: round(f.yaw, 3),
             pitch: round(f.pitch, 3),
             alive: f.alive,
-            health: f.alive ? f.health : 0,
+            health: f.alive ? Math.ceil(f.health) : 0,
             jet: f.alive && f.jetting,
             shielded: this.shielded(f),
             weapon: weaponIn(f.slot, f.loadout),
@@ -348,7 +383,8 @@ export class Arena {
         return {
             body: { ...f.body },
             alive: f.alive,
-            health: f.health,
+            // Regenerating, it climbs in fractions: whole points, rounded up (still alive shows at least 1).
+            health: Math.ceil(f.health),
             ammo: gun.ammo,
             reloading: gun.reloadUntil > f.clock,
             reloadLeftMs: gun.reloadUntil > f.clock ? Math.round((gun.reloadUntil - f.clock) * STEP_MS) : null,
@@ -364,17 +400,39 @@ export class Arena {
     }
 
     /** Their powers and what's left of each. */
-    private buffsOf(f: Fighter): Array<{ kind: BuffKind; leftMs: number }> {
-        const buffs: Array<{ kind: BuffKind; leftMs: number }> = []
+    private buffsOf(f: Fighter): Array<{ kind: BuffKind; leftMs: number; points?: number }> {
+        const buffs: Array<{ kind: BuffKind; leftMs: number; points?: number }> = []
         const left = (until: number) => Math.round((until - this.step) * STEP_MS)
-        if (f.magazineUntil > this.step) buffs.push({ kind: 'magazine', leftMs: left(f.magazineUntil) })
-        if (f.body.jetBoost > 0) buffs.push({ kind: 'jetpack', leftMs: Math.round(f.body.jetBoost * STEP_MS) })
-        if (f.headshotUntil > this.step) buffs.push({ kind: 'headshot', leftMs: left(f.headshotUntil) })
+        const inBody = (kind: BuffKind, steps: number) => {
+            if (steps > 0) buffs.push({ kind, leftMs: Math.round(steps * STEP_MS) })
+        }
+        const until = (kind: BuffKind, step: number) => {
+            if (step > this.step) buffs.push({ kind, leftMs: left(step) })
+        }
+        until('magazine', f.magazineUntil)
+        inBody('jetpack', f.body.jetBoost)
+        until('headshot', f.headshotUntil)
+        inBody('overtime', f.body.overtime)
+        inBody('promotion', f.body.big)
+        inBody('espresso', f.body.espresso)
+        inBody('intern', f.body.small)
+        if (f.firewall > 0 && f.firewallUntil > this.step) {
+            buffs.push({ kind: 'firewall', leftMs: left(f.firewallUntil), points: Math.ceil(f.firewall) })
+        }
+        until('bonus', f.bonusUntil)
+        until('orgchart', f.orgchartUntil)
         return buffs
     }
 
     private magazineOf(f: Fighter, gun: Gun): number {
         return magazineOf(gun, f.magazineUntil > this.step ? MAGAZINE_FACTOR : 1)
+    }
+
+    /** Left alone for REGEN.delayMs, health climbs back REGEN.perSecond, up to REGEN.upTo (or full, if less). */
+    private regenerate(f: Fighter): void {
+        const ceiling = Math.min(REGEN.upTo, maxHealthOf(f.body))
+        if (f.health >= ceiling || this.step - f.hurtAt < REGEN_DELAY_STEPS) return
+        f.health = Math.min(ceiling, f.health + REGEN_PER_STEP)
     }
 
     /** Takes any pickup they're standing on (health only when hurt), and sets it to come back later. */
@@ -383,20 +441,59 @@ export class Arena {
             if (this.step < this.pickupAt[index]!) return
             const near = Math.hypot(f.body.x - spot.x, f.body.z - spot.z) <= PICKUP_REACH
             if (!near || f.body.y > PICKUP_HEIGHT) return
-            if (spot.kind === 'health' && f.health >= MAX_HEALTH) return
+            if (spot.kind === 'health' && f.health >= maxHealthOf(f.body)) return
 
             const info = PICKUPS[spot.kind]
-            const until = this.step + steps(info.durationMs ?? 0)
-            if (spot.kind === 'health') f.health = Math.min(MAX_HEALTH, f.health + HEALTH_PACK)
-            if (spot.kind === 'magazine') {
-                f.magazineUntil = until
+            const lasts = steps(info.durationMs ?? 0)
+            const until = this.step + lasts
+            const refill = () => {
                 for (const slot of ['primary', 'secondary'] as const) {
                     f.guns[slot].ammo = this.magazineOf(f, gunIn(f, slot))
                     f.guns[slot].reloadUntil = 0
                 }
             }
-            if (spot.kind === 'jetpack') f.body = { ...f.body, jetBoost: steps(info.durationMs ?? 0), fuel: 1 }
-            if (spot.kind === 'headshot') f.headshotUntil = until
+            switch (spot.kind) {
+                case 'health':
+                    f.health = Math.min(maxHealthOf(f.body), f.health + HEALTH_PACK)
+                    break
+                case 'magazine':
+                    f.magazineUntil = until
+                    refill()
+                    break
+                case 'jetpack':
+                    f.body = { ...f.body, jetBoost: lasts, fuel: 1 }
+                    break
+                case 'headshot':
+                    f.headshotUntil = until
+                    break
+                // Overtime and Espresso are opposites, as are Promotion and Intern: one ends the other.
+                case 'overtime':
+                    f.body = { ...f.body, overtime: lasts, espresso: 0 }
+                    f.health = Math.min(maxHealthOf(f.body), f.health + OVERTIME.health)
+                    refill()
+                    break
+                case 'espresso':
+                    f.body = { ...f.body, espresso: lasts, overtime: 0 }
+                    break
+                case 'promotion':
+                    f.body = { ...f.body, big: lasts, small: 0 }
+                    f.health = maxHealthOf(f.body)
+                    break
+                case 'intern':
+                    f.body = { ...f.body, small: lasts, big: 0 }
+                    break
+                case 'firewall':
+                    f.firewall = FIREWALL
+                    f.firewallUntil = until
+                    break
+                case 'bonus':
+                    f.bonusUntil = until
+                    break
+                case 'orgchart':
+                    f.orgchartUntil = until
+                    break
+            }
+            f.health = Math.min(f.health, maxHealthOf(f.body))
             this.pickupAt[index] = this.step + steps(info.respawnMs)
             events.push({ type: 'pickup', by: f.id, spot: index })
         })
@@ -444,6 +541,12 @@ export class Arena {
         const state = fighter.guns[slot]
         const magazine = this.magazineOf(fighter, gun)
         const reloadSteps = steps(reloadMsOf(gun))
+        // Overtime: the magazine never runs down, so it's never reloaded.
+        const endless = fighter.body.overtime > 0
+        if (endless) {
+            state.ammo = magazine
+            state.reloadUntil = 0
+        }
         if (state.reloadUntil > 0 && now >= state.reloadUntil) {
             state.reloadUntil = 0
             state.ammo = magazine
@@ -463,7 +566,7 @@ export class Arena {
         const interval = gun === 'launcher' ? LAUNCHER.intervalMs : GUNS[gun].intervalMs
         state.nextShotAt = now + steps(interval)
         fighter.shieldUntil = 0
-        state.ammo--
+        if (!endless) state.ammo--
         if (state.ammo === 0) state.reloadUntil = now + reloadSteps
 
         if (gun === 'launcher') this.launch(fighter, frame, events)
@@ -493,11 +596,13 @@ export class Arena {
         // Who took the most: the shot's `hit`, for the marker and the damage number.
         let top: { id: string; amount: number; headshot: boolean } | null = null
         const hurt: Array<{ victim: Fighter; amount: number; headshot: boolean }> = []
+        const bonus = this.bonusOf(fighter)
         for (const [id, { amount, headshot }] of dealt) {
             const victim = this.fighters.get(id)
-            // Headshot rounds: any headshot kills.
+            // Headshot rounds: any headshot kills, a Promotion's and through a firewall too.
             const oneShot = headshot && fighter.headshotUntil > this.step
-            const total = this.hurts(victim) ? (oneShot ? MAX_HEALTH : Math.round(amount)) : 0
+            const whole = victim ? victim.health + victim.firewall : MAX_HEALTH
+            const total = this.hurts(victim) ? (oneShot ? whole : Math.round(amount * bonus)) : 0
             if (victim && total > 0) hurt.push({ victim, amount: total, headshot })
             if (!top || total > top.amount) top = { id, amount: total, headshot }
         }
@@ -549,7 +654,7 @@ export class Arena {
                 if (!f.alive) continue
                 if (f.id === rocket.by && this.step - rocket.born < ROCKET_ARMED_STEPS) continue
                 if (rocket.team !== null && f.team === rocket.team && f.id !== rocket.by) continue
-                const met = rayCapsule(rocket.position, direction, f.body)
+                const met = rayCapsule(rocket.position, direction, this.targetOf(f))
                 if (met && met.distance < nearest) {
                     nearest = met.distance
                     hitPlayer = true
@@ -578,11 +683,12 @@ export class Arena {
             if (!f.alive) continue
             const self = f.id === rocket.by
             if (!self && rocket.team !== null && f.team === rocket.team) continue
-            // The nearest point of their capsule's axis.
-            const axisY = Math.max(f.body.y + PLAYER.radius, Math.min(f.body.y + PLAYER.height - PLAYER.radius, at.y))
+            // The nearest point of their capsule's axis (their size's).
+            const size = sizeAt(scaleOf(f.body))
+            const axisY = Math.max(f.body.y + size.radius, Math.min(f.body.y + size.height - size.radius, at.y))
             const point = new Vector3(f.body.x, axisY, f.body.z)
             const to = point.clone().sub(at)
-            const distance = Math.max(0, to.length() - PLAYER.radius)
+            const distance = Math.max(0, to.length() - size.radius)
             if (distance >= LAUNCHER.radius) continue
             const length = to.length()
             // Behind a wall from the blast: safe.
@@ -601,7 +707,8 @@ export class Arena {
                 vz: f.body.vz + push.z,
                 onGround: false,
             }
-            const amount = this.hurts(f) ? Math.round(LAUNCHER.damage * share * (self ? LAUNCHER.selfFactor : 1)) : 0
+            const factor = (self ? LAUNCHER.selfFactor : 1) * (by ? this.bonusOf(by) : 1)
+            const amount = this.hurts(f) ? Math.round(LAUNCHER.damage * share * factor) : 0
             if (amount > 0) {
                 hits.push({ id: f.id, damage: amount })
                 hurt.push({ victim: f, amount })
@@ -626,14 +733,22 @@ export class Arena {
 
         const eye = eyeOf(fighter.body)
         const direction = aimDirection(frame.yaw, frame.pitch)
-        const reached = swingStapler(this.world, eye, direction, this.targetsAt(frame.view, fighter.id))
+        // A Promotion's arm reaches three times as far, an Intern's half.
+        const reach = STAPLER.reach * scaleOf(fighter.body)
+        const reached = swingStapler(this.world, eye, direction, this.targetsAt(frame.view, fighter.id), reach)
         const victim = reached ? this.fighters.get(reached.id) : undefined
         const backstab = reached?.backstab ?? false
-        const amount = this.hurts(victim) ? (backstab ? STAPLER.backstab : STAPLER.damage) : 0
+        const base = backstab ? STAPLER.backstab : STAPLER.damage
+        const amount = this.hurts(victim) ? base * this.bonusOf(fighter) : 0
         events.push({ type: 'swing', by: fighter.id, hit: victim?.id ?? null, damage: amount, backstab })
         if (victim && amount > 0) {
             this.damage(fighter, victim, amount, { headshot: false, weapon: 'stapler', backstab }, events)
         }
+    }
+
+    /** Their damage multiplier: the Bonus doubles it. */
+    private bonusOf(fighter: Fighter): number {
+        return fighter.bonusUntil > this.step ? BONUS : 1
     }
 
     /** Can they be hurt now? Not when down, or still spawn-shielded. */
@@ -650,8 +765,17 @@ export class Arena {
         events: ArenaEvent[]
     ): void {
         if (!victim.alive) return
+        // The firewall takes it first; what it soaks never reaches them.
+        if (victim.firewall > 0) {
+            const soaked = Math.min(victim.firewall, amount)
+            victim.firewall -= soaked
+            amount -= soaked
+            if (victim.firewall <= 0) victim.firewallUntil = 0
+            if (amount <= 0) return
+        }
         const dealt = Math.min(victim.health, amount)
         victim.health = Math.max(0, victim.health - amount)
+        victim.hurtAt = this.step
         if (by && by !== victim) {
             events.push({ type: 'damage', by: by.id, target: victim.id, amount, headshot: how.headshot })
             const tally = victim.taken.get(by.id) ?? { hits: 0, damage: 0, headshots: 0, since: this.step }
@@ -667,9 +791,8 @@ export class Arena {
         victim.alive = false
         victim.jetting = false
         victim.respawnAt = this.step + RESPAWN_STEPS
-        // Their powers go with them (the jetpack's with their body, at the respawn).
-        victim.magazineUntil = 0
-        victim.headshotUntil = 0
+        // Their powers go with them (those in their body at the respawn).
+        this.losePowers(victim)
         const victimStreak = victim.lifeKills
         victim.lifeKills = 0
         const killer = by && by !== victim ? by : null
@@ -720,16 +843,30 @@ export class Arena {
         for (const fighter of this.fighters.values()) {
             if (fighter.id === shooter || !fighter.alive) continue
             if (team !== null && fighter.team === team) continue
-            targets.push(past?.at.get(fighter.id) ?? { id: fighter.id, ...fighter.body })
+            targets.push(past?.at.get(fighter.id) ?? this.targetOf(fighter))
         }
 
         return targets
     }
 
+    /** Where a fighter stands as something to hit: feet, facing, size. */
+    private targetOf(f: Fighter): Target {
+        return { id: f.id, x: f.body.x, y: f.body.y, z: f.body.z, yaw: f.yaw, scale: scaleOf(f.body) }
+    }
+
+    private losePowers(f: Fighter): void {
+        f.magazineUntil = 0
+        f.headshotUntil = 0
+        f.bonusUntil = 0
+        f.orgchartUntil = 0
+        f.firewall = 0
+        f.firewallUntil = 0
+    }
+
     private remember(): void {
         const at = new Map<string, Target>()
         for (const f of this.fighters.values()) {
-            if (f.alive) at.set(f.id, { id: f.id, x: f.body.x, y: f.body.y, z: f.body.z, yaw: f.yaw })
+            if (f.alive) at.set(f.id, this.targetOf(f))
         }
         this.history.push({ step: this.step, at })
         while (this.history.length > MAX_REWIND_STEPS + 1) this.history.shift()
@@ -747,8 +884,7 @@ export class Arena {
         fighter.nextSwingAt = 0
         fighter.readyAt = 0
         fighter.lifeKills = 0
-        fighter.magazineUntil = 0
-        fighter.headshotUntil = 0
+        this.losePowers(fighter)
         fighter.taken.clear()
         this.arm(fighter)
 
