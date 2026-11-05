@@ -26,6 +26,8 @@ import {
     PICKUP_HEIGHT,
     PICKUP_REACH,
     PICKUPS,
+    type PickupKind,
+    rollPickup,
 } from './places.ts'
 import {
     aimDirection,
@@ -168,14 +170,22 @@ export class Arena {
     private readonly history: Array<{ step: number; at: Map<string, Target> }> = []
     private rockets: Rocket[] = []
     private nextRocketId = 1
-    /** Each pickup spot: there to take from this step on. */
+    /** Each pickup spot: there to take from this step on, and what lies there (rolled when it comes back). */
     private readonly pickupAt: number[]
+    private readonly pickupKind: PickupKind[] = []
 
     constructor(
         private readonly world: FpsWorld,
         private readonly random: Rng
     ) {
         this.pickupAt = world.pickups.map(() => 0)
+        this.rollPickups()
+    }
+
+    /** A fresh roll on every spot (a new arena, a new match). */
+    private rollPickups(): void {
+        this.pickupKind.length = 0
+        for (const spot of this.world.pickups) this.pickupKind.push(rollPickup(this.random, spot, this.pickupKind))
     }
 
     has(id: string): boolean {
@@ -273,6 +283,7 @@ export class Arena {
     respawnAll(): ArenaEvent[] {
         const events: ArenaEvent[] = []
         this.pickupAt.fill(0)
+        this.rollPickups()
         this.rockets = []
         for (const fighter of this.fighters.values()) fighter.alive = false
         for (const fighter of this.fighters.values()) events.push(this.spawn(fighter))
@@ -280,9 +291,9 @@ export class Arena {
         return events
     }
 
-    /** Which pickups are there to take, by spot. */
-    pickups(): boolean[] {
-        return this.pickupAt.map(at => this.step >= at)
+    /** What lies on each spot to take, null where it's been taken and not back yet. */
+    pickups(): Array<PickupKind | null> {
+        return this.pickupAt.map((at, i) => (this.step >= at ? this.pickupKind[i]! : null))
     }
 
     /** A player's frames, in order; old and repeated ones are dropped. */
@@ -446,9 +457,10 @@ export class Arena {
             if (this.step < this.pickupAt[index]!) return
             const near = Math.hypot(f.body.x - spot.x, f.body.z - spot.z) <= PICKUP_REACH
             if (!near || f.body.y > PICKUP_HEIGHT) return
-            if (spot.kind === 'health' && f.health >= maxHealthOf(f.body)) return
+            const kind = this.pickupKind[index]!
+            if (kind === 'health' && f.health >= maxHealthOf(f.body)) return
 
-            const info = PICKUPS[spot.kind]
+            const info = PICKUPS[kind]
             const lasts = steps(info.durationMs ?? 0)
             const until = this.step + lasts
             const refill = () => {
@@ -457,7 +469,7 @@ export class Arena {
                     f.guns[slot].reloadUntil = 0
                 }
             }
-            switch (spot.kind) {
+            switch (kind) {
                 case 'health':
                     f.health = Math.min(maxHealthOf(f.body), f.health + HEALTH_PACK)
                     break
@@ -500,7 +512,10 @@ export class Arena {
             }
             f.health = Math.min(f.health, maxHealthOf(f.body))
             this.pickupAt[index] = this.step + steps(info.respawnMs)
-            events.push({ type: 'pickup', by: f.id, spot: index })
+            // What comes back here is rolled now (snapshots only show it once it's back), not
+            // a power already lying elsewhere.
+            this.pickupKind[index] = rollPickup(this.random, spot, this.pickups())
+            events.push({ type: 'pickup', by: f.id, spot: index, kind })
         })
     }
 

@@ -2,7 +2,6 @@ import {
     AdditiveBlending,
     BoxGeometry,
     CircleGeometry,
-    Color,
     ConeGeometry,
     CylinderGeometry,
     DoubleSide,
@@ -41,22 +40,31 @@ export const PICKUP_COLORS: Record<PickupKind, string> = {
     orgchart: '#e8ecf2',
 }
 
-export class PickupViews {
-    private readonly items: Group[] = []
+/** An empty spot (taken, what comes back is a surprise): a dim neutral ring, no glow. */
+const EMPTY_COLOR = '#9aa3ad'
 
-    constructor(scene: Scene) {
+interface SpotView {
+    pad: MeshBasicMaterial
+    glow: Mesh
+    /** The models made so far for this spot, by kind (what lies there is rolled each time). */
+    items: Map<PickupKind, Group>
+    showing: PickupKind | null | undefined
+    x: number
+    z: number
+}
+
+export class PickupViews {
+    private readonly spots: SpotView[] = []
+
+    constructor(private readonly scene: Scene) {
         for (const spot of PICKUP_SPOTS) {
-            const color = new Color(PICKUP_COLORS[spot.kind])
-            const pad = new Mesh(
-                new RingGeometry(0.16, 0.24, 32),
-                new MeshBasicMaterial({ color, transparent: true, opacity: 0.8, side: DoubleSide })
-            )
+            const padMaterial = new MeshBasicMaterial({ transparent: true, opacity: 0.8, side: DoubleSide })
+            const pad = new Mesh(new RingGeometry(0.16, 0.24, 32), padMaterial)
             pad.rotation.x = -Math.PI / 2
             pad.position.set(spot.x, 0.006, spot.z)
             const glow = new Mesh(
                 new CylinderGeometry(0.22, 0.22, 0.5, 24, 1, true),
                 new MeshBasicMaterial({
-                    color,
                     transparent: true,
                     opacity: 0.12,
                     blending: AdditiveBlending,
@@ -65,20 +73,37 @@ export class PickupViews {
                 })
             )
             glow.position.set(spot.x, 0.25, spot.z)
-            const item = model(spot.kind)
-            item.position.set(spot.x, 0.22, spot.z)
-            scene.add(pad, glow, item)
-            this.items.push(item)
+            scene.add(pad, glow)
+            this.spots.push({ pad: padMaterial, glow, items: new Map(), showing: undefined, x: spot.x, z: spot.z })
         }
     }
 
-    /** `ready`: which are there to take (by spot). */
-    update(ready: readonly boolean[], now: number): void {
-        this.items.forEach((item, i) => {
-            item.visible = ready[i] ?? true
+    /** `lying`: what's there to take on each spot (null: taken, coming back). */
+    update(lying: readonly (PickupKind | null)[], now: number): void {
+        this.spots.forEach((spot, i) => {
+            const kind = lying[i] ?? null
+            if (kind !== spot.showing) this.show(spot, kind)
+            const item = kind ? spot.items.get(kind) : undefined
+            if (!item) return
             item.rotation.y = now * 0.0015 + i
             item.position.y = 0.22 + Math.sin(now * 0.003 + i) * 0.03
         })
+    }
+
+    /** The spot's ring and glow in the colour of what lies there, its model over it. */
+    private show(spot: SpotView, kind: PickupKind | null): void {
+        spot.showing = kind
+        spot.pad.color.set(kind ? PICKUP_COLORS[kind] : EMPTY_COLOR)
+        spot.pad.opacity = kind ? 0.8 : 0.35
+        spot.glow.visible = kind !== null
+        if (kind) (spot.glow.material as MeshBasicMaterial).color.set(PICKUP_COLORS[kind])
+        for (const [k, item] of spot.items) item.visible = k === kind
+        if (kind && !spot.items.has(kind)) {
+            const item = model(kind)
+            item.position.set(spot.x, 0.22, spot.z)
+            this.scene.add(item)
+            spot.items.set(kind, item)
+        }
     }
 }
 

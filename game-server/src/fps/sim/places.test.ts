@@ -1,8 +1,21 @@
 import { describe, expect, test } from 'bun:test'
 import { Line3, Vector3 } from 'three'
 import { PLAYER, sizeAt } from './movement.ts'
-import { inZone, PADS, partnerOf, PICKUP_SPOTS, PORTAL, PORTALS, PROMOTION, ZONES } from './places.ts'
-import { collideCapsule, officeWorld, rayDistance } from './world.ts'
+import { createRng } from '../../sim/rng.ts'
+import {
+    inZone,
+    PADS,
+    partnerOf,
+    PICKUP_SPOTS,
+    PICKUP_WEIGHTS,
+    PORTAL,
+    PORTALS,
+    PROMOTION,
+    rollPickup,
+    ZONES,
+} from './places.ts'
+import { buildOfficeGeometry } from '../map/office.js'
+import { collideCapsule, officeWorld, rayDistance, rayHit, worldFrom } from './world.ts'
 
 /** Straight down from just under the ceiling: where the first thing below is (y). */
 function below(x: number, z: number): number {
@@ -17,13 +30,33 @@ function fits(x: number, z: number, scale = 1): boolean {
 }
 
 describe('the pads, the portals and the big powers', () => {
-    test('a giant fits where the Promotion and Overtime lie (you grow, or tank, right there)', () => {
-        for (const spot of PICKUP_SPOTS.filter(s => s.kind === 'promotion' || s.kind === 'overtime')) {
+    test('a giant fits on every roomy spot (a Promotion grows you right there), and only there is one rolled', () => {
+        const roomy = PICKUP_SPOTS.filter(s => s.roomy)
+        expect(roomy.length).toBeGreaterThan(3)
+        for (const spot of roomy) {
             expect({ spot: spot.room, fits: fits(spot.x, spot.z, PROMOTION.scale) }).toEqual({
                 spot: spot.room,
                 fits: true,
             })
         }
+    })
+
+    test('what lies on a spot is rolled: anything, the basics most, a Promotion only where a giant fits, no power twice', () => {
+        const random = createRng(7)
+        const cramped = PICKUP_SPOTS.find(s => !s.roomy)!
+        const roomy = PICKUP_SPOTS.find(s => s.roomy)!
+        const seen = new Map<string, number>()
+        for (let i = 0; i < 4000; i++) {
+            const kind = rollPickup(random, roomy, [])
+            seen.set(kind, (seen.get(kind) ?? 0) + 1)
+            expect(rollPickup(random, cramped, [])).not.toBe('promotion')
+        }
+        expect(seen.size).toBe(Object.keys(PICKUP_WEIGHTS).length)
+        expect(seen.get('health')!).toBeGreaterThan(seen.get('bonus')! * 2)
+        // A Bonus already lying elsewhere: not a second one; a second health pack, yes.
+        for (let i = 0; i < 500; i++) expect(rollPickup(random, roomy, ['bonus', 'health'])).not.toBe('bonus')
+        // A spot with its own kind keeps it.
+        expect(rollPickup(random, { ...cramped, kind: 'intern' }, [])).toBe('intern')
     })
 
     test('pads lie on open floor with room overhead to fly up', () => {
@@ -57,10 +90,9 @@ describe('the pads, the portals and the big powers', () => {
     })
 
     test('the powers, pads and portals keep clear of everything else (spawns and the first pickups included)', () => {
-        // The first pickups sit by their spawns on purpose (a heal or a jetpack on the way out).
-        const FIRST = ['health', 'magazine', 'jetpack', 'headshot']
+        // The first five spots sit by spawns on purpose (something to grab on the way out).
         const things = [
-            ...PICKUP_SPOTS.map(s => ({ name: `${s.kind} pickup`, x: s.x, z: s.z, mine: !FIRST.includes(s.kind) })),
+            ...PICKUP_SPOTS.map((s, i) => ({ name: `pickup in ${s.room}`, x: s.x, z: s.z, mine: i >= 5 })),
             ...PADS.map((p, i) => ({ name: `pad ${i}`, x: p.x, z: p.z, mine: true })),
             ...PORTALS.map(p => ({ name: `portal in ${p.room}`, x: p.x, z: p.z, mine: true })),
             ...officeWorld().spawnPoints.map(s => ({
@@ -76,6 +108,46 @@ describe('the pads, the portals and the big powers', () => {
                 if ((a.mine || b.mine) && apart < 0.7) expect({ a: a.name, b: b.name, apart }).toBeNull()
             }
         }
+    })
+})
+
+describe('what the office is made of (for bullet impacts)', () => {
+    const built = buildOfficeGeometry({ outside: false, surfaces: true })
+    const world = worldFrom(built)
+
+    test('the open office is carpeted, the kitchen tiled, the walls plaster, the glass glass', () => {
+        const down = (x: number, z: number) => rayHit(world, new Vector3(x, 1.5, z), new Vector3(0, -1, 0), 5)!.surface
+        expect(down(0, 0)).toBe('fabric')
+        expect(down(-8.4, -1.4)).toBe('tile')
+        expect(rayHit(world, new Vector3(0, 0.3, 0), new Vector3(1, 0, 0), 30)!.surface).toBe('plaster')
+        // Somewhere along the length of the office there's glass, seen as glass.
+        const kinds = new Set<string>()
+        for (let z = -5; z <= 5; z += 0.5) {
+            for (const x of [-1, 1]) {
+                const hit = rayHit(world, new Vector3(0, 1.2, z), new Vector3(x, 0, 0), 30)
+                if (hit) kinds.add(hit.surface)
+            }
+        }
+        expect(kinds.has('glass')).toBe(true)
+    })
+
+    test('a hit faces the way it came from, at the distance the plain ray finds', () => {
+        const from = new Vector3(0, 0.3, 0)
+        const east = new Vector3(1, 0, 0)
+        const hit = rayHit(world, from, east, 30)!
+        expect(hit.normal.dot(east)).toBeLessThan(0)
+        expect(hit.distance).toBeCloseTo(rayDistance(officeWorld(), from, east, 30), 6)
+    })
+
+    test("noting the surfaces leaves the collision exactly as it is (the server's has none)", () => {
+        const plain = officeWorld().meshes[0]!.geometry
+        const noted = world.meshes[0]!.geometry
+        expect(noted.index!.count).toBe(plain.index!.count)
+        expect(Bun.hash(noted.index!.array as Uint32Array)).toBe(Bun.hash(plain.index!.array as Uint32Array))
+        expect(Bun.hash(noted.attributes.position!.array as Float32Array)).toBe(
+            Bun.hash(plain.attributes.position!.array as Float32Array)
+        )
+        expect(officeWorld().meshes[0]!.userData.surfaces).toBeUndefined()
     })
 })
 

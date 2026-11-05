@@ -264,7 +264,11 @@ Playable at `/games/office-fps`.
   scores nobody; the limit is ×`ZONE_SECONDS_PER_POINT` seconds, else most zone time at the
   end. Snapshots carry `zone`; the HUD shows a status line and an on-screen marker (`showZone`).
 - **Pickups** (`sim/places.ts`: `PICKUP_SPOTS`, `PICKUPS` and each power's numbers; collected in
-  `arena.ts`, part of `FpsWorld` so test rooms have none): health (+50, only when hurt), big
+  `arena.ts`, part of `FpsWorld` so test rooms have none). What lies on a spot is rolled
+  (`rollPickup`, `PICKUP_WEIGHTS`: the basics most) at each match and each time it comes back; a
+  Promotion only on `roomy` spots (a giant fits: `places.test.ts`), no power on two spots at once; a
+  test room's spot may fix its `kind`. Snapshots send each spot's kind (null: taken), the `pickup`
+  event its `kind`. Kinds: health (+50, only when hurt), big
   magazine (×1.5, 60 s), jetpack extender (fuel ×4, 60 s), headshot rounds (any headshot kills,
   a giant and a firewall too, 30 s), and the office powers: **Overtime** (walk ×0.6, no jetpack or
   dodge, +100 health, never reloads, 30 s), **Promotion** (3× the size, 500 health, walk ×0.8,
@@ -330,6 +334,13 @@ Playable at `/games/office-fps`.
   falloff graph, pulls and time to kill, rate, live state, fps and draws). The numbers come from
   `client/gun-debug.ts` (pure, tested), which fires through `combat.ts`'s own seeded spread and
   `rayCapsule`, so they are what the server would judge.
+- **Impacts** (`client/impacts.ts`): where the server says a round stopped on the office (the shot
+  event's ends, cast again with `rayHit`), a hole (a crack in glass and screens) that stays and what
+  flies off by what it hit: dust and chips, splinters, paper off desks, sparks off metal, shards off
+  glass; a rocket leaves a scorch. What a triangle is made of comes from the browser's build
+  (`buildOffice` passes `surfaces: true`: `collision.solid.userData.surfaces`, indexing `SURFACES`
+  in office.js, by material); the collision itself is the same with or without (a test checks).
+  Everything is a few fixed instanced pools, never a mesh per bit.
 - **Stats** (top left, `hud.stats`): frames a second and the ping (a frame sent → the snapshot
   acknowledging it, smoothed), green / yellow / red.
 - **Settings** (`client/settings.ts`, in this browser): sensitivity, aiming sensitivity, field

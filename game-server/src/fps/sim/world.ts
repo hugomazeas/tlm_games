@@ -1,6 +1,13 @@
 import { Box3, DoubleSide, Line3, Ray, Vector3 } from 'three'
 import type { ExtendedTriangle } from 'three-mesh-bvh'
-import { buildOfficeGeometry, type CollisionMesh, type OfficeCollision, type SpawnPoint } from '../map/office.js'
+import {
+    buildOfficeGeometry,
+    type CollisionMesh,
+    type OfficeCollision,
+    type SpawnPoint,
+    type Surface,
+    SURFACES,
+} from '../map/office.js'
 import { PADS, type Pad, PICKUP_SPOTS, type PickupSpot, type Portal, PORTALS } from './places.ts'
 
 /**
@@ -104,6 +111,36 @@ function beyondReach(t: { a: Vector3; b: Vector3; c: Vector3 }, seg: Line3, radi
 }
 
 const ray = new Ray()
+
+/** Where a ray meets the office: the point, the face's normal (toward the ray), and what it's made of. */
+export interface RayHit {
+    distance: number
+    point: Vector3
+    normal: Vector3
+    surface: Surface | 'glass'
+}
+
+/**
+ * The first wall, glass or furniture a ray from `origin` along the unit `direction` meets within
+ * `far`, with what it's made of: plaster where the world wasn't built with its surfaces (the server's).
+ */
+export function rayHit(world: FpsWorld, origin: Vector3, direction: Vector3, far: number): RayHit | null {
+    ray.set(origin, direction)
+    let best: RayHit | null = null
+    for (const [i, mesh] of world.meshes.entries()) {
+        const hit = mesh.geometry.boundsTree.raycastFirst(ray, DoubleSide, 0, best?.distance ?? far)
+        if (!hit || hit.distance >= (best?.distance ?? far)) continue
+        const normal = hit.face ? hit.face.normal.clone() : direction.clone().negate()
+        // Hit from behind (a double-sided face): the side the ray came from.
+        if (normal.dot(direction) > 0) normal.negate()
+        const surfaces = mesh.userData.surfaces as Uint8Array | undefined
+        const surface: Surface | 'glass' =
+            i > 0 ? 'glass' : (SURFACES[surfaces?.[hit.faceIndex ?? -1] ?? 0] ?? 'plaster')
+        best = { distance: hit.distance, point: hit.point.clone(), normal, surface }
+    }
+
+    return best
+}
 
 /** How far a ray from `origin` along the unit `direction` goes before it meets a wall, glass or furniture (capped at `far`). */
 export function rayDistance(world: FpsWorld, origin: Vector3, direction: Vector3, far: number): number {

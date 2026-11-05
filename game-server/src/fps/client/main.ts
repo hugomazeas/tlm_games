@@ -37,7 +37,8 @@ import {
 } from '../sim/combat.ts'
 import { MOVE, PLAYER, scaleOf, STEP_MS } from '../sim/movement.ts'
 import { PICKUP_SPOTS, type PickupKind, PICKUPS, PORTAL, ZONES } from '../sim/places.ts'
-import { rayDistance, worldFrom } from '../sim/world.ts'
+import { rayDistance, rayHit, worldFrom } from '../sim/world.ts'
+import { Impacts } from './impacts.ts'
 import { Avatars } from './avatars.ts'
 import { announce, taunt } from './callouts.ts'
 import { Controls } from './controls.ts'
@@ -142,6 +143,40 @@ const avatars = new Avatars(scene, (id, _gun, msLeft) => {
     if (at) sounds.reload(msLeft, spatial(listener(), at))
 })
 const effects = new Effects(scene)
+const impacts = new Impacts(scene)
+
+/**
+ * A round judged from `from` stopped at `to`: if that's on the office (not a player, not out of
+ * range), its mark and what flies off, by what it hit.
+ */
+function landed(from: Vector3, to: Vector3, now: number): void {
+    const along = to.clone().sub(from)
+    const length = along.length()
+    if (length < 0.01) return
+    along.divideScalar(length)
+    const hit = rayHit(world, from, along, length + 0.05)
+    if (hit && hit.distance > length - 0.05) impacts.hit(hit.point, hit.normal, along, hit.surface, now)
+}
+
+/** A rocket went off at `at`: scorched on whatever is nearest (the floor, a wall, a desk), if it's close. */
+function scorched(at: Vector3, now: number): void {
+    let nearest: ReturnType<typeof rayHit> = null
+    let direction = DOWN
+    for (const toward of BLAST_RAYS) {
+        const hit = rayHit(world, at, toward, nearest?.distance ?? 0.6)
+        if (hit) [nearest, direction] = [hit, toward]
+    }
+    if (nearest) impacts.blast(nearest.point, nearest.normal, direction, nearest.surface, now)
+}
+const DOWN = new Vector3(0, -1, 0)
+const BLAST_RAYS = [
+    DOWN,
+    new Vector3(0, 1, 0),
+    new Vector3(1, 0, 0),
+    new Vector3(-1, 0, 0),
+    new Vector3(0, 0, 1),
+    new Vector3(0, 0, -1),
+]
 let viewmodel: Viewmodel | null = null
 
 // --- What we know ---------------------------------------------------------------------------
@@ -157,7 +192,8 @@ let deathTaunt: string | null = null
 /** How you went down (the gun, the range, what your killer had left), for the death screen. */
 let deathCause: DeathCause | null = null
 /** The latest snapshot's pickups (which are there) and zone. */
-let pickupsReady: boolean[] = []
+/** What lies on each pickup spot (null: taken, coming back). */
+let pickupsReady: Array<PickupKind | null> = []
 let zone: ZoneState | null = null
 /** When `zone` came (its `movesInMs` counts from then). */
 let zoneAt = 0
@@ -380,18 +416,21 @@ function onEvent(event: GameEvent, now: number): void {
     if (event.type === 'pickup') {
         const spot = PICKUP_SPOTS[event.spot]
         if (!spot) return
-        const { name: what } = PICKUPS[spot.kind]
+        const { kind } = event
         hud.killFeed(
-            `${colored(event.by)} <span style="opacity:.7">grabbed</span> <b style="color:${PICKUP_COLORS[spot.kind]}">${what}</b> <span style="opacity:.6">in ${spot.room}</span>`
+            `${colored(event.by)} <span style="opacity:.7">grabbed</span> <b style="color:${PICKUP_COLORS[kind]}">${PICKUPS[kind].name}</b> <span style="opacity:.6">in ${spot.room}</span>`
         )
         if (event.by === me) {
-            hud.toast(PICKUP_TOASTS[spot.kind], PICKUP_COLORS[spot.kind])
-            sounds.pickup(spot.kind)
+            hud.toast(PICKUP_TOASTS[kind], PICKUP_COLORS[kind])
+            sounds.pickup(kind)
         }
         return
     }
     if (event.type === 'shot') {
         if (event.hit && event.damage > 0) avatars.hit(event.hit, now, event.from, event.headshot)
+        // Where each round stopped on the office (yours too: the server's word on where it went).
+        const eyes = new Vector3(...event.from)
+        for (const to of event.to) landed(eyes, new Vector3(...to), now)
         if (event.by === me) {
             // Drawn already when fired; the server says whether it hit, and for how much.
             if (event.hit) {
@@ -437,6 +476,7 @@ function onEvent(event: GameEvent, now: number): void {
     if (event.type === 'explode') {
         const at = { x: event.at[0], y: event.at[1], z: event.at[2] }
         effects.explosion(at, now)
+        scorched(new Vector3(at.x, at.y, at.z), now)
         sounds.explosion(spatial(listener(), at))
         for (const hit of event.hits) {
             avatars.hit(hit.id, now, event.at, false, true)
@@ -817,6 +857,7 @@ function draw(now: number): void {
     const xray = Boolean(self?.alive && self.buffs.some(b => b.kind === 'orgchart'))
     avatars.update(poses, roster, third ? null : me, now, xray)
     effects.update(now)
+    impacts.update(now, camera)
     // Rockets fly straight: from the last snapshot, ahead by their speed.
     const ahead = (now - rocketsAt) / 1000
     effects.rockets(
