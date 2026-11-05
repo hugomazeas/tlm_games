@@ -400,19 +400,19 @@ export class Hud {
         const hide = self === null
         for (const name of ['health', 'ammo', 'fuelBar', 'cross']) this.el[name]!.classList.toggle('hidden', hide)
         if (!self) return
-        this.el.health!.innerHTML = `<small>Health</small>${self.alive ? self.health : 0}`
+        write(this.el.health!, `<small>Health</small>${self.alive ? self.health : 0}`)
         const slot = (n: number, slotName: 'primary' | 'secondary' | 'melee') =>
             `<b class="${weaponIn(slotName, self.loadout) === self.weapon ? 'on' : ''}">${n}</b>`
         const slots = `<span class="slots">${slot(1, 'primary')}${slot(2, 'secondary')}${slot(3, 'melee')}</span>`
         const name = WEAPON_NAMES[self.weapon]
         if (self.weapon === 'stapler') {
-            this.el.ammo!.innerHTML = `<small>${name} ${slots}</small><span style="font-size:22px">📎 swing</span>`
+            write(this.el.ammo!, `<small>${name} ${slots}</small><span style="font-size:22px">📎 swing</span>`)
         } else {
             const big = self.magazine > magazineOf(self.weapon) ? ' style="color:#f2b134"' : ''
             const rounds = self.reloading
                 ? '<span style="opacity:.6">reloading</span>'
                 : `<span${big}>${self.ammo}</span><span style="opacity:.5;font-size:16px"> / ${self.magazine}</span>`
-            this.el.ammo!.innerHTML = `<small>${name} ${slots}</small>${rounds}`
+            write(this.el.ammo!, `<small>${name} ${slots}</small>${rounds}`)
         }
         // A new loadout in hand (a spawn): the picker stops saying it waits.
         if (
@@ -428,12 +428,13 @@ export class Hud {
         if (self.alive && self.health < this.lastHealth) this.flashHurt()
         this.lastHealth = self.alive ? self.health : MAX_HEALTH
         // Your powers, each with its time left.
-        this.el.buffs!.innerHTML = self.buffs
+        const buffs = self.buffs
             .map(b => {
                 const { icon, label } = BUFF_LABELS[b.kind]
                 return `<div>${icon} ${label} <b style="color:${BUFF_COLORS[b.kind]}">${Math.ceil(b.leftMs / 1000)} s</b></div>`
             })
             .join('')
+        write(this.el.buffs!, buffs)
     }
 
     /** A big banner across the top: a streak, a shutdown, first blood (`level` 1 … 4 grows it). */
@@ -575,7 +576,7 @@ export class Hud {
         const match = this.match
         if (!match) return
         const left = match.remainingMs === null ? null : Math.max(0, match.remainingMs - (now - this.matchAt))
-        this.el.top!.innerHTML = {
+        const top = {
             warmup: `Warmup <small style="opacity:.7">· ${
                 this.host.isHost
                     ? this.host.seated >= 2
@@ -587,6 +588,7 @@ export class Hud {
             playing: `<b>${clock(left ?? 0)}</b> <small style="opacity:.7">· ${this.standing(match, opts.me)}</small>`,
             intermission: `Match over <small style="opacity:.7">· back to warmup in ${Math.ceil((left ?? 0) / 1000)}</small>`,
         }[match.phase]
+        write(this.el.top!, top)
 
         let middle = ''
         if (opts.me && !opts.self) middle = `Watching<small>The game is full: you're in at the next free seat.</small>`
@@ -600,12 +602,12 @@ export class Hud {
         } else if (match.phase === 'countdown') {
             middle = `${Math.ceil((left ?? 0) / 1000)}<small>Warmup kills don't count</small>`
         }
-        this.el.middle!.innerHTML = middle
+        write(this.el.middle!, middle)
 
         const board = this.el.board!
         const show = opts.tab || this.boardForced
         board.classList.toggle('hidden', !show)
-        if (show) board.innerHTML = this.board(match, opts.me, opts.roster)
+        if (show) write(board, this.board(match, opts.me, opts.roster))
     }
 
     /** The match's score in a line: the sides (team deathmatch), the zone time, or the leader's kills. */
@@ -759,6 +761,15 @@ const GUN_BLURBS = {
     pistol: 'Quick, 8 rounds',
     launcher: 'Rockets, splash · 7 s reload',
 } as const
+
+/** What each element was last given: the HUD redraws every frame, and an unchanged write would still cost a layout. */
+const written = new WeakMap<HTMLElement, string>()
+
+function write(element: HTMLElement, html: string): void {
+    if (written.get(element) === html) return
+    written.set(element, html)
+    element.innerHTML = html
+}
 
 /** Shows an element at once, then fades it out over `ms`. */
 function fadeOut(element: HTMLElement, ms: number): void {

@@ -285,8 +285,9 @@ export class Effects {
             const f = this.fading[i]!
             const t = (now - f.born) / f.life
             if (t >= 1) {
+                // Not disposed: three holds materials weakly, so it's collected anyway, and disposing the
+                // last one alive deletes the shared shader, compiled again (a hitch) for the next shot.
                 this.scene.remove(f.mesh)
-                f.material.dispose()
                 this.fading.splice(i, 1)
                 continue
             }

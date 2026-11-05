@@ -309,6 +309,31 @@ describe('prediction', () => {
         expect(prediction.unacknowledged).toBe(20)
     })
 
+    test('a snapshot that agrees replays nothing, however far behind the server is', () => {
+        let collisions = 0
+        const counted = {
+            ...world,
+            get meshes() {
+                collisions++
+                return world.meshes
+            },
+        }
+        const all = frames(120)
+        const prediction = new Prediction(counted)
+        prediction.body = bodyAt(0, 0, 0)
+        for (const f of all) prediction.apply(f, true)
+        let server = bodyAt(0, 0, 0)
+        for (const f of all.slice(0, 10)) server = stepBody(world, server, moveOf(f))
+
+        collisions = 0
+        prediction.reconcile(10, server, true)
+        expect(collisions).toBe(0)
+        // The server moved them (a rocket's push): the rest is replayed from there.
+        prediction.reconcile(10, { ...server, vx: server.vx + 3 }, true)
+        expect(collisions).toBeGreaterThan(0)
+        expect(prediction.unacknowledged).toBe(110)
+    })
+
     test('when the server disagrees (a respawn), the browser follows it and says how far it jumped', () => {
         const prediction = new Prediction(world)
         prediction.body = bodyAt(0, 0, 0)
