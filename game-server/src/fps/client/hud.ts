@@ -33,7 +33,7 @@ import { DEFAULT_SETTINGS, LIMITS, type Settings } from './settings.ts'
 
 const CSS = `
 #fps-hud { position: fixed; inset: 0; pointer-events: none; font: 600 14px/1.3 system-ui, sans-serif; color: #f4f6f8; z-index: 20; user-select: none; }
-#fps-hud .panel { background: rgba(12,14,18,.62); border-radius: 10px; padding: 8px 12px; backdrop-filter: blur(6px); }
+#fps-hud .panel { background: rgba(12,14,18,.72); border-radius: 10px; padding: 8px 12px; }
 #fps-hud .cross { position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px; border-radius: 50%; background: rgba(255,255,255,.9); box-shadow: 0 0 0 1px rgba(0,0,0,.55); }
 #fps-hud .hit { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px; opacity: 0; }
 #fps-hud .hit::before, #fps-hud .hit::after { content: ''; position: absolute; left: 13px; top: 0; width: 4px; height: 30px; border-radius: 2px; background: #fff; box-shadow: 0 0 3px rgba(0,0,0,.7); transform: rotate(45deg); clip-path: polygon(0 0,100% 0,100% 36%,0 36%,0 64%,100% 64%,100% 100%,0 100%); }
@@ -80,7 +80,7 @@ const CSS = `
 #fps-hud .reload .fill { stroke: #ffd166; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%; filter: drop-shadow(0 0 2px rgba(0,0,0,.7)); }
 #fps-hud .hs-dealt { position: absolute; left: 50%; top: calc(50% - 56px); transform: translateX(-50%); font: 900 16px system-ui, sans-serif; letter-spacing: .2em; color: #ffd166; text-shadow: 0 0 8px rgba(255,180,0,.8), 0 2px 3px rgba(0,0,0,.8); opacity: 0; }
 #fps-hud .hs-taken { position: absolute; left: 50%; top: 20%; transform: translateX(-50%); font: 900 28px system-ui, sans-serif; letter-spacing: .25em; color: #ff3b3b; text-shadow: 0 0 12px rgba(255,0,0,.7), 0 2px 4px rgba(0,0,0,.9); opacity: 0; }
-#fps-hud .hs-flash { position: absolute; inset: 0; box-shadow: inset 0 0 0 6px rgba(255,40,40,.85), inset 0 0 160px rgba(255,0,0,.55); opacity: 0; }
+#fps-hud .hs-flash { position: absolute; inset: 0; box-shadow: inset 0 0 0 6px rgba(255,40,40,.85), inset 0 0 160px rgba(255,0,0,.55); opacity: 0; will-change: opacity; }
 #fps-hud.aiming .cross { width: 3px; height: 3px; margin: -1.5px; }
 #fps-hud .health { position: absolute; left: 20px; bottom: 20px; font-size: 30px; min-width: 120px; }
 #fps-hud .health small, #fps-hud .ammo small { display: block; font-size: 11px; opacity: .65; letter-spacing: .12em; text-transform: uppercase; }
@@ -104,18 +104,16 @@ const CSS = `
 #fps-hud .board td.n { text-align: right; font-variant-numeric: tabular-nums; }
 #fps-hud .board tr.me td { color: #ffd166; }
 #fps-hud .board tr.gone td { opacity: .45; }
-#fps-hud .hurt { position: absolute; inset: 0; box-shadow: inset 0 0 120px rgba(220,30,30,.75); opacity: 0; transition: opacity .35s; }
-#fps-hud .blood { position: absolute; inset: 0; opacity: 0; transition: opacity .6s; background:
-    radial-gradient(circle at 0 0, rgba(95,0,0,.95), rgba(95,0,0,0) 28vmax),
-    radial-gradient(circle at 100% 8%, rgba(110,0,0,.85), rgba(110,0,0,0) 22vmax),
-    radial-gradient(circle at 4% 100%, rgba(110,0,0,.9), rgba(110,0,0,0) 25vmax),
-    radial-gradient(circle at 96% 96%, rgba(95,0,0,.95), rgba(95,0,0,0) 30vmax),
-    radial-gradient(ellipse at 50% 50%, rgba(80,0,0,0) 48%, rgba(120,0,0,.55) 78%, rgba(70,0,0,.9) 100%); }
-#fps-hud .blood::after { content: ''; position: absolute; inset: 0; box-shadow: inset 0 0 140px 30px rgba(170,0,0,.8); opacity: 0; }
-#fps-hud .blood.pulse::after { animation: fps-heartbeat 1.1s ease-out infinite; }
-@keyframes fps-heartbeat { 0% { opacity: 0; } 12% { opacity: .9; } 24% { opacity: .25; } 36% { opacity: .7; } 100% { opacity: 0; } }
-#fps-hud .health.low { animation: fps-low-health 1.1s ease-in-out infinite; }
-@keyframes fps-low-health { 0%, 100% { color: #f4f6f8; } 50% { color: #ff6b6b; background: rgba(110,12,12,.6); } }
+#fps-hud .hurt { position: absolute; inset: 0; box-shadow: inset 0 0 120px rgba(220,30,30,.75); opacity: 0; transition: opacity .35s; will-change: opacity; }
+#fps-hud .blood { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; opacity: 0; transition: opacity .3s; will-change: opacity; }
+#fps-hud .blood.on { opacity: 1; }
+#fps-hud .blood-beat { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; opacity: 0; will-change: opacity; }
+#fps-hud .blood-beat.beat { animation: fps-heartbeat 1.1s steps(1, end) infinite; }
+@keyframes fps-heartbeat { 0% { opacity: 0; } 10% { opacity: 1; } 22% { opacity: .3; } 32% { opacity: .8; } 44% { opacity: 0; } 100% { opacity: 0; } }
+#fps-hud .health.low { color: #ff6b6b; }
+#fps-hud .health::before { content: ''; position: absolute; inset: 0; border-radius: inherit; background: rgba(110,12,12,.6); opacity: 0; will-change: opacity; pointer-events: none; }
+#fps-hud .health.low::before { animation: fps-low-health 1.1s steps(1, end) infinite; }
+@keyframes fps-low-health { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
 #fps-hud .spread { position: absolute; left: 50%; top: 50%; width: 0; height: 0; --r: 8px; }
 #fps-hud .spread i { position: absolute; background: rgba(255,255,255,.85); box-shadow: 0 0 0 1px rgba(0,0,0,.45); }
 #fps-hud .spread i:nth-child(1) { left: -1px; top: calc(-1 * var(--r) - 7px); width: 2px; height: 7px; }
@@ -199,7 +197,8 @@ export class Hud {
         this.root.id = 'fps-hud'
         this.root.innerHTML = `
             <div class="scope hidden" data-el="scope"></div>
-            <div class="blood" data-el="blood"></div>
+            <canvas class="blood" data-el="blood" width="1" height="1"></canvas>
+            <canvas class="blood-beat" data-el="bloodBeat" width="1" height="1"></canvas>
             <div class="hurt" data-el="hurt"></div>
             <div class="cross" data-el="cross"></div>
             <div class="spread hidden" data-el="spread"><i></i><i></i><i></i><i></i></div><div class="hit" data-el="hit"></div>
@@ -593,10 +592,38 @@ export class Hud {
     private lowHealth(health: number | null): void {
         const { from, blink } = LOW_HEALTH
         const strength = health === null ? 0 : Math.max(0, Math.min(1, (from - health) / (from - 10)))
-        this.el.blood!.style.opacity = strength.toFixed(2)
+        // Blocks creep in a step at a time; the little grid is drawn again only then (or on a resize).
+        const step = Math.ceil(strength * BLOOD.steps)
+        const rows = Math.max(1, Math.round((BLOOD.cols * innerHeight) / Math.max(1, innerWidth)))
+        if (step !== this.bloodDrawn.step || rows !== this.bloodDrawn.rows) {
+            this.bloodDrawn = { step, rows }
+            this.drawBlood(step / BLOOD.steps, rows)
+        }
+        this.el.blood!.classList.toggle('on', step > 0)
         const low = health !== null && health <= blink
-        this.el.blood!.classList.toggle('pulse', low)
+        this.el.bloodBeat!.classList.toggle('beat', low)
         this.el.health!.classList.toggle('low', low)
+    }
+
+    private bloodDrawn = { step: -1, rows: 0 }
+
+    /** The blood's blocks, and the heartbeat's (the same cells, bright), one pixel a cell. */
+    private drawBlood(strength: number, rows: number): void {
+        const cells = bloodCells(strength, BLOOD.cols, rows)
+        const paint = (canvas: HTMLCanvasElement, color: (shade: number) => string) => {
+            canvas.width = BLOOD.cols
+            canvas.height = rows
+            const g = canvas.getContext('2d')
+            if (!g) return
+            g.clearRect(0, 0, BLOOD.cols, rows)
+            for (let i = 0; i < cells.length; i++) {
+                if (cells[i] === 0) continue
+                g.fillStyle = color(cells[i]!)
+                g.fillRect(i % BLOOD.cols, Math.floor(i / BLOOD.cols), 1, 1)
+            }
+        }
+        paint(this.el.blood as HTMLCanvasElement, shade => BLOOD.colors[shade]!)
+        paint(this.el.bloodBeat as HTMLCanvasElement, () => BLOOD.pulse)
     }
 
     /** A headshot: one you landed (gold, by the crosshair), or one you took (red, with a flash round the screen). */
@@ -857,6 +884,59 @@ const RING = 2 * Math.PI * 11
 
 /** Blood starts showing under `from` health (full by 10); under `blink` it beats and the health blinks. */
 const LOW_HEALTH = { from: 50, blink: 30 } as const
+
+/**
+ * The blood is blocks: a little grid (`cols` across, square cells), stretched over the screen with
+ * hard edges. Drawn again only when it creeps a step (`steps` from none to full), so the browser
+ * never repaints gradients or blurs over the whole screen.
+ */
+export const BLOOD = {
+    cols: 64,
+    steps: 12,
+    /** How far in it reaches at full strength, as a share of the rows. */
+    reach: 0.2,
+    /** Darkest at the edge … brightest at the rim. */
+    colors: ['', 'rgba(70,0,0,.78)', 'rgba(115,6,6,.7)', 'rgba(165,18,14,.62)'],
+    pulse: 'rgba(235,30,24,.4)',
+} as const
+
+/** A cell's own random number, 0 … 1: the same every time. */
+function cellNoise(x: number, y: number): number {
+    const n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453
+    return n - Math.floor(n)
+}
+
+/**
+ * Which cells bleed at this strength (0 … 1), row by row: 0 none, 1 dark (at the edge) … 3 bright
+ * (the rim creeping in). Thicker in the corners, ragged, with drips down from the top; a cell that
+ * shows at one strength shows at every stronger one.
+ */
+export function bloodCells(strength: number, cols: number, rows: number): Uint8Array {
+    const cells = new Uint8Array(cols * rows)
+    const reach = Math.max(0, Math.min(1, strength)) * rows * BLOOD.reach
+    if (reach <= 0) return cells
+    const cornerSpan = rows * 0.5
+    for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+            // Cells from the nearest edge, less in the corners, ragged by the cell's noise.
+            let depth = Math.min(x, cols - 1 - x, y, rows - 1 - y)
+            const corner = Math.min(
+                Math.hypot(x, y),
+                Math.hypot(cols - 1 - x, y),
+                Math.hypot(x, rows - 1 - y),
+                Math.hypot(cols - 1 - x, rows - 1 - y)
+            )
+            depth -= Math.max(0, 1 - corner / cornerSpan) * rows * 0.08
+            depth += (cellNoise(x, y) - 0.5) * 1.6
+            // Drips: some columns run further down from the top edge, longer as it gets worse.
+            const drip = cellNoise(x, 999)
+            if (drip > 0.75) depth = Math.min(depth, y - (drip - 0.75) * 4 * reach)
+            if (depth >= reach) continue
+            cells[y * cols + x] = depth < reach - 2.5 ? 1 : depth < reach - 1 ? 2 : 3
+        }
+    }
+    return cells
+}
 
 /** One line on each gun, for the loadout picker. */
 const GUN_BLURBS = {

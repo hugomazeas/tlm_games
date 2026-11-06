@@ -387,6 +387,10 @@ Playable at `/games/office-fps`.
 - **Health comes back** (`REGEN` in `sim/combat.ts`, `Arena.regenerate`): 3 s after it last went
   down, 10 a second, up to 80 (never past full). Health is sent rounded up. Under 50 the screen's
   edges bleed (`.blood` in `hud.ts`, `LOW_HEALTH`), under 30 with a heartbeat and the health blinking.
+  The blood is pixel blocks (`bloodCells`, `BLOOD`): a 64-wide canvas stretched with hard edges,
+  drawn again only when it creeps a step; the heartbeat and the blink animate opacity only. Keep
+  full-screen HUD layers cheap: no big blurs or gradients repainted, no `backdrop-filter` (it
+  re-blurs the canvas under it every frame).
 - **Crosshair:** four ticks on the hip-fire cone (`spreadOf` through the camera's field of view,
   `hud.spread`): wider walking and in the air, gone while aiming. Shots are judged from the eyes,
   but every tracer is drawn from a muzzle: yours from the viewmodel's, others' from their trooper's
