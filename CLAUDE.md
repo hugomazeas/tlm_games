@@ -350,6 +350,12 @@ Playable at `/games/office-fps`.
   frame (`bottleneck`), draw calls / triangles / shaders over the whole frame (`renderer.info`
   reset per frame), the resolution drawn and the graphics card, JS heap, network rates, and the
   mouse. GPU-bound: the **Resolution** setting draws a share (50–100%) of the full pixel ratio.
+  The overlay judges the CPU on the game's code only: `render` includes waiting for the GPU.
+- **GPU budget:** the cost is lighting each pixel, not triangles or textures. The office has no
+  `scene.environment` (room reflections were ~half the GPU's work at 5.5 MP): an AmbientLight
+  (`AMBIENT_FOR_REFLECTIONS`, tuned to the same brightness) stands in, and only the glass keeps a
+  reflection map. Don't give the scene an environment back. **Anti-aliasing** (MSAA, ~a third of
+  the rest) is a setting, applied on the next load.
 - **Mouse spikes** (`MouseFilter` in `client/controls.ts`): Chrome under pointer lock now and then
   reports one huge bogus movement (a sudden half turn). The lock asks for raw input
   (`unadjustedMovement`, falling back to a plain lock), and a movement far bigger than the last

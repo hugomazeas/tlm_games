@@ -6,7 +6,7 @@
 //
 //   buildOfficeGeometry()          anywhere (Bun included): the shapes, colliders, spawn points and
 //                                  the exact collision meshes. No DOM, no renderer.
-//   buildOffice(scene, renderer)   the browser: textured materials, sky, sun, environment, baking,
+//   buildOffice(scene, renderer)   the browser: textured materials, sky, sun, ambient, baking,
 //                                  on top of the same geometry.
 //
 //   office.collision  -> { solid, glass }: triangle meshes of the real geometry with a BVH
@@ -1330,12 +1330,19 @@ export function buildOfficeGeometry(opts = {}) {
 
 /**
  * Builds the office into `scene` and returns its gameplay data: the browser's build, textured,
- * lit and baked. Sets scene.environment and scene.fog. Shadows: enable renderer.shadowMap
+ * lit and baked. Sets scene.fog (no scene.environment: see below). Shadows: enable renderer.shadowMap
  * yourself; the sun casts.
  */
+/** The ambient light standing in for the room reflections (they used to light the office at 0.45). */
+const AMBIENT_FOR_REFLECTIONS = 4.5;
+
 export function buildOffice(scene, renderer, opts = {}) {
+  // No scene.environment: reflections sampled on every pixel of every frame were about half of the
+  // GPU's work, for a room that never changes. An ambient light gives the same brightness (tuned to
+  // match it); only the glass keeps a reflection map of its own, where it shows.
   const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  const reflections = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  pmrem.dispose();
 
   const materials = createOfficeMaterials(renderer);
   const office = buildOfficeGeometry({ surfaces: true, ...opts, materials });
@@ -1366,7 +1373,9 @@ export function buildOffice(scene, renderer, opts = {}) {
     renderer.shadowMap.needsUpdate = true;
   }
 
-  root.traverse((o) => { if (o.isMesh && o.material.isMeshStandardMaterial && o.material.envMapIntensity === 1) o.material.envMapIntensity = .45; });
+  // What the reflections lit, as one flat light: the same average brightness from the spawns.
+  root.add(new THREE.AmbientLight(0xffffff, AMBIENT_FOR_REFLECTIONS));
+  M.glass.envMap = reflections;
   M.glass.envMapIntensity = 1.6;
 
   // -------------------------------------------------------------------------

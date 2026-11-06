@@ -165,11 +165,13 @@ describe('settings', () => {
             fov: LIMITS.fov.min,
         })
         // Older saves have neither: full resolution, no overlay; a resolution can't go below half.
-        expect(parseSettings(JSON.stringify({ resolution: 0.1, perfOverlay: true }))).toEqual({
+        expect(parseSettings(JSON.stringify({ resolution: 0.1, perfOverlay: true, antialias: false }))).toEqual({
             ...DEFAULT_SETTINGS,
             resolution: LIMITS.resolution.min,
             perfOverlay: true,
+            antialias: false,
         })
+        expect(parseSettings(JSON.stringify({ antialias: 'off' })).antialias).toBe(true)
     })
 
     test('aiming zooms in to a bit over half the field of view', () => {

@@ -83,7 +83,9 @@ const SNIPER_TRACER = { width: 2.5, life: 250 }
 const SNAP_DISTANCE = 1
 
 // --- The scene: the office, as the server has it, dressed for the browser ------------------
-const renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
+let settings = loadSettings()
+// Anti-aliasing is fixed when the canvas is made: a change applies on the next load.
+const renderer = new WebGLRenderer({ antialias: settings.antialias, powerPreference: 'high-performance' })
 /** Pixels per CSS pixel at full resolution; the Resolution setting draws a share of it. */
 const FULL_PIXEL_RATIO = Math.min(devicePixelRatio, 1.25)
 renderer.setPixelRatio(FULL_PIXEL_RATIO)
@@ -114,7 +116,6 @@ addEventListener('resize', () => {
     camera.updateProjectionMatrix()
 })
 
-let settings = loadSettings()
 const perf = new PerfOverlay()
 const gpuTimer = new GpuTimer(renderer.getContext() as WebGL2RenderingContext)
 const gpuName = gpuNameOf(renderer.getContext())

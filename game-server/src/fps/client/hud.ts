@@ -383,6 +383,7 @@ export class Hud {
             ${slider('volume', 'Sound', percent)}
             ${slider('resolution', 'Resolution', resolution)}
             <label class="check"><input type="checkbox" data-setting="invertY" ${s.invertY ? 'checked' : ''}> Invert mouse Y</label>
+            <label class="check"><input type="checkbox" data-setting="antialias" ${s.antialias ? 'checked' : ''}> Anti-aliasing <small data-out="antialias"></small></label>
             <label class="check"><input type="checkbox" data-setting="perfOverlay" ${s.perfOverlay ? 'checked' : ''}> Performance overlay</label>
             <button type="button" data-reset>Defaults</button>`
         const show = (key: keyof typeof LIMITS, text: string) => {
@@ -399,8 +400,11 @@ export class Hud {
                 resolution: value('resolution'),
                 invertY: panel.querySelector<HTMLInputElement>('[data-setting="invertY"]')!.checked,
                 perfOverlay: panel.querySelector<HTMLInputElement>('[data-setting="perfOverlay"]')!.checked,
+                antialias: panel.querySelector<HTMLInputElement>('[data-setting="antialias"]')!.checked,
             }
         }
+        // The canvas keeps the anti-aliasing it was made with: say when a change waits for a reload.
+        const loadedWith = s.antialias
         panel.addEventListener('input', () => {
             const settings = read()
             show('sensitivity', times(settings.sensitivity))
@@ -408,6 +412,8 @@ export class Hud {
             show('fov', `${settings.fov}°`)
             show('volume', percent(settings.volume))
             show('resolution', resolution(settings.resolution))
+            panel.querySelector('[data-out="antialias"]')!.textContent =
+                settings.antialias === loadedWith ? '' : '(reload the page to apply)'
             this.hooks.onSettings(settings)
         })
         panel.querySelector('[data-reset]')!.addEventListener('click', () => {
