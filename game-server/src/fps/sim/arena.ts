@@ -165,7 +165,7 @@ interface Fighter {
     nextBuildAt: number
 }
 
-/** A rocket's blast does this many times its damage to a built wall: a direct hit (it goes off 3 cm short) takes one down. */
+/** A rocket's blast does this many times its damage to a built wall (a direct hit: ~155 of its 350). */
 const ROCKET_WALL_FACTOR = 1.6
 
 export type ArenaEvent = GameEvent | { type: 'damage'; by: string; target: string; amount: number; headshot: boolean }

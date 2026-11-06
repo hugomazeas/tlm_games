@@ -12,15 +12,15 @@ export const BUILD = {
     /** A panel's side. */
     size: BUILD_SIDE,
     thickness: 0.06,
-    health: 150,
-    /** How far from the eyes a wall may go. */
-    reach: 3,
+    health: 350,
+    /** How far from the eyes a wall may go: right in front of you. */
+    reach: 1,
     /** The server's slack on it: a snapped wall sits up to a side past the aim, and its eyes lag yours (a dodge). */
     slack: BUILD_SIDE + 0.5,
     /** Walls on the map at most: past it the builder's oldest (else the oldest) comes down. */
     max: 120,
-    /** Steps between two walls by the same player (0.1 s). */
-    everySteps: 6,
+    /** Steps between two walls by the same player (0.5 s). */
+    everySteps: 30,
 } as const
 
 /** A wall with its box, cached: what collision and rays test. */

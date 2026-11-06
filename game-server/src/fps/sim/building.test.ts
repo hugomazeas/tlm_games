@@ -68,7 +68,8 @@ describe('build mode puts the next wall', () => {
 
     test('anywhere: standing on the floor where the crosshair is, facing you', () => {
         const world = room()
-        const down = aimDirection(0, -0.3)
+        // The floor within reach.
+        const down = aimDirection(0, -0.6)
         const slot = buildSlot(world, eye, down, { flat: false, turned: false })
 
         expect(slot.wall.axis).toBe('z')
@@ -172,14 +173,26 @@ describe('the arena builds and breaks walls', () => {
         expect(arena.wallStates()).toHaveLength(0)
     })
 
-    test('a rocket takes one down', () => {
+    test('rockets take one down: three of them', () => {
         const { arena } = game()
         arena.setLoadout('me', { primary: 'rifle', secondary: 'launcher' })
         arena.build('me', before)
         all(arena)
-        const events = fire(arena, 60, { slot: 'secondary' })
+        // A click a rocket (the launcher fires on a click), until it's down (30 s at most: reloads included).
+        const events: ArenaEvent[] = []
+        for (let seq = 1; seq <= 1800 && arena.wallStates().length > 0; seq++) {
+            const buttons = seq % 20 < 10 ? BUTTON.fire : 0
+            arena.queue('me', [{ seq, forward: 0, strafe: 0, yaw: 0, pitch: 0, buttons, view: 0, slot: 'secondary' }])
+            events.push(...arena.advance())
+        }
+        const hits = events.filter(e => e.type === 'wallHit')
 
+        // A direct hit: about 155 of its 350 (it goes off just short of it).
+        const left = (hits[0] as { health: number }).health
+        expect(BUILD.health - left).toBeGreaterThan(150)
+        expect(BUILD.health - left).toBeLessThan(160)
         expect(events).toContainEqual({ type: 'wallGone', id: expect.any(Number), broken: true })
+        expect(events.filter(e => e.type === 'launch')).toHaveLength(3)
     })
 
     test('a teammate cannot shoot down their side’s wall', () => {

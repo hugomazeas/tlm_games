@@ -534,8 +534,8 @@ describe('shots are judged where the shooter saw the target', () => {
 })
 
 describe('building', () => {
-    /** Within reach of both spawns. */
-    const wall = { axis: 'x' as const, x: 1.5, y: 0.3, z: 0 }
+    /** Halfway between the spawns: within reach (and the server's slack) of both. */
+    const wall = { axis: 'x' as const, x: 0.3, y: 0.3, z: 0 }
 
     test('a wall goes up for everyone; a newcomer is welcomed with it; a new match wipes it', () => {
         const a = client('a1')
