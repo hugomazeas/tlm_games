@@ -16,7 +16,7 @@ import {
 } from 'three'
 import type { ZoneState } from '../protocol.ts'
 import { H } from '../map/office.js'
-import { PAD, type Pad, PICKUP_SPOTS, type PickupKind, type Portal, PORTAL, ZONES } from '../sim/places.ts'
+import { PAD, type Pad, PICKUP_SPOTS, type PickupKind, PICKUPS, type Portal, PORTAL, ZONES } from '../sim/places.ts'
 
 /**
  * The pickups and the zone, in the office. Each pickup is a pad on the floor in its colour (always
@@ -76,6 +76,12 @@ export class PickupViews {
             scene.add(pad, glow)
             this.spots.push({ pad: padMaterial, glow, items: new Map(), showing: undefined, x: spot.x, z: spot.z })
         }
+        // One of each kind, hidden for good: their shaders compile at load (the spots' own models
+        // come when first rolled).
+        const standIns = new Group()
+        for (const kind of Object.keys(PICKUPS) as PickupKind[]) standIns.add(model(kind))
+        standIns.visible = false
+        scene.add(standIns)
     }
 
     /** `lying`: what's there to take on each spot (null: taken, coming back). */

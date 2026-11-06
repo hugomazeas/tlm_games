@@ -216,6 +216,13 @@ interface Avatar {
     death: { at: number; axis: Vector3; gunVelocity: Vector3; spin: number; lastAt: number } | null
 }
 
+/**
+ * A trooper nobody sees, there for good: the shaders compile with it at load (main.ts warms
+ * every hidden thing up), and stay while real troopers come and go (three deletes a shader with
+ * the last material using it, and a trooper's are disposed when they leave).
+ */
+const STAND_IN = '\u0000stand-in'
+
 export class Avatars {
     private readonly avatars = new Map<string, Avatar>()
 
@@ -223,7 +230,9 @@ export class Avatars {
     constructor(
         private readonly scene: Scene,
         private readonly onReload?: (id: string, gun: Gun, msLeft: number) => void
-    ) {}
+    ) {
+        this.avatarFor(STAND_IN, '', '#cccccc').root.visible = false
+    }
 
     /**
      * Draws everyone in `poses` but `hidden` (you, in first person); forgets who's gone. `now` in ms.
@@ -237,7 +246,7 @@ export class Avatars {
         xray = false
     ): void {
         for (const [id, avatar] of this.avatars) {
-            if (!poses.has(id) || id === hidden) this.remove(id, avatar)
+            if (id !== STAND_IN && (!poses.has(id) || id === hidden)) this.remove(id, avatar)
         }
         for (const [id, pose] of poses) {
             if (id === hidden) continue

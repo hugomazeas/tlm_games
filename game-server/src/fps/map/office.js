@@ -1353,7 +1353,9 @@ export function buildOffice(scene, renderer, opts = {}) {
   // -------------------------------------------------------------------------
   // Sky, sun, ambient
   // -------------------------------------------------------------------------
-  const sky = new Sky(); sky.scale.setScalar(800); root.add(sky);
+  // Drawn after the office (renderOrder): its shader then runs only where the sky shows through the
+  // windows, not under every wall first.
+  const sky = new Sky(); sky.scale.setScalar(800); sky.renderOrder = 1; root.add(sky);
   const sun = new THREE.DirectionalLight(0xffe8c8, 3.5);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);

@@ -16,7 +16,7 @@ import { PerspectiveCamera, Scene } from 'three'
 import { Avatars, fallAngle, hitRock, reloadStart } from './avatars.ts'
 import { Vector3 } from 'three'
 import { aimDirection, fireShot, reloadMsOf } from '../sim/combat.ts'
-import { deathRecap } from './hud.ts'
+import { BLOOD, bloodCells, deathRecap } from './hud.ts'
 import { MouseFilter } from './controls.ts'
 import { bottleneck, FrameStats, HITCH_MS } from './perf.ts'
 
@@ -177,6 +177,34 @@ describe('settings', () => {
     test('aiming zooms in to a bit over half the field of view', () => {
         expect(aimFov(78)).toBe(45)
         expect(aimFov(100)).toBe(58)
+    })
+})
+
+describe('the blood (low health)', () => {
+    const cols = 64
+    const rows = 36
+    const shown = (cells: Uint8Array) => cells.reduce((n, c) => n + (c > 0 ? 1 : 0), 0)
+
+    test('none at full health; blocks creep in from the edges as it drops, never through the middle', () => {
+        expect(shown(bloodCells(0, cols, rows))).toBe(0)
+        const half = bloodCells(0.5, cols, rows)
+        const full = bloodCells(1, cols, rows)
+        expect(shown(half)).toBeGreaterThan(0)
+        expect(shown(full)).toBeGreaterThan(shown(half) * 1.4)
+        // The corners bleed; the crosshair's middle stays clear.
+        expect(full[0]).toBeGreaterThan(0)
+        expect(full[cols * rows - 1]).toBeGreaterThan(0)
+        expect(full[(rows / 2) * cols + cols / 2]).toBe(0)
+        // A block that shows keeps showing as it gets worse.
+        for (let i = 0; i < half.length; i++) if (half[i]! > 0) expect(full[i]).toBeGreaterThan(0)
+    })
+
+    test('darkest at the edge, brightest at the rim, the same every time', () => {
+        const full = bloodCells(1, cols, rows)
+        expect(full[(rows / 2) * cols]).toBe(1)
+        expect([...full].some(c => c === 3)).toBe(true)
+        expect(bloodCells(1, cols, rows)).toEqual(full)
+        expect(BLOOD.colors.length).toBe(4)
     })
 })
 

@@ -221,20 +221,48 @@ export class Viewmodel {
 
     /** Draws the gun over what's already drawn: call after rendering the world. */
     render(renderer: WebGLRenderer, camera: Camera): void {
-        if (!this.holder.visible) return
-        if (!this.environmentReady) {
-            this.environmentReady = true
-            const pmrem = new PMREMGenerator(renderer)
-            this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
-            this.scene.environmentIntensity = 0.7
-            pmrem.dispose()
-        }
+        if (!this.holder.visible || this.preparing) return
+        this.environment(renderer)
         this.sync()
         const autoClear = renderer.autoClear
         renderer.autoClear = false
         renderer.clearDepth()
         renderer.render(this.scene, camera)
         renderer.autoClear = autoClear
+    }
+
+    /**
+     * Compiles every shader the hands can need (each gun, the stapler, the flash, the cases), hidden
+     * parts included, so the first switch or shot doesn't stall on it. Not drawn meanwhile.
+     */
+    async prepare(renderer: WebGLRenderer, camera: Camera): Promise<void> {
+        this.environment(renderer)
+        const shown: Object3D[] = []
+        this.scene.traverse(o => {
+            if (!o.visible) {
+                o.visible = true
+                shown.push(o)
+            }
+        })
+        this.preparing = true
+        try {
+            await renderer.compileAsync(this.scene, camera)
+        } finally {
+            for (const o of shown) o.visible = false
+            this.preparing = false
+        }
+    }
+
+    private preparing = false
+
+    /** The room the gun reflects (it changes the gun's shaders, so before compiling them). */
+    private environment(renderer: WebGLRenderer): void {
+        if (this.environmentReady) return
+        this.environmentReady = true
+        const pmrem = new PMREMGenerator(renderer)
+        this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+        this.scene.environmentIntensity = 0.7
+        pmrem.dispose()
     }
 
     /** The muzzle of the gun in hand, in the world. */
