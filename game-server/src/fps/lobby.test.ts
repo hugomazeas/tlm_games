@@ -638,6 +638,10 @@ describe('messages', () => {
         expect(parse({ type: 'build' })).toBeNull()
         expect(parse({ type: 'unbuild', id: 4 })).toEqual({ type: 'unbuild', id: 4 })
         expect(parse({ type: 'unbuild', id: 0 })).toBeNull()
+        expect(parse({ type: 'reshape', id: 4, kind: 'window' })).toEqual({ type: 'reshape', id: 4, kind: 'window' })
+        expect(parse({ type: 'reshape', id: 4, kind: 'wall' })).toBeNull()
+        expect(parse({ type: 'door', id: 4 })).toEqual({ type: 'door', id: 4 })
+        expect(parse({ type: 'door', id: 'x' })).toBeNull()
     })
 
     test('bad messages are refused', () => {

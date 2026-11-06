@@ -116,14 +116,25 @@ export interface WallSpec {
     z: number
 }
 
+/**
+ * What a built wall is: a plain panel, a door (opened and closed by its builder's side), or a
+ * window (a slit at eye height to see and shoot through). Only a standing plain wall becomes a door
+ * or a window, and neither turns back.
+ */
+export const WALL_KINDS = ['wall', 'door', 'window'] as const
+export type WallKind = (typeof WALL_KINDS)[number]
+
 /** A built wall, as everyone sees it. */
 export interface WallState extends WallSpec {
     id: number
-    /** Who built it (a connection id). */
-    by: string
-    /** Their side in team deathmatch (tints it), null otherwise. */
+    /** Who built it (a connection id); null once they left: it stays up, nobody's (no one takes it back or works its door). */
+    by: string | null
+    /** Their side in team deathmatch (tints it, and its door opens for them), null otherwise (or once they left). */
     team: Team | null
     health: number
+    kind: WallKind
+    /** A door standing open. */
+    open: boolean
 }
 
 /** A standout of the match, on the scoreboard after it. */
@@ -264,6 +275,8 @@ export type GameEvent =
     | { type: 'pickup'; by: string; spot: number; kind: PickupKind }
     /** A wall went up. */
     | { type: 'built'; wall: WallState }
+    /** A wall became a door or a window, or a door opened or closed: the wall as it is now. */
+    | { type: 'wallChanged'; wall: WallState }
     /** A wall took damage: its health now. */
     | { type: 'wallHit'; id: number; health: number }
     /** A wall came down: shot to pieces (`broken`), or taken back, crowded out or its builder left. */
@@ -349,6 +362,10 @@ export type ClientMessage =
     /** Build mode: a wall here (the slot your browser worked out), or take one of yours back. */
     | { type: 'build'; wall: WallSpec }
     | { type: 'unbuild'; id: number }
+    /** A wall of your side's into a door or a window (build mode: F, G). */
+    | { type: 'reshape'; id: number; kind: Exclude<WallKind, 'wall'> }
+    /** Open or close a door of your side's (F). */
+    | { type: 'door'; id: number }
 
 export type ServerMessage =
     | {
@@ -435,11 +452,13 @@ export function parseClientMessage(raw: string): ClientMessage | null {
 
         return { type: 'build', wall: { axis, x, y, z } }
     }
-    if (message.type === 'unbuild') {
+    if (message.type === 'unbuild' || message.type === 'door' || message.type === 'reshape') {
         const { id } = message
         if (!Number.isInteger(id) || (id as number) < 1) return null
+        if (message.type !== 'reshape') return { type: message.type, id: id as number }
+        const kind = (['door', 'window'] as const).find(k => k === message.kind)
 
-        return { type: 'unbuild', id: id as number }
+        return kind ? { type: 'reshape', id: id as number, kind } : null
     }
 
     return null

@@ -48,7 +48,7 @@ import {
 import { MOVE, PLAYER, scaleOf, STEP_MS } from '../sim/movement.ts'
 import { PICKUP_SPOTS, type PickupKind, PICKUPS, PORTAL, ZONES } from '../sim/places.ts'
 import { buildSlot, type BuildSlot } from '../sim/building.ts'
-import { BUILD } from '../sim/walls.ts'
+import { BUILD, type Wall } from '../sim/walls.ts'
 import { rayDistance, rayHit, worldFrom } from '../sim/world.ts'
 import { WallViews } from './building.ts'
 import { Impacts } from './impacts.ts'
@@ -291,6 +291,61 @@ controls.onUnbuild = () => {
     else sounds.buildRefused()
 }
 
+/** Is this wall yours, or your side's (team deathmatch)? */
+function ours(wall: Wall): boolean {
+    if (!me) return false
+    return wall.by === me || (wall.team !== null && wall.team === (teams.get(me) ?? null))
+}
+/** The built wall under the crosshair within `reach`, if it's yours or your side's (null: none). */
+function oursUnderCrosshair(reach: number): Wall | null {
+    const body = prediction.body
+    if (!body || !self?.alive) return null
+    const wall = rayHit(world, eyeOf(body), aimNow(body), reach)?.wall ?? null
+    return wall && ours(wall) ? wall : null
+}
+/**
+ * The door of your side's that F works: the one under the crosshair, else the nearest within
+ * reach, aimed at or not (an open door leaves little to aim at but its frame).
+ */
+function doorNear(): Wall | null {
+    const body = prediction.body
+    if (!body || !self?.alive) return null
+    const aimed = oursUnderCrosshair(BUILD.doorReach)
+    if (aimed?.kind === 'door') return aimed
+    const eye = eyeOf(body)
+    let best: Wall | null = null
+    let nearest: number = BUILD.doorReach
+    for (const wall of world.walls.all) {
+        if (wall.kind !== 'door' || !ours(wall)) continue
+        const gap = Math.hypot(
+            eye.x - Math.max(wall.minX, Math.min(wall.maxX, eye.x)),
+            eye.y - Math.max(wall.minY, Math.min(wall.maxY, eye.y)),
+            eye.z - Math.max(wall.minZ, Math.min(wall.maxZ, eye.z))
+        )
+        if (gap < nearest) [best, nearest] = [wall, gap]
+    }
+    return best
+}
+/** F: building and aimed at a plain standing wall of yours, it becomes a door; otherwise the door nearby opens or shuts. */
+controls.onUse = () => {
+    if (socket?.readyState !== WebSocket.OPEN) return
+    const wall = controls.building ? oursUnderCrosshair(BUILD.reach) : null
+    if (wall?.kind === 'wall' && wall.axis !== 'y') {
+        return socket.send(JSON.stringify({ type: 'reshape', id: wall.id, kind: 'door' }))
+    }
+    const door = doorNear()
+    if (door) socket.send(JSON.stringify({ type: 'door', id: door.id }))
+    else if (controls.building) sounds.buildRefused()
+}
+/** G, building: a window cut into a plain standing wall of yours (for good). */
+controls.onWindow = () => {
+    if (socket?.readyState !== WebSocket.OPEN) return
+    const wall = oursUnderCrosshair(BUILD.reach)
+    if (wall?.kind === 'wall' && wall.axis !== 'y') {
+        socket.send(JSON.stringify({ type: 'reshape', id: wall.id, kind: 'window' }))
+    } else sounds.buildRefused()
+}
+
 /** Where you aim from your eyes: the crosshair's way (in third person, through the camera's crosshair, as your shots). */
 function aimNow(body: NonNullable<typeof prediction.body>): Vector3 {
     const aim = thirdPerson ? aimThirdPerson(eyeOf(body)) : { yaw: controls.yaw, pitch: controls.pitch }
@@ -359,7 +414,7 @@ function receive(message: ServerMessage): void {
             matchAt = now
             world.walls.clear()
             for (const wall of message.walls ?? []) world.walls.add(wall)
-            wallViews.sync(world.walls)
+            wallViews.sync(world.walls, now)
             hud.setMatch(message.match, now)
             hud.card(controls.locked ? 'playing' : 'paused')
             if (!viewmodel) {
@@ -485,20 +540,30 @@ function onEvent(event: GameEvent, now: number): void {
     const colored = (id: string | null) => `<span style="color:${colorOf(id)}">${escape(name(id))}</span>`
     if (event.type === 'built') {
         world.walls.add(event.wall)
-        wallViews.sync(world.walls)
+        wallViews.sync(world.walls, now)
         const { x, z } = event.wall
         sounds.build(event.wall.by === me ? undefined : spatial(listener(), { x, z }))
+        return
+    }
+    if (event.type === 'wallChanged') {
+        const before = world.walls.get(event.wall.id)
+        world.walls.add(event.wall)
+        wallViews.sync(world.walls, now)
+        const where = spatial(listener(), event.wall)
+        if (before?.kind === 'door' && before.open !== event.wall.open) sounds.door(event.wall.open, where)
+        else if (before && before.kind !== event.wall.kind) sounds.build(where)
+        // Otherwise its builder left: it stays as it was, nobody's (silently).
         return
     }
     if (event.type === 'wallHit') {
         const wall = world.walls.get(event.id)
         if (wall) wall.health = event.health
-        wallViews.sync(world.walls)
+        wallViews.sync(world.walls, now)
         return
     }
     if (event.type === 'wallGone') {
         const wall = world.walls.remove(event.id)
-        wallViews.sync(world.walls)
+        wallViews.sync(world.walls, now)
         if (wall && event.broken) {
             effects.burst(wall, wall.team ? TEAM_COLORS[wall.team] : '#9aa3ad', now)
             sounds.wallBreak(spatial(listener(), wall))
@@ -508,7 +573,7 @@ function onEvent(event: GameEvent, now: number): void {
     if (event.type === 'walls') {
         world.walls.clear()
         for (const wall of event.walls) world.walls.add(wall)
-        wallViews.sync(world.walls)
+        wallViews.sync(world.walls, now)
         return
     }
     if (event.type === 'pickup') {
@@ -1034,7 +1099,11 @@ function draw(now: number): void {
     // Build mode: the gun put away, the ghost where the next wall goes, its line on the HUD.
     buildAt = building && body ? buildSlot(world, eyeOf(body), aimNow(body), controls.stance) : null
     wallViews.showGhost(buildAt?.wall ?? null, buildAt?.taken ?? false)
+    wallViews.update(now)
     hud.building(building ? controls.stance : null)
+    // A door of yours within reach: F, said under the crosshair.
+    const door = doorNear()
+    hud.prompt(door ? (door.open ? 'Close door' : 'Open door') : null)
     if (viewmodel) {
         viewmodel.visible = Boolean(self?.alive) && !third && !scoped && !building
         viewmodel.loaded = held === 'launcher' && Boolean(self && self.ammo > 0 && !self.reloading)

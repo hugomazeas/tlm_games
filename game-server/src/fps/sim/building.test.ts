@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { Vector3 } from 'three'
 import { createRng } from '../../sim/rng.ts'
-import { BUTTON, type InputFrame, type WallSpec } from '../protocol.ts'
+import { BUTTON, type InputFrame, type WallKind, type WallSpec } from '../protocol.ts'
 import { Arena, type ArenaEvent } from './arena.ts'
 import { buildSlot } from './building.ts'
 import { aimDirection, GUNS } from './combat.ts'
@@ -18,8 +18,8 @@ function room() {
 }
 
 let nextId = 1
-function put(world: ReturnType<typeof room>, spec: WallSpec, by = 'someone') {
-    return world.walls.add({ ...spec, id: nextId++, by, team: null, health: BUILD.health })
+function put(world: ReturnType<typeof room>, spec: WallSpec, by = 'someone', kind: WallKind = 'wall', open = false) {
+    return world.walls.add({ ...spec, id: nextId++, by, team: null, health: BUILD.health, kind, open })
 }
 
 const idle = (yaw = 0, forward = 0) => moveOf({ forward, strafe: 0, yaw, buttons: 0 })
@@ -173,26 +173,26 @@ describe('the arena builds and breaks walls', () => {
         expect(arena.wallStates()).toHaveLength(0)
     })
 
-    test('rockets take one down: three of them', () => {
+    test('rockets take one down: seven of them', () => {
         const { arena } = game()
         arena.setLoadout('me', { primary: 'rifle', secondary: 'launcher' })
         arena.build('me', before)
         all(arena)
-        // A click a rocket (the launcher fires on a click), until it's down (30 s at most: reloads included).
+        // A click a rocket (the launcher fires on a click), until it's down (2 min at most: reloads included).
         const events: ArenaEvent[] = []
-        for (let seq = 1; seq <= 1800 && arena.wallStates().length > 0; seq++) {
+        for (let seq = 1; seq <= 7200 && arena.wallStates().length > 0; seq++) {
             const buttons = seq % 20 < 10 ? BUTTON.fire : 0
             arena.queue('me', [{ seq, forward: 0, strafe: 0, yaw: 0, pitch: 0, buttons, view: 0, slot: 'secondary' }])
             events.push(...arena.advance())
         }
         const hits = events.filter(e => e.type === 'wallHit')
 
-        // A direct hit: about 155 of its 350 (it goes off just short of it).
+        // A direct hit: about 155 of its 1050 (it goes off just short of it).
         const left = (hits[0] as { health: number }).health
         expect(BUILD.health - left).toBeGreaterThan(150)
         expect(BUILD.health - left).toBeLessThan(160)
         expect(events).toContainEqual({ type: 'wallGone', id: expect.any(Number), broken: true })
-        expect(events.filter(e => e.type === 'launch')).toHaveLength(3)
+        expect(events.filter(e => e.type === 'launch')).toHaveLength(7)
     })
 
     test('a teammate cannot shoot down their side’s wall', () => {
@@ -207,20 +207,32 @@ describe('the arena builds and breaks walls', () => {
         expect(arena.wallStates()).toEqual([expect.objectContaining({ by: 'mate', health: BUILD.health })])
     })
 
-    test('your own walls come back when you take them back, and go when you leave', () => {
+    test('you take back only your own walls; a leaver’s stay up, nobody’s', () => {
         const { arena } = game()
-        arena.add('other')
+        arena.add('other', 'red')
+        arena.add('mate', 'red')
         arena.build('me', before)
-        arena.build('other', { ...before, z: 1 })
+        arena.build('other', { ...before, z: -0.5, axis: 'x' })
         all(arena)
         const mine = arena.wallStates().find(w => w.by === 'me')!
         const theirs = arena.wallStates().find(w => w.by === 'other')!
+        arena.reshape('other', theirs.id, 'door')
 
         expect(arena.unbuild('me', theirs.id)).toBe(false)
         expect(arena.unbuild('me', mine.id)).toBe(true)
         arena.remove('other')
-        expect(all(arena)).toContainEqual({ type: 'wallGone', id: theirs.id, broken: false })
-        expect(arena.wallStates()).toHaveLength(0)
+        const events = all(arena)
+        expect(events.some(e => e.type === 'wallGone' && e.id === theirs.id)).toBe(false)
+        expect(events).toContainEqual({
+            type: 'wallChanged',
+            wall: expect.objectContaining({ id: theirs.id, by: null, team: null, kind: 'door' }),
+        })
+        expect(arena.wallStates()).toEqual([expect.objectContaining({ id: theirs.id, by: null })])
+        // Nobody inherits it: not their teammate, not the one who rejoins (a new connection).
+        expect(arena.door('mate', theirs.id)).toBe(false)
+        arena.add('other')
+        expect(arena.door('other', theirs.id)).toBe(false)
+        expect(arena.unbuild('other', theirs.id)).toBe(false)
     })
 
     test('a new match wipes them', () => {
@@ -242,6 +254,95 @@ describe('the arena builds and breaks walls', () => {
 
         expect(world.walls.count).toBe(BUILD.max)
         expect(world.walls.get(first.id)).toBeUndefined()
+    })
+})
+
+describe('doors and windows', () => {
+    /** A standing wall across the way at z = -0.5, its foot on the floor. */
+    const across: WallSpec = { axis: 'z', x: 0, y: S / 2, z: -0.5 }
+    const walkThrough = (world: ReturnType<typeof room>) => {
+        let body = bodyAt(0, 0, 0)
+        for (let i = 0; i < 90; i++) body = stepBody(world, body, idle(0, 1))
+        return body.z
+    }
+    const rayAt = (world: ReturnType<typeof room>, height: number) =>
+        rayHit(world, new Vector3(0, height, 0), new Vector3(0, 0, -1), 5)?.wall ?? null
+
+    test('a window: rounds and eyes pass the slit at eye height, nobody gets through it', () => {
+        const world = room()
+        put(world, across, 'me', 'window')
+
+        expect(rayAt(world, PLAYER.eye)).toBeNull()
+        expect(rayAt(world, 0.1)).not.toBeNull()
+        expect(rayAt(world, 0.5)).not.toBeNull()
+        expect(walkThrough(world)).toBeGreaterThan(-0.5)
+    })
+
+    test('a door: shut it stops you and the rounds; open you walk through the doorway, not through its leaf', () => {
+        const world = room()
+        const door = put(world, across, 'me', 'door')
+        expect(walkThrough(world)).toBeGreaterThan(-0.5)
+        expect(rayAt(world, 0.2)).not.toBeNull()
+
+        world.walls.add({ ...door, open: true })
+        expect(rayAt(world, 0.2)).toBeNull()
+        expect(walkThrough(world)).toBeLessThan(-0.8)
+        // The leaf stands swung out on its hinge (the -x post), into +z: solid there.
+        const hinge = -S / 2 + 0.04
+        const intoLeaf = rayHit(world, new Vector3(hinge - 0.5, 0.2, -0.3), new Vector3(1, 0, 0), 1)
+        expect(intoLeaf?.wall?.id).toBe(door.id)
+    })
+
+    function game() {
+        const world = room()
+        const arena = new Arena(world, createRng(3))
+        arena.add('me')
+        arena.add('mate')
+        arena.add('enemy')
+        arena.build('me', { axis: 'z', x: 0, y: S / 2, z: -0.7 })
+        arena.advance()
+        return { world, arena, id: arena.wallStates()[0]!.id }
+    }
+
+    test('your wall becomes a door you open and shut; a window for good; never a flat one', () => {
+        const { arena, id } = game()
+        expect(arena.door('me', id)).toBe(false) // not a door yet
+        expect(arena.reshape('me', id, 'door')).toBe(true)
+        expect(arena.door('me', id)).toBe(true)
+        expect(arena.advance()).toContainEqual({
+            type: 'wallChanged',
+            wall: expect.objectContaining({ id, kind: 'door', open: true }),
+        })
+        expect(arena.reshape('me', id, 'window')).toBe(false) // a door stays a door
+
+        const second = game()
+        expect(second.arena.reshape('me', second.id, 'window')).toBe(true)
+        expect(second.arena.reshape('me', second.id, 'door')).toBe(false)
+        expect(second.arena.wallStates()[0]!.kind).toBe('window')
+
+        const flat = game()
+        flat.world.walls.add({ ...flat.world.walls.all[0]!, axis: 'y' })
+        expect(flat.arena.reshape('me', flat.id, 'door')).toBe(false)
+    })
+
+    test('only its builder, or their side in team deathmatch, may change it', () => {
+        const { arena, id } = game()
+        expect(arena.reshape('enemy', id, 'door')).toBe(false)
+        expect(arena.reshape('mate', id, 'door')).toBe(false) // no sides: theirs alone
+
+        const teams = game()
+        teams.arena.setTeam('me', 'red')
+        teams.arena.setTeam('mate', 'red')
+        teams.arena.setTeam('enemy', 'blue')
+        teams.arena.build('me', { axis: 'z', x: S, y: S / 2, z: -0.7 })
+        // Built after the sides were picked: it's red's.
+        for (let i = 0; i < BUILD.everySteps; i++) teams.arena.advance()
+        teams.arena.build('me', { axis: 'z', x: S, y: S / 2, z: -0.7 })
+        const red = teams.arena.wallStates().find(w => w.team === 'red')!
+        expect(teams.arena.reshape('enemy', red.id, 'door')).toBe(false)
+        expect(teams.arena.reshape('mate', red.id, 'door')).toBe(true)
+        expect(teams.arena.door('mate', red.id)).toBe(true)
+        expect(teams.arena.door('enemy', red.id)).toBe(false)
     })
 })
 

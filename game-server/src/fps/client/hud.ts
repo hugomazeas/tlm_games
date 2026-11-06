@@ -55,6 +55,8 @@ const CSS = `
 #fps-hud .zone-status { position: absolute; left: 50%; top: calc(50% + 96px); transform: translateX(-50%); font-weight: 800; font-size: 14px; letter-spacing: .14em; text-shadow: 0 2px 4px rgba(0,0,0,.85); white-space: nowrap; }
 #fps-hud .build { position: absolute; left: 50%; bottom: 92px; transform: translateX(-50%); padding: 6px 14px; background: rgba(12,14,18,.62); border-radius: 8px; font-size: 13px; white-space: nowrap; text-align: center; }
 #fps-hud .build b { color: #5cff8a; letter-spacing: .14em; margin-right: 10px; }
+#fps-hud .prompt { position: absolute; left: 50%; top: calc(50% + 40px); transform: translateX(-50%); padding: 3px 10px; background: rgba(12,14,18,.62); border-radius: 6px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+#fps-hud .prompt kbd { font: inherit; font-weight: 800; padding: 0 5px; margin-right: 6px; border: 1px solid rgba(255,255,255,.5); border-radius: 4px; }
 #fps-hud .build kbd { font: inherit; font-weight: 700; padding: 0 5px; border: 1px solid rgba(255,255,255,.35); border-radius: 4px; }
 #fps-hud .zone-marker { position: absolute; width: 18px; height: 18px; margin: -9px; border: 3px solid; transform: rotate(45deg); box-shadow: 0 0 6px rgba(0,0,0,.6); }
 #fps-hud .zone-marker span { position: absolute; left: 50%; top: 24px; transform: rotate(-45deg) translateX(-50%); transform-origin: 0 0; white-space: nowrap; font-size: 12px; text-shadow: 0 1px 3px #000; }
@@ -211,6 +213,7 @@ export class Hud {
             <div class="buffs" data-el="buffs"></div>
             <div class="zone-status hidden" data-el="zoneStatus"></div>
             <div class="build hidden" data-el="build"></div>
+            <div class="prompt hidden" data-el="prompt"></div>
             <div class="zone-marker hidden" data-el="zoneMarker"><span></span></div>
             <div class="hs-flash" data-el="hsFlash"></div>
             <div class="hs-dealt" data-el="hsDealt">HEADSHOT</div>
@@ -290,7 +293,8 @@ export class Hud {
                 <p><kbd>WASD</kbd> move · <kbd>Shift</kbd> + direction dodge · <kbd>Space</kbd> jetpack<br>
                 <kbd>Click</kbd> fire · <kbd>Right-click</kbd> aim · <kbd>R</kbd> reload<br>
                 <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> weapons (or the wheel, <kbd>Q</kbd> the last) · <kbd>V</kbd> 1st / 3rd person<br>
-                <kbd>B</kbd> build walls (click to place, <kbd>R</kbd> turn, wheel flat / standing, <kbd>E</kbd> take back)<br>
+                <kbd>B</kbd> build walls (click to place, <kbd>R</kbd> turn, wheel flat / standing, <kbd>F</kbd> door, <kbd>G</kbd> window, <kbd>E</kbd> take back)<br>
+                <kbd>F</kbd> open / shut your side's doors<br>
                 <kbd>Tab</kbd> scores · <kbd>Esc</kbd> this menu</p>${back}`,
             playing: '',
             replaced: `<h1>Playing in another tab</h1><p>This one let go.</p>${back}`,
@@ -528,10 +532,20 @@ export class Hud {
         const line = this.el.build!
         line.classList.toggle('hidden', stance === null)
         if (stance) {
-            line.innerHTML = `<b>BUILD</b>${stance.flat ? 'Flat' : 'Standing'} · <kbd>Click</kbd> place · <kbd>R</kbd> turn · <kbd>Wheel</kbd> ${stance.flat ? 'standing' : 'flat'} · <kbd>E</kbd> take back · <kbd>B</kbd> guns`
+            line.innerHTML = `<b>BUILD</b>${stance.flat ? 'Flat' : 'Standing'} · <kbd>Click</kbd> place · <kbd>R</kbd> turn · <kbd>Wheel</kbd> ${stance.flat ? 'standing' : 'flat'} · <kbd>F</kbd> door · <kbd>G</kbd> window · <kbd>E</kbd> take back · <kbd>B</kbd> guns`
         }
     }
     private buildShown = ''
+
+    /** What F does here (a door to open or shut), under the crosshair; null hides it. Redrawn only on a change. */
+    prompt(action: string | null): void {
+        if (action === this.promptShown) return
+        this.promptShown = action
+        const line = this.el.prompt!
+        line.classList.toggle('hidden', action === null)
+        if (action) line.innerHTML = `<kbd>F</kbd>${escape(action)}`
+    }
+    private promptShown: string | null = null
 
     zone(
         status: { text: string; color: string } | null,

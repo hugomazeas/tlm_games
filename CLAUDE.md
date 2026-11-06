@@ -367,7 +367,7 @@ Playable at `/games/office-fps`.
   mode (the gun put away: no fire, reload or aim goes out), a click puts up a wall, R turns it a
   quarter, the wheel lays it flat or stands it up, E takes back one of yours, 1/2/3/Q back to the
   guns. A wall is a 0.6 m panel, 6 cm thick, squared to the office (`axis`: its normal, x/z standing,
-  y flat), 350 health, within 1 m of the eyes, one every second
+  y flat), 1050 health, within 1 m of the eyes, one every second
   (the reload's ring by the crosshair fills meanwhile, counted from the click); no limit per player, `BUILD.max` (120) on the map (past it the builder's
   oldest goes). `buildSlot` (shared): aimed at a built wall, the new one locks on to the edge nearest
   the crosshair, in line with it or turned a quarter on your side (corners, roofs); anywhere else it
@@ -376,8 +376,17 @@ Playable at `/games/office-fps`.
   (`FpsWorld.walls`, each lobby its own): `collideCapsule` (upright capsules: a wall put on a player
   pushes them out), `rayHit`/`rayStop`/`rayDistance` (shots, rockets ×1.6: three take one down, cover, name tags, the
   third-person camera) all meet them. Events `built` / `wallHit` / `wallGone` / `walls` (a new match
-  wipes them; a leaver's go with them), the list in `welcome`. Hits on them leave no hole (it would
-  hang in the air once the wall is down).
+  wipes them; a leaver's stay up, nobody's: `by` and `team` null, so no one, their side or their
+  next connection included, takes them back or works their doors), the list in `welcome`. Hits on them leave no hole (it would
+  hang in the air once the wall is down). **Doors and windows** (`WallState.kind`): in build mode F
+  makes a standing plain wall a door, G a window (a 12 cm slit at a mini's eye height: seen and shot
+  through, not walked through); neither turns back. F opens and shuts a door any time (`open`): the
+  one under the crosshair, else the nearest of your side's within `doorReach` (0.5 m; an open door leaves
+  little to aim at), with an "F Open / Close door" prompt under the crosshair. Only the builder, or
+  their side in team deathmatch, may (`Arena.usable`). A wall is then a few boxes (`partsOf`: posts,
+  lintel, leaf, the open leaf swung a quarter out and as solid; or the panel round the slit), a
+  wall's box encloses them all; the leaf swings on its hinge in the browser (`WallViews.update`).
+  `reshape` / `door` messages, `wallChanged` events.
 - **Mouse spikes** (`MouseFilter` in `client/controls.ts`): Chrome under pointer lock now and then
   reports one huge bogus movement (a sudden half turn). The lock asks for raw input
   (`unadjustedMovement`, falling back to a plain lock), and a movement far bigger than the last

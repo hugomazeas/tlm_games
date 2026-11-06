@@ -104,6 +104,18 @@ export class Sounds {
         }
     }
 
+    /** A door swinging open (a rising creak) or shut (a soft clunk and the latch). */
+    door(open: boolean, where?: { gain: number; pan: number }): void {
+        const out = where ? this.place(where, 0.7) : undefined
+        if (open) {
+            this.tone('sawtooth', 320, 520, 0.22, 0.06, 0, out)
+            this.burst(0.18, 'bandpass', 900, 1400, 0.12, 0, out)
+        } else {
+            this.tone('sine', 150, 80, 0.1, 0.4, 0, out)
+            this.burst(0.03, 'bandpass', 3200, 2800, 0.2, 0.06, out)
+        }
+    }
+
     /** Not there: the build slot is taken. */
     buildRefused(): void {
         this.tone('square', 220, 180, 0.08, 0.1)
