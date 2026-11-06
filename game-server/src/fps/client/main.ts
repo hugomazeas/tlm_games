@@ -1,4 +1,12 @@
-import { ACESFilmicToneMapping, PCFShadowMap, PerspectiveCamera, Scene, Vector3, WebGLRenderer } from 'three'
+import {
+    ACESFilmicToneMapping,
+    type Object3D,
+    PCFShadowMap,
+    PerspectiveCamera,
+    Scene,
+    Vector3,
+    WebGLRenderer,
+} from 'three'
 import { buildOffice } from '../map/office.js'
 import {
     BUTTON,
@@ -315,6 +323,7 @@ function receive(message: ServerMessage): void {
             if (!viewmodel) {
                 viewmodel = new Viewmodel(roster.get(me)?.color ?? '#ffd166')
                 viewmodel.follow(camera)
+                void viewmodel.prepare(renderer, camera).catch(() => {})
             }
             updateHost()
             return
@@ -619,7 +628,48 @@ function bearingTo([x, , z]: [number, number, number]): number {
 let last = performance.now()
 let pending = 0
 
+/**
+ * Compiles every shader the world can need before the first frame, so nothing stalls the first
+ * time it shows (on Windows a compile is 50–200 ms): a shot, a kill, a blast and a rocket are set
+ * off under the floor (gone in a second), and everything hidden (the stand-in trooper and pickups,
+ * flashes, shields, halos) is shown for the compile. Nothing is drawn meanwhile. Shaders stay
+ * compiled while a material using them is alive: the stand-ins keep them.
+ */
+let warming = true
+async function warmShaders(): Promise<void> {
+    const now = performance.now()
+    const below = new Vector3(0, -50, 0)
+    effects.tracer(below, new Vector3(0, -50, 1), 0xffffff, now, true)
+    effects.tracer(below, new Vector3(0, -50, 1), 0xffffff, now, false, SNIPER_TRACER)
+    effects.burst(below, '#ffffff', now)
+    effects.explosion(below, now)
+    effects.rockets([{ id: -1, by: '', x: 0, y: -50, z: 0, vx: 0, vy: 1, vz: 0 }], now)
+    impacts.hit(below, new Vector3(0, 1, 0), new Vector3(0, -1, 0), 'metal', now)
+    impacts.hit(below, new Vector3(0, 1, 0), new Vector3(0, -1, 0), 'glass', now)
+    impacts.blast(below, new Vector3(0, 1, 0), new Vector3(0, -1, 0), 'desk', now)
+    const shown: Object3D[] = []
+    scene.traverse(o => {
+        if (!o.visible) {
+            o.visible = true
+            shown.push(o)
+        }
+    })
+    try {
+        await renderer.compileAsync(scene, camera)
+    } finally {
+        for (const o of shown) o.visible = false
+        effects.rockets([], now)
+        warming = false
+    }
+}
+void warmShaders().catch(() => (warming = false))
+
 function frame(now: number): void {
+    if (warming) {
+        last = now
+        requestAnimationFrame(frame)
+        return
+    }
     const started = performance.now()
     const programsBefore = renderer.info.programs?.length ?? 0
     renderer.info.reset()
