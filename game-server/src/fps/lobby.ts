@@ -291,6 +291,20 @@ export class FpsLobby {
         this.arena.unbuild(connId, id)
     }
 
+    /** A wall of their side's into a door or a window. */
+    reshape(connId: string, id: number, kind: 'door' | 'window'): void {
+        const member = this.members.get(connId)
+        if (!member || member.info.watching || this.phase === 'intermission') return
+        this.arena.reshape(connId, id, kind)
+    }
+
+    /** Opens or shuts a door of their side's. */
+    door(connId: string, id: number): void {
+        const member = this.members.get(connId)
+        if (!member || member.info.watching) return
+        this.arena.door(connId, id)
+    }
+
     /** The host starts a match with these rules (from warmup, with someone to play). */
     start(connId: string, rules: Rules): void {
         const member = this.members.get(connId)

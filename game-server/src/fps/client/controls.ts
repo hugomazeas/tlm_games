@@ -116,6 +116,10 @@ export class Controls {
     readonly stance = { flat: false, turned: false }
     onBuild: (() => void) | null = null
     onUnbuild: (() => void) | null = null
+    /** F: open or shut a door of your side's (any time); in build mode, on a plain wall, make it a door. */
+    onUse: (() => void) | null = null
+    /** G in build mode: cut a window into a wall of your side's. */
+    onWindow: (() => void) | null = null
     readonly mouse = new MouseFilter()
     /** Raw mouse input (no OS acceleration): asked for on every lock; null until the first. */
     rawInput: boolean | null = null
@@ -185,9 +189,11 @@ export class Controls {
             if (this.building) {
                 if (e.code === 'KeyR' && !e.repeat) this.stance.turned = !this.stance.turned
                 if (e.code === 'KeyE' && !e.repeat) this.onUnbuild?.()
+                if (e.code === 'KeyG' && !e.repeat) this.onWindow?.()
             } else if (e.code === 'KeyR') {
                 this.reloadAsked = true
             }
+            if (e.code === 'KeyF' && !e.repeat) this.onUse?.()
             if (e.code === 'KeyV' && !e.repeat) this.onToggleView?.()
             if (e.code === 'Digit1') this.select('primary')
             if (e.code === 'Digit2') this.select('secondary')

@@ -290,7 +290,8 @@ export class Hud {
                 <p><kbd>WASD</kbd> move · <kbd>Shift</kbd> + direction dodge · <kbd>Space</kbd> jetpack<br>
                 <kbd>Click</kbd> fire · <kbd>Right-click</kbd> aim · <kbd>R</kbd> reload<br>
                 <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> weapons (or the wheel, <kbd>Q</kbd> the last) · <kbd>V</kbd> 1st / 3rd person<br>
-                <kbd>B</kbd> build walls (click to place, <kbd>R</kbd> turn, wheel flat / standing, <kbd>E</kbd> take back)<br>
+                <kbd>B</kbd> build walls (click to place, <kbd>R</kbd> turn, wheel flat / standing, <kbd>F</kbd> door, <kbd>G</kbd> window, <kbd>E</kbd> take back)<br>
+                <kbd>F</kbd> open / shut your side's doors<br>
                 <kbd>Tab</kbd> scores · <kbd>Esc</kbd> this menu</p>${back}`,
             playing: '',
             replaced: `<h1>Playing in another tab</h1><p>This one let go.</p>${back}`,
@@ -528,7 +529,7 @@ export class Hud {
         const line = this.el.build!
         line.classList.toggle('hidden', stance === null)
         if (stance) {
-            line.innerHTML = `<b>BUILD</b>${stance.flat ? 'Flat' : 'Standing'} · <kbd>Click</kbd> place · <kbd>R</kbd> turn · <kbd>Wheel</kbd> ${stance.flat ? 'standing' : 'flat'} · <kbd>E</kbd> take back · <kbd>B</kbd> guns`
+            line.innerHTML = `<b>BUILD</b>${stance.flat ? 'Flat' : 'Standing'} · <kbd>Click</kbd> place · <kbd>R</kbd> turn · <kbd>Wheel</kbd> ${stance.flat ? 'standing' : 'flat'} · <kbd>F</kbd> door · <kbd>G</kbd> window · <kbd>E</kbd> take back · <kbd>B</kbd> guns`
         }
     }
     private buildShown = ''
