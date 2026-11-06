@@ -249,12 +249,12 @@ export class PerfOverlay {
                 : limit === 'likely-gpu'
                   ? '<span class="bad">likely GPU-bound</span> (CPU idle most of the frame): lower Resolution'
                   : limit === 'cpu'
-                  ? '<span class="bad">CPU-bound</span>'
-                  : limit === 'vsync'
-                    ? '<span class="good">capped by the display</span>'
-                    : gpuTimer
-                      ? 'measuring…'
-                      : 'no GPU timer in this browser: compare CPU with the frame'
+                    ? '<span class="bad">CPU-bound</span>'
+                    : limit === 'vsync'
+                      ? '<span class="good">capped by the display</span>'
+                      : gpuTimer
+                        ? 'measuring…'
+                        : 'no GPU timer in this browser: compare CPU with the frame'
         const sections = SECTIONS.map(k => `${SECTION_NAMES[k]} ${ms(s.cpu[k])}`).join(' · ')
         const { width, height, pixelRatio, antialias } = x.screen
         const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(0)}k` : String(n))
