@@ -252,11 +252,11 @@ export class Arena {
         return [this.spawn(fighter)]
     }
 
-    /** Out of the game, their walls with them. */
+    /** Out of the game. Their walls stay up, nobody's from now on: no one inherits them, their side included. */
     remove(id: string): void {
         this.fighters.delete(id)
         for (const wall of [...this.world.walls.all]) {
-            if (wall.by === id) this.takeDown(wall, false)
+            if (wall.by === id) this.change(wall, { by: null, team: null })
         }
     }
 
@@ -294,7 +294,7 @@ export class Arena {
 
     /** A standing plain wall of their side's, in reach, into a door or a window (for good). */
     reshape(id: string, wallId: number, kind: 'door' | 'window'): boolean {
-        const wall = this.usable(id, wallId)
+        const wall = this.usable(id, wallId, BUILD.reach)
         if (!wall || wall.kind !== 'wall' || wall.axis === 'y') return false
         this.change(wall, { kind })
 
@@ -303,15 +303,15 @@ export class Arena {
 
     /** Opens or shuts a door of their side's, in reach (shut on someone, it pushes them out). */
     door(id: string, wallId: number): boolean {
-        const wall = this.usable(id, wallId)
+        const wall = this.usable(id, wallId, BUILD.doorReach)
         if (!wall || wall.kind !== 'door') return false
         this.change(wall, { open: !wall.open })
 
         return true
     }
 
-    /** A wall they may change: up, theirs or their side's (team deathmatch), within reach of their eyes. */
-    private usable(id: string, wallId: number): Wall | null {
+    /** A wall they may change: up, theirs or their side's (team deathmatch), within `reach` of their eyes (to its nearest). */
+    private usable(id: string, wallId: number, reach: number): Wall | null {
         const fighter = this.fighters.get(id)
         const wall = this.world.walls.get(wallId)
         if (!fighter?.alive || !wall) return null
@@ -323,10 +323,10 @@ export class Arena {
             eye.z - Math.max(wall.minZ, Math.min(wall.maxZ, eye.z))
         )
 
-        return gap <= BUILD.useReach + 0.5 ? wall : null
+        return gap <= reach + BUILD.useSlack ? wall : null
     }
 
-    private change(wall: Wall, change: Partial<Pick<WallState, 'kind' | 'open'>>): void {
+    private change(wall: Wall, change: Partial<Pick<WallState, 'kind' | 'open' | 'by' | 'team'>>): void {
         const changed = this.world.walls.add({ ...stateOf(wall), ...change })
         this.pending.push({ type: 'wallChanged', wall: stateOf(changed) })
     }

@@ -127,9 +127,9 @@ export type WallKind = (typeof WALL_KINDS)[number]
 /** A built wall, as everyone sees it. */
 export interface WallState extends WallSpec {
     id: number
-    /** Who built it (a connection id). */
-    by: string
-    /** Their side in team deathmatch (tints it, and its door opens for them), null otherwise. */
+    /** Who built it (a connection id); null once they left: it stays up, nobody's (no one takes it back or works its door). */
+    by: string | null
+    /** Their side in team deathmatch (tints it, and its door opens for them), null otherwise (or once they left). */
     team: Team | null
     health: number
     kind: WallKind

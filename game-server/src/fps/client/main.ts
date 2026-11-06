@@ -296,11 +296,11 @@ function ours(wall: Wall): boolean {
     if (!me) return false
     return wall.by === me || (wall.team !== null && wall.team === (teams.get(me) ?? null))
 }
-/** The built wall under the crosshair within a door's reach, if it's yours or your side's (null: none). */
-function oursUnderCrosshair(): Wall | null {
+/** The built wall under the crosshair within `reach`, if it's yours or your side's (null: none). */
+function oursUnderCrosshair(reach: number): Wall | null {
     const body = prediction.body
     if (!body || !self?.alive) return null
-    const wall = rayHit(world, eyeOf(body), aimNow(body), BUILD.useReach)?.wall ?? null
+    const wall = rayHit(world, eyeOf(body), aimNow(body), reach)?.wall ?? null
     return wall && ours(wall) ? wall : null
 }
 /**
@@ -310,11 +310,11 @@ function oursUnderCrosshair(): Wall | null {
 function doorNear(): Wall | null {
     const body = prediction.body
     if (!body || !self?.alive) return null
-    const aimed = oursUnderCrosshair()
+    const aimed = oursUnderCrosshair(BUILD.doorReach)
     if (aimed?.kind === 'door') return aimed
     const eye = eyeOf(body)
     let best: Wall | null = null
-    let nearest: number = BUILD.useReach
+    let nearest: number = BUILD.doorReach
     for (const wall of world.walls.all) {
         if (wall.kind !== 'door' || !ours(wall)) continue
         const gap = Math.hypot(
@@ -329,7 +329,7 @@ function doorNear(): Wall | null {
 /** F: building and aimed at a plain standing wall of yours, it becomes a door; otherwise the door nearby opens or shuts. */
 controls.onUse = () => {
     if (socket?.readyState !== WebSocket.OPEN) return
-    const wall = controls.building ? oursUnderCrosshair() : null
+    const wall = controls.building ? oursUnderCrosshair(BUILD.reach) : null
     if (wall?.kind === 'wall' && wall.axis !== 'y') {
         return socket.send(JSON.stringify({ type: 'reshape', id: wall.id, kind: 'door' }))
     }
@@ -340,7 +340,7 @@ controls.onUse = () => {
 /** G, building: a window cut into a plain standing wall of yours (for good). */
 controls.onWindow = () => {
     if (socket?.readyState !== WebSocket.OPEN) return
-    const wall = oursUnderCrosshair()
+    const wall = oursUnderCrosshair(BUILD.reach)
     if (wall?.kind === 'wall' && wall.axis !== 'y') {
         socket.send(JSON.stringify({ type: 'reshape', id: wall.id, kind: 'window' }))
     } else sounds.buildRefused()
@@ -551,7 +551,8 @@ function onEvent(event: GameEvent, now: number): void {
         wallViews.sync(world.walls, now)
         const where = spatial(listener(), event.wall)
         if (before?.kind === 'door' && before.open !== event.wall.open) sounds.door(event.wall.open, where)
-        else sounds.build(where)
+        else if (before && before.kind !== event.wall.kind) sounds.build(where)
+        // Otherwise its builder left: it stays as it was, nobody's (silently).
         return
     }
     if (event.type === 'wallHit') {

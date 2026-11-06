@@ -173,26 +173,26 @@ describe('the arena builds and breaks walls', () => {
         expect(arena.wallStates()).toHaveLength(0)
     })
 
-    test('rockets take one down: three of them', () => {
+    test('rockets take one down: seven of them', () => {
         const { arena } = game()
         arena.setLoadout('me', { primary: 'rifle', secondary: 'launcher' })
         arena.build('me', before)
         all(arena)
-        // A click a rocket (the launcher fires on a click), until it's down (30 s at most: reloads included).
+        // A click a rocket (the launcher fires on a click), until it's down (2 min at most: reloads included).
         const events: ArenaEvent[] = []
-        for (let seq = 1; seq <= 1800 && arena.wallStates().length > 0; seq++) {
+        for (let seq = 1; seq <= 7200 && arena.wallStates().length > 0; seq++) {
             const buttons = seq % 20 < 10 ? BUTTON.fire : 0
             arena.queue('me', [{ seq, forward: 0, strafe: 0, yaw: 0, pitch: 0, buttons, view: 0, slot: 'secondary' }])
             events.push(...arena.advance())
         }
         const hits = events.filter(e => e.type === 'wallHit')
 
-        // A direct hit: about 155 of its 350 (it goes off just short of it).
+        // A direct hit: about 155 of its 1050 (it goes off just short of it).
         const left = (hits[0] as { health: number }).health
         expect(BUILD.health - left).toBeGreaterThan(150)
         expect(BUILD.health - left).toBeLessThan(160)
         expect(events).toContainEqual({ type: 'wallGone', id: expect.any(Number), broken: true })
-        expect(events.filter(e => e.type === 'launch')).toHaveLength(3)
+        expect(events.filter(e => e.type === 'launch')).toHaveLength(7)
     })
 
     test('a teammate cannot shoot down their side’s wall', () => {
@@ -207,20 +207,32 @@ describe('the arena builds and breaks walls', () => {
         expect(arena.wallStates()).toEqual([expect.objectContaining({ by: 'mate', health: BUILD.health })])
     })
 
-    test('your own walls come back when you take them back, and go when you leave', () => {
+    test('you take back only your own walls; a leaver’s stay up, nobody’s', () => {
         const { arena } = game()
-        arena.add('other')
+        arena.add('other', 'red')
+        arena.add('mate', 'red')
         arena.build('me', before)
-        arena.build('other', { ...before, z: 1 })
+        arena.build('other', { ...before, z: -0.5, axis: 'x' })
         all(arena)
         const mine = arena.wallStates().find(w => w.by === 'me')!
         const theirs = arena.wallStates().find(w => w.by === 'other')!
+        arena.reshape('other', theirs.id, 'door')
 
         expect(arena.unbuild('me', theirs.id)).toBe(false)
         expect(arena.unbuild('me', mine.id)).toBe(true)
         arena.remove('other')
-        expect(all(arena)).toContainEqual({ type: 'wallGone', id: theirs.id, broken: false })
-        expect(arena.wallStates()).toHaveLength(0)
+        const events = all(arena)
+        expect(events.some(e => e.type === 'wallGone' && e.id === theirs.id)).toBe(false)
+        expect(events).toContainEqual({
+            type: 'wallChanged',
+            wall: expect.objectContaining({ id: theirs.id, by: null, team: null, kind: 'door' }),
+        })
+        expect(arena.wallStates()).toEqual([expect.objectContaining({ id: theirs.id, by: null })])
+        // Nobody inherits it: not their teammate, not the one who rejoins (a new connection).
+        expect(arena.door('mate', theirs.id)).toBe(false)
+        arena.add('other')
+        expect(arena.door('other', theirs.id)).toBe(false)
+        expect(arena.unbuild('other', theirs.id)).toBe(false)
     })
 
     test('a new match wipes them', () => {
