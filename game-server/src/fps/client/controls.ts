@@ -9,17 +9,24 @@ const DIRECTIONS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDow
  * Chrome under pointer lock (Windows especially) now and then reports one mousemove hundreds or
  * thousands of px long that the mouse never made: a sudden half turn. A movement is a spike when
  * it's at least `minPx` and `ratio` times the biggest of the last few, or big just after the lock
- * (`settleMs`). A real flick goes on: a big movement the same way right after a dropped one is let
- * through (the dropped one was real after all).
+ * (`settleMs`). A suspect is held, not dropped: a flick from a still aim starts just as suddenly
+ * (Chrome sends one movement a frame, so at 40 fps a quarter turn can come in one), but it goes on:
+ * when the next movement carries on the same way at a comparable size (`carryShare` of the held
+ * one), both are applied; otherwise the held one was a spike and is thrown away.
  */
-export const SPIKE = { minPx: 250, ratio: 6, settleMs: 100, settlePx: 60 } as const
+export const SPIKE = { minPx: 250, ratio: 6, carryShare: 0.25, settleMs: 100, settlePx: 60 } as const
+
+export interface Movement {
+    dx: number
+    dy: number
+}
 
 export class MouseFilter {
-    /** Movements dropped as spikes (one let through afterwards no longer counts), and the largest (px). */
+    /** Movements thrown away as spikes, and the largest (px). */
     spikes = 0
     largestSpike = 0
     private recent: number[] = []
-    private dropped: { dx: number; dy: number } | null = null
+    private held: Movement | null = null
     private lockedAt = -Infinity
     /** The fastest movement lately (px in one event), easing back. */
     private peak = 0
@@ -27,36 +34,43 @@ export class MouseFilter {
     /** The pointer was just locked: its first movements are suspect. */
     locked(now: number): void {
         this.lockedAt = now
-        this.dropped = null
+        this.held = null
         this.recent = []
     }
 
-    /** Does this movement count? */
-    accept(dx: number, dy: number, now: number): boolean {
+    /** What to turn by for this movement (null: nothing yet, or nothing at all). */
+    accept(dx: number, dy: number, now: number): Movement | null {
         const size = Math.max(Math.abs(dx), Math.abs(dy))
-        const before = this.dropped
-        this.dropped = null
-        const carriesOn =
-            before !== null &&
-            size >= SPIKE.minPx &&
-            (Math.abs(before.dx) >= Math.abs(before.dy)
-                ? Math.sign(dx) === Math.sign(before.dx)
-                : Math.sign(dy) === Math.sign(before.dy))
-        if (carriesOn) {
-            this.spikes--
-            this.remember(size)
-            return true
+        const held = this.held
+        this.held = null
+        if (held) {
+            const heldSize = Math.max(Math.abs(held.dx), Math.abs(held.dy))
+            const sameWay =
+                Math.abs(held.dx) >= Math.abs(held.dy)
+                    ? Math.sign(dx) === Math.sign(held.dx)
+                    : Math.sign(dy) === Math.sign(held.dy)
+            if (sameWay && size >= heldSize * SPIKE.carryShare) {
+                this.remember(heldSize)
+                this.remember(size)
+                return { dx: held.dx + dx, dy: held.dy + dy }
+            }
+            this.spiked(heldSize)
         }
-        const reference = Math.max(0, ...this.recent)
-        const settling = now - this.lockedAt < SPIKE.settleMs && size > SPIKE.settlePx
-        if (settling || (size >= SPIKE.minPx && size > reference * SPIKE.ratio)) {
-            this.spikes++
-            this.largestSpike = Math.max(this.largestSpike, Math.round(size))
-            if (!settling) this.dropped = { dx, dy }
-            return false
+        if (now - this.lockedAt < SPIKE.settleMs && size > SPIKE.settlePx) {
+            this.spiked(size)
+            return null
+        }
+        if (size >= SPIKE.minPx && size > Math.max(0, ...this.recent) * SPIKE.ratio) {
+            this.held = { dx, dy }
+            return null
         }
         this.remember(size)
-        return true
+        return { dx, dy }
+    }
+
+    private spiked(size: number): void {
+        this.spikes++
+        this.largestSpike = Math.max(this.largestSpike, Math.round(size))
     }
 
     /** The fastest movement lately (px), for the overlay; eases back each time it's read. */
@@ -115,10 +129,11 @@ export class Controls {
         })
         document.addEventListener('mousemove', e => {
             if (!this.locked) return
-            if (!this.mouse.accept(e.movementX, e.movementY, performance.now())) return
+            const move = this.mouse.accept(e.movementX, e.movementY, performance.now())
+            if (!move) return
             const speed = SENSITIVITY * this.sensitivityScale
-            this.yaw -= e.movementX * speed
-            const vertical = e.movementY * speed * (this.invertY ? -1 : 1)
+            this.yaw -= move.dx * speed
+            const vertical = move.dy * speed * (this.invertY ? -1 : 1)
             this.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.pitch - vertical))
         })
         document.addEventListener(

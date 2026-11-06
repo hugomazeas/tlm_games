@@ -352,8 +352,9 @@ Playable at `/games/office-fps`.
   mouse. GPU-bound: the **Resolution** setting draws a share (50–100%) of the full pixel ratio.
 - **Mouse spikes** (`MouseFilter` in `client/controls.ts`): Chrome under pointer lock now and then
   reports one huge bogus movement (a sudden half turn). The lock asks for raw input
-  (`unadjustedMovement`, falling back to a plain lock), and a lone movement far bigger than the
-  last few is dropped (let through when the next carries on the same way: a real flick).
+  (`unadjustedMovement`, falling back to a plain lock), and a movement far bigger than the last
+  few is held one event: applied with the next if that carries on the same way (a real flick,
+  which at 40 fps can start that suddenly), thrown away otherwise.
 - **Settings** (`client/settings.ts`, in this browser): sensitivity, aiming sensitivity, field
   of view, invert Y, sound volume, on the Esc menu.
 - **Sound** (`client/sounds.ts`): every effect synthesized with Web Audio (oscillator sweeps and

@@ -179,47 +179,72 @@ describe('settings', () => {
 })
 
 describe('the mouse', () => {
-    const steady = (filter: MouseFilter, from: number) => {
-        for (let i = 0; i < 10; i++) expect(filter.accept(12, -3, from + i * 16)).toBe(true)
+    /** Everything a run of movements turns you by (px), 25 ms apart (40 fps: one movement a frame). */
+    const turned = (filter: MouseFilter, moves: Array<[number, number]>, from = 0) => {
+        const total = { dx: 0, dy: 0 }
+        moves.forEach(([dx, dy], i) => {
+            const move = filter.accept(dx, dy, from + i * 25)
+            total.dx += move?.dx ?? 0
+            total.dy += move?.dy ?? 0
+        })
+        return total
     }
+    const steady = Array.from({ length: 10 }, (): [number, number] => [12, -3])
 
-    test('a lone huge movement amid ordinary ones is dropped (the half turn the mouse never made)', () => {
+    test('a lone huge movement amid ordinary ones is thrown away (the half turn the mouse never made)', () => {
         const filter = new MouseFilter()
-        steady(filter, 0)
-        expect(filter.accept(-1430, 4, 200)).toBe(false)
-        expect(filter.accept(10, 0, 216)).toBe(true)
+        turned(filter, steady)
+        const spike: Array<[number, number]> = [
+            [-1430, 4],
+            [10, 0],
+            [12, -3],
+        ]
+        expect(turned(filter, spike, 300)).toEqual({ dx: 22, dy: -3 })
         expect(filter.spikes).toBe(1)
         expect(filter.largestSpike).toBe(1430)
+        // Thrown away going the same way too, when what follows is ordinary.
+        const sameWay: Array<[number, number]> = [
+            [1430, 0],
+            [12, 0],
+        ]
+        expect(turned(filter, sameWay, 400)).toEqual({ dx: 12, dy: 0 })
+        expect(filter.spikes).toBe(2)
     })
 
-    test('a real flick builds up and goes through', () => {
+    test('a flick from a still aim turns you all the way, however sudden its start', () => {
         const filter = new MouseFilter()
-        steady(filter, 0)
-        for (const [i, dx] of [40, 120, 300, 520, 480, 260, 90].entries()) {
-            expect(filter.accept(dx, 5, 200 + i * 16)).toBe(true)
-        }
+        turned(filter, steady)
+        const flick: Array<[number, number]> = [
+            [30, 2],
+            [30, 0],
+            [400, 6],
+            [450, 4],
+            [200, -2],
+            [20, 0],
+        ]
+        expect(turned(filter, flick, 300)).toEqual({ dx: 1130, dy: 10 })
         expect(filter.spikes).toBe(0)
-        expect(filter.takePeak()).toBe(520)
+        expect(filter.takePeak()).toBe(450)
     })
 
-    test('a big movement from rest that carries on the same way was real: the next is let through, not counted', () => {
+    test('a spike and one back the other way: neither turns you', () => {
         const filter = new MouseFilter()
-        steady(filter, 0)
-        expect(filter.accept(400, 0, 200)).toBe(false)
-        expect(filter.accept(380, 10, 216)).toBe(true)
-        expect(filter.spikes).toBe(0)
-        // Back to ordinary moves; then a spike, and one back the other way: neither turns you.
-        steady(filter, 250)
-        expect(filter.accept(-900, 0, 450)).toBe(false)
-        expect(filter.accept(900, 0, 466)).toBe(false)
+        turned(filter, steady)
+        const backAndForth: Array<[number, number]> = [
+            [-900, 0],
+            [900, 0],
+            [10, 0],
+        ]
+        expect(turned(filter, backAndForth, 300)).toEqual({ dx: 10, dy: 0 })
+        expect(filter.spikes).toBe(2)
     })
 
-    test('right after the mouse is taken, anything sizeable is dropped', () => {
+    test('right after the mouse is taken, anything sizeable is thrown away', () => {
         const filter = new MouseFilter()
         filter.locked(1000)
-        expect(filter.accept(200, 0, 1010)).toBe(false)
-        expect(filter.accept(5, 0, 1020)).toBe(true)
-        expect(filter.accept(200, 0, 1200)).toBe(true)
+        expect(filter.accept(200, 0, 1010)).toBeNull()
+        expect(filter.accept(5, 0, 1020)).toEqual({ dx: 5, dy: 0 })
+        expect(filter.accept(200, 0, 1200)).toEqual({ dx: 200, dy: 0 })
     })
 })
 
