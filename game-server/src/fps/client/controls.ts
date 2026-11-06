@@ -108,6 +108,14 @@ export class Controls {
     private lastSlot: Slot = 'secondary'
     /** V: first / third person. */
     onToggleView: (() => void) | null = null
+    /**
+     * Build mode (B): the gun put away, a click puts a wall up, R turns it a quarter, the wheel
+     * lays it flat or stands it up, E takes back one of yours; 1, 2, 3 or Q back to the guns.
+     */
+    building = false
+    readonly stance = { flat: false, turned: false }
+    onBuild: (() => void) | null = null
+    onUnbuild: (() => void) | null = null
     readonly mouse = new MouseFilter()
     /** Raw mouse input (no OS acceleration): asked for on every lock; null until the first. */
     rawInput: boolean | null = null
@@ -141,6 +149,10 @@ export class Controls {
             e => {
                 if (!this.locked || e.deltaY === 0) return
                 e.preventDefault()
+                if (this.building) {
+                    this.stance.flat = !this.stance.flat
+                    return
+                }
                 const next = SLOTS.indexOf(this.slot) + (e.deltaY > 0 ? 1 : -1)
                 this.select(SLOTS[(next + SLOTS.length) % SLOTS.length]!)
             },
@@ -148,6 +160,10 @@ export class Controls {
         )
         document.addEventListener('mousedown', e => {
             if (!this.locked) return
+            if (this.building) {
+                if (e.button === 0) this.onBuild?.()
+                return
+            }
             if (e.button === 0) this.firing = true
             if (e.button === 2) this.aiming = true
         })
@@ -165,12 +181,18 @@ export class Controls {
             const pair = shift ? this.directionHeld : DIRECTIONS.has(e.code) && this.shiftHeld
             if (!e.repeat && pair) this.dashAsked = true
             this.keys.add(e.code)
-            if (e.code === 'KeyR') this.reloadAsked = true
+            if (e.code === 'KeyB' && !e.repeat) this.toggleBuilding()
+            if (this.building) {
+                if (e.code === 'KeyR' && !e.repeat) this.stance.turned = !this.stance.turned
+                if (e.code === 'KeyE' && !e.repeat) this.onUnbuild?.()
+            } else if (e.code === 'KeyR') {
+                this.reloadAsked = true
+            }
             if (e.code === 'KeyV' && !e.repeat) this.onToggleView?.()
             if (e.code === 'Digit1') this.select('primary')
             if (e.code === 'Digit2') this.select('secondary')
             if (e.code === 'Digit3') this.select('melee')
-            if (e.code === 'KeyQ' && !e.repeat) this.select(this.lastSlot)
+            if (e.code === 'KeyQ' && !e.repeat) this.select(this.building ? this.slot : this.lastSlot)
         })
         document.addEventListener('keyup', e => this.keys.delete(e.code))
         window.addEventListener('blur', () => this.release())
@@ -204,10 +226,18 @@ export class Controls {
         }
     }
 
+    /** A weapon key: out of build mode, with that weapon. */
     select(slot: Slot): void {
+        this.building = false
         if (slot === this.slot) return
         this.lastSlot = this.slot
         this.slot = slot
+    }
+
+    toggleBuilding(): void {
+        this.building = !this.building
+        this.firing = false
+        this.aiming = false
     }
 
     /** Facing a spawn's way (the server sets it on every spawn). */
@@ -224,9 +254,10 @@ export class Controls {
         let buttons = 0
         if (this.dashAsked) buttons |= BUTTON.dash
         if (held('Space')) buttons |= BUTTON.jet
-        if (this.firing) buttons |= BUTTON.fire
-        if (this.reloadAsked) buttons |= BUTTON.reload
-        if (this.aiming) buttons |= BUTTON.aim
+        // Building: the gun's away (it neither fires, reloads nor aims).
+        if (this.firing && !this.building) buttons |= BUTTON.fire
+        if (this.reloadAsked && !this.building) buttons |= BUTTON.reload
+        if (this.aiming && !this.building) buttons |= BUTTON.aim
         this.reloadAsked = false
         this.dashAsked = false
 

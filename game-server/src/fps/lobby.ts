@@ -16,6 +16,7 @@ import {
     type Score,
     type ServerMessage,
     type Team,
+    type WallSpec,
     TEAMS,
     type Weapon,
     ZONE_SECONDS_PER_POINT,
@@ -24,6 +25,7 @@ import {
 import { Arena, type ArenaEvent } from './sim/arena.ts'
 import { STEP_MS } from './sim/movement.ts'
 import { inZone, ZONE_MS, ZONES } from './sim/places.ts'
+import { Walls } from './sim/walls.ts'
 import type { FpsWorld } from './sim/world.ts'
 
 /**
@@ -190,7 +192,8 @@ export class FpsLobby {
         world: FpsWorld,
         private readonly hooks: LobbyHooks
     ) {
-        this.arena = new Arena(world, hooks.random)
+        // The game's own walls: what's built here stays here.
+        this.arena = new Arena({ ...world, walls: new Walls() }, hooks.random)
         this.clockStart = hooks.now()
     }
 
@@ -224,7 +227,14 @@ export class FpsLobby {
         if (seated) this.seat(member)
         else this.waiting.push(conn.id)
 
-        conn.send({ type: 'welcome', you: conn.id, step: this.arena.step, players: this.roster(), match: this.view() })
+        conn.send({
+            type: 'welcome',
+            you: conn.id,
+            step: this.arena.step,
+            players: this.roster(),
+            match: this.view(),
+            walls: this.arena.wallStates(),
+        })
         this.broadcast({ type: 'roster', players: this.roster() }, conn.id)
         // The first one in becomes host, and a team needs counting: everyone's view says so.
         this.broadcast({ type: 'match', match: this.view() }, conn.id)
@@ -266,6 +276,19 @@ export class FpsLobby {
         if (!member) return
         member.loadout = loadout
         if (!member.info.watching) this.arena.setLoadout(connId, loadout)
+    }
+
+    /** Build mode: a wall up (any phase but the scoreboard), or one of theirs taken back. */
+    build(connId: string, wall: WallSpec): void {
+        const member = this.members.get(connId)
+        if (!member || member.info.watching || this.phase === 'intermission') return
+        this.arena.build(connId, wall)
+    }
+
+    unbuild(connId: string, id: number): void {
+        const member = this.members.get(connId)
+        if (!member || member.info.watching) return
+        this.arena.unbuild(connId, id)
     }
 
     /** The host starts a match with these rules (from warmup, with someone to play). */

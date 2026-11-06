@@ -86,6 +86,29 @@ export class Sounds {
         this.burst(0.5, 'bandpass', 600, 150, 0.25, 0.05, out)
     }
 
+    /** A wall goes up (yours, or placed where it was): a padded thunk and the frame's click. */
+    build(where?: { gain: number; pan: number }): void {
+        const out = where ? this.place(where, 0.7) : undefined
+        this.tone('sine', 190, 90, 0.12, 0.45, 0, out)
+        this.burst(0.05, 'bandpass', 1400, 700, 0.3, 0, out)
+        this.burst(0.02, 'bandpass', 3800, 3400, 0.18, 0.05, out)
+    }
+
+    /** A wall shot to pieces: a crunch and the bits rattling down. */
+    wallBreak(where?: { gain: number; pan: number }): void {
+        const out = where ? this.place(where, 0.8) : undefined
+        this.burst(0.25, 'lowpass', 2200, 300, 0.45, 0, out)
+        this.tone('triangle', 140, 60, 0.18, 0.3, 0, out)
+        for (let i = 0; i < 4; i++) {
+            this.burst(0.03, 'bandpass', 3000 - i * 400, 2500 - i * 400, 0.12, 0.08 + i * 0.06, out)
+        }
+    }
+
+    /** Not there: the build slot is taken. */
+    buildRefused(): void {
+        this.tone('square', 220, 180, 0.08, 0.1)
+    }
+
     /** The launcher is loaded: the rocket clacks home and the sight pings. */
     rocketReady(): void {
         this.burst(0.03, 'bandpass', 2600, 2200, 0.3)

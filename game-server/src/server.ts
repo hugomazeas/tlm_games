@@ -352,6 +352,8 @@ async function fpsMessage(ws: ServerWebSocket<SocketData>, raw: string): Promise
     if (!(await ws.data.ready)) return
     if (message.type === 'start') fps.lobby.start(ws.data.id, message.rules)
     else if (message.type === 'loadout') fps.lobby.setLoadout(ws.data.id, message.loadout)
+    else if (message.type === 'build') fps.lobby.build(ws.data.id, message.wall)
+    else if (message.type === 'unbuild') fps.lobby.unbuild(ws.data.id, message.id)
     else fps.lobby.input(ws.data.id, message.frames)
 }
 
