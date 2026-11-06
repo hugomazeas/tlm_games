@@ -367,7 +367,8 @@ Playable at `/games/office-fps`.
   mode (the gun put away: no fire, reload or aim goes out), a click puts up a wall, R turns it a
   quarter, the wheel lays it flat or stands it up, E takes back one of yours, 1/2/3/Q back to the
   guns. A wall is a 0.6 m panel, 6 cm thick, squared to the office (`axis`: its normal, x/z standing,
-  y flat), 350 health, within 1 m of the eyes, one every 0.5 s; no limit per player, `BUILD.max` (120) on the map (past it the builder's
+  y flat), 350 health, within 1 m of the eyes, one every second
+  (the reload's ring by the crosshair fills meanwhile, counted from the click); no limit per player, `BUILD.max` (120) on the map (past it the builder's
   oldest goes). `buildSlot` (shared): aimed at a built wall, the new one locks on to the edge nearest
   the crosshair, in line with it or turned a quarter on your side (corners, roofs); anywhere else it
   goes where the crosshair is, set out of the surface. The browser sends the slot (`build`), the

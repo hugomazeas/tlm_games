@@ -268,9 +268,18 @@ controls.onToggleView = () => {
 
 /** Build mode's slot this frame (null: not building), worked out where the ghost is drawn. */
 let buildAt: BuildSlot | null = null
+/**
+ * Between two walls, counted from the click (the ring by the crosshair fills meanwhile): the
+ * server's pace, a little more so a click as it fills isn't refused for the network's jitter.
+ */
+const BUILD_COOLDOWN_MS = BUILD.everySteps * STEP_MS + 50
+let nextBuildAt = 0
 controls.onBuild = () => {
     if (!buildAt || socket?.readyState !== WebSocket.OPEN) return
+    const now = performance.now()
+    if (now < nextBuildAt) return
     if (buildAt.taken) return sounds.buildRefused()
+    nextBuildAt = now + BUILD_COOLDOWN_MS
     socket.send(JSON.stringify({ type: 'build', wall: buildAt.wall }))
 }
 /** E in build mode: the wall under the crosshair, if it's yours and in reach, comes down. */
@@ -1018,9 +1027,11 @@ function draw(now: number): void {
     )
     const reload =
         reloading && held !== 'stapler' ? reloadProgress(Math.max(0, reloadEndsAt! - now), reloadMsOf(held)) : null
-    hud.reload(reload)
-    // Build mode: the gun put away, the ghost where the next wall goes, its line on the HUD.
+    // Building, the ring is the wall's: filling until the next can go up.
     const building = controls.building && Boolean(self?.alive) && body !== null && match?.phase !== 'intermission'
+    const buildRing = building && now < nextBuildAt ? reloadProgress(nextBuildAt - now, BUILD_COOLDOWN_MS) : null
+    hud.reload(building ? buildRing : reload)
+    // Build mode: the gun put away, the ghost where the next wall goes, its line on the HUD.
     buildAt = building && body ? buildSlot(world, eyeOf(body), aimNow(body), controls.stance) : null
     wallViews.showGhost(buildAt?.wall ?? null, buildAt?.taken ?? false)
     hud.building(building ? controls.stance : null)

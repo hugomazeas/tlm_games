@@ -19,8 +19,8 @@ export const BUILD = {
     slack: BUILD_SIDE + 0.5,
     /** Walls on the map at most: past it the builder's oldest (else the oldest) comes down. */
     max: 120,
-    /** Steps between two walls by the same player (0.5 s). */
-    everySteps: 30,
+    /** Steps between two walls by the same player (1 s; a ring by the crosshair fills meanwhile). */
+    everySteps: 60,
 } as const
 
 /** A wall with its box, cached: what collision and rays test. */
