@@ -91,6 +91,10 @@ const CSS = `
 #fps-hud .top b { font-size: 22px; font-variant-numeric: tabular-nums; }
 #fps-hud .feed { position: absolute; right: 16px; top: 14px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
 #fps-hud .feed div { background: rgba(12,14,18,.62); border-radius: 8px; padding: 4px 10px; transition: opacity .4s; }
+#fps-hud .stats { position: absolute; left: 12px; top: 10px; padding: 3px 8px; border-radius: 6px; background: rgba(12,14,18,.5); font: 600 12px ui-monospace, monospace; color: rgba(255,255,255,.75); }
+#fps-hud .stats .good { color: #7ee787; }
+#fps-hud .stats .ok { color: #ffd166; }
+#fps-hud .stats .bad { color: #ff6b6b; }
 #fps-hud .middle { position: absolute; left: 50%; top: 34%; transform: translateX(-50%); text-align: center; font-size: 22px; text-shadow: 0 2px 6px rgba(0,0,0,.6); }
 #fps-hud .middle small { display: block; font-size: 14px; opacity: .8; }
 #fps-hud .board { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); min-width: 360px; }
@@ -215,6 +219,7 @@ export class Hud {
             <div class="target hidden" data-el="target"><div class="name"></div><div class="bar"><div></div></div></div>
             <div class="panel top" data-el="top"></div>
             <div class="feed" data-el="feed"></div>
+            <div class="stats" data-el="stats"></div>
             <div class="middle" data-el="middle"></div>
             <div class="panel health" data-el="health"></div>
             <div class="panel ammo" data-el="ammo"></div>
@@ -556,6 +561,17 @@ export class Hud {
         const el = this.el.spread!
         el.classList.toggle('hidden', radius === null)
         if (radius !== null) el.style.setProperty('--r', `${Math.max(4, radius).toFixed(1)}px`)
+    }
+
+    /** Top left: frames a second, and the round trip to the server (ms; null until measured). Green, yellow or red. */
+    stats(fps: number, pingMs: number | null): void {
+        const fpsGrade = fps >= 55 ? 'good' : fps >= 30 ? 'ok' : 'bad'
+        let html = `<span class="${fpsGrade}">${Math.round(fps)}</span> fps`
+        if (pingMs !== null) {
+            const pingGrade = pingMs <= 60 ? 'good' : pingMs <= 120 ? 'ok' : 'bad'
+            html += ` <span class="${pingGrade}">${Math.round(pingMs)}</span> ms`
+        }
+        write(this.el.stats!, html)
     }
 
     /**

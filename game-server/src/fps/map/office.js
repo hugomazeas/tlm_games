@@ -184,13 +184,13 @@ export function createOfficeMaterials(renderer) {
     }, 1);
   })();
   // Woven fabric detail (tinted by material colour), 0.15 m.
+  // Upholstery: a soft mottle, no weave (a weave fine enough to be fabric only shimmered), 0.5 m.
   const fabricT = (() => {
-    const n = noise(51, 32);
-    return paint(256, .15, (u, v, o) => {
-      const w = Math.sin(u * Math.PI * 2 * 48) * Math.sin(v * Math.PI * 2 * 48);
-      const k = 225 + w * 18 + n(u, v) * 12;
-      o[0] = o[1] = o[2] = clamp255(k); o[3] = w * .6 + n(u, v) * .3;
-    }, 3);
+    const n = noise(51, 12), m = noise(52, 4);
+    return paint(128, .5, (u, v, o) => {
+      const k = 228 + (n(u, v) - .5) * 16 + (m(u, v) - .5) * 10;
+      o[0] = o[1] = o[2] = clamp255(k); o[3] = n(u, v) * .35;
+    }, 1);
   })();
   // Concrete / pavement, 4 m.
   const concreteT = (() => {
@@ -343,12 +343,63 @@ export function plainOfficeMaterials() {
   return { M, screenMats: [flat, flat, flat], artMats: [flat], texture: () => null };
 }
 
+/** What a surface is made of, for bullet impacts: `collision.solid.userData.surfaces` indexes this. */
+export const SURFACES = ['plaster', 'wood', 'desk', 'metal', 'fabric', 'plastic', 'tile', 'screen', 'plant'];
+
+/** Each material's surface, by its name in M (anything unnamed: plaster). */
+const SURFACE_OF = {
+  wall: 'plaster', ceiling: 'plaster', roof: 'plaster', concrete: 'plaster', pillar: 'plaster',
+  oak: 'wood', door: 'wood', bamboo: 'wood', pedestal: 'wood',
+  deskTop: 'desk', deskWhite: 'desk',
+  frame: 'metal', metalBlack: 'metal', chrome: 'metal', steel: 'metal', cabinet: 'metal', cabinetWhite: 'metal',
+  heater: 'metal', bin: 'metal',
+  carpet: 'fabric', chairFabric: 'fabric', sofa: 'fabric', sofaCushion: 'fabric', sofaGrey: 'fabric',
+  sofaGreyCushion: 'fabric', ottoman: 'fabric', screenFabric: 'fabric', leather: 'fabric', pillowA: 'fabric',
+  pillowB: 'fabric',
+  baseboard: 'plastic', plastic: 'plastic', plasticWhite: 'plastic', whiteboard: 'plastic', panel: 'plastic',
+  greenBin: 'plastic', potDark: 'plastic',
+  tile: 'tile', closetTile: 'tile', subway: 'tile', counter: 'tile', pot: 'tile',
+  bulb: 'screen',
+  leaf: 'plant', leafDark: 'plant', soil: 'plant', grass: 'plant', bark: 'plant',
+};
+
+/** material → SURFACES index: by its name in M; the screens are screens, the art is paint on a wall. */
+function surfaceLookup(M, screenMats, artMats) {
+  const byMaterial = new Map();
+  for (const [name, material] of Object.entries(M)) byMaterial.set(material, SURFACES.indexOf(SURFACE_OF[name] ?? 'plaster'));
+  for (const material of artMats) byMaterial.set(material, SURFACES.indexOf('plaster'));
+  for (const material of screenMats) byMaterial.set(material, SURFACES.indexOf('screen'));
+  return (material) => byMaterial.get(material) ?? 0;
+}
+
+/** A triangle's corners (vertex indices, in any order) as one number. */
+function cornersKey(vertices, a, b, c) {
+  const lo = Math.min(a, b, c), hi = Math.max(a, b, c), mid = a + b + c - lo - hi;
+  return (lo * vertices + mid) * vertices + hi;
+}
+
+/** Each triangle's kind (`kinds`, in the geometry's triangle order), by its corners. */
+function kindsByCorners(g, kinds) {
+  const index = g.index.array, vertices = g.attributes.position.count, byCorners = new Map();
+  for (let t = 0; t < index.length / 3; t++) byCorners.set(cornersKey(vertices, index[3 * t], index[3 * t + 1], index[3 * t + 2]), kinds[t]);
+  return byCorners;
+}
+
+/** The kinds again, in the triangles' order now (as raycasts' faceIndex counts them). */
+function surfacesInOrder(g, byCorners) {
+  const index = g.index.array, vertices = g.attributes.position.count;
+  const surfaces = new Uint8Array(index.length / 3);
+  for (let t = 0; t < surfaces.length; t++) surfaces[t] = byCorners.get(cornersKey(vertices, index[3 * t], index[3 * t + 1], index[3 * t + 2])) ?? 0;
+  return surfaces;
+}
+
 /**
  * Builds the office's geometry (no DOM, no renderer: it runs on the game server as well) and
  * returns it with its gameplay data. The groups are not added to any scene.
  *
  * Options: `materials` (createOfficeMaterials(renderer) in the browser, plain stand-ins otherwise),
- * `outside: false` skips the street and the neighbourhood, `collision: false` the collision meshes.
+ * `outside: false` skips the street and the neighbourhood, `collision: false` the collision meshes,
+ * `surfaces: true` notes what each solid triangle is made of (collision.solid.userData.surfaces).
  */
 export function buildOfficeGeometry(opts = {}) {
   const { M, screenMats, artMats, texture: canvasTexture } = opts.materials ?? plainOfficeMaterials();
@@ -1234,6 +1285,10 @@ export function buildOfficeGeometry(opts = {}) {
   let collision = null;
   if (opts.collision !== false) {
     const solid = [], glass = [];
+    // With `surfaces` (the browser's build, for bullet impacts): what each solid triangle is made of,
+    // an index into SURFACES. Only read alongside: the collision geometry is the same either way.
+    const kinds = opts.surfaces ? [] : null;
+    const surfaceOf = opts.surfaces ? surfaceLookup(M, screenMats, artMats) : null;
     const skipped = (o) => { for (let p = o; p; p = p.parent) if (p.userData.noCollide) return true; return false; };
     for (const group of [world, ceilingGroup]) {
       group.updateMatrixWorld(true);
@@ -1243,17 +1298,25 @@ export function buildOfficeGeometry(opts = {}) {
         const src = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry;
         g.setAttribute('position', src.attributes.position.clone());
         g.applyMatrix4(o.matrixWorld);
-        (o.material === M.glass ? glass : solid).push(g);
+        if (o.material === M.glass) { glass.push(g); return; }
+        solid.push(g);
+        if (kinds) {
+          const kind = surfaceOf(Array.isArray(o.material) ? o.material[0] : o.material);
+          for (let t = 0; t < g.attributes.position.count / 3; t++) kinds.push(kind);
+        }
       });
     }
-    const build = (list, name) => {
+    const build = (list, name, triangleKinds) => {
       const g = mergeVertices(mergeGeometries(list), 1e-4);
+      // Merging keeps the triangles in order; the BVH then reorders them: find each one again by its corners.
+      const byCorners = triangleKinds ? kindsByCorners(g, triangleKinds) : null;
       g.boundsTree = new MeshBVH(g);
       const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ wireframe: true, color: name === 'glass' ? 0x40c0ff : 0x40ff80 }));
       m.name = `collision-${name}`;
+      if (byCorners) m.userData.surfaces = surfacesInOrder(g, byCorners);
       return m;
     };
-    collision = { solid: build(solid, 'solid'), glass: build(glass, 'glass') };
+    collision = { solid: build(solid, 'solid', kinds), glass: build(glass, 'glass', null) };
   }
 
   return {
@@ -1275,7 +1338,7 @@ export function buildOffice(scene, renderer, opts = {}) {
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
   const materials = createOfficeMaterials(renderer);
-  const office = buildOfficeGeometry({ ...opts, materials });
+  const office = buildOfficeGeometry({ surfaces: true, ...opts, materials });
   const { root, interior, ceiling, outside } = office, M = materials.M;
   scene.add(root);
   if (opts.outside !== false) scene.fog = new THREE.FogExp2(0xc9d3dc, .0055);

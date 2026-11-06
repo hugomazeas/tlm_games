@@ -1,4 +1,5 @@
 import type { Body } from './sim/movement.ts'
+import type { PickupKind } from './sim/places.ts'
 
 /**
  * The office FPS's messages, over /games/office-fps/live/ws. There is one game: everyone who
@@ -160,6 +161,10 @@ export interface PlayerState {
     /** Just spawned: can't be hurt until it runs out or they fire. */
     shielded: boolean
     weapon: Weapon
+    /** Aiming down their sights (their gun comes up to the eye). */
+    aiming: boolean
+    /** 0–1 through reloading the gun in hand, null when not: their trooper plays the reload. */
+    reload: number | null
     /** Their side in team deathmatch, null otherwise. */
     team: Team | null
     /** The pickups' powers they carry (everyone sees them). */
@@ -234,7 +239,7 @@ export type GameEvent =
       }
     | { type: 'spawn'; id: string }
     /** Someone took the pickup at `spot` (an index into PICKUP_SPOTS). */
-    | { type: 'pickup'; by: string; spot: number }
+    | { type: 'pickup'; by: string; spot: number; kind: PickupKind }
 
 /** What the victim learns about the one who killed them. */
 export interface KillRecap {
@@ -323,8 +328,8 @@ export type ServerMessage =
           you: SelfState | null
           players: PlayerState[]
           events: GameEvent[]
-          /** Which pickups are there to take (by spot). */
-          pickups: boolean[]
+          /** What lies on each pickup spot to take (by spot), null where it's been taken. */
+          pickups: Array<PickupKind | null>
           /** King of the meeting room, while it's played. */
           zone: ZoneState | null
           rockets: RocketState[]

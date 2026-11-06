@@ -131,15 +131,19 @@ export class Sounds {
         this.tone('square', 900, 700, 0.025, 0.15)
     }
 
-    /** A reload: the magazine out (a clack and a slide), and in again `ms` later (two clicks). */
-    reload(ms: number): void {
+    /**
+     * A reload (yours, or theirs placed where they are): the magazine out (a clack and a slide),
+     * and in again `ms` later (two clicks).
+     */
+    reload(ms: number, where?: { gain: number; pan: number }): void {
         const s = ms / 1000
-        this.burst(0.04, 'bandpass', 2400, 2000, 0.3)
-        this.tone('square', 320, 260, 0.04, 0.12)
-        this.burst(0.18, 'bandpass', 900, 1600, 0.08, 0.12)
-        this.burst(0.03, 'bandpass', 3000, 2600, 0.3, s * 0.72)
-        this.tone('square', 520, 480, 0.03, 0.12, s * 0.72)
-        this.burst(0.03, 'bandpass', 3600, 3200, 0.32, s * 0.9)
+        const out = where ? this.place(where, 0.6) : undefined
+        this.burst(0.04, 'bandpass', 2400, 2000, 0.3, 0, out)
+        this.tone('square', 320, 260, 0.04, 0.12, 0, out)
+        this.burst(0.18, 'bandpass', 900, 1600, 0.08, 0.12, out)
+        this.burst(0.03, 'bandpass', 3000, 2600, 0.3, s * 0.72, out)
+        this.tone('square', 520, 480, 0.03, 0.12, s * 0.72, out)
+        this.burst(0.03, 'bandpass', 3600, 3200, 0.32, s * 0.9, out)
     }
 
     /** A stapler swing (yours, or theirs placed): a whoosh. */

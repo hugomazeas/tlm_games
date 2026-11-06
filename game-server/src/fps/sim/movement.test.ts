@@ -64,7 +64,8 @@ describe('a mini in the office', () => {
     test('a dodge with no direction held goes forward; without fuel there is none', () => {
         const start = standing()
         const forward = run(stepBody(officeWorld(), start, { ...IDLE, yaw: Math.PI / 2, dash: true }), IDLE, 5)
-        expect(start.x - forward.x).toBeGreaterThan(0.5)
+        // 5 m/s for the 6 steps: 0.5 m.
+        expect(start.x - forward.x).toBeGreaterThan(0.45)
 
         const empty = stepBody(officeWorld(), { ...start, fuel: MOVE.dashFuel / 2 }, { ...IDLE, dash: true })
         expect(empty.dashLeft).toBe(0)

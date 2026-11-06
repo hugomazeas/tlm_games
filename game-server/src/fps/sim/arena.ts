@@ -26,6 +26,8 @@ import {
     PICKUP_HEIGHT,
     PICKUP_REACH,
     PICKUPS,
+    type PickupKind,
+    rollPickup,
 } from './places.ts'
 import {
     aimDirection,
@@ -125,6 +127,8 @@ interface Fighter {
     nextSwingAt: number
     /** Fire was held in their last frame (a click-a-shot gun waits for a new click). */
     wasFiring: boolean
+    /** Aim was held in their last frame (the others see their gun come up). */
+    aiming: boolean
     /** A click not yet used by a click-a-shot gun. */
     clicked: boolean
     queue: InputFrame[]
@@ -166,14 +170,22 @@ export class Arena {
     private readonly history: Array<{ step: number; at: Map<string, Target> }> = []
     private rockets: Rocket[] = []
     private nextRocketId = 1
-    /** Each pickup spot: there to take from this step on. */
+    /** Each pickup spot: there to take from this step on, and what lies there (rolled when it comes back). */
     private readonly pickupAt: number[]
+    private readonly pickupKind: PickupKind[] = []
 
     constructor(
         private readonly world: FpsWorld,
         private readonly random: Rng
     ) {
         this.pickupAt = world.pickups.map(() => 0)
+        this.rollPickups()
+    }
+
+    /** A fresh roll on every spot (a new arena, a new match). */
+    private rollPickups(): void {
+        this.pickupKind.length = 0
+        for (const spot of this.world.pickups) this.pickupKind.push(rollPickup(this.random, spot, this.pickupKind))
     }
 
     has(id: string): boolean {
@@ -205,6 +217,7 @@ export class Arena {
             guns: { primary: freshGun(0), secondary: freshGun(0) },
             nextSwingAt: 0,
             wasFiring: false,
+            aiming: false,
             clicked: false,
             queue: [],
             queuedSeq: 0,
@@ -270,6 +283,7 @@ export class Arena {
     respawnAll(): ArenaEvent[] {
         const events: ArenaEvent[] = []
         this.pickupAt.fill(0)
+        this.rollPickups()
         this.rockets = []
         for (const fighter of this.fighters.values()) fighter.alive = false
         for (const fighter of this.fighters.values()) events.push(this.spawn(fighter))
@@ -277,9 +291,9 @@ export class Arena {
         return events
     }
 
-    /** Which pickups are there to take, by spot. */
-    pickups(): boolean[] {
-        return this.pickupAt.map(at => this.step >= at)
+    /** What lies on each spot to take, null where it's been taken and not back yet. */
+    pickups(): Array<PickupKind | null> {
+        return this.pickupAt.map((at, i) => (this.step >= at ? this.pickupKind[i]! : null))
     }
 
     /** A player's frames, in order; old and repeated ones are dropped. */
@@ -366,6 +380,8 @@ export class Arena {
             jet: f.alive && f.jetting,
             shielded: this.shielded(f),
             weapon: weaponIn(f.slot, f.loadout),
+            aiming: f.alive && f.aiming && f.slot !== 'melee',
+            reload: f.alive ? reloadOf(f) : null,
             team: f.team,
             buffs: f.alive ? this.buffsOf(f).map(b => b.kind) : [],
         }))
@@ -441,9 +457,10 @@ export class Arena {
             if (this.step < this.pickupAt[index]!) return
             const near = Math.hypot(f.body.x - spot.x, f.body.z - spot.z) <= PICKUP_REACH
             if (!near || f.body.y > PICKUP_HEIGHT) return
-            if (spot.kind === 'health' && f.health >= maxHealthOf(f.body)) return
+            const kind = this.pickupKind[index]!
+            if (kind === 'health' && f.health >= maxHealthOf(f.body)) return
 
-            const info = PICKUPS[spot.kind]
+            const info = PICKUPS[kind]
             const lasts = steps(info.durationMs ?? 0)
             const until = this.step + lasts
             const refill = () => {
@@ -452,7 +469,7 @@ export class Arena {
                     f.guns[slot].reloadUntil = 0
                 }
             }
-            switch (spot.kind) {
+            switch (kind) {
                 case 'health':
                     f.health = Math.min(maxHealthOf(f.body), f.health + HEALTH_PACK)
                     break
@@ -495,7 +512,10 @@ export class Arena {
             }
             f.health = Math.min(f.health, maxHealthOf(f.body))
             this.pickupAt[index] = this.step + steps(info.respawnMs)
-            events.push({ type: 'pickup', by: f.id, spot: index })
+            // What comes back here is rolled now (snapshots only show it once it's back), not
+            // a power already lying elsewhere.
+            this.pickupKind[index] = rollPickup(this.random, spot, this.pickups())
+            events.push({ type: 'pickup', by: f.id, spot: index, kind })
         })
     }
 
@@ -530,6 +550,7 @@ export class Arena {
         if (firing && !fighter.wasFiring) fighter.clicked = true
         if (!firing) fighter.clicked = false
         fighter.wasFiring = firing
+        fighter.aiming = Boolean(frame.buttons & BUTTON.aim)
         if (fighter.clock < fighter.readyAt) return
         if (fighter.slot === 'melee') this.stapler(fighter, frame, events)
         else this.gun(fighter, fighter.slot, frame, events)
@@ -938,6 +959,16 @@ function freshGun(ammo: number): GunState {
 /** The gun in a slot of theirs. */
 function gunIn(fighter: Fighter, slot: 'primary' | 'secondary'): Gun {
     return slot === 'primary' ? fighter.loadout.primary : fighter.loadout.secondary
+}
+
+/** How far through reloading the gun in hand (0–1, two decimals), null when not reloading. */
+function reloadOf(fighter: Fighter): number | null {
+    if (fighter.slot === 'melee') return null
+    const until = fighter.guns[fighter.slot].reloadUntil
+    if (until <= fighter.clock) return null
+    const total = steps(reloadMsOf(gunIn(fighter, fighter.slot)))
+
+    return round(Math.max(0, Math.min(1, 1 - (until - fighter.clock) / total)), 2)
 }
 
 function round(value: number, decimals: number): number {

@@ -66,7 +66,13 @@ export interface OfficeGeometryOptions {
     outside?: boolean
     /** false: no collision meshes. */
     collision?: boolean
+    /** true: what each solid triangle is made of, in `collision.solid.userData.surfaces` (buildOffice does). */
+    surfaces?: boolean
 }
+
+/** What a surface is made of: `collision.solid.userData.surfaces[faceIndex]` indexes this. */
+export const SURFACES: readonly ['plaster', 'wood', 'desk', 'metal', 'fabric', 'plastic', 'tile', 'screen', 'plant']
+export type Surface = (typeof SURFACES)[number]
 
 export interface OfficeGeometry {
     root: Group

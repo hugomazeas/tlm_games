@@ -264,7 +264,11 @@ Playable at `/games/office-fps`.
   scores nobody; the limit is ×`ZONE_SECONDS_PER_POINT` seconds, else most zone time at the
   end. Snapshots carry `zone`; the HUD shows a status line and an on-screen marker (`showZone`).
 - **Pickups** (`sim/places.ts`: `PICKUP_SPOTS`, `PICKUPS` and each power's numbers; collected in
-  `arena.ts`, part of `FpsWorld` so test rooms have none): health (+50, only when hurt), big
+  `arena.ts`, part of `FpsWorld` so test rooms have none). What lies on a spot is rolled
+  (`rollPickup`, `PICKUP_WEIGHTS`: the basics most) at each match and each time it comes back; a
+  Promotion only on `roomy` spots (a giant fits: `places.test.ts`), no power on two spots at once; a
+  test room's spot may fix its `kind`. Snapshots send each spot's kind (null: taken), the `pickup`
+  event its `kind`. Kinds: health (+50, only when hurt), big
   magazine (×1.5, 60 s), jetpack extender (fuel ×4, 60 s), headshot rounds (any headshot kills,
   a giant and a firewall too, 30 s), and the office powers: **Overtime** (walk ×0.6, no jetpack or
   dodge, +100 health, never reloads, 30 s), **Promotion** (3× the size, 500 health, walk ×0.8,
@@ -310,6 +314,13 @@ Playable at `/games/office-fps`.
   where the gloved hands go (`HandPoses`, keyframed with `keyed` on the reload's 0–1 progress; the
   sleeves run from fixed elbows); static parts are merged per material. Spent cases fly from
   `eject`; reloads swing the gun up and round (`reloadPose`) so the hands' work shows.
+- **Others' troopers** (`client/avatars.ts`): they hold the same gun models (`buildGuns`, at
+  `GUN_SCALE`), animated by the same `animate`, the arms stretched to where it puts the hands, so a
+  reload plays as in yours: `PlayerState.reload` (0–1) and `aiming` come from the server, the reload
+  run smoothly on this browser's clock (`reloadStart`). The gun sits at the chest, comes to the eye
+  aiming, dips on a switch, drops in a dodge; shots and launches kick it, flash and throw cases
+  (`fire`). Hits rock them away from the shooter, the head back on a headshot (`hit`); killed, they
+  fall that way, drop their gun and sink away before the respawn.
 - **Gun lab** (`bun run fps:guns`, http://localhost:8097, `FPS_LAB_PORT`): the viewmodel alone on a
   page (`client/gun-lab.ts`, served by `fps/gun-lab.ts`): pick a weapon, fire, reload, aim, scrub a
   reload frame by frame, slow time, turn the gun round (inspect). It rebuilds and reloads itself
@@ -323,6 +334,15 @@ Playable at `/games/office-fps`.
   falloff graph, pulls and time to kill, rate, live state, fps and draws). The numbers come from
   `client/gun-debug.ts` (pure, tested), which fires through `combat.ts`'s own seeded spread and
   `rayCapsule`, so they are what the server would judge.
+- **Impacts** (`client/impacts.ts`): where the server says a round stopped on the office (the shot
+  event's ends, cast again with `rayHit`), a hole (a crack in glass and screens) that stays and what
+  flies off by what it hit: dust and chips, splinters, paper off desks, sparks off metal, shards off
+  glass; a rocket leaves a scorch. What a triangle is made of comes from the browser's build
+  (`buildOffice` passes `surfaces: true`: `collision.solid.userData.surfaces`, indexing `SURFACES`
+  in office.js, by material); the collision itself is the same with or without (a test checks).
+  Everything is a few fixed instanced pools, never a mesh per bit.
+- **Stats** (top left, `hud.stats`): frames a second and the ping (a frame sent → the snapshot
+  acknowledging it, smoothed), green / yellow / red.
 - **Settings** (`client/settings.ts`, in this browser): sensitivity, aiming sensitivity, field
   of view, invert Y, sound volume, on the Esc menu.
 - **Sound** (`client/sounds.ts`): every effect synthesized with Web Audio (oscillator sweeps and
@@ -369,8 +389,10 @@ Playable at `/games/office-fps`.
   `buildOffice(scene, renderer)` adds the browser's canvas textures, sky, sun and baking on top.
   Both place everything from the same seeded random numbers: keep anything that calls `R()` in
   the geometry, never in the materials, or the server's collision drifts from what's drawn.
-- **Sim** (`fps/sim/`, pure): `movement.ts` steps a body at 60 Hz (4 collision sub-steps;
-  walk/run/jetpack tuning at the top), shared with the browser for prediction; `combat.ts` has
+- **Sim** (`fps/sim/`, pure): `movement.ts` steps a body at 60 Hz (collision sub-steps by speed,
+  `SUBSTEP_REACH` of the radius each: one walking, up to 8 falling; collision is most of the
+  server's time, so keep `collideCapsule` allocation-free; walk/run/jetpack tuning at the top),
+  shared with the browser for prediction; `combat.ts` has
   the guns and hitscan (walls and glass stop shots, headshots on the top of the capsule, which
   shots take `HITBOX_SCALE` 1.25× wider than it collides);
   `arena.ts` runs everyone: one input frame per step (the last one repeated, without firing,

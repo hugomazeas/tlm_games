@@ -165,6 +165,28 @@ describe('reloading', () => {
         const done = a.self('me')!
         expect([done.reloading, done.reloadLeftMs, done.ammo]).toEqual([false, null, RIFLE.magazine])
     })
+
+    test('the others see it too: how far through the reload, and whether they aim', () => {
+        const a = arena()
+        for (let i = 0; i < 30; i++) a.advance()
+        const seen = () => a.states().find(s => s.id === 'me')!
+        expect([seen().reload, seen().aiming]).toEqual([null, false])
+
+        a.queue('me', frames(1, 1, BUTTON.fire))
+        a.advance()
+        a.queue('me', frames(2, 1, BUTTON.reload | BUTTON.aim))
+        a.advance()
+        expect(seen().reload).toBe(0)
+        expect(seen().aiming).toBe(true)
+
+        const half = (RIFLE.reloadMs * 60) / 2000
+        for (let i = 0; i < half; i++) {
+            a.queue('me', frames(3 + i, 1))
+            a.advance()
+        }
+        expect(seen().reload).toBeCloseTo(0.5, 1)
+        expect(seen().aiming).toBe(false)
+    })
 })
 
 /**
@@ -231,19 +253,19 @@ describe('pickups', () => {
         // Right where north spawns.
         const { a, north, step } = duel([at('magazine', 0, -2)])
         const events = step()
-        expect(events).toContainEqual({ type: 'pickup', by: north, spot: 0 })
+        expect(events).toContainEqual({ type: 'pickup', by: north, spot: 0, kind: 'magazine' })
         expect(a.self(north)).toMatchObject({ ammo: 45, magazine: 45, otherAmmo: 12 })
         expect(a.self(north)!.buffs).toEqual([{ kind: 'magazine', leftMs: expect.any(Number) }])
         expect(a.states().find(s => s.id === north)!.buffs).toEqual(['magazine'])
         // Gone until it comes back.
-        expect(a.pickups()).toEqual([false])
+        expect(a.pickups()).toEqual([null])
 
         // Off the pad (a metre toward +Z), so it isn't taken again when it comes back; then a minute.
         for (let i = 0; i < 30; i++) step({ [north]: { forward: 1, yaw: Math.PI } })
         for (let i = 0; i < 60 * 60; i++) step()
         expect(a.self(north)).toMatchObject({ magazine: 30, otherAmmo: 8, buffs: [] })
         expect(a.self(north)!.ammo).toBeLessThanOrEqual(30)
-        expect(a.pickups()).toEqual([true])
+        expect(a.pickups()).toEqual(['magazine'])
     })
 
     test('a jetpack extender: four times the flight for a minute, in the body (predicted)', () => {
@@ -260,7 +282,7 @@ describe('pickups', () => {
         waitShields()
         // Full health: south walks over it (to its right, +X, with yaw 0), it stays.
         for (let i = 0; i < 20; i++) step({ [south]: { strafe: 1 } })
-        expect(a.pickups()).toEqual([true])
+        expect(a.pickups()).toEqual(['health'])
         for (let i = 0; i < 20; i++) step({ [south]: { strafe: -1 } })
 
         // Hurt by a few body shots, back over it: 50 more.

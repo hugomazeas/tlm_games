@@ -56,28 +56,66 @@ export const FIREWALL = 75
 export const BONUS = 2
 
 export interface PickupSpot {
-    kind: PickupKind
+    /** Always this one (a test room's); without it, each time one comes back it's rolled (`rollPickup`). */
+    kind?: PickupKind
+    /** A giant fits here (places.test.ts checks): the only spots a Promotion can be rolled on. */
+    roomy?: boolean
     x: number
     z: number
     /** Where it is, for the kill feed ("in the kitchen"). */
     room: string
 }
 
+/** Spread out from the spawns, the zones and each other. What lies on each is rolled. */
 export const PICKUP_SPOTS: readonly PickupSpot[] = [
-    { kind: 'health', x: -8.4, z: -1.4, room: 'the kitchen' },
-    { kind: 'health', x: 8.4, z: 1.4, room: 'office 1' },
-    { kind: 'magazine', x: -1.2, z: -3.0, room: 'the middle room' },
-    { kind: 'jetpack', x: 4.6, z: -0.6, room: 'the lounge' },
-    { kind: 'headshot', x: 1.6, z: -3.6, room: 'office 2' },
-    // On floor a giant fits (places.test.ts checks), spread out from the spawns, the zones and the rest.
-    { kind: 'promotion', x: -1.0, z: 0.2, room: 'the corridor' },
-    { kind: 'overtime', x: 7.2, z: 4.4, room: 'the south-east corner' },
-    { kind: 'firewall', x: 1.0, z: -1.2, room: 'the open office' },
-    { kind: 'espresso', x: -3.0, z: -1.0, room: 'the meeting area' },
-    { kind: 'intern', x: 10.2, z: 0.4, room: 'the east end' },
-    { kind: 'bonus', x: 6.0, z: -4.0, room: 'office 2' },
-    { kind: 'orgchart', x: -5.8, z: 2.4, room: 'the south-west corner' },
+    { x: -8.4, z: -1.4, room: 'the kitchen' },
+    { x: 8.4, z: 1.4, room: 'office 1' },
+    { x: -1.2, z: -3.0, room: 'the middle room', roomy: true },
+    { x: 4.6, z: -0.6, room: 'the lounge' },
+    { x: 1.6, z: -3.6, room: 'office 2' },
+    { x: -1.0, z: 0.2, room: 'the corridor', roomy: true },
+    { x: 7.2, z: 4.4, room: 'the south-east corner', roomy: true },
+    { x: 1.0, z: -1.2, room: 'the open office', roomy: true },
+    { x: -3.0, z: -1.0, room: 'the meeting area', roomy: true },
+    { x: 10.2, z: 0.4, room: 'the east end', roomy: true },
+    { x: 6.0, z: -4.0, room: 'office 2', roomy: true },
+    { x: -5.8, z: 2.4, room: 'the south-west corner' },
 ]
+
+/** How often each turns up, relatively: the basics often, the office powers now and then. */
+export const PICKUP_WEIGHTS: Record<PickupKind, number> = {
+    health: 4,
+    magazine: 3,
+    jetpack: 3,
+    headshot: 1,
+    overtime: 1,
+    promotion: 1,
+    firewall: 1.5,
+    espresso: 1.5,
+    intern: 1,
+    bonus: 1,
+    orgchart: 1,
+}
+
+/**
+ * What comes back on `spot`: its own kind if it has one, else a weighted roll. A Promotion only
+ * where a giant fits; a power already lying elsewhere (`out`) isn't rolled twice (the basics may be).
+ */
+export function rollPickup(random: () => number, spot: PickupSpot, out: readonly (PickupKind | null)[]): PickupKind {
+    if (spot.kind) return spot.kind
+    const basics: readonly PickupKind[] = ['health', 'magazine', 'jetpack']
+    const choices = (Object.keys(PICKUP_WEIGHTS) as PickupKind[]).filter(
+        kind => (kind !== 'promotion' || spot.roomy) && (basics.includes(kind) || !out.includes(kind))
+    )
+    const total = choices.reduce((sum, kind) => sum + PICKUP_WEIGHTS[kind], 0)
+    let roll = random() * total
+    for (const kind of choices) {
+        roll -= PICKUP_WEIGHTS[kind]
+        if (roll < 0) return kind
+    }
+
+    return choices.at(-1)!
+}
 
 /** How close (m, on the floor plan) a mini must come to take one, and how far above it still counts. */
 export const PICKUP_REACH = 0.4
