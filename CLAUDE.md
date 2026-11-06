@@ -343,6 +343,17 @@ Playable at `/games/office-fps`.
   Everything is a few fixed instanced pools, never a mesh per bit.
 - **Stats** (top left, `hud.stats`): frames a second and the ping (a frame sent → the snapshot
   acknowledging it, smoothed), green / yellow / red.
+- **Performance overlay** (`client/perf.ts`, Esc → Settings → Performance overlay, under the stats):
+  a frame-time graph, fps / 95% / worst / 1% low, hitches (≥ 50 ms, flagged when a shader compiled
+  that frame), CPU per section (`sim`, `scene`, `hud`, `render`, timed in `main.ts`), the GPU's own
+  time (`GpuTimer`, EXT_disjoint_timer_query_webgl2, when the browser has it) and what bounds the
+  frame (`bottleneck`), draw calls / triangles / shaders over the whole frame (`renderer.info`
+  reset per frame), the resolution drawn and the graphics card, JS heap, network rates, and the
+  mouse. GPU-bound: the **Resolution** setting draws a share (50–100%) of the full pixel ratio.
+- **Mouse spikes** (`MouseFilter` in `client/controls.ts`): Chrome under pointer lock now and then
+  reports one huge bogus movement (a sudden half turn). The lock asks for raw input
+  (`unadjustedMovement`, falling back to a plain lock), and a lone movement far bigger than the
+  last few is dropped (let through when the next carries on the same way: a real flick).
 - **Settings** (`client/settings.ts`, in this browser): sensitivity, aiming sensitivity, field
   of view, invert Y, sound volume, on the Esc menu.
 - **Sound** (`client/sounds.ts`): every effect synthesized with Web Audio (oscillator sweeps and

@@ -374,13 +374,16 @@ export class Hud {
         }
         const times = (v: number) => `${v.toFixed(2)}×`
         const percent = (v: number) => (v === 0 ? 'off' : `${Math.round(v * 100)}%`)
+        const resolution = (v: number) => `${Math.round(v * 100)}%`
         panel.innerHTML = `
             <h2>Settings</h2>
             ${slider('sensitivity', 'Mouse sensitivity', times)}
             ${slider('aimSensitivity', 'While aiming', times)}
             ${slider('fov', 'Field of view', v => `${v}°`)}
             ${slider('volume', 'Sound', percent)}
+            ${slider('resolution', 'Resolution', resolution)}
             <label class="check"><input type="checkbox" data-setting="invertY" ${s.invertY ? 'checked' : ''}> Invert mouse Y</label>
+            <label class="check"><input type="checkbox" data-setting="perfOverlay" ${s.perfOverlay ? 'checked' : ''}> Performance overlay</label>
             <button type="button" data-reset>Defaults</button>`
         const show = (key: keyof typeof LIMITS, text: string) => {
             panel.querySelector(`[data-out="${key}"]`)!.textContent = text
@@ -393,7 +396,9 @@ export class Hud {
                 aimSensitivity: value('aimSensitivity'),
                 fov: value('fov'),
                 volume: value('volume'),
+                resolution: value('resolution'),
                 invertY: panel.querySelector<HTMLInputElement>('[data-setting="invertY"]')!.checked,
+                perfOverlay: panel.querySelector<HTMLInputElement>('[data-setting="perfOverlay"]')!.checked,
             }
         }
         panel.addEventListener('input', () => {
@@ -402,6 +407,7 @@ export class Hud {
             show('aimSensitivity', times(settings.aimSensitivity))
             show('fov', `${settings.fov}°`)
             show('volume', percent(settings.volume))
+            show('resolution', resolution(settings.resolution))
             this.hooks.onSettings(settings)
         })
         panel.querySelector('[data-reset]')!.addEventListener('click', () => {

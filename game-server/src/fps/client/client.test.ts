@@ -17,6 +17,8 @@ import { Avatars, fallAngle, hitRock, reloadStart } from './avatars.ts'
 import { Vector3 } from 'three'
 import { aimDirection, fireShot, reloadMsOf } from '../sim/combat.ts'
 import { deathRecap } from './hud.ts'
+import { MouseFilter } from './controls.ts'
+import { bottleneck, FrameStats, HITCH_MS } from './perf.ts'
 
 describe('the death recap', () => {
     const recap = {
@@ -162,11 +164,93 @@ describe('settings', () => {
             sensitivity: LIMITS.sensitivity.max,
             fov: LIMITS.fov.min,
         })
+        // Older saves have neither: full resolution, no overlay; a resolution can't go below half.
+        expect(parseSettings(JSON.stringify({ resolution: 0.1, perfOverlay: true }))).toEqual({
+            ...DEFAULT_SETTINGS,
+            resolution: LIMITS.resolution.min,
+            perfOverlay: true,
+        })
     })
 
     test('aiming zooms in to a bit over half the field of view', () => {
         expect(aimFov(78)).toBe(45)
         expect(aimFov(100)).toBe(58)
+    })
+})
+
+describe('the mouse', () => {
+    const steady = (filter: MouseFilter, from: number) => {
+        for (let i = 0; i < 10; i++) expect(filter.accept(12, -3, from + i * 16)).toBe(true)
+    }
+
+    test('a lone huge movement amid ordinary ones is dropped (the half turn the mouse never made)', () => {
+        const filter = new MouseFilter()
+        steady(filter, 0)
+        expect(filter.accept(-1430, 4, 200)).toBe(false)
+        expect(filter.accept(10, 0, 216)).toBe(true)
+        expect(filter.spikes).toBe(1)
+        expect(filter.largestSpike).toBe(1430)
+    })
+
+    test('a real flick builds up and goes through', () => {
+        const filter = new MouseFilter()
+        steady(filter, 0)
+        for (const [i, dx] of [40, 120, 300, 520, 480, 260, 90].entries()) {
+            expect(filter.accept(dx, 5, 200 + i * 16)).toBe(true)
+        }
+        expect(filter.spikes).toBe(0)
+        expect(filter.takePeak()).toBe(520)
+    })
+
+    test('a big movement from rest that carries on the same way was real: the next is let through, not counted', () => {
+        const filter = new MouseFilter()
+        steady(filter, 0)
+        expect(filter.accept(400, 0, 200)).toBe(false)
+        expect(filter.accept(380, 10, 216)).toBe(true)
+        expect(filter.spikes).toBe(0)
+        // Back to ordinary moves; then a spike, and one back the other way: neither turns you.
+        steady(filter, 250)
+        expect(filter.accept(-900, 0, 450)).toBe(false)
+        expect(filter.accept(900, 0, 466)).toBe(false)
+    })
+
+    test('right after the mouse is taken, anything sizeable is dropped', () => {
+        const filter = new MouseFilter()
+        filter.locked(1000)
+        expect(filter.accept(200, 0, 1010)).toBe(false)
+        expect(filter.accept(5, 0, 1020)).toBe(true)
+        expect(filter.accept(200, 0, 1200)).toBe(true)
+    })
+})
+
+describe('the performance overlay', () => {
+    const cpu = { sim: 1, scene: 2, hud: 0.5, render: 4 }
+
+    test('frame rate, spread, the slowest frames and the hitches', () => {
+        const stats = new FrameStats()
+        let now = 0
+        for (let i = 0; i < 120; i++) {
+            now += i === 60 ? 80 : 20
+            stats.record(now, cpu, i === 60)
+        }
+        const s = stats.summary(now)!
+        // 50 frames a second over the last one (none slow in it), with one 80 ms stutter earlier.
+        expect(s.fps).toBeCloseTo(50, 0)
+        expect(s.worstMs).toBe(80)
+        expect(s.p95Ms).toBe(20)
+        expect(s.low1Fps).toBeCloseTo(12.5, 1)
+        expect(s.cpuMs).toBeCloseTo(7.5, 6)
+        expect(s.hitches).toBe(1)
+        expect(s.compileHitches).toBe(1)
+        expect(stats.summary(now + HITCH_MS * 400)!.hitches).toBe(0)
+    })
+
+    test('what holds the frames back', () => {
+        expect(bottleneck(25, 6, 22)).toBe('gpu')
+        expect(bottleneck(25, 22, 6)).toBe('cpu')
+        expect(bottleneck(16.7, 4, 6)).toBe('vsync')
+        expect(bottleneck(25, 6, null)).toBe(null)
+        expect(bottleneck(25, 23, null)).toBe('cpu')
     })
 })
 
