@@ -355,7 +355,14 @@ Playable at `/games/office-fps`.
   `scene.environment` (room reflections were ~half the GPU's work at 5.5 MP): an AmbientLight
   (`AMBIENT_FOR_REFLECTIONS`, tuned to the same brightness) stands in, and only the glass keeps a
   reflection map. Don't give the scene an environment back. **Anti-aliasing** (MSAA, ~a third of
-  the rest) is a setting, applied on the next load.
+  the rest) is a setting, applied on the next load. The sky has `renderOrder` 1 (drawn after the
+  office, shaded only where it shows).
+- **Shader warm-up** (`warmShaders` in `main.ts`, `Viewmodel.prepare`): at load, effects go off
+  under the floor and every hidden object is shown for `compileAsync` (frames skipped meanwhile),
+  then textures are uploaded (`initTexture`); a compile on Windows stalls 50–200 ms. Shaders die
+  with their last material: a hidden stand-in trooper (`STAND_IN` in `avatars.ts`) and pickup
+  models stay for good, and `Effects` never disposes its materials. Something new drawn with a new
+  kind of material: make sure the warm-up meets it (show it hidden, or set it off under the floor).
 - **Mouse spikes** (`MouseFilter` in `client/controls.ts`): Chrome under pointer lock now and then
   reports one huge bogus movement (a sudden half turn). The lock asks for raw input
   (`unadjustedMovement`, falling back to a plain lock), and a movement far bigger than the last

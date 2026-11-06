@@ -1,9 +1,11 @@
 import {
     ACESFilmicToneMapping,
+    type Material,
     type Object3D,
     PCFShadowMap,
     PerspectiveCamera,
     Scene,
+    Texture,
     Vector3,
     WebGLRenderer,
 } from 'three'
@@ -656,6 +658,13 @@ async function warmShaders(): Promise<void> {
     })
     try {
         await renderer.compileAsync(scene, camera)
+        // Textures too: each one goes to the GPU the first time it's drawn, otherwise.
+        scene.traverse(o => {
+            const material = (o as Object3D & { material?: Material | Material[] }).material
+            for (const m of [material ?? []].flat()) {
+                for (const value of Object.values(m)) if (value instanceof Texture) renderer.initTexture(value)
+            }
+        })
     } finally {
         for (const o of shown) o.visible = false
         effects.rockets([], now)
