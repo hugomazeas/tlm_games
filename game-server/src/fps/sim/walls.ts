@@ -40,13 +40,13 @@ export interface Box {
     maxZ: number
 }
 
-/** A piece of a wall: solid (it collides and stops rounds) or only drawn (an open door's leaf), and what it looks like. */
+/** A piece of a wall: solid (it collides and stops rounds) or only drawn, and what it looks like. */
 export interface WallPart extends Box {
     solid: boolean
     look: 'panel' | 'leaf'
 }
 
-/** A wall with its boxes, cached: its whole panel (what blasts measure from) and its parts (what collision and rays test). */
+/** A wall with its boxes, cached: around all of it (an open door's leaf too) and its parts (what collision and rays test). */
 export interface Wall extends WallState, Box {
     parts: WallPart[]
 }
@@ -70,7 +70,7 @@ function panelOf(spec: WallSpec): Box {
 
 /**
  * A wall's pieces. A plain wall (or a flat one) is its panel. A door is two posts and a lintel round
- * a leaf: shut, the leaf fills the opening; open, it stands swung out (drawn, never in the way). A
+ * a leaf: shut, the leaf fills the opening; open, it stands swung out a quarter, as solid. A
  * window is the panel above and below a slit, and two posts at its ends.
  */
 export function partsOf(state: WallState): WallPart[] {
@@ -121,10 +121,22 @@ export function partsOf(state: WallState): WallPart[] {
         part(-h + post, h - post, S - lintel, S, -t, t),
     ]
     const shut = part(-h + post, h - post, 0, S - lintel, -leaf / 2, leaf / 2, true, 'leaf')
-    // Swung out a quarter on its hinge (the first post), into the +n side.
-    const swung = part(-h + post, -h + post + leaf, 0, S - lintel, 0, S - 2 * post, false, 'leaf')
+    // Swung out a quarter on its hinge (the first post), into the +n side: solid there, the doorway clear.
+    const swung = part(-h + post, -h + post + leaf, 0, S - lintel, 0, S - 2 * post, true, 'leaf')
 
     return [...frame, state.open ? swung : shut]
+}
+
+/** The box round them all. */
+function boundsOf(parts: readonly Box[]): Box {
+    return {
+        minX: Math.min(...parts.map(p => p.minX)),
+        minY: Math.min(...parts.map(p => p.minY)),
+        minZ: Math.min(...parts.map(p => p.minZ)),
+        maxX: Math.max(...parts.map(p => p.maxX)),
+        maxY: Math.max(...parts.map(p => p.maxY)),
+        maxZ: Math.max(...parts.map(p => p.maxZ)),
+    }
 }
 
 /** The walls up in a world, oldest first. Changed only by the arena (server) or its events (browser). */
@@ -145,7 +157,8 @@ export class Walls {
 
     /** A new wall at the end, or one already up as it is now (a door, a window, opened, shot), in its place. */
     add(state: WallState): Wall {
-        const wall: Wall = { ...state, ...panelOf(state), parts: partsOf(state) }
+        const parts = partsOf(state)
+        const wall: Wall = { ...state, ...boundsOf(parts), parts }
         const index = this.list.findIndex(w => w.id === state.id)
         if (index >= 0) this.list[index] = wall
         else this.list.push(wall)

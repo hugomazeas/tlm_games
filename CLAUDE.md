@@ -379,11 +379,13 @@ Playable at `/games/office-fps`.
   wipes them; a leaver's go with them), the list in `welcome`. Hits on them leave no hole (it would
   hang in the air once the wall is down). **Doors and windows** (`WallState.kind`): in build mode F
   makes a standing plain wall a door, G a window (a 12 cm slit at a mini's eye height: seen and shot
-  through, not walked through); neither turns back. F opens and shuts a door any time (`open`).
-  Only the builder, or their side in team deathmatch, may (`Arena.usable`: within `useReach`).
-  A wall is then a few boxes (`partsOf`: posts, lintel, leaf; or the panel round the slit): collision
-  and rays test the solid ones, an open door's swung leaf is only drawn. `reshape` / `door` messages,
-  `wallChanged` events.
+  through, not walked through); neither turns back. F opens and shuts a door any time (`open`): the
+  one under the crosshair, else the nearest of your side's within `useReach` (an open door leaves
+  little to aim at), with an "F Open / Close door" prompt under the crosshair. Only the builder, or
+  their side in team deathmatch, may (`Arena.usable`). A wall is then a few boxes (`partsOf`: posts,
+  lintel, leaf, the open leaf swung a quarter out and as solid; or the panel round the slit), a
+  wall's box encloses them all; the leaf swings on its hinge in the browser (`WallViews.update`).
+  `reshape` / `door` messages, `wallChanged` events.
 - **Mouse spikes** (`MouseFilter` in `client/controls.ts`): Chrome under pointer lock now and then
   reports one huge bogus movement (a sudden half turn). The lock asks for raw input
   (`unadjustedMovement`, falling back to a plain lock), and a movement far bigger than the last

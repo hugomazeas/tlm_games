@@ -266,7 +266,7 @@ describe('doors and windows', () => {
         expect(walkThrough(world)).toBeGreaterThan(-0.5)
     })
 
-    test('a door: shut it stops you and the rounds; open you walk through, and the leaf is in nobody’s way', () => {
+    test('a door: shut it stops you and the rounds; open you walk through the doorway, not through its leaf', () => {
         const world = room()
         const door = put(world, across, 'me', 'door')
         expect(walkThrough(world)).toBeGreaterThan(-0.5)
@@ -275,6 +275,10 @@ describe('doors and windows', () => {
         world.walls.add({ ...door, open: true })
         expect(rayAt(world, 0.2)).toBeNull()
         expect(walkThrough(world)).toBeLessThan(-0.8)
+        // The leaf stands swung out on its hinge (the -x post), into +z: solid there.
+        const hinge = -S / 2 + 0.04
+        const intoLeaf = rayHit(world, new Vector3(hinge - 0.5, 0.2, -0.3), new Vector3(1, 0, 0), 1)
+        expect(intoLeaf?.wall?.id).toBe(door.id)
     })
 
     function game() {

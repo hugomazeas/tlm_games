@@ -17,7 +17,7 @@ import {
     Vector3,
 } from 'three'
 import { TEAM_COLORS, type WallSpec } from '../protocol.ts'
-import { BUILD, halfExtent, type Wall, type WallPart, type Walls } from '../sim/walls.ts'
+import { BUILD, DOOR, halfExtent, type Wall, type WallPart, type Walls } from '../sim/walls.ts'
 
 /**
  * The walls players build, drawn: cubicle partitions (grey fabric in an aluminium frame), one
@@ -40,6 +40,9 @@ export class WallViews {
     private readonly ghostMaterial: MeshBasicMaterial
     private readonly matrix = new Matrix4()
     private readonly color = new Color()
+    private readonly turn = new Quaternion()
+    /** Each door's leaf: which instance it is, and when it last opened or shut. */
+    private doors = new Map<number, Swing>()
 
     constructor(scene: Scene) {
         const box = new BoxGeometry(1, 1, 1)
@@ -71,12 +74,27 @@ export class WallViews {
         scene.add(this.ghost)
     }
 
-    /** Draws the walls as they are now (after any built, changed, hit or gone): a box per part. */
-    sync(walls: Walls): void {
+    /**
+     * Draws the walls as they are now (after any built, changed, hit or gone): a box per part, a
+     * door's leaf on its hinge (swinging, when it just opened or shut).
+     */
+    sync(walls: Walls, now: number): void {
         let i = 0
+        const doors = new Map<number, Swing>()
         for (const wall of walls.all) {
             for (const part of wall.parts) {
                 if (i >= MAX_PARTS) break
+                if (wall.kind === 'door' && part.look === 'leaf') {
+                    const known = this.doors.get(wall.id)
+                    // Just opened or shut: it swings from now; new (just made a door), it's simply there.
+                    const at = known && known.open !== wall.open ? now : (known?.at ?? -Infinity)
+                    const swing = { wall, open: wall.open, at, index: i }
+                    doors.set(wall.id, swing)
+                    this.mesh.setMatrixAt(i, this.leafMatrix(swing, now))
+                    this.mesh.setColorAt(i, this.colorOf(wall, part.look))
+                    i++
+                    continue
+                }
                 this.matrix.compose(
                     new Vector3((part.minX + part.maxX) / 2, (part.minY + part.maxY) / 2, (part.minZ + part.maxZ) / 2),
                     IDENTITY,
@@ -87,9 +105,45 @@ export class WallViews {
                 i++
             }
         }
+        this.doors = doors
         this.mesh.count = i
         this.mesh.instanceMatrix.needsUpdate = true
         if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true
+    }
+
+    /** Every frame: the doors still swinging move on. */
+    update(now: number): void {
+        let moved = false
+        for (const swing of this.doors.values()) {
+            if (now - swing.at > SWING_MS + 50) continue
+            this.mesh.setMatrixAt(swing.index, this.leafMatrix(swing, now))
+            moved = true
+        }
+        if (moved) this.mesh.instanceMatrix.needsUpdate = true
+    }
+
+    /**
+     * A door's leaf at this moment: on its hinge (the first post), turned from shut (in the doorway)
+     * to open (a quarter out, where its collision is), eased.
+     */
+    private leafMatrix(swing: Swing, now: number): Matrix4 {
+        const { wall } = swing
+        const t = Math.min(1, Math.max(0, (now - swing.at) / SWING_MS))
+        const eased = 1 - (1 - t) ** 3
+        const angle = (swing.open ? eased : 1 - eased) * (Math.PI / 2)
+        const across = wall.axis === 'z' ? 'x' : 'z'
+        const width = BUILD.size - 2 * DOOR.post
+        const height = BUILD.size - DOOR.lintel
+        const hinge = new Vector3(wall.x, wall.y - BUILD.size / 2 + height / 2, wall.z)
+        hinge[across] -= BUILD.size / 2 - DOOR.post
+        const toward = new Vector3()
+        toward[across] = Math.cos(angle)
+        toward[wall.axis as 'x' | 'z'] = Math.sin(angle)
+        const centre = hinge.addScaledVector(toward, width / 2)
+        // Turned about the vertical so its width runs `toward`.
+        this.turn.setFromAxisAngle(UP, Math.atan2(-toward.z, toward.x))
+
+        return this.matrix.compose(centre, this.turn, new Vector3(width, height, DOOR.leaf))
     }
 
     /** Build mode's ghost at `spec` (null: none), red where it can't go. */
@@ -116,6 +170,18 @@ export class WallViews {
 }
 
 const IDENTITY = new Quaternion()
+const UP = new Vector3(0, 1, 0)
+/** A door's swing, open or shut. */
+const SWING_MS = 280
+
+interface Swing {
+    wall: Wall
+    open: boolean
+    /** When it last opened or shut (-Infinity: it's been that way since it became a door). */
+    at: number
+    /** Its leaf's instance. */
+    index: number
+}
 
 /** A partition panel: woven grey fabric in an aluminium frame, a little darker toward the frame. */
 function partitionTexture(): CanvasTexture {
