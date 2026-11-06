@@ -17,6 +17,8 @@ import { Avatars, fallAngle, hitRock, reloadStart } from './avatars.ts'
 import { Vector3 } from 'three'
 import { aimDirection, fireShot, reloadMsOf } from '../sim/combat.ts'
 import { deathRecap } from './hud.ts'
+import { MouseFilter } from './controls.ts'
+import { bottleneck, FrameStats, HITCH_MS } from './perf.ts'
 
 describe('the death recap', () => {
     const recap = {
@@ -162,11 +164,121 @@ describe('settings', () => {
             sensitivity: LIMITS.sensitivity.max,
             fov: LIMITS.fov.min,
         })
+        // Older saves have neither: full resolution, no overlay; a resolution can't go below half.
+        expect(parseSettings(JSON.stringify({ resolution: 0.1, perfOverlay: true }))).toEqual({
+            ...DEFAULT_SETTINGS,
+            resolution: LIMITS.resolution.min,
+            perfOverlay: true,
+        })
     })
 
     test('aiming zooms in to a bit over half the field of view', () => {
         expect(aimFov(78)).toBe(45)
         expect(aimFov(100)).toBe(58)
+    })
+})
+
+describe('the mouse', () => {
+    /** Everything a run of movements turns you by (px), 25 ms apart (40 fps: one movement a frame). */
+    const turned = (filter: MouseFilter, moves: Array<[number, number]>, from = 0) => {
+        const total = { dx: 0, dy: 0 }
+        moves.forEach(([dx, dy], i) => {
+            const move = filter.accept(dx, dy, from + i * 25)
+            total.dx += move?.dx ?? 0
+            total.dy += move?.dy ?? 0
+        })
+        return total
+    }
+    const steady = Array.from({ length: 10 }, (): [number, number] => [12, -3])
+
+    test('a lone huge movement amid ordinary ones is thrown away (the half turn the mouse never made)', () => {
+        const filter = new MouseFilter()
+        turned(filter, steady)
+        const spike: Array<[number, number]> = [
+            [-1430, 4],
+            [10, 0],
+            [12, -3],
+        ]
+        expect(turned(filter, spike, 300)).toEqual({ dx: 22, dy: -3 })
+        expect(filter.spikes).toBe(1)
+        expect(filter.largestSpike).toBe(1430)
+        // Thrown away going the same way too, when what follows is ordinary.
+        const sameWay: Array<[number, number]> = [
+            [1430, 0],
+            [12, 0],
+        ]
+        expect(turned(filter, sameWay, 400)).toEqual({ dx: 12, dy: 0 })
+        expect(filter.spikes).toBe(2)
+    })
+
+    test('a flick from a still aim turns you all the way, however sudden its start', () => {
+        const filter = new MouseFilter()
+        turned(filter, steady)
+        const flick: Array<[number, number]> = [
+            [30, 2],
+            [30, 0],
+            [400, 6],
+            [450, 4],
+            [200, -2],
+            [20, 0],
+        ]
+        expect(turned(filter, flick, 300)).toEqual({ dx: 1130, dy: 10 })
+        expect(filter.spikes).toBe(0)
+        expect(filter.takePeak()).toBe(450)
+    })
+
+    test('a spike and one back the other way: neither turns you', () => {
+        const filter = new MouseFilter()
+        turned(filter, steady)
+        const backAndForth: Array<[number, number]> = [
+            [-900, 0],
+            [900, 0],
+            [10, 0],
+        ]
+        expect(turned(filter, backAndForth, 300)).toEqual({ dx: 10, dy: 0 })
+        expect(filter.spikes).toBe(2)
+    })
+
+    test('right after the mouse is taken, anything sizeable is thrown away', () => {
+        const filter = new MouseFilter()
+        filter.locked(1000)
+        expect(filter.accept(200, 0, 1010)).toBeNull()
+        expect(filter.accept(5, 0, 1020)).toEqual({ dx: 5, dy: 0 })
+        expect(filter.accept(200, 0, 1200)).toEqual({ dx: 200, dy: 0 })
+    })
+})
+
+describe('the performance overlay', () => {
+    const cpu = { sim: 1, scene: 2, hud: 0.5, render: 4 }
+
+    test('frame rate, spread, the slowest frames and the hitches', () => {
+        const stats = new FrameStats()
+        let now = 0
+        for (let i = 0; i < 120; i++) {
+            now += i === 60 ? 80 : 20
+            stats.record(now, cpu, i === 60)
+        }
+        const s = stats.summary(now)!
+        // 50 frames a second over the last one (none slow in it), with one 80 ms stutter earlier.
+        expect(s.fps).toBeCloseTo(50, 0)
+        expect(s.worstMs).toBe(80)
+        expect(s.p95Ms).toBe(20)
+        expect(s.low1Fps).toBeCloseTo(12.5, 1)
+        expect(s.cpuMs).toBeCloseTo(7.5, 6)
+        expect(s.hitches).toBe(1)
+        expect(s.compileHitches).toBe(1)
+        expect(stats.summary(now + HITCH_MS * 400)!.hitches).toBe(0)
+    })
+
+    test('what holds the frames back', () => {
+        expect(bottleneck(25, 6, 22)).toBe('gpu')
+        expect(bottleneck(25, 22, 6)).toBe('cpu')
+        expect(bottleneck(16.7, 4, 6)).toBe('vsync')
+        // No GPU timer: an idle CPU in a slow frame points at the GPU.
+        expect(bottleneck(25, 6, null)).toBe('likely-gpu')
+        expect(bottleneck(25, 23, null)).toBe('cpu')
+        expect(bottleneck(25, 16, null)).toBe(null)
+        expect(bottleneck(16.7, 5, null)).toBe('vsync')
     })
 })
 

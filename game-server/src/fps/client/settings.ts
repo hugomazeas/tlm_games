@@ -1,6 +1,6 @@
 /**
  * Your settings, kept in this browser: mouse sensitivity (and while aiming), field of view,
- * invert Y, sound volume. Read with every value checked and clamped, so an old or hand-edited one can't break
+ * invert Y, sound volume, resolution, the performance overlay. Read with every value checked and clamped, so an old or hand-edited one can't break
  * the game.
  */
 
@@ -14,15 +14,28 @@ export interface Settings {
     invertY: boolean
     /** Sound effects, 0 (off) … 1. */
     volume: number
+    /** The share of full resolution drawn (0.5 … 1): fewer pixels for a GPU that can't keep up. */
+    resolution: number
+    /** The performance overlay (frame times, CPU and GPU, draw calls, network, mouse). */
+    perfOverlay: boolean
 }
 
-export const DEFAULT_SETTINGS: Settings = { sensitivity: 1, aimSensitivity: 1, fov: 78, invertY: false, volume: 0.6 }
+export const DEFAULT_SETTINGS: Settings = {
+    sensitivity: 1,
+    aimSensitivity: 1,
+    fov: 78,
+    invertY: false,
+    volume: 0.6,
+    resolution: 1,
+    perfOverlay: false,
+}
 
 export const LIMITS = {
     sensitivity: { min: 0.1, max: 4, step: 0.05 },
     aimSensitivity: { min: 0.2, max: 2, step: 0.05 },
     fov: { min: 60, max: 110, step: 1 },
     volume: { min: 0, max: 1, step: 0.05 },
+    resolution: { min: 0.5, max: 1, step: 0.05 },
 } as const
 
 const KEY = 'officeFps.settings'
@@ -46,7 +59,9 @@ export function parseSettings(raw: string | null): Settings {
         aimSensitivity: number('aimSensitivity'),
         fov: number('fov'),
         volume: number('volume'),
+        resolution: number('resolution'),
         invertY: typeof value.invertY === 'boolean' ? value.invertY : DEFAULT_SETTINGS.invertY,
+        perfOverlay: typeof value.perfOverlay === 'boolean' ? value.perfOverlay : DEFAULT_SETTINGS.perfOverlay,
     }
 }
 

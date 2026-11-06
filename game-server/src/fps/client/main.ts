@@ -44,6 +44,7 @@ import { announce, taunt } from './callouts.ts'
 import { Controls } from './controls.ts'
 import { Effects } from './effects.ts'
 import { BUFF_LABELS, type DeathCause, escape, Hud } from './hud.ts'
+import { GpuTimer, type PerfExtras, PerfOverlay, type Section } from './perf.ts'
 import { PadViews, PICKUP_COLORS, PickupViews, PortalViews, ZoneView } from './pickups.ts'
 import { Prediction } from './prediction.ts'
 import { aimFov, loadSettings, saveSettings } from './settings.ts'
@@ -83,8 +84,12 @@ const SNAP_DISTANCE = 1
 
 // --- The scene: the office, as the server has it, dressed for the browser ------------------
 const renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.25))
+/** Pixels per CSS pixel at full resolution; the Resolution setting draws a share of it. */
+const FULL_PIXEL_RATIO = Math.min(devicePixelRatio, 1.25)
+renderer.setPixelRatio(FULL_PIXEL_RATIO)
 renderer.setSize(innerWidth, innerHeight)
+// Counted over the whole frame (the world, then the gun), reset at each frame's start.
+renderer.info.autoReset = false
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = PCFShadowMap
 // The office never moves: its shadows are drawn once (setTime asks for it).
@@ -110,16 +115,24 @@ addEventListener('resize', () => {
 })
 
 let settings = loadSettings()
+const perf = new PerfOverlay()
+const gpuTimer = new GpuTimer(renderer.getContext() as WebGL2RenderingContext)
+const gpuName = gpuNameOf(renderer.getContext())
+perf.visible = settings.perfOverlay
+applyResolution()
 /** The guns picked in this browser (sent with hello, and on every change). */
 let picked: Loadout = rememberedLoadout()
 const sounds = new Sounds()
 const hud = new Hud(config.backUrl, {
     settings,
     onSettings: changed => {
+        const resized = changed.resolution !== settings.resolution
         settings = changed
         saveSettings(changed)
         controls.invertY = changed.invertY
         sounds.setVolume(changed.volume)
+        perf.visible = changed.perfOverlay
+        if (resized) applyResolution()
     },
     onStart: rules => startMatch(rules),
     loadout: picked,
@@ -265,7 +278,11 @@ function connect(): void {
     const ws = new WebSocket(url)
     socket = ws
     ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', playerId: config.playerId, loadout: picked }))
-    ws.onmessage = event => receive(JSON.parse(event.data as string) as ServerMessage)
+    ws.onmessage = event => {
+        const text = event.data as string
+        net.bytesIn += text.length
+        receive(JSON.parse(text) as ServerMessage)
+    }
     ws.onclose = () => {
         if (socket !== ws) return
         socket = null
@@ -359,6 +376,7 @@ function startMatch(rules: Rules): void {
 }
 
 function snapshot(snap: Extract<ServerMessage, { type: 'snap' }>, now: number): void {
+    net.snaps++
     clock.heard(snap.step, now)
     measurePing(snap.ack)
     others.push(snap.step, snap.players)
@@ -601,15 +619,78 @@ let last = performance.now()
 let pending = 0
 
 function frame(now: number): void {
+    const started = performance.now()
+    const programsBefore = renderer.info.programs?.length ?? 0
+    renderer.info.reset()
     pending = Math.min(pending + (now - last), STEP_MS * 10)
     last = now
     while (pending >= STEP_MS) {
         pending -= STEP_MS
         step(now)
     }
+    cpu.sim = performance.now() - started
     draw(now)
     countFrame(now)
+    perf.stats.record(now, cpu, (renderer.info.programs?.length ?? 0) > programsBefore)
+    perf.show(now, gpuTimer.ms, gpuTimer.available, perfExtras)
     requestAnimationFrame(frame)
+}
+
+/** This frame's CPU time per section (ms), for the overlay. */
+const cpu: Record<Section, number> = { sim: 0, scene: 0, hud: 0, render: 0 }
+
+/** The Resolution setting: a share of the full pixel ratio (the canvas stays the window's size). */
+function applyResolution(): void {
+    renderer.setPixelRatio(FULL_PIXEL_RATIO * settings.resolution)
+    renderer.setSize(innerWidth, innerHeight)
+}
+
+/** The graphics card the browser draws with (when it says). */
+function gpuNameOf(gl: WebGLRenderingContext | WebGL2RenderingContext): string {
+    try {
+        const info = gl.getExtension('WEBGL_debug_renderer_info')
+        return String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER))
+    } catch {
+        return 'unknown'
+    }
+}
+
+/** What came and went since the overlay last asked. */
+const net = { bytesIn: 0, snaps: 0, framesOut: 0, since: performance.now() }
+
+function perfExtras(): PerfExtras {
+    const now = performance.now()
+    const seconds = Math.max(0.001, (now - net.since) / 1000)
+    const extras: PerfExtras = {
+        draw: {
+            calls: renderer.info.render.calls,
+            triangles: renderer.info.render.triangles,
+            programs: renderer.info.programs?.length ?? 0,
+            geometries: renderer.info.memory.geometries,
+            textures: renderer.info.memory.textures,
+        },
+        screen: {
+            width: innerWidth,
+            height: innerHeight,
+            pixelRatio: renderer.getPixelRatio(),
+            antialias: Boolean(renderer.getContext().getContextAttributes()?.antialias),
+        },
+        gpuName,
+        net: {
+            pingMs,
+            snapsPerSecond: net.snaps / seconds,
+            kbInPerSecond: net.bytesIn / 1024 / seconds,
+            framesOutPerSecond: net.framesOut / seconds,
+        },
+        mouse: {
+            raw: controls.rawInput,
+            spikes: controls.mouse.spikes,
+            largestSpike: controls.mouse.largestSpike,
+            biggestMove: controls.mouse.takePeak(),
+        },
+    }
+    Object.assign(net, { bytesIn: 0, snaps: 0, framesOut: 0, since: now })
+    return extras
 }
 requestAnimationFrame(frame)
 
@@ -714,6 +795,7 @@ function aimThirdPerson(eye: Vector3): { yaw: number; pitch: number } {
 function flush(): void {
     if (outbox.length === 0 || socket?.readyState !== WebSocket.OPEN) return
     socket.send(JSON.stringify({ type: 'input', frames: outbox.map(encodeFrame) }))
+    net.framesOut += outbox.length
     sentAt.push({ seq: outbox.at(-1)!.seq, at: performance.now() })
     if (sentAt.length > 240) sentAt.shift()
     outbox = []
@@ -763,6 +845,7 @@ let aimBlend = 0
 let spreadPx: number | null = null
 
 function draw(now: number): void {
+    const started = performance.now()
     const dt = Math.min(0.1, (now - lastDraw) / 1000)
     lastDraw = now
     smoothing.multiplyScalar(Math.exp(-12 * dt))
@@ -868,11 +951,18 @@ function draw(now: number): void {
     padViews.update(now)
     portalViews.update(now)
     zoneView.update(zone, colorOf, zone !== null && zone.holder === me, now)
+    const sceneDone = performance.now()
+    cpu.scene = sceneDone - started
     showZone(now)
     showTarget(poses)
     hud.update(now, { me, self, killer, taunt: deathTaunt, cause: deathCause, tab: controls.scoreboardHeld, roster })
+    const hudDone = performance.now()
+    cpu.hud = hudDone - sceneDone
+    if (perf.visible) gpuTimer.begin()
     renderer.render(scene, camera)
     viewmodel?.render(renderer, camera)
+    if (perf.visible) gpuTimer.end()
+    cpu.render = performance.now() - hudDone
 }
 
 /** King of the meeting room: who holds the zone, and a marker pointing at it (kept on screen). */
