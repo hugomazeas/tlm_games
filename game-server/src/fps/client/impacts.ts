@@ -308,12 +308,13 @@ export class Impacts {
 
     /**
      * A round landed on `surface` at `at` (its face's `normal`, toward the shooter), having come
-     * along `direction`: its mark, and what flies off it.
+     * along `direction`: its mark (`marked`: not on a built wall, which may come down and leave it
+     * hanging), and what flies off it.
      */
-    hit(at: Vector3, normal: Vector3, direction: Vector3, surface: ImpactSurface, now: number): void {
+    hit(at: Vector3, normal: Vector3, direction: Vector3, surface: ImpactSurface, now: number, marked = true): void {
         const look = LOOKS[surface]
-        if (look.crack) this.cracks.add(at, normal, surface === 'glass' ? 0.1 : 0.06, 0xffffff)
-        else this.holes.add(at, normal, 0.022, look.hole)
+        if (marked && look.crack) this.cracks.add(at, normal, surface === 'glass' ? 0.1 : 0.06, 0xffffff)
+        else if (marked) this.holes.add(at, normal, 0.022, look.hole)
 
         // Off the surface, mostly back along the normal, a little the way the round was going on.
         const bounce = direction.clone().reflect(normal)
@@ -405,9 +406,9 @@ export class Impacts {
     }
 
     /** A rocket went off at `at`: a scorch on what's nearest (`surface`, facing `normal`), debris thrown off it. */
-    blast(at: Vector3, normal: Vector3, direction: Vector3, surface: ImpactSurface, now: number): void {
-        this.scorches.add(at, normal, 0.5 + Math.random() * 0.15, 0xffffff)
-        for (let i = 0; i < 4; i++) this.hit(at, normal, direction, surface, now)
+    blast(at: Vector3, normal: Vector3, direction: Vector3, surface: ImpactSurface, now: number, marked = true): void {
+        if (marked) this.scorches.add(at, normal, 0.5 + Math.random() * 0.15, 0xffffff)
+        for (let i = 0; i < 4; i++) this.hit(at, normal, direction, surface, now, marked)
     }
 
     /** Every frame: the flying bits move; the dust turns to face the camera. */

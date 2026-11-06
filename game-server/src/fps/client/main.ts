@@ -47,7 +47,10 @@ import {
 } from '../sim/combat.ts'
 import { MOVE, PLAYER, scaleOf, STEP_MS } from '../sim/movement.ts'
 import { PICKUP_SPOTS, type PickupKind, PICKUPS, PORTAL, ZONES } from '../sim/places.ts'
+import { buildSlot, type BuildSlot } from '../sim/building.ts'
+import { BUILD } from '../sim/walls.ts'
 import { rayDistance, rayHit, worldFrom } from '../sim/world.ts'
+import { WallViews } from './building.ts'
 import { Impacts } from './impacts.ts'
 import { Avatars } from './avatars.ts'
 import { announce, taunt } from './callouts.ts'
@@ -120,6 +123,7 @@ const pickupViews = new PickupViews(scene)
 const padViews = new PadViews(scene, world.pads)
 const portalViews = new PortalViews(scene, world.portals)
 const zoneView = new ZoneView(scene)
+const wallViews = new WallViews(scene)
 addEventListener('resize', () => {
     renderer.setSize(innerWidth, innerHeight)
     camera.aspect = innerWidth / innerHeight
@@ -179,7 +183,8 @@ function landed(from: Vector3, to: Vector3, now: number): void {
     if (length < 0.01) return
     along.divideScalar(length)
     const hit = rayHit(world, from, along, length + 0.05)
-    if (hit && hit.distance > length - 0.05) impacts.hit(hit.point, hit.normal, along, hit.surface, now)
+    // On a built wall: what flies off, but no hole (left hanging in the air once it comes down).
+    if (hit && hit.distance > length - 0.05) impacts.hit(hit.point, hit.normal, along, hit.surface, now, !hit.wall)
 }
 
 /** A rocket went off at `at`: scorched on whatever is nearest (the floor, a wall, a desk), if it's close. */
@@ -190,7 +195,7 @@ function scorched(at: Vector3, now: number): void {
         const hit = rayHit(world, at, toward, nearest?.distance ?? 0.6)
         if (hit) [nearest, direction] = [hit, toward]
     }
-    if (nearest) impacts.blast(nearest.point, nearest.normal, direction, nearest.surface, now)
+    if (nearest) impacts.blast(nearest.point, nearest.normal, direction, nearest.surface, now, !nearest.wall)
 }
 const DOWN = new Vector3(0, -1, 0)
 const BLAST_RAYS = [
@@ -260,6 +265,38 @@ controls.onToggleView = () => {
     thirdPerson = !thirdPerson
     remember('officeFps.view', thirdPerson ? 'third' : 'first')
 }
+
+/** Build mode's slot this frame (null: not building), worked out where the ghost is drawn. */
+let buildAt: BuildSlot | null = null
+/**
+ * Between two walls, counted from the click (the ring by the crosshair fills meanwhile): the
+ * server's pace, a little more so a click as it fills isn't refused for the network's jitter.
+ */
+const BUILD_COOLDOWN_MS = BUILD.everySteps * STEP_MS + 50
+let nextBuildAt = 0
+controls.onBuild = () => {
+    if (!buildAt || socket?.readyState !== WebSocket.OPEN) return
+    const now = performance.now()
+    if (now < nextBuildAt) return
+    if (buildAt.taken) return sounds.buildRefused()
+    nextBuildAt = now + BUILD_COOLDOWN_MS
+    socket.send(JSON.stringify({ type: 'build', wall: buildAt.wall }))
+}
+/** E in build mode: the wall under the crosshair, if it's yours and in reach, comes down. */
+controls.onUnbuild = () => {
+    const body = prediction.body
+    if (!body || !self?.alive || socket?.readyState !== WebSocket.OPEN) return
+    const hit = rayHit(world, eyeOf(body), aimNow(body), BUILD.reach)
+    if (hit?.wall && hit.wall.by === me) socket.send(JSON.stringify({ type: 'unbuild', id: hit.wall.id }))
+    else sounds.buildRefused()
+}
+
+/** Where you aim from your eyes: the crosshair's way (in third person, through the camera's crosshair, as your shots). */
+function aimNow(body: NonNullable<typeof prediction.body>): Vector3 {
+    const aim = thirdPerson ? aimThirdPerson(eyeOf(body)) : { yaw: controls.yaw, pitch: controls.pitch }
+    return aimDirection(aim.yaw, aim.pitch)
+}
+
 function remembered(key: string): string | null {
     try {
         return localStorage.getItem(key)
@@ -320,6 +357,9 @@ function receive(message: ServerMessage): void {
             reloadEndsAt = null
             match = message.match
             matchAt = now
+            world.walls.clear()
+            for (const wall of message.walls ?? []) world.walls.add(wall)
+            wallViews.sync(world.walls)
             hud.setMatch(message.match, now)
             hud.card(controls.locked ? 'playing' : 'paused')
             if (!viewmodel) {
@@ -443,6 +483,34 @@ function colorOf(id: string | null): string {
 function onEvent(event: GameEvent, now: number): void {
     const name = (id: string | null) => (id && roster.get(id)?.name) || '?'
     const colored = (id: string | null) => `<span style="color:${colorOf(id)}">${escape(name(id))}</span>`
+    if (event.type === 'built') {
+        world.walls.add(event.wall)
+        wallViews.sync(world.walls)
+        const { x, z } = event.wall
+        sounds.build(event.wall.by === me ? undefined : spatial(listener(), { x, z }))
+        return
+    }
+    if (event.type === 'wallHit') {
+        const wall = world.walls.get(event.id)
+        if (wall) wall.health = event.health
+        wallViews.sync(world.walls)
+        return
+    }
+    if (event.type === 'wallGone') {
+        const wall = world.walls.remove(event.id)
+        wallViews.sync(world.walls)
+        if (wall && event.broken) {
+            effects.burst(wall, wall.team ? TEAM_COLORS[wall.team] : '#9aa3ad', now)
+            sounds.wallBreak(spatial(listener(), wall))
+        }
+        return
+    }
+    if (event.type === 'walls') {
+        world.walls.clear()
+        for (const wall of event.walls) world.walls.add(wall)
+        wallViews.sync(world.walls)
+        return
+    }
     if (event.type === 'pickup') {
         const spot = PICKUP_SPOTS[event.spot]
         if (!spot) return
@@ -959,9 +1027,16 @@ function draw(now: number): void {
     )
     const reload =
         reloading && held !== 'stapler' ? reloadProgress(Math.max(0, reloadEndsAt! - now), reloadMsOf(held)) : null
-    hud.reload(reload)
+    // Building, the ring is the wall's: filling until the next can go up.
+    const building = controls.building && Boolean(self?.alive) && body !== null && match?.phase !== 'intermission'
+    const buildRing = building && now < nextBuildAt ? reloadProgress(nextBuildAt - now, BUILD_COOLDOWN_MS) : null
+    hud.reload(building ? buildRing : reload)
+    // Build mode: the gun put away, the ghost where the next wall goes, its line on the HUD.
+    buildAt = building && body ? buildSlot(world, eyeOf(body), aimNow(body), controls.stance) : null
+    wallViews.showGhost(buildAt?.wall ?? null, buildAt?.taken ?? false)
+    hud.building(building ? controls.stance : null)
     if (viewmodel) {
-        viewmodel.visible = Boolean(self?.alive) && !third && !scoped
+        viewmodel.visible = Boolean(self?.alive) && !third && !scoped && !building
         viewmodel.loaded = held === 'launcher' && Boolean(self && self.ammo > 0 && !self.reloading)
         const moving = Boolean(body && body.onGround && Math.hypot(body.vx, body.vz) > 0.5)
         viewmodel.update(now, moving, aimBlend, reload)

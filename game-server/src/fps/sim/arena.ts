@@ -14,6 +14,8 @@ import {
     type SelfState,
     type Slot,
     type Team,
+    type WallSpec,
+    type WallState,
     type Weapon,
     weaponIn,
 } from '../protocol.ts'
@@ -50,6 +52,7 @@ import {
     type Target,
 } from './combat.ts'
 import { type Body, bodyAt, isJetting, moveOf, scaleOf, sizeAt, STEP_MS, stepBody } from './movement.ts'
+import { BUILD, stateOf, type Wall } from './walls.ts'
 import { type FpsWorld, rayDistance } from './world.ts'
 
 /**
@@ -158,7 +161,12 @@ interface Fighter {
     hurtAt: number
     /** Who hurt them this life (for the death recap): hits, damage, headshots, the step of the first. */
     taken: Map<string, { hits: number; damage: number; headshots: number; since: number }>
+    /** Their next wall can go up from this step. */
+    nextBuildAt: number
 }
+
+/** A rocket's blast does this many times its damage to a built wall (a direct hit: ~155 of its 350). */
+const ROCKET_WALL_FACTOR = 1.6
 
 export type ArenaEvent = GameEvent | { type: 'damage'; by: string; target: string; amount: number; headshot: boolean }
 
@@ -170,6 +178,9 @@ export class Arena {
     private readonly history: Array<{ step: number; at: Map<string, Target> }> = []
     private rockets: Rocket[] = []
     private nextRocketId = 1
+    private nextWallId = 1
+    /** What happened between steps or to the walls (a build, a leave, a shot wall): out with the next step's events. */
+    private pending: ArenaEvent[] = []
     /** Each pickup spot: there to take from this step on, and what lies there (rolled when it comes back). */
     private readonly pickupAt: number[]
     private readonly pickupKind: PickupKind[] = []
@@ -234,14 +245,71 @@ export class Arena {
             firewallUntil: 0,
             hurtAt: 0,
             taken: new Map(),
+            nextBuildAt: 0,
         }
         this.fighters.set(id, fighter)
 
         return [this.spawn(fighter)]
     }
 
+    /** Out of the game, their walls with them. */
     remove(id: string): void {
         this.fighters.delete(id)
+        for (const wall of [...this.world.walls.all]) {
+            if (wall.by === id) this.takeDown(wall, false)
+        }
+    }
+
+    /**
+     * A wall where their browser's build mode put it, if they're up, it's within reach of their eyes
+     * (with slack for the snap and the lag), nothing's there yet, and they haven't just built one. Past the map's
+     * limit their oldest wall (else the oldest) comes down. True when it went up.
+     */
+    build(id: string, spec: WallSpec): boolean {
+        const fighter = this.fighters.get(id)
+        if (!fighter?.alive || this.step < fighter.nextBuildAt) return false
+        const eye = eyeOf(fighter.body)
+        const reach = BUILD.reach + BUILD.slack
+        if (Math.hypot(spec.x - eye.x, spec.y - eye.y, spec.z - eye.z) > reach) return false
+        const walls = this.world.walls
+        if (walls.taken(spec)) return false
+        while (walls.count >= BUILD.max) {
+            const oldest = walls.all.find(w => w.by === id) ?? walls.all[0]!
+            this.takeDown(oldest, false)
+        }
+        fighter.nextBuildAt = this.step + BUILD.everySteps
+        const wall = walls.add({ ...spec, id: this.nextWallId++, by: id, team: fighter.team, health: BUILD.health })
+        this.pending.push({ type: 'built', wall: stateOf(wall) })
+
+        return true
+    }
+
+    /** Takes back one of their own walls. */
+    unbuild(id: string, wallId: number): boolean {
+        const wall = this.world.walls.get(wallId)
+        if (!wall || wall.by !== id) return false
+        this.takeDown(wall, false)
+
+        return true
+    }
+
+    /** The walls up now. */
+    wallStates(): WallState[] {
+        return this.world.walls.all.map(stateOf)
+    }
+
+    private takeDown(wall: Wall, broken: boolean): void {
+        this.world.walls.remove(wall.id)
+        this.pending.push({ type: 'wallGone', id: wall.id, broken })
+    }
+
+    /** Damage to a built wall; a teammate's (team deathmatch) can't be hurt by your side. */
+    private hurtWall(wall: Wall, amount: number, by: Fighter | null): void {
+        if (by && by.team !== null && wall.team === by.team && wall.by !== by.id) return
+        if (amount <= 0 || !this.world.walls.get(wall.id)) return
+        wall.health = Math.max(0, Math.round(wall.health - amount))
+        if (wall.health <= 0) this.takeDown(wall, true)
+        else this.pending.push({ type: 'wallHit', id: wall.id, health: wall.health })
     }
 
     /**
@@ -285,6 +353,10 @@ export class Arena {
         this.pickupAt.fill(0)
         this.rollPickups()
         this.rockets = []
+        // A clean office for the match.
+        this.world.walls.clear()
+        this.pending = this.pending.filter(e => e.type !== 'built' && e.type !== 'wallHit' && e.type !== 'wallGone')
+        events.push({ type: 'walls', walls: [] })
         for (const fighter of this.fighters.values()) fighter.alive = false
         for (const fighter of this.fighters.values()) events.push(this.spawn(fighter))
 
@@ -315,7 +387,8 @@ export class Arena {
      */
     advance(): ArenaEvent[] {
         this.step++
-        const events: ArenaEvent[] = []
+        const events: ArenaEvent[] = this.pending
+        this.pending = []
         for (const fighter of this.fighters.values()) {
             fighter.budget = Math.min(MAX_BURST, fighter.budget + 1)
             let used = 0
@@ -353,6 +426,9 @@ export class Arena {
         for (const fighter of this.fighters.values()) {
             if (!fighter.alive && this.step >= fighter.respawnAt) events.push(this.spawn(fighter))
         }
+        // Walls shot this step.
+        events.push(...this.pending)
+        this.pending = []
         this.remember()
 
         return events
@@ -603,10 +679,15 @@ export class Arena {
         const targets = this.targetsAt(frame.view, fighter.id)
         const dealt = new Map<string, { amount: number; headshot: boolean }>()
         const ends: Array<[number, number, number]> = []
+        // Built walls hit, added up over the pellets and hurt after (a wall broken by the first doesn't let the rest through).
+        const walls = new Map<Wall, number>()
         for (let pellet = 0; pellet < spec.pellets; pellet++) {
             const direction = spreadDirection(aim, cone, frame.seq, pellet)
             const shot = fireShot(this.world, origin, direction, targets, spec.range)
             ends.push([round(shot.end.x, 3), round(shot.end.y, 3), round(shot.end.z, 3)])
+            if (shot.wall) {
+                walls.set(shot.wall, (walls.get(shot.wall) ?? 0) + damageAt(spec, origin.distanceTo(shot.end)))
+            }
             if (!shot.hit) continue
             const headshot = shot.hit.headshot
             const amount = damageAt(spec, origin.distanceTo(shot.end)) * (headshot ? spec.headshot : 1)
@@ -640,6 +721,7 @@ export class Arena {
         for (const { victim, amount, headshot } of hurt) {
             this.damage(fighter, victim, amount, { headshot, weapon: gun, backstab: false }, events)
         }
+        for (const [wall, amount] of walls) this.hurtWall(wall, amount * bonus, fighter)
     }
 
     /** A rocket out of the launcher, from just in front of the eyes. */
@@ -734,6 +816,16 @@ export class Arena {
                 hits.push({ id: f.id, damage: amount })
                 hurt.push({ victim: f, amount })
             }
+        }
+        // Built walls in the blast (any part of them): the nearest the hardest, cover or not.
+        for (const wall of [...this.world.walls.all]) {
+            const dx = at.x - Math.max(wall.minX, Math.min(wall.maxX, at.x))
+            const dy = at.y - Math.max(wall.minY, Math.min(wall.maxY, at.y))
+            const dz = at.z - Math.max(wall.minZ, Math.min(wall.maxZ, at.z))
+            const distance = Math.hypot(dx, dy, dz)
+            if (distance >= LAUNCHER.radius) continue
+            const share = 1 - distance / LAUNCHER.radius
+            this.hurtWall(wall, LAUNCHER.damage * ROCKET_WALL_FACTOR * share * (by ? this.bonusOf(by) : 1), by)
         }
         events.push({
             type: 'explode',

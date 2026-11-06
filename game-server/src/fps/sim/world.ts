@@ -9,6 +9,7 @@ import {
     SURFACES,
 } from '../map/office.js'
 import { PADS, type Pad, PICKUP_SPOTS, type PickupSpot, type Portal, PORTALS } from './places.ts'
+import { collideWalls, rayWalls, type Wall, Walls } from './walls.ts'
 
 /**
  * What the game needs of the office: its exact collision triangles (with their BVH) and where
@@ -24,15 +25,17 @@ export interface FpsWorld {
     /** Jump pads and portals (the office's; likewise none in a test room unless asked). */
     pads: readonly Pad[]
     portals: readonly Portal[]
+    /** What the players built: this world's own (each game has its walls; the office is shared). */
+    walls: Walls
 }
 
 let office: FpsWorld | null = null
 
-/** The office, built once (about a second) and shared: it never changes. */
+/** The office, built once (about a second) and shared, with walls of its own for each caller (each game). */
 export function officeWorld(): FpsWorld {
     office ??= worldFrom(buildOfficeGeometry({ outside: false }))
 
-    return office
+    return { ...office, walls: new Walls() }
 }
 
 /** The world of an office already built (the browser's, drawn and collided with alike). */
@@ -45,6 +48,7 @@ export function worldFrom(built: { collision: OfficeCollision | null; spawnPoint
         pickups: PICKUP_SPOTS,
         pads: PADS,
         portals: PORTALS,
+        walls: new Walls(),
     }
 }
 
@@ -54,11 +58,12 @@ const onSegment = new Vector3()
 const push = new Vector3()
 
 /**
- * Pushes a capsule (the segment `seg`, world space, and its `radius`) out of the world's
- * triangles. Moves `seg` in place; true when it touched anything.
+ * Pushes an upright capsule (the segment `seg`, world space, and its `radius`) out of the world's
+ * triangles and the walls built in it. Moves `seg` in place; true when it touched anything.
  */
 export function collideCapsule(world: FpsWorld, seg: Line3, radius: number): boolean {
-    let hit = false
+    // The walls first: a wall placed on a player pushes them out of it, and the office then has the last word.
+    let hit = world.walls.count > 0 && collideWalls(world.walls, seg, radius)
     cast.seg = seg
     cast.radius = radius
     for (const mesh of world.meshes) {
@@ -112,21 +117,41 @@ function beyondReach(t: { a: Vector3; b: Vector3; c: Vector3 }, seg: Line3, radi
 
 const ray = new Ray()
 
-/** Where a ray meets the office: the point, the face's normal (toward the ray), and what it's made of. */
+/**
+ * Where a ray meets the office: the point, the face's normal (toward the ray), what it's made of,
+ * and the built wall it is (null: the office's own).
+ */
 export interface RayHit {
     distance: number
     point: Vector3
     normal: Vector3
     surface: Surface | 'glass'
+    wall: Wall | null
 }
 
+/** A built wall's panel: a fabric partition, like the office's cubicles. */
+const WALL_SURFACE: Surface = 'fabric'
+
 /**
- * The first wall, glass or furniture a ray from `origin` along the unit `direction` meets within
- * `far`, with what it's made of: plaster where the world wasn't built with its surfaces (the server's).
+ * The first wall, glass, furniture or built wall a ray from `origin` along the unit `direction`
+ * meets within `far`, with what it's made of: plaster where the world wasn't built with its
+ * surfaces (the server's).
  */
 export function rayHit(world: FpsWorld, origin: Vector3, direction: Vector3, far: number): RayHit | null {
     ray.set(origin, direction)
     let best: RayHit | null = null
+    const built = world.walls.count > 0 ? rayWalls(world.walls, origin, direction, far) : null
+    if (built) {
+        const normal = new Vector3()
+        normal[built.axis] = built.sign
+        best = {
+            distance: built.distance,
+            point: origin.clone().addScaledVector(direction, built.distance),
+            normal,
+            surface: WALL_SURFACE,
+            wall: built.wall,
+        }
+    }
     for (const [i, mesh] of world.meshes.entries()) {
         const hit = mesh.geometry.boundsTree.raycastFirst(ray, DoubleSide, 0, best?.distance ?? far)
         if (!hit || hit.distance >= (best?.distance ?? far)) continue
@@ -136,20 +161,31 @@ export function rayHit(world: FpsWorld, origin: Vector3, direction: Vector3, far
         const surfaces = mesh.userData.surfaces as Uint8Array | undefined
         const surface: Surface | 'glass' =
             i > 0 ? 'glass' : (SURFACES[surfaces?.[hit.faceIndex ?? -1] ?? 0] ?? 'plaster')
-        best = { distance: hit.distance, point: hit.point.clone(), normal, surface }
+        best = { distance: hit.distance, point: hit.point.clone(), normal, surface, wall: null }
     }
 
     return best
 }
 
-/** How far a ray from `origin` along the unit `direction` goes before it meets a wall, glass or furniture (capped at `far`). */
-export function rayDistance(world: FpsWorld, origin: Vector3, direction: Vector3, far: number): number {
+/** How far a ray goes before something stops it (capped at `far`), and the built wall that did (null: the office or nothing). */
+export function rayStop(
+    world: FpsWorld,
+    origin: Vector3,
+    direction: Vector3,
+    far: number
+): { distance: number; wall: Wall | null } {
     ray.set(origin, direction)
     let nearest = far
     for (const mesh of world.meshes) {
         const hit = mesh.geometry.boundsTree.raycastFirst(ray, DoubleSide, 0, nearest)
         if (hit && hit.distance < nearest) nearest = hit.distance
     }
+    const built = world.walls.count > 0 ? rayWalls(world.walls, origin, direction, nearest) : null
 
-    return nearest
+    return built ? { distance: built.distance, wall: built.wall } : { distance: nearest, wall: null }
+}
+
+/** How far a ray from `origin` along the unit `direction` goes before it meets a wall, glass, furniture or a built wall (capped at `far`). */
+export function rayDistance(world: FpsWorld, origin: Vector3, direction: Vector3, far: number): number {
+    return rayStop(world, origin, direction, far).distance
 }

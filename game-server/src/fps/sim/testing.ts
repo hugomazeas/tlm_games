@@ -2,6 +2,7 @@ import { BufferGeometry, Float32BufferAttribute, Mesh } from 'three'
 import { MeshBVH } from 'three-mesh-bvh'
 import type { CollisionMesh, SpawnPoint } from '../map/office.js'
 import type { Pad, PickupSpot, Portal } from './places.ts'
+import { Walls } from './walls.ts'
 import type { FpsWorld } from './world.ts'
 
 /**
@@ -33,5 +34,12 @@ export function testWorld(
     const solid = new Mesh(geometry) as unknown as CollisionMesh
     solid.geometry.boundsTree = new MeshBVH(geometry)
 
-    return { meshes: [solid], spawnPoints, pickups, pads: extras.pads ?? [], portals: extras.portals ?? [] }
+    return {
+        meshes: [solid],
+        spawnPoints,
+        pickups,
+        pads: extras.pads ?? [],
+        portals: extras.portals ?? [],
+        walls: new Walls(),
+    }
 }

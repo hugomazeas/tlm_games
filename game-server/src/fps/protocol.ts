@@ -104,6 +104,28 @@ export type BuffKind =
     | 'bonus'
     | 'orgchart'
 
+/** Which way a built wall faces: its normal along x or z (standing), or y (flat: a floor, a roof). */
+export const WALL_AXES = ['x', 'y', 'z'] as const
+export type WallAxis = (typeof WALL_AXES)[number]
+
+/** Where a wall goes: its axis and its centre. */
+export interface WallSpec {
+    axis: WallAxis
+    x: number
+    y: number
+    z: number
+}
+
+/** A built wall, as everyone sees it. */
+export interface WallState extends WallSpec {
+    id: number
+    /** Who built it (a connection id). */
+    by: string
+    /** Their side in team deathmatch (tints it), null otherwise. */
+    team: Team | null
+    health: number
+}
+
 /** A standout of the match, on the scoreboard after it. */
 export interface Award {
     title: string
@@ -240,6 +262,14 @@ export type GameEvent =
     | { type: 'spawn'; id: string }
     /** Someone took the pickup at `spot` (an index into PICKUP_SPOTS). */
     | { type: 'pickup'; by: string; spot: number; kind: PickupKind }
+    /** A wall went up. */
+    | { type: 'built'; wall: WallState }
+    /** A wall took damage: its health now. */
+    | { type: 'wallHit'; id: number; health: number }
+    /** A wall came down: shot to pieces (`broken`), or taken back, crowded out or its builder left. */
+    | { type: 'wallGone'; id: number; broken: boolean }
+    /** Every wall there is now (a new match wipes them: none). */
+    | { type: 'walls'; walls: WallState[] }
 
 /** What the victim learns about the one who killed them. */
 export interface KillRecap {
@@ -316,9 +346,20 @@ export type ClientMessage =
     | { type: 'input'; frames: InputFrame[] }
     | { type: 'loadout'; loadout: Loadout }
     | { type: 'start'; rules: Rules }
+    /** Build mode: a wall here (the slot your browser worked out), or take one of yours back. */
+    | { type: 'build'; wall: WallSpec }
+    | { type: 'unbuild'; id: number }
 
 export type ServerMessage =
-    | { type: 'welcome'; you: string; step: number; players: PlayerInfo[]; match: MatchView }
+    | {
+          type: 'welcome'
+          you: string
+          step: number
+          players: PlayerInfo[]
+          match: MatchView
+          /** The walls already up. */
+          walls: WallState[]
+      }
     | { type: 'roster'; players: PlayerInfo[] }
     | { type: 'match'; match: MatchView }
     | {
@@ -383,6 +424,22 @@ export function parseClientMessage(raw: string): ClientMessage | null {
         if (fragLimit === undefined || minutes === undefined || mode === undefined) return null
 
         return { type: 'start', rules: { mode, fragLimit, minutes } }
+    }
+    if (message.type === 'build') {
+        const wall = message.wall as Record<string, unknown> | null | undefined
+        const axis = WALL_AXES.find(a => a === wall?.axis)
+        const { x, y, z } = wall ?? {}
+        const coordinate = (n: unknown): n is number =>
+            typeof n === 'number' && Number.isFinite(n) && Math.abs(n) < 1000
+        if (axis === undefined || !coordinate(x) || !coordinate(y) || !coordinate(z)) return null
+
+        return { type: 'build', wall: { axis, x, y, z } }
+    }
+    if (message.type === 'unbuild') {
+        const { id } = message
+        if (!Number.isInteger(id) || (id as number) < 1) return null
+
+        return { type: 'unbuild', id: id as number }
     }
 
     return null

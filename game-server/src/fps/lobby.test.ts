@@ -533,6 +533,49 @@ describe('shots are judged where the shooter saw the target', () => {
     })
 })
 
+describe('building', () => {
+    /** Halfway between the spawns: within reach (and the server's slack) of both. */
+    const wall = { axis: 'x' as const, x: 0.3, y: 0.3, z: 0 }
+
+    test('a wall goes up for everyone; a newcomer is welcomed with it; a new match wipes it', () => {
+        const a = client('a1')
+        const b = client('b2')
+        lobby.join(a, { playerId: 1, name: 'Ann' })
+        lobby.join(b, { playerId: 2, name: 'Bob' })
+        play(100)
+        lobby.build(a.id, wall)
+        play(100)
+        expect(b.inbox.flatMap(m => (m.type === 'snap' ? m.events : []))).toContainEqual({
+            type: 'built',
+            wall: expect.objectContaining({ ...wall, by: 'a1' }),
+        })
+
+        const c = client('c3')
+        lobby.join(c, { playerId: 3, name: 'Cat' })
+        expect(c.last('welcome')!.walls).toEqual([expect.objectContaining(wall)])
+
+        lobby.start(a.id, DEFAULT_RULES)
+        play(COUNTDOWN_MS + 100)
+        expect(c.inbox.flatMap(m => (m.type === 'snap' ? m.events : []))).toContainEqual({ type: 'walls', walls: [] })
+    })
+
+    test('watchers and the scoreboard build nothing; the lobby keeps its walls to itself', () => {
+        const a = client('a1')
+        lobby.join(a, { playerId: 1, name: 'Ann' })
+        play(100)
+        lobby.build('nobody', wall)
+        play(100)
+        expect(world.walls.count).toBe(0)
+        expect(a.inbox.flatMap(m => (m.type === 'snap' ? m.events : [])).some(e => e.type === 'built')).toBe(false)
+
+        lobby.build(a.id, wall)
+        play(100)
+        // Built in the lobby's game, not in the world it was given.
+        expect(world.walls.count).toBe(0)
+        expect(a.inbox.flatMap(m => (m.type === 'snap' ? m.events : [])).some(e => e.type === 'built')).toBe(true)
+    })
+})
+
 describe('messages', () => {
     test('inputs travel as compact frames and come back the same', () => {
         const frame = {
@@ -582,6 +625,19 @@ describe('messages', () => {
         expect(start({ fragLimit: 7, minutes: 10 })).toBeNull()
         expect(start({ fragLimit: 25, minutes: 1 })).toBeNull()
         expect(start(null)).toBeNull()
+    })
+
+    test('a build names an axis and a centre; an unbuild a wall', () => {
+        const parse = (message: unknown) => parseClientMessage(JSON.stringify(message))
+        const wall = { axis: 'z' as const, x: 1.5, y: 0.3, z: -2 }
+
+        expect(parse({ type: 'build', wall })).toEqual({ type: 'build', wall })
+        expect(parse({ type: 'build', wall: { ...wall, axis: 'w' } })).toBeNull()
+        expect(parse({ type: 'build', wall: { ...wall, y: 'up' } })).toBeNull()
+        expect(parse({ type: 'build', wall: { ...wall, x: 1e9 } })).toBeNull()
+        expect(parse({ type: 'build' })).toBeNull()
+        expect(parse({ type: 'unbuild', id: 4 })).toEqual({ type: 'unbuild', id: 4 })
+        expect(parse({ type: 'unbuild', id: 0 })).toBeNull()
     })
 
     test('bad messages are refused', () => {

@@ -363,6 +363,21 @@ Playable at `/games/office-fps`.
   with their last material: a hidden stand-in trooper (`STAND_IN` in `avatars.ts`) and pickup
   models stay for good, and `Effects` never disposes its materials. Something new drawn with a new
   kind of material: make sure the warm-up meets it (show it hidden, or set it off under the floor).
+- **Building** (`sim/walls.ts`, `sim/building.ts`, drawn by `client/building.ts`): B toggles build
+  mode (the gun put away: no fire, reload or aim goes out), a click puts up a wall, R turns it a
+  quarter, the wheel lays it flat or stands it up, E takes back one of yours, 1/2/3/Q back to the
+  guns. A wall is a 0.6 m panel, 6 cm thick, squared to the office (`axis`: its normal, x/z standing,
+  y flat), 350 health, within 1 m of the eyes, one every second
+  (the reload's ring by the crosshair fills meanwhile, counted from the click); no limit per player, `BUILD.max` (120) on the map (past it the builder's
+  oldest goes). `buildSlot` (shared): aimed at a built wall, the new one locks on to the edge nearest
+  the crosshair, in line with it or turned a quarter on your side (corners, roofs); anywhere else it
+  goes where the crosshair is, set out of the surface. The browser sends the slot (`build`), the
+  arena checks reach (from the eyes, with `BUILD.slack`), that it's free and the pace. Walls live in the world
+  (`FpsWorld.walls`, each lobby its own): `collideCapsule` (upright capsules: a wall put on a player
+  pushes them out), `rayHit`/`rayStop`/`rayDistance` (shots, rockets ×1.6: three take one down, cover, name tags, the
+  third-person camera) all meet them. Events `built` / `wallHit` / `wallGone` / `walls` (a new match
+  wipes them; a leaver's go with them), the list in `welcome`. Hits on them leave no hole (it would
+  hang in the air once the wall is down).
 - **Mouse spikes** (`MouseFilter` in `client/controls.ts`): Chrome under pointer lock now and then
   reports one huge bogus movement (a sudden half turn). The lock asks for raw input
   (`unadjustedMovement`, falling back to a plain lock), and a movement far bigger than the last

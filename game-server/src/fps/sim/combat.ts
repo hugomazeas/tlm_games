@@ -2,7 +2,8 @@ import { Vector3 } from 'three'
 import type { BuffKind, Gun } from '../protocol.ts'
 import { type Body, PLAYER, type Powers, scaleOf, sizeAt } from './movement.ts'
 import { INTERN, OVERTIME, PROMOTION } from './places.ts'
-import { type FpsWorld, rayDistance } from './world.ts'
+import type { Wall } from './walls.ts'
+import { type FpsWorld, rayDistance, rayStop } from './world.ts'
 
 /**
  * A gun. Distances are the office's metres (about 22 m end to end, players 40 cm tall); spreads
@@ -271,6 +272,8 @@ export interface ShotResult {
     /** Where the shot stops: the target it met, else the wall, else its range. */
     end: Vector3
     hit: { id: string; headshot: boolean } | null
+    /** The built wall that stopped it (null: a player, the office, or nothing). */
+    wall: Wall | null
 }
 
 /**
@@ -284,7 +287,8 @@ export function fireShot(
     targets: readonly Target[],
     range = 30
 ): ShotResult {
-    let nearest = rayDistance(world, origin, direction, range)
+    const stop = rayStop(world, origin, direction, range)
+    let nearest = stop.distance
     let hit: ShotResult['hit'] = null
     for (const target of targets) {
         const met = rayCapsule(origin, direction, target)
@@ -293,7 +297,7 @@ export function fireShot(
         hit = { id: target.id, headshot: met.along >= HEAD_FROM }
     }
 
-    return { end: origin.clone().addScaledVector(direction, nearest), hit }
+    return { end: origin.clone().addScaledVector(direction, nearest), hit, wall: hit ? null : stop.wall }
 }
 
 /**
