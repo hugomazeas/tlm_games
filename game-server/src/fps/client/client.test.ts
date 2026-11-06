@@ -249,8 +249,11 @@ describe('the performance overlay', () => {
         expect(bottleneck(25, 6, 22)).toBe('gpu')
         expect(bottleneck(25, 22, 6)).toBe('cpu')
         expect(bottleneck(16.7, 4, 6)).toBe('vsync')
-        expect(bottleneck(25, 6, null)).toBe(null)
+        // No GPU timer: an idle CPU in a slow frame points at the GPU.
+        expect(bottleneck(25, 6, null)).toBe('likely-gpu')
         expect(bottleneck(25, 23, null)).toBe('cpu')
+        expect(bottleneck(25, 16, null)).toBe(null)
+        expect(bottleneck(16.7, 5, null)).toBe('vsync')
     })
 })
 

@@ -94,10 +94,19 @@ export class FrameStats {
 
 /**
  * What holds the frame rate back: the GPU (it takes longer to draw than the CPU to prepare), the
- * CPU, or neither (the display's refresh caps it). Unknown without the GPU's time.
+ * CPU, or neither (the display's refresh caps it). Without the GPU's time: a slow frame the CPU
+ * spent mostly idle was probably waiting on the GPU; a quick one, the display.
  */
-export function bottleneck(frameMs: number, cpuMs: number, gpuMs: number | null): 'gpu' | 'cpu' | 'vsync' | null {
-    if (gpuMs === null) return cpuMs > frameMs * 0.8 ? 'cpu' : null
+export function bottleneck(
+    frameMs: number,
+    cpuMs: number,
+    gpuMs: number | null
+): 'gpu' | 'likely-gpu' | 'cpu' | 'vsync' | null {
+    if (gpuMs === null) {
+        if (cpuMs > frameMs * 0.8) return 'cpu'
+        if (frameMs > 20 && cpuMs < frameMs * 0.5) return 'likely-gpu'
+        return frameMs <= 17.5 ? 'vsync' : null
+    }
     const busiest = Math.max(cpuMs, gpuMs)
     if (busiest < frameMs * 0.75) return 'vsync'
     return gpuMs >= cpuMs ? 'gpu' : 'cpu'
@@ -182,7 +191,7 @@ export interface PerfExtras {
 }
 
 const CSS = `
-#fps-perf { position: fixed; left: 12px; top: 40px; z-index: 30; pointer-events: none; padding: 8px 10px; border-radius: 8px;
+#fps-perf { position: fixed; left: 12px; top: 40px; z-index: 15; pointer-events: none; padding: 8px 10px; border-radius: 8px;
   background: rgba(12,14,18,.78); color: rgba(255,255,255,.85); font: 500 11px/1.45 ui-monospace, monospace; white-space: pre; }
 #fps-perf b { color: #fff; font-weight: 700; }
 #fps-perf .good { color: #7ee787; } #fps-perf .ok { color: #ffd166; } #fps-perf .bad { color: #ff6b6b; }
@@ -237,7 +246,9 @@ export class PerfOverlay {
         const verdict =
             limit === 'gpu'
                 ? '<span class="bad">GPU-bound</span>: lower Resolution (Esc → Settings)'
-                : limit === 'cpu'
+                : limit === 'likely-gpu'
+                  ? '<span class="bad">likely GPU-bound</span> (CPU idle most of the frame): lower Resolution'
+                  : limit === 'cpu'
                   ? '<span class="bad">CPU-bound</span>'
                   : limit === 'vsync'
                     ? '<span class="good">capped by the display</span>'
