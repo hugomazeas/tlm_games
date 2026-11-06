@@ -165,11 +165,13 @@ describe('settings', () => {
             fov: LIMITS.fov.min,
         })
         // Older saves have neither: full resolution, no overlay; a resolution can't go below half.
-        expect(parseSettings(JSON.stringify({ resolution: 0.1, perfOverlay: true }))).toEqual({
+        expect(parseSettings(JSON.stringify({ resolution: 0.1, perfOverlay: true, antialias: false }))).toEqual({
             ...DEFAULT_SETTINGS,
             resolution: LIMITS.resolution.min,
             perfOverlay: true,
+            antialias: false,
         })
+        expect(parseSettings(JSON.stringify({ antialias: 'off' })).antialias).toBe(true)
     })
 
     test('aiming zooms in to a bit over half the field of view', () => {
@@ -271,14 +273,16 @@ describe('the performance overlay', () => {
     })
 
     test('what holds the frames back', () => {
-        expect(bottleneck(25, 6, 22)).toBe('gpu')
-        expect(bottleneck(25, 22, 6)).toBe('cpu')
-        expect(bottleneck(16.7, 4, 6)).toBe('vsync')
-        // No GPU timer: an idle CPU in a slow frame points at the GPU.
-        expect(bottleneck(25, 6, null)).toBe('likely-gpu')
-        expect(bottleneck(25, 23, null)).toBe('cpu')
-        expect(bottleneck(25, 16, null)).toBe(null)
-        expect(bottleneck(16.7, 5, null)).toBe('vsync')
+        // Seen on a Radeon 890M at 3200×1718: the game's code 1.8 ms, render 14.3 ms of waiting, the GPU 12.4 ms.
+        expect(bottleneck(18.9, 1.8, 14.3, 12.4)).toBe('gpu')
+        expect(bottleneck(25, 16, 4, 6)).toBe('cpu')
+        expect(bottleneck(16.7, 2, 3, 6)).toBe('vsync')
+        // The GPU's drawing quick, the frame still waiting in render: the browser's own GPU work.
+        expect(bottleneck(25, 2, 18, 6)).toBe('likely-gpu')
+        // No GPU timer: the game's code idle in a slow frame points at the GPU.
+        expect(bottleneck(25, 2, 18, null)).toBe('likely-gpu')
+        expect(bottleneck(25, 16, 2, null)).toBe('cpu')
+        expect(bottleneck(16.7, 2, 3, null)).toBe('vsync')
     })
 })
 

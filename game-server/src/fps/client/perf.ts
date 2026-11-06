@@ -93,23 +93,27 @@ export class FrameStats {
 }
 
 /**
- * What holds the frame rate back: the GPU (it takes longer to draw than the CPU to prepare), the
- * CPU, or neither (the display's refresh caps it). Without the GPU's time: a slow frame the CPU
- * spent mostly idle was probably waiting on the GPU; a quick one, the display.
+ * What holds the frame rate back: the GPU, the CPU (the game's own code), or neither (the display's
+ * refresh caps it). The `render` section is not a measure of the CPU: when the GPU falls behind,
+ * the browser blocks inside the draw calls (Chrome on Direct3D does), so a long render next to a
+ * busy GPU is the CPU waiting for it. Only the game's code (`gameMs`: sim, scene, hud) is CPU work.
  */
 export function bottleneck(
     frameMs: number,
-    cpuMs: number,
+    gameMs: number,
+    renderMs: number,
     gpuMs: number | null
 ): 'gpu' | 'likely-gpu' | 'cpu' | 'vsync' | null {
+    if (gameMs > frameMs * 0.5) return 'cpu'
     if (gpuMs === null) {
-        if (cpuMs > frameMs * 0.8) return 'cpu'
-        if (frameMs > 20 && cpuMs < frameMs * 0.5) return 'likely-gpu'
+        if (frameMs > 20) return 'likely-gpu'
         return frameMs <= 17.5 ? 'vsync' : null
     }
-    const busiest = Math.max(cpuMs, gpuMs)
-    if (busiest < frameMs * 0.75) return 'vsync'
-    return gpuMs >= cpuMs ? 'gpu' : 'cpu'
+    if (Math.max(gameMs + renderMs, gpuMs) < frameMs * 0.75) return 'vsync'
+    if (gpuMs >= frameMs * 0.6) return 'gpu'
+    // The GPU's own drawing is quick, yet the frame waits in render: the browser's share of the GPU
+    // (compositing the page) or its driver.
+    return renderMs > frameMs * 0.5 ? 'likely-gpu' : null
 }
 
 function mean(values: number[]): number {
@@ -242,12 +246,13 @@ export class PerfOverlay {
         const x = extras()
         const grade = (ms: number) => (ms <= 17.5 ? 'good' : ms <= 33.5 ? 'ok' : 'bad')
         const ms = (v: number) => v.toFixed(1)
-        const limit = bottleneck(s.avgMs, s.cpuMs, gpuMs)
+        const gameMs = s.cpu.sim + s.cpu.scene + s.cpu.hud
+        const limit = bottleneck(s.avgMs, gameMs, s.cpu.render, gpuMs)
         const verdict =
             limit === 'gpu'
                 ? '<span class="bad">GPU-bound</span>: lower Resolution (Esc → Settings)'
                 : limit === 'likely-gpu'
-                  ? '<span class="bad">likely GPU-bound</span> (CPU idle most of the frame): lower Resolution'
+                  ? '<span class="bad">likely GPU-bound</span> (the game code is idle; render waits): lower Resolution'
                   : limit === 'cpu'
                     ? '<span class="bad">CPU-bound</span>'
                     : limit === 'vsync'
@@ -265,7 +270,7 @@ export class PerfOverlay {
         const lines = [
             `<b>FRAME</b>  <span class="${grade(s.avgMs)}">${s.fps.toFixed(0)} fps</span> · ${ms(s.avgMs)} ms · 95% ${ms(s.p95Ms)} · worst ${ms(s.worstMs)} · 1% low ${s.low1Fps.toFixed(0)} fps`,
             `<b>HITCH</b>  <span class="${s.hitches > 0 ? 'bad' : 'good'}">${s.hitches}</span> over ${HITCH_MS} ms in 10 s${s.compileHitches > 0 ? ` (${s.compileHitches} compiling shaders)` : ''}`,
-            `<b>CPU</b>    <span class="${grade(s.cpuMs)}">${ms(s.cpuMs)} ms</span>: ${sections}`,
+            `<b>CPU</b>    game <span class="${grade(gameMs * 2)}">${ms(gameMs)} ms</span> · ${sections} <span style="opacity:.6">(render includes waiting for the GPU)</span>`,
             `<b>GPU</b>    ${gpuMs === null ? (gpuTimer ? '…' : 'n/a') : `<span class="${grade(gpuMs)}">${ms(gpuMs)} ms</span>`} → ${verdict}`,
             `<b>DRAW</b>   ${x.draw.calls} calls · ${k(x.draw.triangles)} tris · ${x.draw.programs} shaders · ${x.draw.geometries} geometries · ${x.draw.textures} textures`,
             `<b>SCREEN</b> ${Math.round(width * pixelRatio)}×${Math.round(height * pixelRatio)} px (${width}×${height} × ${pixelRatio.toFixed(2)})${antialias ? ' · MSAA' : ''}`,

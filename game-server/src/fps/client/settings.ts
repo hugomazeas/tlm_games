@@ -1,6 +1,6 @@
 /**
  * Your settings, kept in this browser: mouse sensitivity (and while aiming), field of view,
- * invert Y, sound volume, resolution, the performance overlay. Read with every value checked and clamped, so an old or hand-edited one can't break
+ * invert Y, sound volume, resolution, anti-aliasing, the performance overlay. Read with every value checked and clamped, so an old or hand-edited one can't break
  * the game.
  */
 
@@ -18,6 +18,8 @@ export interface Settings {
     resolution: number
     /** The performance overlay (frame times, CPU and GPU, draw calls, network, mouse). */
     perfOverlay: boolean
+    /** Smoothed edges (4× MSAA, about a third of the GPU's work); applies on the next load. */
+    antialias: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -28,6 +30,7 @@ export const DEFAULT_SETTINGS: Settings = {
     volume: 0.6,
     resolution: 1,
     perfOverlay: false,
+    antialias: true,
 }
 
 export const LIMITS = {
@@ -62,6 +65,7 @@ export function parseSettings(raw: string | null): Settings {
         resolution: number('resolution'),
         invertY: typeof value.invertY === 'boolean' ? value.invertY : DEFAULT_SETTINGS.invertY,
         perfOverlay: typeof value.perfOverlay === 'boolean' ? value.perfOverlay : DEFAULT_SETTINGS.perfOverlay,
+        antialias: typeof value.antialias === 'boolean' ? value.antialias : DEFAULT_SETTINGS.antialias,
     }
 }
 
