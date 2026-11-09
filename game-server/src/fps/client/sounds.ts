@@ -218,6 +218,18 @@ export class Sounds {
         if (this.jet) this.jet.gain.gain.setTargetAtTime(on ? 0.18 : 0, this.ctx.currentTime, on ? 0.04 : 0.08)
     }
 
+    /** A jump: a soft push off the floor. */
+    jump(): void {
+        this.burst(0.06, 'lowpass', 900, 300, 0.18)
+        this.tone('sine', 160, 240, 0.08, 0.12)
+    }
+
+    /** Down prone (a rustle and a thud) or up again (a rustle). */
+    prone(down: boolean): void {
+        this.burst(0.16, 'bandpass', down ? 1400 : 900, down ? 600 : 1800, 0.14)
+        if (down) this.tone('sine', 120, 60, 0.1, 0.25, 0.08)
+    }
+
     /** A jump pad throws you: a springy boing. */
     pad(): void {
         this.tone('sine', 180, 700, 0.25, 0.3)

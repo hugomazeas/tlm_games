@@ -410,7 +410,17 @@ Playable at `/games/office-fps`.
   `timeline.ts` draws the others 4 steps (67 ms) in the past between snapshots, and that step
   is each frame's `view`. Your shot's tracer is drawn at once; the server's event only adds the
   hit marker. A hidden tab sends one idle frame first (the server repeats your last frame).
-- **Controls:** WASD walk, Space jetpack, Shift + a direction (either order: the key that
+- **Jump and prone** (`stepBody`, predicted like everything in the body): Space pressed on the
+  ground jumps 35 cm (`MOVE.jump`; a fresh press: `Body.spaceHeld`, so holding it on landing doesn't
+  hop again); held past the jump's top (`Body.jumped` clears there), or pressed in the air, the
+  jetpack burns (`jetBurns`). Hold C to lie prone (`BUTTON.prone`, `PRONE`): a 16 cm capsule, eyes
+  11 cm up, crawling at 0.6 m/s, spread ×0.6, no jump, dodge or jetpack; up again once C is let go,
+  only where a standing mini fits. Prone, the hit capsule lies along where they face (`rayCapsule`
+  with `Target.prone` and `yaw`: their length, thin, the head end for headshots), and their trooper
+  lies face down over it (`Avatars`, `down`). C, not Ctrl: Chrome closes the tab on Ctrl+W. While
+  playing, closing or reloading asks first (`beforeunload`), and in the page's fullscreen W, S and D
+  are keyboard-locked so Ctrl+W/S/D reach the game (`guardShortcuts`).
+- **Controls:** WASD walk, Space jump / jetpack, C prone, Shift + a direction (either order: the key that
   completes the pair fires it) dodges (`BUTTON.dash`: a 5 m/s burst for 12 steps that way,
   20% fuel, 1.5 s cooldown; walking is 2 m/s, kept slow enough to track a 24 cm mini, in `stepBody` so it's predicted and checked), click fires,
   right-click aims (the gun's zoom, mouse slowed to match, the gun on its sights), V

@@ -290,7 +290,7 @@ export class Hud {
         this.el.cardMain!.innerHTML = {
             connecting: `<h1>Office FPS</h1><p>Connecting…</p>`,
             paused: `<h1>Office FPS</h1><p><b>Click to play</b></p>
-                <p><kbd>WASD</kbd> move · <kbd>Shift</kbd> + direction dodge · <kbd>Space</kbd> jetpack<br>
+                <p><kbd>WASD</kbd> move · <kbd>Shift</kbd> + direction dodge · <kbd>Space</kbd> jump (hold, or in the air: jetpack) · <kbd>C</kbd> (hold) prone<br>
                 <kbd>Click</kbd> fire · <kbd>Right-click</kbd> aim · <kbd>R</kbd> reload<br>
                 <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> weapons (or the wheel, <kbd>Q</kbd> the last) · <kbd>V</kbd> 1st / 3rd person<br>
                 <kbd>B</kbd> build walls (click to place, <kbd>R</kbd> turn, wheel flat / standing, <kbd>F</kbd> door, <kbd>G</kbd> window, <kbd>E</kbd> take back)<br>

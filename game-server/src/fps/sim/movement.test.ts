@@ -1,11 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 import { createRng } from '../../sim/rng.ts'
-import { type Body, bodyAt, MOVE, type MoveInput, PLAYER, scaleOf, stepBody } from './movement.ts'
+import { eyeOf } from './combat.ts'
+import { type Body, bodyAt, MOVE, type MoveInput, PLAYER, PRONE, scaleOf, stepBody } from './movement.ts'
 import { ESPRESSO, OVERTIME, PAD, PORTAL, PROMOTION } from './places.ts'
 import { testWorld } from './testing.ts'
 import { type FpsWorld, officeWorld } from './world.ts'
 
-const IDLE: MoveInput = { forward: 0, strafe: 0, yaw: 0, dash: false, jet: false }
+const IDLE: MoveInput = { forward: 0, strafe: 0, yaw: 0, dash: false, jet: false, prone: false }
 
 function run(body: Body, input: MoveInput, steps: number): Body {
     const world = officeWorld()
@@ -72,16 +73,82 @@ describe('a mini in the office', () => {
         expect(Math.hypot(empty.vx, empty.vz)).toBeLessThan(0.1)
     })
 
-    test('the jetpack lifts off, burns fuel and stops at the ceiling', () => {
+    test('Space held from the floor: a jump, then past its top the jetpack lifts off, burns fuel and stops at the ceiling', () => {
         const start = standing()
         const second = run(start, { ...IDLE, jet: true }, 60)
 
         expect(second.y).toBeGreaterThan(0.5)
-        expect(second.fuel).toBeCloseTo(1 - MOVE.fuelUse, 1)
+        // Burning only once the jump topped out (about a quarter second in).
+        expect(1 - second.fuel).toBeGreaterThan(MOVE.fuelUse * 0.6)
+        expect(1 - second.fuel).toBeLessThan(MOVE.fuelUse * 0.8)
 
-        const empty = run(second, { ...IDLE, jet: true }, 180)
-        expect(empty.fuel).toBe(0)
-        expect(empty.y + PLAYER.height).toBeLessThan(2.71)
+        // Held on: it runs dry under the ceiling, falls, and (Space still held: no fresh press) stays down refuelling.
+        let body = second
+        let least = body.fuel
+        let highest = body.y
+        for (let i = 0; i < 240; i++) {
+            body = stepBody(officeWorld(), body, { ...IDLE, jet: true })
+            least = Math.min(least, body.fuel)
+            highest = Math.max(highest, body.y)
+        }
+        expect(least).toBe(0)
+        expect(highest + PLAYER.height).toBeLessThan(2.71)
+        expect(body.onGround).toBe(true)
+    })
+
+    test('a tap of Space is a 35 cm jump, no fuel; held on landing it does not jump again', () => {
+        const start = standing()
+        let body = stepBody(officeWorld(), start, { ...IDLE, jet: true })
+        let top = body.y
+        for (let i = 0; i < 60; i++) {
+            body = stepBody(officeWorld(), body, IDLE)
+            top = Math.max(top, body.y)
+        }
+
+        expect(top - start.y).toBeGreaterThan(0.3)
+        expect(top - start.y).toBeLessThan(0.4)
+        expect(body.onGround).toBe(true)
+        expect(body.fuel).toBe(1)
+        // The jetpack on the way up from a jump: not yet.
+        const rising = run(start, { ...IDLE, jet: true }, 8)
+        expect(rising.jumped).toBe(true)
+        expect(rising.fuel).toBe(1)
+    })
+
+    test('prone: low, slow, no jump, no jetpack; up again once C is let go', () => {
+        const start = standing()
+        const down = run(start, { ...IDLE, prone: true }, 2)
+        expect(down.prone).toBe(true)
+        expect(eyeOf(down).y - down.y).toBeCloseTo(PRONE.eye, 5)
+
+        const crawled = run(down, { ...IDLE, prone: true, forward: 1 }, 60)
+        expect(Math.hypot(crawled.x - down.x, crawled.z - down.z)).toBeLessThan(PRONE.crawl * 1.05)
+        const tried = run(crawled, { ...IDLE, prone: true, jet: true, dash: true }, 30)
+        expect(tried.y).toBeCloseTo(crawled.y, 3)
+        expect(tried.fuel).toBe(1)
+
+        expect(run(tried, IDLE, 1).prone).toBe(false)
+    })
+
+    test('prone under something low, you stay down until there is room to stand', () => {
+        // A flat built panel 25 cm up: a prone mini fits under it, a standing one doesn't.
+        const world = testWorld([])
+        const panel = { by: null, team: null, health: 1, kind: 'wall', open: false } as const
+        world.walls.add({ ...panel, id: 1, axis: 'y', x: 0, y: 0.28, z: 0 })
+        const down = run(bodyAt(0, 0, 0), { ...IDLE, prone: true }, 3)
+        const stuck = run(down, IDLE, 5)
+        expect(stuck.prone).toBe(true)
+
+        let body = stuck
+        for (let i = 0; i < 300 && body.prone; i++) body = stepBody(world, body, { ...IDLE, forward: 1 })
+        expect(body.prone).toBe(false)
+        // Out from under it: past its edge (0.3 m) by a standing mini's radius.
+        expect(Math.abs(body.z)).toBeGreaterThan(0.3 + PLAYER.radius - 0.01)
+
+        function run(b: Body, input: MoveInput, steps: number): Body {
+            for (let i = 0; i < steps; i++) b = stepBody(world, b, input)
+            return b
+        }
     })
 
     test('a jetpack extender makes the same fuel last four times as long, and runs out', () => {
@@ -114,6 +181,7 @@ describe('a mini in the office', () => {
                 yaw: rng() * 6,
                 dash: rng() < 0.05,
                 jet: rng() < 0.3,
+                prone: rng() < 0.2,
             })
         }
         const play = () => inputs.reduce((b, input) => stepBody(officeWorld(), b, input), standing())
@@ -135,6 +203,7 @@ describe('a mini in the office', () => {
                         yaw: rng() * 6.3,
                         dash: rng() < 0.3,
                         jet: rng() < 0.5,
+                        prone: rng() < 0.15,
                     }
                 }
                 body = stepBody(world, body, input)

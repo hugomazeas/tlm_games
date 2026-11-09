@@ -45,7 +45,7 @@ import {
     STAPLER,
     SWITCH_MS,
 } from '../sim/combat.ts'
-import { MOVE, PLAYER, scaleOf, STEP_MS } from '../sim/movement.ts'
+import { jetBurns, MOVE, moveOf, PLAYER, scaleOf, STEP_MS } from '../sim/movement.ts'
 import { PICKUP_SPOTS, type PickupKind, PICKUPS, PORTAL, ZONES } from '../sim/places.ts'
 import { buildSlot, type BuildSlot } from '../sim/building.ts'
 import { BUILD, type Wall } from '../sim/walls.ts'
@@ -265,6 +265,14 @@ controls.onToggleView = () => {
     thirdPerson = !thirdPerson
     remember('officeFps.view', thirdPerson ? 'third' : 'first')
 }
+
+/**
+ * Playing (the mouse captured), closing or reloading the tab asks first: Ctrl+W on the way to
+ * Ctrl+S, say, would otherwise quit the game (a page can't stop it outside fullscreen).
+ */
+addEventListener('beforeunload', e => {
+    if (controls.locked) e.preventDefault()
+})
 
 /** Build mode's slot this frame (null: not building), worked out where the ghost is drawn. */
 let buildAt: BuildSlot | null = null
@@ -904,8 +912,8 @@ function step(now: number): void {
         view: Math.max(0, Math.floor(clock.renderStep(now) ?? 0)),
         slot: controls.slot,
     }
-    // Overtime grounds you: no jetpack.
-    jetting = Boolean(input.buttons & BUTTON.jet) && (body?.fuel ?? 0) > 0 && (body?.overtime ?? 0) === 0
+    // Space burns the jetpack only in the air, past a jump's top (Overtime and prone: never).
+    jetting = body ? jetBurns(body, moveOf(input)) : false
     const before = prediction.body
     prediction.apply(input, self.alive)
     outbox.push(input)
@@ -916,6 +924,9 @@ function step(now: number): void {
     // A jump pad threw you (nothing else kicks you up that hard from the floor), or a portal took you.
     if (self.alive && before?.onGround && after && after.vy - before.vy > 4) sounds.pad()
     if (self.alive && after?.portalCooldown === PORTAL.cooldownSteps) sounds.portal()
+    // A jump, and going prone or getting up.
+    if (self.alive && after?.jumped && !before?.jumped) sounds.jump()
+    if (self.alive && after && before && after.prone !== before.prone) sounds.prone(after.prone)
     sounds.jetting(jetting && self.alive && controls.locked)
 
     // A new weapon in hand: like the server, it can't be used for a moment.
@@ -1034,6 +1045,8 @@ function sendIdle(): void {
 let lastDraw = performance.now()
 /** 0 at the hip … 1 aiming, eased. */
 let aimBlend = 0
+/** Your eyes' height above your feet as drawn: eased to the real one as you go prone or get up. */
+let eyeHeight: number | null = null
 /** The crosshair's cone on the screen (px from the middle), eased; null: no gun cone. */
 let spreadPx: number | null = null
 
@@ -1047,8 +1060,11 @@ function draw(now: number): void {
     office.ceiling.visible = Boolean(self)
     const third = thirdPerson && Boolean(self?.alive)
     if (self && body) {
-        // Your eyes at your size (high on a Promotion, low as an Intern); the third-person camera keeps its distance in proportion.
-        const eye = eyeOf(body).add(smoothing)
+        // Your eyes at your size (high on a Promotion, low as an Intern, near the floor prone, eased
+        // down and up); the third-person camera keeps its distance in proportion.
+        const height = eyeOf(body).y - body.y
+        eyeHeight = eyeHeight === null ? height : eyeHeight + (height - eyeHeight) * Math.min(1, dt * 12)
+        const eye = new Vector3(body.x, body.y + eyeHeight, body.z).add(smoothing)
         const behind = thirdPersonCamera(world, eye, controls.yaw, controls.pitch, scaleOf(body))
         camera.position.copy(third ? behind : eye)
         camera.rotation.set(self.alive ? controls.pitch : -0.5, controls.yaw, 0)
@@ -1134,6 +1150,7 @@ function draw(now: number): void {
             shielded: self.shielded,
             weapon: held,
             aiming: aimingNow,
+            prone: body.prone,
             reload,
             team: teams.get(me) ?? null,
             buffs: self.buffs.map(b => b.kind),

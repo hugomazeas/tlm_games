@@ -17,7 +17,7 @@ export const MAX_FRAMES = 30
 export type Phase = 'warmup' | 'countdown' | 'playing' | 'intermission'
 
 /** Bits of an input frame's buttons. */
-export const BUTTON = { dash: 1, jet: 2, fire: 4, reload: 8, aim: 16 } as const
+export const BUTTON = { dash: 1, jet: 2, fire: 4, reload: 8, aim: 16, prone: 32 } as const
 
 /** The guns: three primaries, two secondaries, and the stapler (melee) everyone carries. */
 export const PRIMARIES = ['rifle', 'sniper', 'shotgun'] as const
@@ -196,6 +196,8 @@ export interface PlayerState {
     weapon: Weapon
     /** Aiming down their sights (their gun comes up to the eye). */
     aiming: boolean
+    /** Lying prone (their trooper lies down; a small, low target). */
+    prone: boolean
     /** 0–1 through reloading the gun in hand, null when not: their trooper plays the reload. */
     reload: number | null
     /** Their side in team deathmatch, null otherwise. */
@@ -477,7 +479,7 @@ function parseFrame(value: unknown): InputFrame | null {
     if (!Array.isArray(value) || (value.length !== 7 && value.length !== 8)) return null
     if (!value.every(n => typeof n === 'number' && Number.isFinite(n))) return null
     const [seq, forward, strafe, yaw, pitch, buttons, view, slot = 0] = value as number[]
-    if (!Number.isInteger(seq) || seq! < 1 || !Number.isInteger(buttons) || buttons! < 0 || buttons! > 31) return null
+    if (!Number.isInteger(seq) || seq! < 1 || !Number.isInteger(buttons) || buttons! < 0 || buttons! > 63) return null
     if (Math.abs(forward!) > 1 || Math.abs(strafe!) > 1 || Math.abs(pitch!) > Math.PI / 2) return null
     if (!Number.isInteger(view) || view! < 0) return null
     const held = SLOTS[slot]

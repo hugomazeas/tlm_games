@@ -545,6 +545,7 @@ describe('drawing the others', () => {
         health: 100,
         weapon: 'rifle',
         aiming: false,
+        prone: false,
         reload: null,
         team: null,
         buffs: [],
