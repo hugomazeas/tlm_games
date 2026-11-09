@@ -30,6 +30,7 @@ import {
     PICKUPS,
     type PickupKind,
     rollPickup,
+    type SiegeSpawn,
 } from './places.ts'
 import {
     aimDirection,
@@ -184,6 +185,8 @@ export class Arena {
     /** Each pickup spot: there to take from this step on, and what lies there (rolled when it comes back). */
     private readonly pickupAt: number[]
     private readonly pickupKind: PickupKind[] = []
+    /** Where each side spawns, when the match says (siege); null or an empty list: the usual, away from the enemy. */
+    private spawnsOf: ((team: Team | null) => readonly SiegeSpawn[] | null) | null = null
 
     constructor(
         private readonly world: FpsWorld,
@@ -191,6 +194,17 @@ export class Arena {
     ) {
         this.pickupAt = world.pickups.map(() => 0)
         this.rollPickups()
+    }
+
+    /** Fixed spawns per side (siege), or back to the usual (null). */
+    setSpawns(spawnsOf: ((team: Team | null) => readonly SiegeSpawn[] | null) | null): void {
+        this.spawnsOf = spawnsOf
+    }
+
+    /** Back to a spawn now, fresh (siege: a point scored sends the attacker back to the dome). */
+    respawn(id: string): ArenaEvent[] {
+        const fighter = this.fighters.get(id)
+        return fighter?.alive ? [this.spawn(fighter)] : []
     }
 
     /** A fresh roll on every spot (a new arena, a new match). */
@@ -805,6 +819,7 @@ export class Arena {
                 if (!f.alive) continue
                 if (f.id === rocket.by && this.step - rocket.born < ROCKET_ARMED_STEPS) continue
                 if (rocket.team !== null && f.team === rocket.team && f.id !== rocket.by) continue
+                if (this.apart(rocket.position, middleOf(f.body))) continue
                 const met = rayCapsule(rocket.position, direction, this.targetOf(f))
                 if (met && met.distance < nearest) {
                     nearest = met.distance
@@ -999,15 +1014,29 @@ export class Arena {
     private targetsAt(view: number, shooter: string): Target[] {
         const wanted = Math.max(this.step - MAX_REWIND_STEPS, Math.min(this.step, Math.round(view)))
         const past = this.history.find(h => h.step === wanted)
-        const team = this.fighters.get(shooter)?.team ?? null
+        const from = this.fighters.get(shooter)
+        const team = from?.team ?? null
         const targets: Target[] = []
         for (const fighter of this.fighters.values()) {
             if (fighter.id === shooter || !fighter.alive) continue
             if (team !== null && fighter.team === team) continue
+            if (from && this.apart(middleOf(from.body), middleOf(fighter.body))) continue
             targets.push(past?.at.get(fighter.id) ?? this.targetOf(fighter))
         }
 
         return targets
+    }
+
+    /**
+     * Siege's dome stands between these two points (one in, one out): nothing gets across, not even
+     * a hit box poking through the shell (it's wider than the body the shell holds in).
+     */
+    private apart(a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }): boolean {
+        const dome = this.world.dome
+        if (!dome) return false
+        const inside = (p: { x: number; y: number; z: number }) =>
+            Math.hypot(p.x - dome.x, p.y, p.z - dome.z) < dome.radius
+        return inside(a) !== inside(b)
     }
 
     /** Where a fighter stands as something to hit: feet, facing, size. */
@@ -1042,8 +1071,11 @@ export class Arena {
     }
 
     private spawn(fighter: Fighter): ArenaEvent {
-        const point = this.spawnPoint(fighter.id)
-        fighter.body = bodyAt(point.position[0], 0.02, point.position[2])
+        const fixed = this.spawnsOf?.(fighter.team)
+        const point = fixed?.length
+            ? fixed[Math.floor(this.random() * fixed.length)]!
+            : (({ position, yaw }) => ({ x: position[0], z: position[2], yaw }))(this.spawnPoint(fighter.id))
+        fighter.body = bodyAt(point.x, 0.02, point.z)
         fighter.yaw = point.yaw
         fighter.pitch = 0
         fighter.jetting = false
@@ -1098,6 +1130,11 @@ export class Arena {
     private shielded(fighter: Fighter): boolean {
         return fighter.alive && this.step < fighter.shieldUntil
     }
+}
+
+/** Halfway up a body (whichever side of a dome that is, the body is). */
+function middleOf(body: Body): { x: number; y: number; z: number } {
+    return { x: body.x, y: body.y + sizeOf(body).height / 2, z: body.z }
 }
 
 function freshGun(ammo: number): GunState {

@@ -139,7 +139,7 @@
                             <td class="py-1.5 text-white/70">{{ $result->match->ended_at->diffForHumans() }}</td>
                             <td class="text-white/70">
                                 {{ \App\Games\OfficeFps\Models\OfficeFpsMatch::MODE_LABELS[$result->match->mode] ?? $result->match->mode }}
-                                @if ($result->match->mode === 'tdm' && $result->team)
+                                @if (in_array($result->match->mode, ['tdm', 'siege'], true) && $result->team)
                                     <span class="{{ $result->team === 'red' ? 'text-red-400' : 'text-blue-400' }}">· Team {{ $result->team }}</span>
                                 @endif
                             </td>

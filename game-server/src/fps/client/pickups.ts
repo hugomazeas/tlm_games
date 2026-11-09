@@ -16,13 +16,25 @@ import {
 } from 'three'
 import type { ZoneState } from '../protocol.ts'
 import { H } from '../map/office.js'
-import { PAD, type Pad, PICKUP_SPOTS, type PickupKind, PICKUPS, type Portal, PORTAL, ZONES } from '../sim/places.ts'
+import {
+    type Dome,
+    PAD,
+    type Pad,
+    PICKUP_SPOTS,
+    type PickupKind,
+    PICKUPS,
+    type Portal,
+    PORTAL,
+    type Zone,
+    ZONES,
+} from '../sim/places.ts'
 
 /**
  * The pickups and the zone, in the office. Each pickup is a pad on the floor in its colour (always
  * there) with its item floating, turning and bobbing over it while it's there to take. The zone
- * (king of the meeting room) is a column of light from floor to ceiling over the active one:
- * white when nobody holds it, the holder's colour, orange and pulsing when contested.
+ * (king of the meeting room, or siege's spot) is a column of light from floor to ceiling over the
+ * active one: white when nobody holds it, the holder's colour, orange and pulsing when contested.
+ * Siege's dome is a half sphere of light in the attackers' colour.
  */
 
 /** The pickups' colours (a power's is its buff's in hud.ts too). */
@@ -331,8 +343,8 @@ export class ZoneView {
         ringMaterial: MeshBasicMaterial
     }>
 
-    constructor(scene: Scene) {
-        this.columns = ZONES.map(zone => {
+    constructor(scene: Scene, zones: readonly Zone[] = ZONES) {
+        this.columns = zones.map(zone => {
             const columnMaterial = new MeshBasicMaterial({
                 color: 0xffffff,
                 transparent: true,
@@ -376,5 +388,46 @@ export class ZoneView {
             const pulse = zone.contested ? 0.5 + Math.sin(now * 0.012) * 0.5 : 0.5
             c.columnMaterial.opacity = 0.08 + pulse * 0.1
         })
+    }
+}
+
+/**
+ * Siege's dome while it stands: a force field, a tinted half sphere with a grid over it, in the
+ * attackers' colour (plain transparent basic materials, like the zone column's: no new shader).
+ */
+export class DomeView {
+    private readonly shell = new Group()
+    private readonly fill: MeshBasicMaterial
+    private readonly grid: MeshBasicMaterial
+
+    constructor(scene: Scene) {
+        const half = new SphereGeometry(1, 32, 10, 0, Math.PI * 2, 0, Math.PI / 2)
+        this.fill = new MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.15,
+            depthWrite: false,
+            side: DoubleSide,
+        })
+        this.grid = new MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.6,
+            depthWrite: false,
+            wireframe: true,
+        })
+        this.shell.add(new Mesh(half, this.fill), new Mesh(half, this.grid))
+        this.shell.visible = false
+        scene.add(this.shell)
+    }
+
+    update(dome: Dome | null, color: string, now: number): void {
+        this.shell.visible = dome !== null
+        if (!dome) return
+        this.shell.position.set(dome.x, 0, dome.z)
+        this.shell.scale.setScalar(dome.radius)
+        this.fill.color.set(color)
+        this.grid.color.set(color)
+        this.grid.opacity = 0.5 + Math.sin(now * 0.004) * 0.15
     }
 }

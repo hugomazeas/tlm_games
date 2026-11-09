@@ -1,5 +1,5 @@
 import type { Body } from './sim/movement.ts'
-import type { PickupKind } from './sim/places.ts'
+import type { Dome, PickupKind } from './sim/places.ts'
 
 /**
  * The office FPS's messages, over /games/office-fps/live/ws. There is one game: everyone who
@@ -62,15 +62,56 @@ export function parseLoadout(value: unknown): Loadout | null {
 }
 
 /**
- * The modes: free for all, team deathmatch (red against blue), and king of the meeting room (hold
- * the active zone alone; the zone moves around the office).
+ * The modes: free for all, team deathmatch (red against blue), king of the meeting room (hold
+ * the active zone alone; the zone moves around the office) and siege (one side defends a spot,
+ * the other takes it, then they swap).
  */
-export const MODES = ['ffa', 'tdm', 'koth'] as const
+export const MODES = ['ffa', 'tdm', 'koth', 'siege'] as const
 export type Mode = (typeof MODES)[number]
 export const MODE_NAMES: Record<Mode, string> = {
     ffa: 'Free for all',
     tdm: 'Team deathmatch',
     koth: 'King of the meeting room',
+    siege: 'Siege',
+}
+
+/** The modes played in two sides, red and blue (no friendly fire). */
+export function isTeamMode(mode: Mode): boolean {
+    return mode === 'tdm' || mode === 'siege'
+}
+
+/**
+ * Siege: two halves on one spot (SIEGE_SPOTS, rolled per match). In each, the defenders get a head
+ * start to build while the attackers wait in their dome; then an attacker who stays `holdMs` in the
+ * spot scores a point for their side and goes back to the dome. A half ends at the limit (`fragLimit`
+ * points) or after `halfMs`; then the sides swap, the walls go. Most points wins, the faster on a tie.
+ * Only the defenders build, and nobody within `noBuild` of the dome's edge.
+ */
+export const SIEGE = {
+    headStartMs: 45_000,
+    halfMs: 5 * 60_000,
+    holdMs: 5_000,
+    domeRadius: 1.0,
+    noBuild: 1.5,
+} as const
+
+/** Siege as it stands: the spot (into SIEGE_SPOTS), the half, who attacks, the score. */
+export interface SiegeView {
+    spot: number
+    half: 1 | 2
+    attackers: Team
+    /** The head start: the attackers' dome stands (null once it's open). */
+    dome: Dome | null
+    /** Each side's points (who left included). */
+    points: Record<Team, number>
+    /** When each side scored its last point, into its attack (ms; null before its first): the tie-break. */
+    times: Record<Team, number | null>
+}
+
+/** An attacker in the spot, and how long they've stayed (ms). */
+export interface SiegeHold {
+    id: string
+    ms: number
 }
 export const TEAMS = ['red', 'blue'] as const
 export type Team = (typeof TEAMS)[number]
@@ -78,7 +119,8 @@ export const TEAM_COLORS: Record<Team, string> = { red: '#e4572e', blue: '#29a3e
 
 /**
  * What the host may pick for a match. `fragLimit` is kills in free for all, the team's kills in team
- * deathmatch, and in king of the meeting room ten times that in seconds holding the zone.
+ * deathmatch, in king of the meeting room ten times that in seconds holding the zone, and in siege
+ * the points a side needs in its half. Siege's halves have their own length (`SIEGE.halfMs`).
  */
 export const FRAG_LIMITS = [5, 10, 15, 20, 25, 30, 50] as const
 export const MATCH_MINUTES = [3, 5, 10, 15, 20] as const
@@ -200,7 +242,7 @@ export interface PlayerState {
     prone: boolean
     /** 0–1 through reloading the gun in hand, null when not: their trooper plays the reload. */
     reload: number | null
-    /** Their side in team deathmatch, null otherwise. */
+    /** Their side in team deathmatch and siege, null otherwise. */
     team: Team | null
     /** The pickups' powers they carry (everyone sees them). */
     buffs: BuffKind[]
@@ -285,6 +327,8 @@ export type GameEvent =
     | { type: 'wallGone'; id: number; broken: boolean }
     /** Every wall there is now (a new match wipes them: none). */
     | { type: 'walls'; walls: WallState[] }
+    /** Siege: an attacker held the spot long enough, a point for their side (and back to the dome). */
+    | { type: 'captured'; by: string; team: Team }
 
 /** What the victim learns about the one who killed them. */
 export interface KillRecap {
@@ -315,7 +359,7 @@ export interface Score {
     kills: number
     deaths: number
     team: Team | null
-    /** Seconds holding the zone (king of the meeting room). */
+    /** Seconds holding the zone (king of the meeting room), or the spot taken (siege). */
     points: number
 }
 
@@ -335,6 +379,8 @@ export interface MatchView {
     teams: Record<Team, number> | null
     /** After a match: its standouts. */
     awards: Award[] | null
+    /** Siege, while it's played and on its scoreboard after. */
+    siege: SiegeView | null
 }
 
 export type ErrorCode = 'BAD_MESSAGE' | 'NOT_JOINED' | 'UNKNOWN_PLAYER' | 'UNAVAILABLE' | 'NOT_HOST' | 'NOT_ENOUGH'
@@ -392,6 +438,8 @@ export type ServerMessage =
           pickups: Array<PickupKind | null>
           /** King of the meeting room, while it's played. */
           zone: ZoneState | null
+          /** Siege's attackers in the spot, while it's played. */
+          holds: SiegeHold[] | null
           rockets: RocketState[]
       }
     /** You joined from another tab; this one is closed. */

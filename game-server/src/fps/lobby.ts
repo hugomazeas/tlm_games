@@ -6,6 +6,7 @@ import {
     type GameEvent,
     DEFAULT_LOADOUT,
     type InputFrame,
+    isTeamMode,
     type Loadout,
     MAX_PLAYERS,
     type MatchView,
@@ -15,6 +16,9 @@ import {
     type Rules,
     type Score,
     type ServerMessage,
+    SIEGE,
+    type SiegeHold,
+    type SiegeView,
     type Team,
     type WallSpec,
     TEAMS,
@@ -24,7 +28,7 @@ import {
 } from './protocol.ts'
 import { Arena, type ArenaEvent } from './sim/arena.ts'
 import { STEP_MS } from './sim/movement.ts'
-import { inZone, ZONE_MS, ZONES } from './sim/places.ts'
+import { domeSpawns, inZone, SIEGE_SPOTS, siegeForbidsBuild, siegeWinner, ZONE_MS, ZONES } from './sim/places.ts'
 import { Walls } from './sim/walls.ts'
 import type { FpsWorld } from './sim/world.ts'
 
@@ -43,7 +47,9 @@ import type { FpsWorld } from './sim/world.ts'
  * The modes: free for all (first to the kill limit); team deathmatch (red against blue, first side
  * to the kill limit; teammates can't hurt each other); king of the meeting room (the zone moves
  * around the office every ZONE_MS; holding it alone scores a second a second, first to ten times
- * the limit in seconds).
+ * the limit in seconds); siege (two halves on one spot: the defenders build while the attackers
+ * wait in their dome, then each attacker who stays in the spot SIEGE.holdMs scores and goes back to
+ * the dome; the sides swap at half time; most points wins, the faster on a tie).
  */
 
 export const MIN_PLAYERS = 2
@@ -164,10 +170,28 @@ interface Tally {
     bestStreak: number
     playedMs: number
     zoneMs: number
+    /** Siege: points scored taking the spot. */
+    captures: number
     pickups: number
     /** In the match since (ms), while they're connected. */
     since: number | null
 }
+
+/** A siege being played: see SiegeView. */
+interface Siege {
+    spot: number
+    half: 1 | 2
+    attackers: Team
+    /** The dome opens then (ms, the lobby's clock); the half ends at `endsAt` at the latest. */
+    opensAt: number
+    endsAt: number
+    points: Record<Team, number>
+    times: Record<Team, number | null>
+    /** Attackers in the spot: since how long (ms). Leaving or going down starts them over. */
+    holds: Map<string, number>
+}
+
+const otherTeam = (team: Team): Team => (team === 'red' ? 'blue' : 'red')
 
 export class FpsLobby {
     private readonly members = new Map<string, Member>()
@@ -184,16 +208,21 @@ export class FpsLobby {
     /** King of the meeting room: the order the zones come in, and the one now. */
     private zoneOrder: number[] = []
     private zone: ZoneState | null = null
+    /** Siege, from its start to the end of its scoreboard. */
+    private siege: Siege | null = null
     /** The clock the steps run on: step n is due at clockStart + n × STEP_MS. */
     private clockStart: number
     private events: GameEvent[] = []
+    /** The game's world: the office, with its own walls and dome. */
+    private readonly world: FpsWorld
 
     constructor(
         world: FpsWorld,
         private readonly hooks: LobbyHooks
     ) {
         // The game's own walls: what's built here stays here.
-        this.arena = new Arena({ ...world, walls: new Walls() }, hooks.random)
+        this.world = { ...world, walls: new Walls(), dome: null }
+        this.arena = new Arena(this.world, hooks.random)
         this.clockStart = hooks.now()
     }
 
@@ -278,10 +307,15 @@ export class FpsLobby {
         if (!member.info.watching) this.arena.setLoadout(connId, loadout)
     }
 
-    /** Build mode: a wall up (any phase but the scoreboard), or one of theirs taken back. */
+    /**
+     * Build mode: a wall up (any phase but the scoreboard), or one of theirs taken back. In a siege
+     * only the defenders build, and not by the dome (no walling the attackers in).
+     */
     build(connId: string, wall: WallSpec): void {
         const member = this.members.get(connId)
         if (!member || member.info.watching || this.phase === 'intermission') return
+        const siege = this.phase === 'playing' ? this.siege : null
+        if (siege && siegeForbidsBuild(siege, this.arena.teamOf(connId), wall.x, wall.z)) return
         this.arena.build(connId, wall)
     }
 
@@ -330,12 +364,14 @@ export class FpsLobby {
         while (this.arena.step < due) {
             this.record(this.arena.advance())
             if (this.phase === 'playing' && this.rules.mode === 'koth') this.holdZone()
+            if (this.phase === 'playing' && this.siege) this.holdSpot()
             if (this.phase === 'playing' && this.reachedLimit()) this.endMatch()
             if (this.arena.step % SNAPSHOT_EVERY === 0) this.snapshot()
         }
 
         if (this.phaseEndsAt !== null && now >= this.phaseEndsAt) {
             if (this.phase === 'countdown') this.startMatch()
+            else if (this.phase === 'playing' && this.siege) this.siegeClock()
             else if (this.phase === 'playing') this.endMatch()
             else if (this.phase === 'intermission') this.setPhase('warmup')
         }
@@ -355,7 +391,8 @@ export class FpsLobby {
         member.info.watching = false
         const tally = this.tallies.get(member.key)
         // In a team match a newcomer joins the smaller side; someone back keeps theirs.
-        const team = this.phase === 'playing' && this.rules.mode === 'tdm' ? (tally?.team ?? this.smallerTeam()) : null
+        const team =
+            this.phase === 'playing' && isTeamMode(this.rules.mode) ? (tally?.team ?? this.smallerTeam()) : null
         this.record(this.arena.add(member.conn.id, team, member.loadout))
         // Back in the same match (a dropped connection, a reload): their score is still theirs.
         if (tally) {
@@ -387,19 +424,123 @@ export class FpsLobby {
         this.awards = null
         const seated = this.shuffled(this.seatedMembers())
         seated.forEach((member, i) => {
-            this.arena.setTeam(member.conn.id, this.rules.mode === 'tdm' ? TEAMS[i % 2]! : null)
+            this.arena.setTeam(member.conn.id, isTeamMode(this.rules.mode) ? TEAMS[i % 2]! : null)
         })
         for (const member of this.seatedMembers()) this.tallies.set(member.key, this.newTally(member))
         this.zoneOrder = this.shuffled(ZONES.map((_, i) => i))
         this.zone = null
         this.matchStartedAt = this.hooks.now()
-        this.record(this.arena.respawnAll())
+        if (this.rules.mode === 'siege') {
+            this.siege = {
+                spot: Math.floor(this.hooks.random() * SIEGE_SPOTS.length),
+                half: 1,
+                attackers: TEAMS[Math.floor(this.hooks.random() * TEAMS.length)]!,
+                opensAt: 0,
+                endsAt: 0,
+                points: { red: 0, blue: 0 },
+                times: { red: null, blue: null },
+                holds: new Map(),
+            }
+            this.beginHalf()
+        } else {
+            this.record(this.arena.respawnAll())
+        }
         this.setPhase('playing')
         if (this.rules.mode === 'koth') this.holdZone()
     }
 
-    /** Has someone (or a side) reached the match's limit? */
+    /**
+     * Siege, a half begins: the clean office (walls wiped, pickups back), the attackers in their
+     * dome, the defenders by the spot, the head start running.
+     */
+    private beginHalf(): void {
+        const siege = this.siege!
+        const spot = SIEGE_SPOTS[siege.spot]!
+        const now = this.hooks.now()
+        siege.opensAt = now + SIEGE.headStartMs
+        siege.endsAt = siege.opensAt + SIEGE.halfMs
+        siege.holds.clear()
+        this.world.dome = { ...spot.dome, radius: SIEGE.domeRadius }
+        const dome = domeSpawns(spot)
+        this.arena.setSpawns(team => (team === siege.attackers ? dome : team ? spot.defenders : null))
+        this.record(this.arena.respawnAll())
+    }
+
+    /** Siege's clock ran out on something: the head start (the dome opens) or the half. */
+    private siegeClock(): void {
+        const siege = this.siege!
+        if (this.world.dome) {
+            this.world.dome = null
+            this.phaseEndsAt = siege.endsAt
+            this.broadcast({ type: 'match', match: this.view() })
+        } else {
+            this.endHalf()
+        }
+    }
+
+    /** The first half over: the sides swap on the same spot. The second: the match is. */
+    private endHalf(): void {
+        const siege = this.siege!
+        if (siege.half === 2) return this.endMatch()
+        siege.half = 2
+        siege.attackers = otherTeam(siege.attackers)
+        this.beginHalf()
+        this.phaseEndsAt = siege.opensAt
+        this.broadcast({ type: 'match', match: this.view() })
+    }
+
+    /**
+     * Siege, one step of the attack: each attacker up in the spot adds a step to their stay; at
+     * SIEGE.holdMs it's a point for their side and they're back in the dome. Their side at the limit
+     * ends the half; the second half also ends once its result can't change.
+     */
+    private holdSpot(): void {
+        const siege = this.siege!
+        if (this.world.dome) return
+        const spot = SIEGE_SPOTS[siege.spot]!
+        const inside = new Set(
+            this.arena
+                .states()
+                .filter(s => s.alive && s.team === siege.attackers && inZone(spot, s.x, s.z))
+                .map(s => s.id)
+        )
+        for (const id of siege.holds.keys()) if (!inside.has(id)) siege.holds.delete(id)
+        for (const id of inside) {
+            const held = (siege.holds.get(id) ?? 0) + STEP_MS
+            if (held < SIEGE.holdMs) {
+                siege.holds.set(id, held)
+                continue
+            }
+            siege.holds.delete(id)
+            siege.points[siege.attackers]++
+            siege.times[siege.attackers] = this.hooks.now() - siege.opensAt
+            const tally = this.tallyOf(id)
+            if (tally) tally.captures++
+            this.events.push({ type: 'captured', by: id, team: siege.attackers })
+            this.record(this.arena.respawn(id))
+            this.broadcast({ type: 'match', match: this.view() })
+        }
+        if (siege.points[siege.attackers] >= this.rules.fragLimit || this.siegeDecided()) this.endHalf()
+    }
+
+    /**
+     * The second half can't change who wins: the attackers already lead (points only go up), or the
+     * first side reached the limit and this half has run past their time (the most it can do is tie, slower).
+     */
+    private siegeDecided(): boolean {
+        const siege = this.siege!
+        if (siege.half !== 2) return false
+        const first = otherTeam(siege.attackers)
+        if (siege.points[siege.attackers] > siege.points[first]) return true
+        const theirs = siege.times[first]
+        return (
+            siege.points[first] >= this.rules.fragLimit && theirs !== null && this.hooks.now() - siege.opensAt > theirs
+        )
+    }
+
+    /** Has someone (or a side) reached the match's limit? (Siege counts its own, per half.) */
     private reachedLimit(): boolean {
+        if (this.siege) return false
         const tallies = [...this.tallies.values()]
         if (this.rules.mode === 'koth') {
             const needed = this.rules.fragLimit * ZONE_SECONDS_PER_POINT * 1000
@@ -435,9 +576,14 @@ export class FpsLobby {
         for (const tally of this.tallies.values()) this.clockOut(tally)
         const ranked = this.ranked()
         const teams = this.teamKills()
-        const winner: Team | null =
-            this.rules.mode !== 'tdm' || teams.red === teams.blue ? null : teams.red > teams.blue ? 'red' : 'blue'
-        const won = (t: Tally) => (this.rules.mode === 'tdm' ? t.team !== null && t.team === winner : ranked[0] === t)
+        const winner: Team | null = this.siege
+            ? siegeWinner(this.siege.points, this.siege.times)
+            : this.rules.mode !== 'tdm' || teams.red === teams.blue
+              ? null
+              : teams.red > teams.blue
+                ? 'red'
+                : 'blue'
+        const won = (t: Tally) => (isTeamMode(this.rules.mode) ? t.team !== null && t.team === winner : ranked[0] === t)
         this.awards = this.awardsFor(ranked)
         const people = ranked.filter(t => t.playerId !== null)
         if (ranked.length >= MIN_PLAYERS && people.length > 0) {
@@ -483,7 +629,11 @@ export class FpsLobby {
         const mvp = ranked[0]
         if (mvp) {
             const detail =
-                this.rules.mode === 'koth' ? `${Math.floor(mvp.zoneMs / 1000)} s in the zone` : `${mvp.kills} kills`
+                this.rules.mode === 'koth'
+                    ? `${Math.floor(mvp.zoneMs / 1000)} s in the zone`
+                    : this.rules.mode === 'siege'
+                      ? `${mvp.captures} point${mvp.captures === 1 ? '' : 's'}, ${mvp.kills} kills`
+                      : `${mvp.kills} kills`
             awards.push({ title: 'MVP', detail, name: mvp.name, color: mvp.color })
         }
         const accuracy = (t: Tally) => (t.shots >= 10 ? Math.round((t.hits / t.shots) * 100) : 0)
@@ -530,7 +680,8 @@ export class FpsLobby {
         const length = {
             warmup: null,
             countdown: COUNTDOWN_MS,
-            playing: this.rules.minutes * 60_000,
+            // A siege runs on its own clock: first to the dome's opening.
+            playing: this.siege ? SIEGE.headStartMs : this.rules.minutes * 60_000,
             intermission: INTERMISSION_MS,
         }[phase]
         this.phaseEndsAt = length === null ? null : this.hooks.now() + length
@@ -539,6 +690,12 @@ export class FpsLobby {
             this.tallies = new Map()
             for (const member of this.seatedMembers()) this.arena.setTeam(member.conn.id, null)
             this.zone = null
+            this.siege = null
+        }
+        if (phase !== 'playing') {
+            // No dome, and the usual spawns, outside a siege's play (its scoreboard keeps its score).
+            this.world.dome = null
+            this.arena.setSpawns(null)
         }
         if (phase !== 'intermission') this.awards = null
         this.broadcast({ type: 'match', match: this.view() })
@@ -606,6 +763,8 @@ export class FpsLobby {
         const players = this.arena.states()
         const pickups = this.arena.pickups()
         const zone = this.phase === 'playing' && this.rules.mode === 'koth' ? this.zone : null
+        const holds: SiegeHold[] | null =
+            this.phase === 'playing' && this.siege ? [...this.siege.holds].map(([id, ms]) => ({ id, ms })) : null
         const rockets = this.arena.rocketStates()
         const events = this.events
         this.events = []
@@ -620,6 +779,7 @@ export class FpsLobby {
                 events,
                 pickups,
                 zone,
+                holds,
                 rockets,
             })
         }
@@ -643,11 +803,26 @@ export class FpsLobby {
                     kills: t.kills,
                     deaths: t.deaths,
                     team: t.team,
-                    points: Math.floor(t.zoneMs / 1000),
+                    points: this.siege ? t.captures : Math.floor(t.zoneMs / 1000),
                 })
             ),
-            teams: this.rules.mode === 'tdm' && this.tallies.size > 0 ? this.teamKills() : null,
+            teams: isTeamMode(this.rules.mode) && this.tallies.size > 0 ? this.teamKills() : null,
             awards: this.phase === 'intermission' ? this.awards : null,
+            siege: this.siegeView(),
+        }
+    }
+
+    private siegeView(): SiegeView | null {
+        const siege = this.siege
+        if (!siege) return null
+
+        return {
+            spot: siege.spot,
+            half: siege.half,
+            attackers: siege.attackers,
+            dome: this.world.dome ? { ...this.world.dome } : null,
+            points: { ...siege.points },
+            times: { ...siege.times },
         }
     }
 
@@ -658,11 +833,18 @@ export class FpsLobby {
         return kills
     }
 
-    /** Best first: in king of the meeting room the most zone time, else the most kills; then the fewest deaths. */
+    /**
+     * Best first: in king of the meeting room the most zone time, in siege the most points, else the
+     * most kills; then the fewest deaths.
+     */
     private ranked(): Tally[] {
         const mode: Mode = this.rules.mode
         return [...this.tallies.values()].sort((a, b) =>
-            mode === 'koth' ? b.zoneMs - a.zoneMs || b.kills - a.kills : b.kills - a.kills || a.deaths - b.deaths
+            mode === 'koth'
+                ? b.zoneMs - a.zoneMs || b.kills - a.kills
+                : mode === 'siege'
+                  ? b.captures - a.captures || b.kills - a.kills || a.deaths - b.deaths
+                  : b.kills - a.kills || a.deaths - b.deaths
         )
     }
 
@@ -697,6 +879,7 @@ export class FpsLobby {
             bestStreak: 0,
             playedMs: 0,
             zoneMs: 0,
+            captures: 0,
             pickups: 0,
             since: this.hooks.now(),
         }

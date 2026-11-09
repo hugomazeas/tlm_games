@@ -237,7 +237,19 @@ class OfficeFpsStatsTest extends TestCase
             'ffa' => ['matches' => 0, 'wins' => 0],
             'tdm' => ['matches' => 1, 'wins' => 0],
             'koth' => ['matches' => 2, 'wins' => 2],
+            'siege' => ['matches' => 0, 'wins' => 0],
         ], $stats['modes']);
+    }
+
+    public function test_a_siege_saves_its_mode_and_sides_and_shows_on_the_profile(): void
+    {
+        $siege = $this->teamMatch();
+        $siege['mode'] = 'siege';
+        $this->postJson('/internal/office-fps/results', $siege, $this->secret())->assertCreated();
+
+        $this->assertSame('siege', OfficeFpsMatch::sole()->mode);
+        $cat = $this->get('/games/office-fps/players/'.$this->cat->id)->assertOk()->assertSee('Siege')->assertSee('Team blue')->viewData('stats');
+        $this->assertSame(['matches' => 1, 'wins' => 1], $cat['modes']['siege']);
     }
 
     public function test_a_post_without_modes_is_a_free_for_all_won_by_first_place(): void

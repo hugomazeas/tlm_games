@@ -27,6 +27,9 @@ import {
     type Rules,
     type SelfState,
     type ServerMessage,
+    SIEGE,
+    type SiegeHold,
+    type SiegeView,
     type Team,
     TEAM_COLORS,
     type Weapon,
@@ -46,7 +49,16 @@ import {
     SWITCH_MS,
 } from '../sim/combat.ts'
 import { jetBurns, MOVE, moveOf, PLAYER, scaleOf, STEP_MS } from '../sim/movement.ts'
-import { PICKUP_SPOTS, type PickupKind, PICKUPS, PORTAL, ZONES } from '../sim/places.ts'
+import {
+    PICKUP_SPOTS,
+    type PickupKind,
+    PICKUPS,
+    PORTAL,
+    SIEGE_SPOTS,
+    siegeForbidsBuild,
+    siegeWinner,
+    ZONES,
+} from '../sim/places.ts'
 import { buildSlot, type BuildSlot } from '../sim/building.ts'
 import { BUILD, type Wall } from '../sim/walls.ts'
 import { rayDistance, rayHit, worldFrom } from '../sim/world.ts'
@@ -58,7 +70,7 @@ import { Controls } from './controls.ts'
 import { Effects } from './effects.ts'
 import { BUFF_LABELS, type DeathCause, escape, Hud } from './hud.ts'
 import { GpuTimer, type PerfExtras, PerfOverlay, type Section } from './perf.ts'
-import { PadViews, PICKUP_COLORS, PickupViews, PortalViews, ZoneView } from './pickups.ts'
+import { DomeView, PadViews, PICKUP_COLORS, PickupViews, PortalViews, ZoneView } from './pickups.ts'
 import { Prediction } from './prediction.ts'
 import { aimFov, loadSettings, saveSettings } from './settings.ts'
 import { reloadProgress, Sounds, spatial } from './sounds.ts'
@@ -123,6 +135,8 @@ const pickupViews = new PickupViews(scene)
 const padViews = new PadViews(scene, world.pads)
 const portalViews = new PortalViews(scene, world.portals)
 const zoneView = new ZoneView(scene)
+const spotView = new ZoneView(scene, SIEGE_SPOTS)
+const domeView = new DomeView(scene)
 const wallViews = new WallViews(scene)
 addEventListener('resize', () => {
     renderer.setSize(innerWidth, innerHeight)
@@ -184,7 +198,9 @@ function landed(from: Vector3, to: Vector3, now: number): void {
     along.divideScalar(length)
     const hit = rayHit(world, from, along, length + 0.05)
     // On a built wall: what flies off, but no hole (left hanging in the air once it comes down).
-    if (hit && hit.distance > length - 0.05) impacts.hit(hit.point, hit.normal, along, hit.surface, now, !hit.wall)
+    if (hit && hit.distance > length - 0.05) {
+        impacts.hit(hit.point, hit.normal, along, hit.surface, now, !hit.wall && !hit.dome)
+    }
 }
 
 /** A rocket went off at `at`: scorched on whatever is nearest (the floor, a wall, a desk), if it's close. */
@@ -195,7 +211,9 @@ function scorched(at: Vector3, now: number): void {
         const hit = rayHit(world, at, toward, nearest?.distance ?? 0.6)
         if (hit) [nearest, direction] = [hit, toward]
     }
-    if (nearest) impacts.blast(nearest.point, nearest.normal, direction, nearest.surface, now, !nearest.wall)
+    if (nearest) {
+        impacts.blast(nearest.point, nearest.normal, direction, nearest.surface, now, !nearest.wall && !nearest.dome)
+    }
 }
 const DOWN = new Vector3(0, -1, 0)
 const BLAST_RAYS = [
@@ -226,6 +244,8 @@ let pickupsReady: Array<PickupKind | null> = []
 let zone: ZoneState | null = null
 /** When `zone` came (its `movesInMs` counts from then). */
 let zoneAt = 0
+/** Siege: the attackers in the spot, and since how long (the latest snapshot's). */
+let holds: SiegeHold[] = []
 /** Everyone's side, from the latest snapshot (team deathmatch). */
 let teams = new Map<string, Team | null>()
 let seq = 0
@@ -286,9 +306,14 @@ controls.onBuild = () => {
     if (!buildAt || socket?.readyState !== WebSocket.OPEN) return
     const now = performance.now()
     if (now < nextBuildAt) return
-    if (buildAt.taken) return sounds.buildRefused()
+    if (buildAt.taken || siegeBlocks(buildAt.wall.x, buildAt.wall.z)) return sounds.buildRefused()
     nextBuildAt = now + BUILD_COOLDOWN_MS
     socket.send(JSON.stringify({ type: 'build', wall: buildAt.wall }))
+}
+/** Siege refuses a wall here (you attack, or it's by the dome): refused in the browser, as the server would. */
+function siegeBlocks(x: number, z: number): boolean {
+    const siege = match?.phase === 'playing' ? match.siege : null
+    return Boolean(siege && me && siegeForbidsBuild(siege, teams.get(me) ?? null, x, z))
 }
 /** E in build mode: the wall under the crosshair, if it's yours and in reach, comes down. */
 controls.onUnbuild = () => {
@@ -420,6 +445,7 @@ function receive(message: ServerMessage): void {
             reloadEndsAt = null
             match = message.match
             matchAt = now
+            syncDome(match)
             world.walls.clear()
             for (const wall of message.walls ?? []) world.walls.add(wall)
             wallViews.sync(world.walls, now)
@@ -439,15 +465,18 @@ function receive(message: ServerMessage): void {
         case 'match': {
             const before = match?.phase
             const pointsBefore = match?.scores.find(s => s.id === me)?.points ?? 0
+            const siegeBefore = before === 'playing' ? (match?.siege ?? null) : null
             match = message.match
             matchAt = now
+            syncDome(match)
+            siegeNews(siegeBefore, match)
             hud.setMatch(message.match, now)
             updateHost()
             if (before === 'countdown' && match.phase === 'playing') sounds.countdown(true)
             if (before === 'playing' && match.phase === 'intermission') sounds.result(iWon(match))
-            // A second more in the zone: a soft tick.
+            // A second more in the zone: a soft tick (siege's points have their own event).
             const points = match.scores.find(s => s.id === me)?.points ?? 0
-            if (match.phase === 'playing' && points > pointsBefore) sounds.zoneTick()
+            if (match.phase === 'playing' && match.mode === 'koth' && points > pointsBefore) sounds.zoneTick()
             return
         }
         case 'snap':
@@ -476,10 +505,40 @@ function updateHost(): void {
     hud.setHost({ isHost: host !== null && host === me, name: host ? (roster.get(host)?.name ?? null) : null, seated })
 }
 
+/** Siege's dome from the match: in the world while it stands, so your prediction meets it as the server does. */
+function syncDome(view: MatchView): void {
+    world.dome = view.phase === 'playing' ? (view.siege?.dome ?? null) : null
+}
+
+/** Siege: a half starting (which side you're on, and where), or the dome opening, said on screen. */
+function siegeNews(was: SiegeView | null, view: MatchView): void {
+    const siege = view.phase === 'playing' ? view.siege : null
+    const team = view.scores.find(s => s.id === me)?.team
+    if (!siege || !team) return
+    const spot = SIEGE_SPOTS[siege.spot]!.name.toUpperCase()
+    const attacking = team === siege.attackers
+    const color = TEAM_COLORS[team]
+    if (!was || was.half !== siege.half) {
+        const head = Math.round(SIEGE.headStartMs / 1000)
+        const swapped = siege.half === 2 ? 'SIDES SWITCHED · ' : ''
+        hud.toast(
+            attacking
+                ? `${swapped}ATTACK THE ${spot} · OUT IN ${head} s`
+                : `${swapped}DEFEND THE ${spot} · ${head} s TO BUILD (B)`,
+            color
+        )
+        sounds.zoneMoved()
+    } else if (was.dome && !siege.dome) {
+        hud.toast(attacking ? 'GO! TAKE THE SPOT' : 'HERE THEY COME', color)
+        sounds.countdown(true)
+    }
+}
+
 /** Did you (or your side) win the match that just ended? */
 function iWon(view: MatchView): boolean {
+    const mine = view.scores.find(s => s.id === me)?.team
+    if (view.siege) return mine != null && siegeWinner(view.siege.points, view.siege.times) === mine
     if (view.mode === 'tdm' && view.teams) {
-        const mine = view.scores.find(s => s.id === me)?.team
         const other = mine === 'red' ? 'blue' : 'red'
         return mine !== undefined && mine !== null && view.teams[mine] > view.teams[other]
     }
@@ -533,6 +592,7 @@ function snapshot(snap: Extract<ServerMessage, { type: 'snap' }>, now: number): 
     }
     zone = snap.zone
     zoneAt = now
+    holds = snap.holds ?? []
     for (const event of snap.events) onEvent(event, now)
 }
 
@@ -582,6 +642,17 @@ function onEvent(event: GameEvent, now: number): void {
         world.walls.clear()
         for (const wall of event.walls) world.walls.add(wall)
         wallViews.sync(world.walls, now)
+        return
+    }
+    if (event.type === 'captured') {
+        const spot = match?.siege ? SIEGE_SPOTS[match.siege.spot]!.name : 'the spot'
+        hud.killFeed(
+            `${colored(event.by)} <span style="opacity:.7">took the</span> <b>${escape(spot)}</b> <b style="color:${TEAM_COLORS[event.team]}">+1</b>`
+        )
+        if (event.by === me) {
+            hud.toast('+1 POINT · BACK TO THE DOME', TEAM_COLORS[event.team])
+            sounds.zoneMoved()
+        } else sounds.zoneTick()
         return
     }
     if (event.type === 'pickup') {
@@ -1114,7 +1185,8 @@ function draw(now: number): void {
     hud.reload(building ? buildRing : reload)
     // Build mode: the gun put away, the ghost where the next wall goes, its line on the HUD.
     buildAt = building && body ? buildSlot(world, eyeOf(body), aimNow(body), controls.stance) : null
-    wallViews.showGhost(buildAt?.wall ?? null, buildAt?.taken ?? false)
+    const refused = buildAt !== null && (buildAt.taken || siegeBlocks(buildAt.wall.x, buildAt.wall.z))
+    wallViews.showGhost(buildAt?.wall ?? null, refused)
     wallViews.update(now)
     hud.building(building ? controls.stance : null)
     // A door of yours within reach: F, said under the crosshair.
@@ -1172,6 +1244,16 @@ function draw(now: number): void {
     padViews.update(now)
     portalViews.update(now)
     zoneView.update(zone, colorOf, zone !== null && zone.holder === me, now)
+    const siege = match?.phase === 'playing' ? match.siege : null
+    // Siege's spot: white, or the attackers' colour while one of them stands in it.
+    const holder = holds.some(h => h.id === me) ? me : (holds[0]?.id ?? null)
+    spotView.update(
+        siege ? { index: siege.spot, holder, contested: false, movesInMs: 0 } : null,
+        colorOf,
+        holder !== null && holder === me,
+        now
+    )
+    domeView.update(world.dome ?? null, siege ? TEAM_COLORS[siege.attackers] : '#ffffff', now)
     const sceneDone = performance.now()
     cpu.scene = sceneDone - started
     showZone(now)
@@ -1186,8 +1268,9 @@ function draw(now: number): void {
     cpu.render = performance.now() - hudDone
 }
 
-/** King of the meeting room: who holds the zone, and a marker pointing at it (kept on screen). */
+/** King of the meeting room: who holds the zone, and a marker pointing at it (kept on screen). Siege: the spot. */
 function showZone(now: number): void {
+    if (match?.phase === 'playing' && match.siege && self?.alive) return showSpot(match.siege, now)
     if (!zone || match?.phase !== 'playing' || !self?.alive) return hud.zone(null, null)
     const place = ZONES[zone.index]!
     const holder = zone.holder
@@ -1198,6 +1281,41 @@ function showZone(now: number): void {
           : holder
             ? { text: `${roster.get(holder)?.name ?? '?'} HOLDS THE ZONE`, color: colorOf(holder) }
             : { text: 'TAKE THE ZONE', color: '#ffffff' }
+    const moves = Math.max(0, Math.ceil((zone.movesInMs - (now - zoneAt)) / 1000))
+    pointAt(place, status, `moves in ${moves} s`, zone.contested ? '#ff9f1c' : holder ? colorOf(holder) : '#ffffff')
+}
+
+/**
+ * Siege: what your side is doing (waiting in the dome, building, taking or holding the spot, how
+ * far through your stay you are) and a marker on the spot.
+ */
+function showSpot(siege: SiegeView, now: number): void {
+    const spot = SIEGE_SPOTS[siege.spot]!
+    const attacking = teams.get(me ?? '') === siege.attackers
+    const left = Math.max(0, Math.ceil(((match?.remainingMs ?? 0) - (now - matchAt)) / 1000))
+    const mine = holds.find(h => h.id === me)
+    const theirs = holds.length
+    const status = siege.dome
+        ? attacking
+            ? { text: `IN THE DOME · OUT IN ${left} s`, color: '#ffffff' }
+            : { text: `BUILD! (B) · THEY'RE OUT IN ${left} s`, color: '#ffd166' }
+        : attacking
+          ? mine
+              ? { text: `HOLD IT · ${Math.min(99, Math.floor((mine.ms / SIEGE.holdMs) * 100))}%`, color: '#3ddc84' }
+              : { text: `TAKE THE ${spot.name.toUpperCase()}`, color: '#ffffff' }
+          : theirs > 0
+            ? { text: `${theirs} IN THE SPOT!`, color: '#ff5d5d' }
+            : { text: `DEFEND THE ${spot.name.toUpperCase()}`, color: '#ffffff' }
+    pointAt(spot, status, attacking ? 'take it' : 'defend it', TEAM_COLORS[siege.attackers])
+}
+
+/** The zone line, and a marker on `place` (kept on screen, flipped when it's behind you) with its name, distance and `note`. */
+function pointAt(
+    place: { name: string; x: number; z: number },
+    status: { text: string; color: string },
+    note: string,
+    color: string
+): void {
     camera.updateMatrixWorld()
     const centre = new Vector3(place.x, 1.0, place.z)
     const p = centre.clone().project(camera)
@@ -1212,12 +1330,11 @@ function showZone(now: number): void {
     }
     const body = prediction.body
     const metres = body ? Math.hypot(place.x - body.x, place.z - body.z) : 0
-    const moves = Math.max(0, Math.ceil((zone.movesInMs - (now - zoneAt)) / 1000))
     hud.zone(status, {
         x: (x * 0.5 + 0.5) * innerWidth,
         y: (-y * 0.5 + 0.5) * innerHeight,
-        label: `${place.name} · ${metres.toFixed(0)} m · moves in ${moves} s`,
-        color: zone.contested ? '#ff9f1c' : holder ? colorOf(holder) : '#ffffff',
+        label: `${place.name} · ${metres.toFixed(0)} m · ${note}`,
+        color,
     })
 }
 

@@ -16,6 +16,7 @@ import {
     type Rules,
     type Score,
     type SelfState,
+    SIEGE,
     type Team,
     TEAM_COLORS,
     TEAMS,
@@ -23,6 +24,7 @@ import {
     ZONE_SECONDS_PER_POINT,
 } from '../protocol.ts'
 import { magazineOf, MAX_HEALTH, maxHealthOf, powersOf } from '../sim/combat.ts'
+import { SIEGE_SPOTS, siegeWinner } from '../sim/places.ts'
 import { DEFAULT_SETTINGS, LIMITS, type Settings } from './settings.ts'
 
 /**
@@ -354,10 +356,14 @@ export class Hud {
                         ? `${v * ZONE_SECONDS_PER_POINT} s in the zone`
                         : mode === 'tdm'
                           ? `${v} team kills`
-                          : `${v} kills`
+                          : mode === 'siege'
+                            ? `${v} points a half`
+                            : `${v} kills`
                 return `<option value="${v}"${v === chosen ? ' selected' : ''}>${label}</option>`
             }).join('')
             panel.querySelector('[data-explain]')!.textContent = MODE_HINTS[mode]
+            // Siege's halves have their own length.
+            select('minutes').disabled = mode === 'siege'
         }
         describe()
         select('mode').addEventListener('change', describe)
@@ -753,8 +759,16 @@ export class Hud {
         if (show) write(board, this.board(match, opts.me, opts.roster))
     }
 
-    /** The match's score in a line: the sides (team deathmatch), the zone time, or the leader's kills. */
+    /** The match's score in a line: the sides (team deathmatch, siege), the zone time, or the leader's kills. */
     private standing(match: MatchView, me: string | null): string {
+        if (match.siege) {
+            const { siege } = match
+            const mine = match.scores.find(s => s.id === me)?.team
+            const side = (team: Team) =>
+                `<b style="color:${TEAM_COLORS[team]}${mine === team ? ';text-decoration:underline' : ''}">${team.toUpperCase()} ${siege.points[team]}</b>`
+            const spot = SIEGE_SPOTS[siege.spot]!.name
+            return `${side('red')} – ${side('blue')} · half ${siege.half} · ${siege.attackers} attack the ${escape(spot)} · first to ${match.fragLimit}`
+        }
         if (match.mode === 'tdm' && match.teams) {
             const mine = match.scores.find(s => s.id === me)?.team
             const side = (team: Team) =>
@@ -773,9 +787,14 @@ export class Hud {
     private board(match: MatchView, me: string | null, roster: Map<string, PlayerInfo>): string {
         const dot = (color: string) => `<span style="color:${color}">●</span>`
         const koth = match.mode === 'koth'
+        const siege = match.siege
         const row = (classes: string, place: string, name: string, cells: string[]) =>
             `<tr class="${classes}"><td>${place}</td><td>${name}</td>${cells.map(c => `<td class="n">${c}</td>`).join('')}</tr>`
-        const cellsOf = (s: Score) => [...(koth ? [`${s.points} s`] : []), String(s.kills), String(s.deaths)]
+        const cellsOf = (s: Score) => [
+            ...(koth ? [`${s.points} s`] : siege ? [String(s.points)] : []),
+            String(s.kills),
+            String(s.deaths),
+        ]
         const scoreRow = (s: Score, i: number) =>
             row(
                 `${s.id === me ? 'me' : ''} ${s.id === null ? 'gone' : ''}`,
@@ -783,10 +802,15 @@ export class Hud {
                 `${dot(s.color)} ${escape(s.name)}`,
                 cellsOf(s)
             )
-        const head = `<tr><th></th><th>Player</th>${koth ? '<th class="n">Zone</th>' : ''}<th class="n">Kills</th><th class="n">Deaths</th></tr>`
+        const extra = koth ? '<th class="n">Zone</th>' : siege ? '<th class="n">Points</th>' : ''
+        const head = `<tr><th></th><th>Player</th>${extra}<th class="n">Kills</th><th class="n">Deaths</th></tr>`
 
         let title = ''
-        if (match.phase === 'intermission') {
+        if (match.phase === 'intermission' && siege) {
+            const won = siegeWinner(siege.points, siege.times)
+            const tie = won && siege.points.red === siege.points.blue ? ' (faster)' : ''
+            title = `<h2 style="margin:0 0 8px;font-size:18px">${won ? `${won === 'red' ? 'Red' : 'Blue'} team wins${tie}` : "It's a draw"}</h2>`
+        } else if (match.phase === 'intermission') {
             const winner =
                 match.mode === 'tdm' && match.teams
                     ? match.teams.red === match.teams.blue
@@ -806,12 +830,13 @@ export class Hud {
                   .join('')}</div>`
             : ''
 
-        // Team deathmatch: one table per side, with its total.
-        if (match.mode === 'tdm' && match.scores.length) {
+        // Team deathmatch and siege: one table per side, with its total (kills, or points).
+        if ((match.mode === 'tdm' || siege) && match.scores.length) {
             const tables = TEAMS.map(team => {
                 const rows = match.scores.filter(s => s.team === team).map(scoreRow)
-                const total = match.teams?.[team] ?? 0
-                return `<h3 style="color:${TEAM_COLORS[team]}">${team.toUpperCase()} · ${total}</h3><table>${head}${rows.join('')}</table>`
+                const total = siege ? `${siege.points[team]} points` : (match.teams?.[team] ?? 0)
+                const role = siege ? ` · ${team === siege.attackers ? 'attacking' : 'defending'}` : ''
+                return `<h3 style="color:${TEAM_COLORS[team]}">${team.toUpperCase()} · ${total}${role}</h3><table>${head}${rows.join('')}</table>`
             })
             return `${title}${awards}${tables.join('')}`
         }
@@ -846,6 +871,7 @@ const MODE_HINTS: Record<Mode, string> = {
     ffa: 'Everyone for themselves: most kills wins.',
     tdm: 'Red against blue, sides balanced. No friendly fire.',
     koth: 'Hold the zone alone to score a second a second. It moves every minute.',
+    siege: `Red against blue on one spot, two halves of ${SIEGE.halfMs / 60_000} min. Defenders get ${SIEGE.headStartMs / 1000} s to build while the attackers wait in their dome; an attacker ${SIEGE.holdMs / 1000} s in the spot scores a point. Then swap. Most points wins, the faster on a tie.`,
 }
 
 export const BUFF_LABELS: Record<BuffKind, { icon: string; label: string }> = {

@@ -4,7 +4,8 @@ import { eyeOf } from './combat.ts'
 import { type Body, bodyAt, MOVE, type MoveInput, PLAYER, PRONE, scaleOf, stepBody } from './movement.ts'
 import { ESPRESSO, OVERTIME, PAD, PORTAL, PROMOTION } from './places.ts'
 import { testWorld } from './testing.ts'
-import { type FpsWorld, officeWorld } from './world.ts'
+import { Vector3 } from 'three'
+import { type FpsWorld, officeWorld, rayDistance, rayHit } from './world.ts'
 
 const IDLE: MoveInput = { forward: 0, strafe: 0, yaw: 0, dash: false, jet: false, prone: false }
 
@@ -336,5 +337,46 @@ describe('powers that change how you move', () => {
         const out = runIn(shelf, tucked, { ...IDLE, forward: 1, yaw: -EAST }, 30)
         expect(out.x).toBeLessThan(-0.2)
         expect(out.small).toBe(0)
+    })
+})
+
+describe("siege's dome", () => {
+    const dome = { x: 0, z: 0, radius: 1 }
+    const domed = (): FpsWorld => ({ ...testWorld([]), dome: { ...dome } })
+    const from = (body: Body) => Math.hypot(body.x - dome.x, body.z - dome.z)
+
+    test('inside, walking, dashing or flying at it never gets you out', () => {
+        const world = domed()
+        const walked = runIn(world, settledIn(world, 0, 0), { ...IDLE, forward: 1, yaw: EAST }, 240)
+        expect(from(walked)).toBeLessThan(dome.radius - PLAYER.radius + 0.01)
+        expect(from(walked)).toBeGreaterThan(0.6)
+        expect(walked.y).toBeLessThan(0.05)
+        const dashed = runIn(world, walked, { ...IDLE, forward: 1, yaw: EAST, dash: true }, 60)
+        expect(from(dashed)).toBeLessThan(dome.radius)
+        const flown = runIn(world, settledIn(world, 0, 0), { ...IDLE, jet: true }, 120)
+        expect(flown.y + PLAYER.height).toBeLessThan(dome.radius + 0.01)
+    })
+
+    test('outside, it stops you at the shell; once it is gone you walk on through', () => {
+        const world = domed()
+        const start = settledIn(world, 3, 0)
+        const stopped = runIn(world, start, { ...IDLE, forward: 1, yaw: -EAST }, 180)
+        expect(from(stopped)).toBeGreaterThan(dome.radius)
+        world.dome = null
+        const through = runIn(world, stopped, { ...IDLE, forward: 1, yaw: -EAST }, 120)
+        expect(through.x).toBeLessThan(0)
+    })
+
+    test('shots stop at the shell both ways, and leave no mark on it', () => {
+        const world = domed()
+        const east = new Vector3(1, 0, 0)
+        const west = new Vector3(-1, 0, 0)
+        expect(rayDistance(world, new Vector3(0, 0.3, 0), east, 10)).toBeCloseTo(Math.sqrt(1 - 0.3 * 0.3), 5)
+        expect(rayDistance(world, new Vector3(5, 0.3, 0), west, 10)).toBeCloseTo(5 - Math.sqrt(1 - 0.3 * 0.3), 5)
+        expect(rayHit(world, new Vector3(5, 0.3, 0), west, 10)).toMatchObject({ dome: true, wall: null })
+        // Over the top, it misses.
+        expect(rayDistance(world, new Vector3(5, 1.2, 0), west, 10)).toBe(10)
+        world.dome = null
+        expect(rayDistance(world, new Vector3(5, 0.3, 0), west, 10)).toBe(10)
     })
 })
