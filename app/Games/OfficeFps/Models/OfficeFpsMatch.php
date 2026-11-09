@@ -8,14 +8,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /** One office FPS match, as the game server reported it when it ended. */
 class OfficeFpsMatch extends Model
 {
-    /** Free for all, team deathmatch, king of the meeting room. */
-    public const MODES = ['ffa', 'tdm', 'koth'];
+    /** Free for all, team deathmatch, king of the meeting room, siege (defend a spot, take it, swap). */
+    public const MODES = ['ffa', 'tdm', 'koth', 'siege'];
 
     /** How the pages name each mode. */
     public const MODE_LABELS = [
         'ffa' => 'Free for all',
         'tdm' => 'Team deathmatch',
         'koth' => 'King of the meeting room',
+        'siege' => 'Siege',
     ];
 
     protected $table = 'office_fps_matches';

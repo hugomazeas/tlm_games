@@ -1,8 +1,9 @@
 /**
  * The fixed places of the office FPS, shared by the server and the browser: where the pickups
- * lie and what they give, and the zones of King of the meeting room. Checked against the office's
+ * lie and what they give, the zones of King of the meeting room and the spots of Siege. Checked against the office's
  * collision in places.test.ts (open floor, inside the office).
  */
+import { SIEGE, type Team } from '../protocol.ts'
 
 export type PickupKind =
     | 'health'
@@ -183,4 +184,112 @@ export const ZONE_MS = 60_000
 
 export function inZone(zone: Zone, x: number, z: number): boolean {
     return Math.hypot(x - zone.x, z - zone.z) <= zone.radius
+}
+
+/** Where a team spawns: feet on the floor, facing `yaw` (0 looks toward -Z). */
+export interface SiegeSpawn {
+    x: number
+    z: number
+    yaw: number
+}
+
+/**
+ * A spot of Siege: the circle the defenders hold (a column, like a zone), the dome the attackers
+ * start in (the open floor furthest from it on foot: the far end of the office) and where the
+ * defenders come back. Each match rolls one, played both halves.
+ */
+export interface SiegeSpot extends Zone {
+    dome: { x: number; z: number }
+    defenders: readonly SiegeSpawn[]
+}
+
+/** The east end of the open office and the west end by the windows: the two far ends, clear of pickups, portals and pads. */
+const EAST_DOME = { x: 8.7, z: 3.4 }
+const WEST_DOME = { x: -8.0, z: 0.0 }
+
+export const SIEGE_SPOTS: readonly SiegeSpot[] = [
+    {
+        // Enclosed, two doorways (14 m from the dome on foot).
+        name: 'Middle room',
+        x: -2.2,
+        z: -3.2,
+        radius: 1.0,
+        dome: EAST_DOME,
+        defenders: [
+            { x: -2.0, z: -3.4, yaw: Math.PI / 2 },
+            { x: -3.2, z: -3.9, yaw: -Math.PI / 2 },
+        ],
+    },
+    {
+        // One way in, glass sides (17 m).
+        name: 'Closed office',
+        x: -3.3,
+        z: 3.7,
+        radius: 1.0,
+        dome: EAST_DOME,
+        defenders: [
+            { x: -3.4, z: 3.6, yaw: Math.PI * 0.75 },
+            { x: -2.6, z: 4.3, yaw: Math.PI },
+        ],
+    },
+    {
+        // Open, by the big windows: the defenders build the fort (18 m).
+        name: 'Meeting room',
+        x: -7.6,
+        z: 0.0,
+        radius: 1.2,
+        dome: EAST_DOME,
+        defenders: [
+            { x: -5.6, z: -0.4, yaw: Math.PI / 2 },
+            { x: -8.4, z: -2.2, yaw: Math.PI },
+        ],
+    },
+    {
+        // Open to the open office (15 m).
+        name: 'Ping-pong lounge',
+        x: 6.1,
+        z: -1.9,
+        radius: 1.2,
+        dome: WEST_DOME,
+        defenders: [
+            { x: 5.0, z: -0.2, yaw: 0 },
+            { x: 7.9, z: 1.0, yaw: Math.PI / 2 },
+        ],
+    },
+]
+
+/** The attackers' dome: a half sphere on the floor, solid both ways while it stands (nothing in or out, shots included). */
+export interface Dome {
+    x: number
+    z: number
+    radius: number
+}
+
+/** Where the attackers come in: round the middle of the spot's dome, facing the spot. */
+export function domeSpawns(spot: SiegeSpot): SiegeSpawn[] {
+    const facing = Math.atan2(-(spot.x - spot.dome.x), -(spot.z - spot.dome.z))
+    return [0, 1, 2, 3, 4, 5].map(i => ({
+        x: spot.dome.x + Math.cos((i * Math.PI) / 3) * 0.45,
+        z: spot.dome.z + Math.sin((i * Math.PI) / 3) * 0.45,
+        yaw: facing,
+    }))
+}
+
+/** Siege's building rule: only the defenders build, and not within SIEGE.noBuild of the dome's edge (no walling the attackers in). */
+export function siegeForbidsBuild(
+    siege: { spot: number; attackers: Team },
+    team: Team | null,
+    x: number,
+    z: number
+): boolean {
+    if (team === siege.attackers) return true
+    const { dome } = SIEGE_SPOTS[siege.spot]!
+    return Math.hypot(x - dome.x, z - dome.z) < SIEGE.domeRadius + SIEGE.noBuild
+}
+
+/** Who won a siege: the most points, then the faster to them; null when even (or nobody scored). */
+export function siegeWinner(points: Record<Team, number>, times: Record<Team, number | null>): Team | null {
+    if (points.red !== points.blue) return points.red > points.blue ? 'red' : 'blue'
+    if (times.red === null || times.blue === null || times.red === times.blue) return null
+    return times.red < times.blue ? 'red' : 'blue'
 }

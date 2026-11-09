@@ -263,6 +263,22 @@ Playable at `/games/office-fps`.
   moving every `ZONE_MS` (60 s); alone in it you score a second a second (`points`), contested
   scores nobody; the limit is ×`ZONE_SECONDS_PER_POINT` seconds, else most zone time at the
   end. Snapshots carry `zone`; the HUD shows a status line and an on-screen marker (`showZone`).
+  `siege` Siege (red vs blue like `tdm`, `isTeamMode`): one of `SIEGE_SPOTS` (`sim/places.ts`: the
+  middle room, the closed office, the meeting room, the ping-pong lounge) is rolled per match and
+  played two halves (`SIEGE`: 45 s head start, then 5 min; the host's minutes don't apply). Each
+  half the defenders spawn by the spot (`defenders`) and build while the attackers wait in their
+  dome (`domeSpawns`, at the far end on foot: `world.dome`, a half sphere `collideCapsule` keeps
+  bodies on their side of and `rayHit`/`rayStop` stop at, both ways; the arena also ignores targets
+  across it, since hit boxes poke through). Then an attacker who stays `SIEGE.holdMs` in the spot
+  (defenders in it don't block; leaving or dying starts over) scores a point for their side
+  (`captured` event, `Score.points`) and respawns in the dome. A half ends at the limit
+  (`fragLimit` points) or its time; the sides swap and the walls go (`respawnAll`). Most points
+  wins, the faster to them on a tie (`siegeWinner`); the second half ends early once it can't change
+  that. Only defenders build, never within `SIEGE.noBuild` of the dome (`siegeForbidsBuild`, also
+  checked in the browser). `MatchView.siege` (spot, half, attackers, dome, points, times), snapshots'
+  `holds` (each attacker's stay); the browser puts the dome in its world for prediction
+  (`syncDome`) and draws it (`DomeView`) and the spot (`ZoneView` over `SIEGE_SPOTS`). Laravel
+  stores the mode and the sides; a player's points aren't stored yet.
 - **Pickups** (`sim/places.ts`: `PICKUP_SPOTS`, `PICKUPS` and each power's numbers; collected in
   `arena.ts`, part of `FpsWorld` so test rooms have none). What lies on a spot is rolled
   (`rollPickup`, `PICKUP_WEIGHTS`: the basics most) at each match and each time it comes back; a

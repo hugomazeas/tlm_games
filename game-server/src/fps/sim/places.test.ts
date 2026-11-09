@@ -12,8 +12,13 @@ import {
     PORTALS,
     PROMOTION,
     rollPickup,
+    domeSpawns,
+    SIEGE_SPOTS,
+    siegeForbidsBuild,
+    siegeWinner,
     ZONES,
 } from './places.ts'
+import { SIEGE } from '../protocol.ts'
 import { buildOfficeGeometry } from '../map/office.js'
 import { collideCapsule, officeWorld, rayDistance, rayHit, worldFrom } from './world.ts'
 
@@ -178,5 +183,54 @@ describe('the places in the office', () => {
         const zone = ZONES[0]!
         expect(inZone(zone, zone.x + zone.radius * 0.9, zone.z)).toBe(true)
         expect(inZone(zone, zone.x, zone.z + zone.radius * 1.1)).toBe(false)
+    })
+})
+
+describe("siege's spots and domes", () => {
+    test('every spot is in the office, no pickup in it, and its defenders come in where a mini fits', () => {
+        for (const spot of SIEGE_SPOTS) {
+            expect(below(spot.x, spot.z)).toBeGreaterThan(-0.05)
+            for (const pickup of PICKUP_SPOTS)
+                expect({ spot: spot.name, in: inZone(spot, pickup.x, pickup.z) }).toEqual({
+                    spot: spot.name,
+                    in: false,
+                })
+            for (const at of spot.defenders)
+                expect({ spot: spot.name, at, fits: fits(at.x, at.z) }).toEqual({ spot: spot.name, at, fits: true })
+        }
+    })
+
+    test('each dome is at the far end, a mini fits at every attacker spawn in it, and no pickup, pad or portal is in it', () => {
+        for (const spot of SIEGE_SPOTS) {
+            const { dome } = spot
+            expect(Math.hypot(dome.x - spot.x, dome.z - spot.z)).toBeGreaterThan(8)
+            for (const at of domeSpawns(spot)) {
+                expect({ spot: spot.name, at, fits: fits(at.x, at.z) }).toEqual({ spot: spot.name, at, fits: true })
+                // In the office (on the floor, maybe under a desk), not over the street.
+                expect(below(at.x, at.z)).toBeGreaterThan(-0.05)
+            }
+            const clear = SIEGE.domeRadius + 0.3
+            for (const p of [...PICKUP_SPOTS, ...PADS, ...PORTALS]) {
+                expect(Math.hypot(p.x - dome.x, p.z - dome.z)).toBeGreaterThan(clear)
+            }
+        }
+    })
+
+    test('only the defenders build, and not by the dome', () => {
+        const spot = SIEGE_SPOTS[0]!
+        const siege = { spot: 0, attackers: 'red' as const }
+        expect(siegeForbidsBuild(siege, 'red', spot.x, spot.z)).toBe(true)
+        expect(siegeForbidsBuild(siege, 'blue', spot.x, spot.z)).toBe(false)
+        expect(siegeForbidsBuild(siege, 'blue', spot.dome.x + SIEGE.domeRadius + 1, spot.dome.z)).toBe(true)
+        expect(
+            siegeForbidsBuild(siege, 'blue', spot.dome.x + SIEGE.domeRadius + SIEGE.noBuild + 0.1, spot.dome.z)
+        ).toBe(false)
+    })
+
+    test('the most points wins; on a tie, the side that got there faster; else a draw', () => {
+        expect(siegeWinner({ red: 3, blue: 2 }, { red: 200_000, blue: 10_000 })).toBe('red')
+        expect(siegeWinner({ red: 2, blue: 2 }, { red: 200_000, blue: 100_000 })).toBe('blue')
+        expect(siegeWinner({ red: 2, blue: 2 }, { red: 100_000, blue: 100_000 })).toBeNull()
+        expect(siegeWinner({ red: 0, blue: 0 }, { red: null, blue: null })).toBeNull()
     })
 })

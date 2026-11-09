@@ -10,13 +10,14 @@ import {
     parseClientMessage,
     type Rules,
     type ServerMessage,
+    SIEGE,
     ZONE_SECONDS_PER_POINT,
 } from './protocol.ts'
 import { RESPAWN_STEPS, SHIELD_STEPS } from './sim/arena.ts'
 import { GUNS } from './sim/combat.ts'
 import { PLAYER, STEP_MS } from './sim/movement.ts'
 import { testWorld } from './sim/testing.ts'
-import { ZONE_MS, ZONES } from './sim/places.ts'
+import { SIEGE_SPOTS, ZONE_MS, ZONES } from './sim/places.ts'
 
 /** Two spawn points 4 m apart in an open room: whoever is at one can shoot whoever is at the other. */
 const world = testWorld([
@@ -471,6 +472,166 @@ describe('modes', () => {
         // Back to warmup, no awards left over.
         play(INTERMISSION_MS + STEP_MS)
         expect(a.last('match')!.match.awards).toBeNull()
+    })
+})
+
+describe('siege', () => {
+    const SIEGE_RULES: Rules = { mode: 'siege', fragLimit: 5, minutes: 5 }
+
+    /** Both join, the host starts a siege, the countdown runs out: the head start begins. */
+    function startSiege(a: Client, b: Client): { attacker: Client; defender: Client } {
+        for (const c of [a, b]) lobby.join(c, { playerId: Number(c.id.replace(/\D/g, '')), name: c.id })
+        lobby.start(a.id, SIEGE_RULES)
+        // Past the countdown, and a snapshot of the sides and spawns.
+        play(COUNTDOWN_MS + STEP_MS * 4)
+        const siege = a.last('match')!.match.siege!
+        const attacker = where(a, a.id).team === siege.attackers ? a : b
+        return { attacker, defender: attacker === a ? b : a }
+    }
+    const siegeOf = (c: Client) => c.last('match')!.match.siege!
+    const spotOf = (c: Client) => SIEGE_SPOTS[siegeOf(c).spot]!
+    const fromDome = (c: Client, id: string) => {
+        const { dome } = spotOf(c)
+        const p = where(c, id)
+        return Math.hypot(p.x - dome.x, p.z - dome.z)
+    }
+    const built = (c: Client) =>
+        c.inbox.flatMap(m => (m.type === 'snap' ? m.events : [])).filter(e => e.type === 'built').length
+    /** Walks into the spot and stays until the point (the other idles). */
+    const capture = (attacker: Client, other: Client) => {
+        const spot = spotOf(attacker)
+        walkTo(attacker, spot.x, spot.z, [other])
+        play(SIEGE.holdMs + 200, () => [
+            [attacker, idle()],
+            [other, idle()],
+        ])
+    }
+
+    test('the head start: attackers held in their dome, out of reach of shots; defenders by the spot; only defenders build', () => {
+        const [a, b] = [client('a1'), client('b2')]
+        const { attacker, defender } = startSiege(a, b)
+        const siege = siegeOf(a)
+        expect(siege).toMatchObject({ half: 1, points: { red: 0, blue: 0 } })
+        expect(siege.dome).toMatchObject({ ...spotOf(a).dome, radius: SIEGE.domeRadius })
+        expect(fromDome(a, attacker.id)).toBeLessThan(SIEGE.domeRadius)
+        const d = where(a, defender.id)
+        expect(spotOf(a).defenders.some(s => Math.hypot(s.x - d.x, s.z - d.z) < 0.05)).toBe(true)
+
+        // Running at the shell for 3 s: still in.
+        const spot = spotOf(a)
+        const toward = Math.atan2(-(spot.x - spot.dome.x), -(spot.z - spot.dome.z))
+        play(3000, () => [
+            [attacker, { ...idle(), forward: 1, yaw: toward }],
+            [defender, idle()],
+        ])
+        expect(fromDome(a, attacker.id)).toBeLessThan(SIEGE.domeRadius)
+
+        // The defender shoots at them: every round stops on the shell (or the floor short of it, the spread), harmless.
+        play(SHIELD_STEPS * STEP_MS + 100, () => [
+            [attacker, idle()],
+            [defender, idle()],
+        ])
+        play(1000, step => [
+            [defender, shootAt(defender, attacker, step)],
+            [attacker, idle()],
+        ])
+        const shots = a.inbox.flatMap(m => (m.type === 'snap' ? m.events : [])).filter(e => e.type === 'shot')
+        expect(shots.length).toBeGreaterThan(3)
+        const onShell = shots.filter(shot => {
+            if (shot.type !== 'shot') return false
+            const [x, y, z] = shot.to[0]!
+            const out = Math.hypot(x - spot.dome.x, y, z - spot.dome.z)
+            expect(out).toBeGreaterThan(SIEGE.domeRadius - 0.001)
+            expect(shot.damage).toBe(0)
+            return out < SIEGE.domeRadius + 0.001
+        })
+        expect(onShell.length).toBeGreaterThan(0)
+        expect(where(a, attacker.id).health).toBe(100)
+
+        // The attacker can't build; the defender can (by the spot, not by the dome).
+        const by = (c: Client) => where(a, c.id)
+        lobby.build(attacker.id, { axis: 'x', x: by(attacker).x + 0.4, y: 0.3, z: by(attacker).z })
+        play(STEP_MS * 3)
+        expect(built(a)).toBe(0)
+        lobby.build(defender.id, { axis: 'x', x: by(defender).x + 0.4, y: 0.3, z: by(defender).z })
+        play(STEP_MS * 3)
+        expect(built(a)).toBe(1)
+    })
+
+    test('5 s in the spot is a point and back to the dome; the limit ends the half; sides swap and the walls go', () => {
+        const [a, b] = [client('a1'), client('b2')]
+        const { attacker, defender } = startSiege(a, b)
+        const first = siegeOf(a).attackers
+        // The defender builds by the spot; the head start runs out, the dome opens.
+        const d = where(a, defender.id)
+        lobby.build(defender.id, { axis: 'x', x: d.x + 0.4, y: 0.3, z: d.z })
+        play(SIEGE.headStartMs, () => [
+            [attacker, idle()],
+            [defender, idle()],
+        ])
+        expect(siegeOf(a).dome).toBeNull()
+
+        // In and straight out again: nothing.
+        const spot = spotOf(a)
+        walkTo(attacker, spot.x, spot.z, [defender])
+        play(2000, () => [
+            [attacker, idle()],
+            [defender, idle()],
+        ])
+        expect(a.last('snap')!.holds).toEqual([{ id: attacker.id, ms: expect.any(Number) }])
+        walkTo(attacker, spot.x + spot.radius + 1, spot.z, [defender])
+        expect(a.last('snap')!.holds).toEqual([])
+        expect(siegeOf(a).points[first]).toBe(0)
+
+        // Five stays of 5 s: five points, each one back to the dome; the fifth ends the half.
+        for (let k = 1; k <= 5; k++) {
+            capture(attacker, defender)
+            if (k < 5) {
+                expect(siegeOf(a).points[first]).toBe(k)
+                expect(fromDome(a, attacker.id)).toBeLessThan(SIEGE.domeRadius)
+            }
+        }
+        const half = siegeOf(a)
+        expect(half).toMatchObject({ half: 2, attackers: first === 'red' ? 'blue' : 'red', points: { [first]: 5 } })
+        expect(half.times[first]).toBeGreaterThan(0)
+        expect(half.dome).not.toBeNull()
+        expect(a.last('match')!.match.scores.find(s => s.id === attacker.id)!.points).toBe(5)
+        // The other side now waits in the dome, the walls are gone.
+        expect(fromDome(a, defender.id)).toBeLessThan(SIEGE.domeRadius)
+        const walls = a.inbox.flatMap(m => (m.type === 'snap' ? m.events : [])).filter(e => e.type === 'walls')
+        expect(walls.at(-1)).toEqual({ type: 'walls', walls: [] })
+
+        // The second side can't beat five points faster once their time is past: over, the first side won.
+        play(SIEGE.headStartMs + half.times[first]! + 1000, () => [
+            [attacker, idle()],
+            [defender, idle()],
+        ])
+        expect(a.last('match')!.match.phase).toBe('intermission')
+        const won = results[0]!.players.find(p => p.name === attacker.id)!
+        const lost = results[0]!.players.find(p => p.name === defender.id)!
+        expect([won.won, won.team, lost.won]).toEqual([true, first, false])
+        expect(results[0]!.rules.mode).toBe('siege')
+    })
+
+    test('a half without a point runs its time; in the second, the first point to lead ends it', () => {
+        const [a, b] = [client('a1'), client('b2')]
+        const { attacker, defender } = startSiege(a, b)
+        play(SIEGE.headStartMs + SIEGE.halfMs + 100, () => [
+            [attacker, idle()],
+            [defender, idle()],
+        ])
+        expect(siegeOf(a)).toMatchObject({ half: 2, points: { red: 0, blue: 0 } })
+
+        play(SIEGE.headStartMs, () => [
+            [attacker, idle()],
+            [defender, idle()],
+        ])
+        capture(defender, attacker)
+        expect(a.last('match')!.match.phase).toBe('intermission')
+        expect(results[0]!.players.find(p => p.name === defender.id)!.won).toBe(true)
+        // Back to warmup: no siege, no dome.
+        play(INTERMISSION_MS + STEP_MS)
+        expect(a.last('match')!.match.siege).toBeNull()
     })
 })
 
