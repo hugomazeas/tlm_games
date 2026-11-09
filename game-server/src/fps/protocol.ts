@@ -329,6 +329,8 @@ export type GameEvent =
     | { type: 'walls'; walls: WallState[] }
     /** Siege: an attacker held the spot long enough, a point for their side (and back to the dome). */
     | { type: 'captured'; by: string; team: Team }
+    /** Siege: someone moved to the other side to keep them even (the attackers take the odd one). */
+    | { type: 'switched'; id: string; team: Team }
 
 /** What the victim learns about the one who killed them. */
 export interface KillRecap {

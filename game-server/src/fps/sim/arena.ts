@@ -1,4 +1,4 @@
-import { Vector3 } from 'three'
+import { Line3, Vector3 } from 'three'
 import type { Rng } from '../../sim/rng.ts'
 import {
     type BuffKind,
@@ -52,9 +52,12 @@ import {
     swingStapler,
     type Target,
 } from './combat.ts'
-import { type Body, bodyAt, isJetting, moveOf, scaleOf, sizeOf, STEP_MS, stepBody } from './movement.ts'
+import { type Body, bodyAt, isJetting, moveOf, scaleOf, sizeAt, sizeOf, STEP_MS, stepBody } from './movement.ts'
+import { supported } from './building.ts'
 import { BUILD, stateOf, type Wall } from './walls.ts'
-import { type FpsWorld, rayDistance } from './world.ts'
+import { collideCapsule, type FpsWorld, rayDistance } from './world.ts'
+
+const fitSeg = new Line3()
 
 /**
  * The game itself, one 60 Hz step at a time: bodies, inputs, the guns, rockets and the stapler,
@@ -166,8 +169,8 @@ interface Fighter {
     nextBuildAt: number
 }
 
-/** A rocket's blast does this many times its damage to a built wall (a direct hit: ~155 of its 350). */
-const ROCKET_WALL_FACTOR = 1.6
+/** A rocket's blast does this many times its damage to a built wall (a direct hit: ~535 of its 1050, two take one down). */
+export const ROCKET_WALL_FACTOR = 5.5
 
 export type ArenaEvent = GameEvent | { type: 'damage'; by: string; target: string; amount: number; headshot: boolean }
 
@@ -276,7 +279,8 @@ export class Arena {
 
     /**
      * A wall where their browser's build mode put it, if they're up, it's within reach of their eyes
-     * (with slack for the snap and the lag), nothing's there yet, and they haven't just built one. Past the map's
+     * (with slack for the snap and the lag), nothing's there yet, it touches something (never in mid
+     * air: `supported`), and they haven't just built one. Past the map's
      * limit their oldest wall (else the oldest) comes down. True when it went up.
      */
     build(id: string, spec: WallSpec): boolean {
@@ -286,7 +290,7 @@ export class Arena {
         const reach = BUILD.reach + BUILD.slack
         if (Math.hypot(spec.x - eye.x, spec.y - eye.y, spec.z - eye.z) > reach) return false
         const walls = this.world.walls
-        if (walls.taken(spec)) return false
+        if (walls.taken(spec) || !supported(this.world, spec)) return false
         while (walls.count >= BUILD.max) {
             const oldest = walls.all.find(w => w.by === id) ?? walls.all[0]!
             this.takeDown(oldest, false)
@@ -1071,9 +1075,12 @@ export class Arena {
     }
 
     private spawn(fighter: Fighter): ArenaEvent {
+        // A side's own spawns (siege): a random one where a mini fits (furniture), else any of them.
         const fixed = this.spawnsOf?.(fighter.team)
-        const point = fixed?.length
-            ? fixed[Math.floor(this.random() * fixed.length)]!
+        const open = fixed?.filter(p => this.fits(p.x, p.z))
+        const choice = open?.length ? open : fixed
+        const point = choice?.length
+            ? choice[Math.floor(this.random() * choice.length)]!
             : (({ position, yaw }) => ({ x: position[0], z: position[2], yaw }))(this.spawnPoint(fighter.id))
         fighter.body = bodyAt(point.x, 0.02, point.z)
         fighter.yaw = point.yaw
@@ -1090,6 +1097,14 @@ export class Arena {
         this.arm(fighter)
 
         return { type: 'spawn', id: fighter.id }
+    }
+
+    /** Does a standing mini fit on the floor at x, z (nothing of the office or a built wall in the way)? */
+    private fits(x: number, z: number): boolean {
+        const { radius, height } = sizeAt(1)
+        fitSeg.start.set(x, 0.02 + radius, z)
+        fitSeg.end.set(x, 0.02 + height - radius, z)
+        return !collideCapsule(this.world, fitSeg, radius)
     }
 
     /** Their next loadout in hand, every gun full. */

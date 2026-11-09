@@ -25,6 +25,7 @@ import {
     PICKUPS,
     type Portal,
     PORTAL,
+    type SiegeSpot,
     type Zone,
     ZONES,
 } from '../sim/places.ts'
@@ -343,8 +344,14 @@ export class ZoneView {
         ringMaterial: MeshBasicMaterial
     }>
 
-    constructor(scene: Scene, zones: readonly Zone[] = ZONES) {
-        this.columns = zones.map(zone => {
+    /** Round zones (king of the meeting room), or squares squared to the office (siege's spots: `half` a side). */
+    constructor(scene: Scene, zones: readonly (Zone | SiegeSpot)[] = ZONES) {
+        this.columns = zones.map(place => {
+            // A square is a four-sided cylinder through its corners, turned an eighth.
+            const square = 'half' in place
+            const zone = { ...place, radius: square ? place.half * Math.SQRT2 : place.radius }
+            const sides = square ? 4 : 48
+            const turn = square ? Math.PI / 4 : 0
             const columnMaterial = new MeshBasicMaterial({
                 color: 0xffffff,
                 transparent: true,
@@ -353,15 +360,20 @@ export class ZoneView {
                 depthWrite: false,
                 side: DoubleSide,
             })
-            const column = new Mesh(new CylinderGeometry(zone.radius, zone.radius, H, 48, 1, true), columnMaterial)
+            const column = new Mesh(new CylinderGeometry(zone.radius, zone.radius, H, sides, 1, true), columnMaterial)
             column.position.set(zone.x, H / 2, zone.z)
+            column.rotation.y = turn
             const ringMaterial = new MeshBasicMaterial({
                 color: 0xffffff,
                 transparent: true,
                 opacity: 0.85,
                 side: DoubleSide,
             })
-            const ring = new Mesh(new RingGeometry(zone.radius - 0.05, zone.radius, 64), ringMaterial)
+            const width = square ? 0.05 * Math.SQRT2 : 0.05
+            const ring = new Mesh(
+                new RingGeometry(zone.radius - width, zone.radius, square ? 4 : 64, 1, turn),
+                ringMaterial
+            )
             ring.rotation.x = -Math.PI / 2
             ring.position.set(zone.x, 0.008, zone.z)
             column.visible = ring.visible = false

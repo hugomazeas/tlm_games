@@ -17,7 +17,7 @@ import { RESPAWN_STEPS, SHIELD_STEPS } from './sim/arena.ts'
 import { GUNS } from './sim/combat.ts'
 import { PLAYER, STEP_MS } from './sim/movement.ts'
 import { testWorld } from './sim/testing.ts'
-import { SIEGE_SPOTS, ZONE_MS, ZONES } from './sim/places.ts'
+import { inSpot, SIEGE_SPOTS, ZONE_MS, ZONES } from './sim/places.ts'
 
 /** Two spawn points 4 m apart in an open room: whoever is at one can shoot whoever is at the other. */
 const world = testWorld([
@@ -514,8 +514,10 @@ describe('siege', () => {
         expect(siege).toMatchObject({ half: 1, points: { red: 0, blue: 0 } })
         expect(siege.dome).toMatchObject({ ...spotOf(a).dome, radius: SIEGE.domeRadius })
         expect(fromDome(a, attacker.id)).toBeLessThan(SIEGE.domeRadius)
+        // The defender in the square, not in its middle.
         const d = where(a, defender.id)
-        expect(spotOf(a).defenders.some(s => Math.hypot(s.x - d.x, s.z - d.z) < 0.05)).toBe(true)
+        expect(inSpot(spotOf(a), d.x, d.z)).toBe(true)
+        expect(Math.max(Math.abs(d.x - spotOf(a).x), Math.abs(d.z - spotOf(a).z))).toBeGreaterThan(0.3)
 
         // Running at the shell for 3 s: still in.
         const spot = spotOf(a)
@@ -579,7 +581,7 @@ describe('siege', () => {
             [defender, idle()],
         ])
         expect(a.last('snap')!.holds).toEqual([{ id: attacker.id, ms: expect.any(Number) }])
-        walkTo(attacker, spot.x + spot.radius + 1, spot.z, [defender])
+        walkTo(attacker, spot.x + spot.half + 1, spot.z, [defender])
         expect(a.last('snap')!.holds).toEqual([])
         expect(siegeOf(a).points[first]).toBe(0)
 
@@ -611,6 +613,54 @@ describe('siege', () => {
         const lost = results[0]!.players.find(p => p.name === defender.id)!
         expect([won.won, won.team, lost.won]).toEqual([true, first, false])
         expect(results[0]!.rules.mode).toBe('siege')
+    })
+
+    test('the sides stay even, the attackers taking the odd one: on joins, leaves and at half time', () => {
+        const [a, b, c] = [client('a1'), client('b2'), client('c3')]
+        for (const x of [a, b, c]) lobby.join(x, { playerId: Number(x.id.replace(/\D/g, '')), name: x.id })
+        lobby.start(a.id, SIEGE_RULES)
+        play(COUNTDOWN_MS + STEP_MS * 4)
+        let eyes = a
+        const sides = () => {
+            const siege = siegeOf(eyes)
+            const players = eyes.last('snap')!.players
+            return {
+                attack: players.filter(p => p.team === siege.attackers).map(p => p.id),
+                defend: players.filter(p => p.team !== siege.attackers).map(p => p.id),
+            }
+        }
+        const idleAll = (...cs: Client[]) => cs.map((x): [Client, Omit<InputFrame, 'seq'>] => [x, idle()])
+        expect([sides().attack.length, sides().defend.length]).toEqual([2, 1])
+
+        // A fourth: 2 v 2.
+        const d = client('d4')
+        lobby.join(d, { playerId: 4, name: 'd4' })
+        play(STEP_MS * 4, () => idleAll(a, b, c, d))
+        expect([sides().attack.length, sides().defend.length]).toEqual([2, 2])
+
+        // An attacker leaves: 1 v 2, so a defender comes over (2 v 1), told so, and comes back by the dome.
+        const leaver = [a, b, c, d].find(x => x.id === sides().attack[0])!
+        const rest = [a, b, c, d].filter(x => x !== leaver)
+        eyes = rest[0]!
+        lobby.leave(leaver.id)
+        play(STEP_MS * 4, () => idleAll(...rest))
+        const now = sides()
+        expect([now.attack.length, now.defend.length]).toEqual([2, 1])
+        const watcher = rest[0]!
+        const switched = watcher.inbox
+            .flatMap(m => (m.type === 'snap' ? m.events : []))
+            .filter(e => e.type === 'switched')
+        expect(switched).toHaveLength(1)
+        const mover = (switched[0] as { id: string }).id
+        expect(now.attack).toContain(mover)
+        expect(fromDome(watcher, mover)).toBeLessThan(SIEGE.domeRadius)
+
+        // Half time with three: the sides swap, and the odd one is still attacking.
+        play(SIEGE.headStartMs + SIEGE.halfMs + 100, () => idleAll(...rest))
+        play(STEP_MS * 4, () => idleAll(...rest))
+        expect(siegeOf(watcher).half).toBe(2)
+        const after = sides()
+        expect([after.attack.length, after.defend.length]).toEqual([2, 1])
     })
 
     test('a half without a point runs its time; in the second, the first point to lead ends it', () => {
