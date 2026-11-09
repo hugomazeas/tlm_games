@@ -26,6 +26,7 @@ import {
     type Portal,
     PORTAL,
     type SiegeSpot,
+    SPOT_HEIGHT,
     type Zone,
     ZONES,
 } from '../sim/places.ts'
@@ -339,7 +340,8 @@ export class PortalViews {
 export class ZoneView {
     private readonly columns: Array<{
         column: Mesh
-        ring: Mesh
+        /** Its outline on the floor (and, a square's, at its top). */
+        ring: Group
         columnMaterial: MeshBasicMaterial
         ringMaterial: MeshBasicMaterial
     }>
@@ -360,8 +362,13 @@ export class ZoneView {
                 depthWrite: false,
                 side: DoubleSide,
             })
-            const column = new Mesh(new CylinderGeometry(zone.radius, zone.radius, H, sides, 1, true), columnMaterial)
-            column.position.set(zone.x, H / 2, zone.z)
+            // A square (siege's spot) goes two walls up; a zone to the ceiling.
+            const height = square ? SPOT_HEIGHT : H
+            const column = new Mesh(
+                new CylinderGeometry(zone.radius, zone.radius, height, sides, 1, true),
+                columnMaterial
+            )
+            column.position.set(zone.x, height / 2, zone.z)
             column.rotation.y = turn
             const ringMaterial = new MeshBasicMaterial({
                 color: 0xffffff,
@@ -370,12 +377,14 @@ export class ZoneView {
                 side: DoubleSide,
             })
             const width = square ? 0.05 * Math.SQRT2 : 0.05
-            const ring = new Mesh(
-                new RingGeometry(zone.radius - width, zone.radius, square ? 4 : 64, 1, turn),
-                ringMaterial
-            )
-            ring.rotation.x = -Math.PI / 2
-            ring.position.set(zone.x, 0.008, zone.z)
+            const outline = new RingGeometry(zone.radius - width, zone.radius, square ? 4 : 64, 1, turn)
+            const ring = new Group()
+            for (const y of square ? [0.008, height] : [0.008]) {
+                const edge = new Mesh(outline, ringMaterial)
+                edge.rotation.x = -Math.PI / 2
+                edge.position.set(zone.x, y, zone.z)
+                ring.add(edge)
+            }
             column.visible = ring.visible = false
             scene.add(column, ring)
             return { column, ring, columnMaterial, ringMaterial }

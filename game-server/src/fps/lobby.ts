@@ -554,7 +554,7 @@ export class FpsLobby {
         const inside = new Set(
             this.arena
                 .states()
-                .filter(s => s.alive && s.team === siege.attackers && inSpot(spot, s.x, s.z))
+                .filter(s => s.alive && s.team === siege.attackers && inSpot(spot, s.x, s.z, s.y))
                 .map(s => s.id)
         )
         for (const id of siege.holds.keys()) if (!inside.has(id)) siege.holds.delete(id)

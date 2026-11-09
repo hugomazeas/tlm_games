@@ -209,10 +209,12 @@ export interface SiegeSpot {
 
 /** The side of a Siege spot (m). */
 export const SPOT_SIDE = 1.5
+/** How high a Siege spot goes (m): two built walls, not to the ceiling. */
+export const SPOT_HEIGHT = 1.2
 
-/** In the spot: within its square on the floor plan. */
-export function inSpot(spot: SiegeSpot, x: number, z: number): boolean {
-    return Math.abs(x - spot.x) <= spot.half && Math.abs(z - spot.z) <= spot.half
+/** In the spot: within its square on the floor plan, feet below its top (`y`, the feet; the floor by default). */
+export function inSpot(spot: SiegeSpot, x: number, z: number, y = 0): boolean {
+    return Math.abs(x - spot.x) <= spot.half && Math.abs(z - spot.z) <= spot.half && y < SPOT_HEIGHT
 }
 
 /**

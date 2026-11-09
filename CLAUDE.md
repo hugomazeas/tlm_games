@@ -271,7 +271,8 @@ Playable at `/games/office-fps`.
   dome (`domeSpawns`, at the far end on foot: `world.dome`, a half sphere `collideCapsule` keeps
   bodies on their side of and `rayHit`/`rayStop` stop at, both ways; the arena also ignores targets
   across it, since hit boxes poke through). Then an attacker who stays `SIEGE.holdMs` in the spot
-  (a `SPOT_SIDE` 1.5 m square squared to the office, `inSpot`; defenders in it don't block; leaving
+  (a `SPOT_SIDE` 1.5 m square squared to the office, `SPOT_HEIGHT` 1.2 m up (two walls; feet below
+  its top count), `inSpot`; defenders in it don't block; leaving
   or dying starts over) scores a point for their side
   (`captured` event, `Score.points`) and respawns in the dome. A half ends at the limit
   (`fragLimit` points) or its time; the sides swap and the walls go (`respawnAll`). Most points
