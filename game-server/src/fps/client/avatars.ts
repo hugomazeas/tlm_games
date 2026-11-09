@@ -56,6 +56,10 @@ const MAX_REACH = 0.23
 const DODGE_SPEED = 3.6
 /** A hit's rock: in for `in` ms, back over `out`. */
 const HIT = { in: 50, out: 160, tilt: 0.22, blast: 0.4, headshot: 0.75 } as const
+/** Prone: the body lifted off the floor by this (its depth face down), the head raised by this to look ahead. */
+const PRONE_LIFT = 0.05
+const PRONE_LOOK = 1.2
+
 /** Killed: they fall over `fallMs`, lie there, sink away from `sinkAt` and are gone at `goneAt`. */
 const DEATH = { fallMs: 420, sinkAt: 1900, goneAt: 2600 } as const
 /** Spent cases flying from a trooper's gun at once (per kind), and for how long (ms). */
@@ -204,6 +208,8 @@ interface Avatar {
     /** 0 at the chest … 1 at the eye; 0 … 1 into low ready. Eased toward what they do. */
     aimed: number
     lowered: number
+    /** 0 standing … 1 lying prone, eased. */
+    down: number
     /** When their current reload started (this browser's clock), null when not reloading. */
     reloadFrom: number | null
     /** Their recent shots: the kick, the flash, the cases. */
@@ -340,8 +346,13 @@ export class Avatars {
         const airborne = pose.y > 0.02 && state.jet
         avatar.stride += avatar.speed * dt * 9
 
+        // Prone: lying face down, eased; the legs still, the head and the gun up to look forward.
+        avatar.down += ((state.prone ? 1 : 0) - avatar.down) * Math.min(1, dt * 10)
+        const down = avatar.down
+        const stand = 1 - down
+
         // Legs: a stride on the ground, dangling back in the air.
-        const swing = airborne ? 0 : Math.sin(avatar.stride) * Math.min(1, avatar.speed / 2) * 0.7
+        const swing = airborne ? 0 : Math.sin(avatar.stride) * Math.min(1, avatar.speed / 2) * 0.7 * stand
         const dangle = airborne ? 0.35 : 0
         avatar.hips[0].rotation.x = swing + dangle
         avatar.hips[1].rotation.x = -swing + dangle * 0.7
@@ -352,14 +363,16 @@ export class Avatars {
         const tilt = push ? rock * (avatar.hit!.blast ? HIT.blast : HIT.tilt) : 0
         // The body bobs with each step and leans into the run.
         const bob = Math.abs(Math.cos(avatar.stride)) * Math.min(1, avatar.speed / 2) * 0.008
-        avatar.body.position.y = airborne ? 0 : bob
+        // Lying: turned face down about the feet, slid back half a body so it lies over where they
+        // are (the server's prone hit capsule), raised by the torso's depth.
+        avatar.body.position.set(0, (airborne ? 0 : bob) * stand + PRONE_LIFT * down, (PLAYER.height / 2) * down)
         avatar.body.rotation.set(
-            -Math.min(0.18, avatar.speed * 0.04) + (push ? push.z * tilt : 0),
+            (-Math.min(0.18, avatar.speed * 0.04) + (push ? push.z * tilt : 0)) * stand - (Math.PI / 2) * down,
             0,
             push ? -push.x * tilt : 0
         )
         const snap = avatar.hit?.headshot ? rock * HIT.headshot : 0
-        avatar.head.rotation.set(pose.pitch * 0.5 + snap, 0, 0)
+        avatar.head.rotation.set(pose.pitch * 0.5 + snap + PRONE_LOOK * down, 0, 0)
 
         // The gun: up to the eye while aiming, down at low ready in a dodge; a new one comes up from below.
         const ease10 = Math.min(1, dt * 10)
@@ -369,7 +382,7 @@ export class Avatars {
             avatar.held = state.weapon
             avatar.switchAt = now
         }
-        avatar.aim.rotation.x = pose.pitch
+        avatar.aim.rotation.x = pose.pitch + (Math.PI / 2) * down
         if (state.weapon === 'stapler') this.holdStapler(avatar, now)
         else this.holdGun(avatar, state.weapon, state.reload, now)
 
@@ -759,6 +772,7 @@ export class Avatars {
             switchAt: -1e9,
             aimed: 0,
             lowered: 0,
+            down: 0,
             reloadFrom: null,
             shots: [],
             hit: null,

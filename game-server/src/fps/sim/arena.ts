@@ -51,7 +51,7 @@ import {
     swingStapler,
     type Target,
 } from './combat.ts'
-import { type Body, bodyAt, isJetting, moveOf, scaleOf, sizeAt, STEP_MS, stepBody } from './movement.ts'
+import { type Body, bodyAt, isJetting, moveOf, scaleOf, sizeOf, STEP_MS, stepBody } from './movement.ts'
 import { BUILD, stateOf, type Wall } from './walls.ts'
 import { type FpsWorld, rayDistance } from './world.ts'
 
@@ -504,6 +504,7 @@ export class Arena {
             shielded: this.shielded(f),
             weapon: weaponIn(f.slot, f.loadout),
             aiming: f.alive && f.aiming && f.slot !== 'melee',
+            prone: f.alive && f.body.prone,
             reload: f.alive ? reloadOf(f) : null,
             team: f.team,
             buffs: f.alive ? this.buffsOf(f).map(b => b.kind) : [],
@@ -834,7 +835,7 @@ export class Arena {
             const self = f.id === rocket.by
             if (!self && rocket.team !== null && f.team === rocket.team) continue
             // The nearest point of their capsule's axis (their size's).
-            const size = sizeAt(scaleOf(f.body))
+            const size = sizeOf(f.body)
             const axisY = Math.max(f.body.y + size.radius, Math.min(f.body.y + size.height - size.radius, at.y))
             const point = new Vector3(f.body.x, axisY, f.body.z)
             const to = point.clone().sub(at)
@@ -1011,7 +1012,15 @@ export class Arena {
 
     /** Where a fighter stands as something to hit: feet, facing, size. */
     private targetOf(f: Fighter): Target {
-        return { id: f.id, x: f.body.x, y: f.body.y, z: f.body.z, yaw: f.yaw, scale: scaleOf(f.body) }
+        return {
+            id: f.id,
+            x: f.body.x,
+            y: f.body.y,
+            z: f.body.z,
+            yaw: f.yaw,
+            scale: scaleOf(f.body),
+            prone: f.body.prone,
+        }
     }
 
     private losePowers(f: Fighter): void {

@@ -33,6 +33,24 @@ describe('shots', () => {
         expect(rayCapsule(new Vector3(0, PLAYER.height + 0.005, -2), new Vector3(0, 0, 1), AT_ORIGIN)).toBeNull()
     })
 
+    test('prone, a mini lies along where it faces: low, thin, its head the far end; it aims steadier', () => {
+        // Facing -z (yaw 0): from the side (along x) the whole 40 cm length shows.
+        const prone = { ...AT_ORIGIN, prone: true, yaw: 0 }
+        const side = (z: number, height = 0.08) => rayCapsule(new Vector3(-2, height, z), new Vector3(1, 0, 0), prone)
+        expect(side(0)).not.toBeNull()
+        expect(side(-0.17)!.along).toBeGreaterThan(0.72) // the head
+        expect(side(0.17)!.along).toBeLessThan(0.2) // the feet
+        expect(side(0.25)).toBeNull()
+        expect(side(0, 0.25)).toBeNull()
+        // From the front: only its head end, a narrow target.
+        expect(rayCapsule(new Vector3(0.11, 0.08, -2), new Vector3(0, 0, 1), prone)).toBeNull()
+
+        const standing = { ...bodyAt(0, 0, 0), onGround: true }
+        expect(spreadOf(GUNS.rifle, false, { ...standing, prone: true })).toBeLessThan(
+            spreadOf(GUNS.rifle, false, standing)
+        )
+    })
+
     test('the top of the capsule is the head', () => {
         expect(rayCapsule(new Vector3(0, 0.36, -2), new Vector3(0, 0, 1), AT_ORIGIN)!.along).toBeGreaterThan(0.72)
         // Straight down onto the cap.

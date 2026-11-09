@@ -88,6 +88,18 @@ export class MouseFilter {
 }
 
 /**
+ * Chrome and Edge, in the page's fullscreen: the browser's shortcuts on W, S and D (close the tab,
+ * save, bookmark) come to the page instead (Keyboard Lock). Elsewhere it does nothing.
+ */
+function guardShortcuts(on: boolean): void {
+    const keyboard = (navigator as Navigator & { keyboard?: { lock(codes: string[]): Promise<void>; unlock(): void } })
+        .keyboard
+    if (!keyboard) return
+    if (on) void keyboard.lock(['KeyW', 'KeyS', 'KeyD']).catch(() => {})
+    else keyboard.unlock()
+}
+
+/**
  * Keyboard and mouse, read once a step. The mouse is captured (pointer lock) by a click on the
  * game; Esc lets it go, and while it's free nothing is pressed.
  */
@@ -178,6 +190,11 @@ export class Controls {
         document.addEventListener('contextmenu', e => e.preventDefault())
         document.addEventListener('keydown', e => {
             if (e.code === 'Tab') e.preventDefault()
+            // Ctrl+W (and the like) while playing: not the browser's. It only reaches the page with W
+            // locked (fullscreen, `guardShortcuts`); otherwise the tab asks before closing (main.ts).
+            if (this.locked && e.ctrlKey && (e.code === 'KeyW' || e.code === 'KeyS' || e.code === 'KeyD')) {
+                e.preventDefault()
+            }
             if (!this.locked && e.code !== 'Tab') return
             if (e.code === 'Space') e.preventDefault()
             const shift = e.code === 'ShiftLeft' || e.code === 'ShiftRight'
@@ -201,6 +218,8 @@ export class Controls {
             if (e.code === 'KeyQ' && !e.repeat) this.select(this.building ? this.slot : this.lastSlot)
         })
         document.addEventListener('keyup', e => this.keys.delete(e.code))
+        // Fullscreen (F11 doesn't count: the page's own): W locked, so Ctrl+W comes to the game.
+        document.addEventListener('fullscreenchange', () => guardShortcuts(Boolean(document.fullscreenElement)))
         window.addEventListener('blur', () => this.release())
     }
 
@@ -260,6 +279,8 @@ export class Controls {
         let buttons = 0
         if (this.dashAsked) buttons |= BUTTON.dash
         if (held('Space')) buttons |= BUTTON.jet
+        // C held: prone.
+        if (held('KeyC')) buttons |= BUTTON.prone
         // Building: the gun's away (it neither fires, reloads nor aims).
         if (this.firing && !this.building) buttons |= BUTTON.fire
         if (this.reloadAsked && !this.building) buttons |= BUTTON.reload

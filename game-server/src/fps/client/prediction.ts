@@ -82,6 +82,10 @@ function agrees(a: Body, b: Body): boolean {
         a.espresso === b.espresso &&
         a.big === b.big &&
         a.small === b.small &&
-        a.portalCooldown === b.portalCooldown
+        a.portalCooldown === b.portalCooldown &&
+        // Prone and the jump: what Space and C do next step depends on them.
+        a.prone === b.prone &&
+        a.jumped === b.jumped &&
+        a.spaceHeld === b.spaceHeld
     )
 }

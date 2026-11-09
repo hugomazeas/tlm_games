@@ -1,6 +1,6 @@
 import { Vector3 } from 'three'
 import type { BuffKind, Gun } from '../protocol.ts'
-import { type Body, PLAYER, type Powers, scaleOf, sizeAt } from './movement.ts'
+import { type Body, PLAYER, type Powers, PRONE, scaleOf, sizeAt, sizeOf } from './movement.ts'
 import { INTERN, OVERTIME, PROMOTION } from './places.ts'
 import type { Wall } from './walls.ts'
 import { type FpsWorld, rayDistance, rayStop } from './world.ts'
@@ -118,11 +118,12 @@ export function reloadMsOf(gun: Gun): number {
 /** The cone shots land in, for how they're fired. */
 export function spreadOf(spec: GunSpec, aiming: boolean, body: Body): number {
     const moving = Math.hypot(body.vx, body.vz) > 1.2
-    return (
+    const cone =
         (aiming ? spec.spread.aim : spec.spread.hip) +
         (moving ? spec.spread.moving : 0) +
         (body.onGround ? 0 : spec.spread.air)
-    )
+    // Prone: steadier.
+    return body.prone ? cone * PRONE.steady : cone
 }
 
 /** Damage a round does at `distance`. */
@@ -198,9 +199,16 @@ export function powersOf(buffs: readonly BuffKind[]): Powers {
 /** Hits on the capsule's top part (from here up, as a share of its height) are headshots. */
 export const HEAD_FROM = 0.72
 
-/** Where a player's eyes are, from their feet (higher on a Promotion, lower as an Intern). */
-export function eyeOf(feet: { x: number; y: number; z: number; big?: number; small?: number }): Vector3 {
-    return new Vector3(feet.x, feet.y + PLAYER.eye * scaleOf(feet), feet.z)
+/** Where a player's eyes are, from their feet (higher on a Promotion, lower as an Intern, low prone). */
+export function eyeOf(feet: {
+    x: number
+    y: number
+    z: number
+    big?: number
+    small?: number
+    prone?: boolean
+}): Vector3 {
+    return new Vector3(feet.x, feet.y + sizeOf(feet).eye, feet.z)
 }
 
 /** The unit vector a camera with this yaw and pitch looks along (three.js 'YXZ' order). */
@@ -220,6 +228,8 @@ export interface Target {
     yaw?: number
     /** Their size (1 when absent): a Promotion is a big target, an Intern a small one. */
     scale?: number
+    /** Lying prone: a low, small target. */
+    prone?: boolean
 }
 
 /**
@@ -237,7 +247,7 @@ export function swingStapler(
     let bestDistance = Infinity
     const to = new Vector3()
     for (const target of targets) {
-        const size = sizeAt(target.scale ?? 1)
+        const size = sizeAt(target.scale ?? 1, target.prone)
         // The nearest point of their capsule's axis to the eyes.
         const axisY = Math.max(target.y + size.radius, Math.min(target.y + size.height - size.radius, eye.y))
         to.set(target.x - eye.x, axisY - eye.y, target.z - eye.z)
@@ -309,21 +319,32 @@ export const HIT_RADIUS = PLAYER.radius * HITBOX_SCALE
 
 /**
  * Where a ray meets a player's hit capsule (`HIT_RADIUS` wide, their height, both times their
- * `scale`): its distance along the ray, and how high up it (0 bottom … 1 top). Null when it passes
- * by or is behind the ray.
+ * `scale`; prone, lying along where they face, their length, thinner): its distance along the ray,
+ * and how far up it (0 their feet … 1 their head, where headshots are). Null when it passes by or
+ * is behind the ray.
  */
 export function rayCapsule(
     origin: Vector3,
     direction: Vector3,
-    feet: { x: number; y: number; z: number; scale?: number }
+    feet: { x: number; y: number; z: number; scale?: number; prone?: boolean; yaw?: number }
 ): { distance: number; along: number } | null {
     const scale = feet.scale ?? 1
-    const height = PLAYER.height * scale
-    const r = HIT_RADIUS * scale
-    const a = new Vector3(feet.x, feet.y + r, feet.z)
-    const axis = new Vector3(0, height - 2 * r, 0)
-    const axisLength = axis.length()
-    axis.divideScalar(axisLength)
+    const size = sizeAt(scale, feet.prone)
+    const r = size.radius * HITBOX_SCALE
+    let a: Vector3
+    let axis: Vector3
+    let axisLength: number
+    if (feet.prone) {
+        // Face down, head toward where they look, the middle over their feet.
+        const yaw = feet.yaw ?? 0
+        axis = new Vector3(-Math.sin(yaw), 0, -Math.cos(yaw))
+        axisLength = PLAYER.height * scale - 2 * r
+        a = new Vector3(feet.x, feet.y + r, feet.z).addScaledVector(axis, -axisLength / 2)
+    } else {
+        axis = new Vector3(0, 1, 0)
+        axisLength = size.height - 2 * r
+        a = new Vector3(feet.x, feet.y + r, feet.z)
+    }
 
     // The closest points between the ray and the capsule's axis segment.
     const w = origin.clone().sub(a)
@@ -346,8 +367,10 @@ export function rayCapsule(
 
     const distance = s - Math.sqrt(r * r - gap * gap)
     if (distance < 0) return null
+    // Prone: how far along the body, feet to head.
+    if (feet.prone) return { distance, along: Math.max(0, Math.min(1, t / axisLength)) }
 
     const hitY = origin.y + direction.y * distance
 
-    return { distance, along: Math.max(0, Math.min(1, (hitY - feet.y) / height)) }
+    return { distance, along: Math.max(0, Math.min(1, (hitY - feet.y) / size.height)) }
 }
