@@ -7,6 +7,8 @@ import {
     type GameEvent,
     type Gun,
     type InputFrame,
+    isMelee,
+    isTool,
     type KillRecap,
     type Loadout,
     type PlayerState,
@@ -1288,7 +1290,7 @@ export class Arena {
         const last = fighter.lastHit
         const recent = last && this.step - last.step <= RING_OUT_CREDIT_STEPS ? last : null
         const by = recent ? (this.fighters.get(recent.by) ?? null) : null
-        const weapon = recent?.weapon ?? weaponIn(fighter.slot, fighter.loadout)
+        const weapon = recent?.weapon ?? weaponIn(fighter.slot, fighter.loadout, this.shove)
         fighter.health = 0
         this.down(by, fighter, { headshot: false, weapon, backstab: false, fall: true }, events)
 
@@ -1326,7 +1328,9 @@ export class Arena {
 
     /** How `killer` just killed `victim` with `weapon`, for the victim's death screen. */
     private recap(killer: Fighter, victim: Fighter, weapon: Weapon): KillRecap {
-        const slot = weapon === 'stapler' ? null : killer.loadout.primary === weapon ? 'primary' : 'secondary'
+        // A gun's rounds left (not the stapler's, not Shove's tools).
+        const slot =
+            isMelee(weapon) || isTool(weapon) ? null : killer.loadout.primary === weapon ? 'primary' : 'secondary'
         const own = victim.taken.get(killer.id) ?? { hits: 0, damage: 0, headshots: 0, since: this.step }
         let othersDamage = 0
         for (const [id, tally] of victim.taken) if (id !== killer.id) othersDamage += tally.damage

@@ -383,6 +383,12 @@ describe('one game, joined on the fly', () => {
         }
         walkOff(b)
         expect(a.last('match')!.match.scores.find(s => s.id === b.id)!.lives).toBe(1)
+        // A fall nobody caused is recorded with what they held: a tool, never a gun.
+        expect(results.length).toBe(0)
+        const fell = a.inbox
+            .flatMap(m => (m.type === 'snap' ? m.events : []))
+            .find(e => e.type === 'kill' && e.victim === b.id)
+        expect(fell).toMatchObject({ killer: null, fall: true, weapon: 'blower' })
         lobby.join(c, { playerId: 3, name: 'c3' })
         expect(c.last('welcome')!.match.scores.find(s => s.id === c.id)!.lives).toBe(1)
 
