@@ -13,12 +13,16 @@ import {
     PROMOTION,
     rollPickup,
     domeSpawns,
+    inSpot,
     SIEGE_SPOTS,
+    SPOT_HEIGHT,
+    spotSpawns,
     siegeForbidsBuild,
     siegeWinner,
     ZONES,
 } from './places.ts'
 import { SIEGE } from '../protocol.ts'
+import { BUILD } from './walls.ts'
 import { buildOfficeGeometry } from '../map/office.js'
 import { collideCapsule, officeWorld, rayDistance, rayHit, worldFrom } from './world.ts'
 
@@ -187,17 +191,38 @@ describe('the places in the office', () => {
 })
 
 describe("siege's spots and domes", () => {
-    test('every spot is in the office, no pickup in it, and its defenders come in where a mini fits', () => {
+    test('every spot is in the office, no pickup in it, and its defenders have room to come back round its edge', () => {
         for (const spot of SIEGE_SPOTS) {
             expect(below(spot.x, spot.z)).toBeGreaterThan(-0.05)
             for (const pickup of PICKUP_SPOTS)
-                expect({ spot: spot.name, in: inZone(spot, pickup.x, pickup.z) }).toEqual({
+                expect({ spot: spot.name, in: inSpot(spot, pickup.x, pickup.z) }).toEqual({
                     spot: spot.name,
                     in: false,
                 })
-            for (const at of spot.defenders)
-                expect({ spot: spot.name, at, fits: fits(at.x, at.z) }).toEqual({ spot: spot.name, at, fits: true })
+            // Furniture takes some; at least a few are open, all in the square and none in its middle.
+            const spawns = spotSpawns(spot)
+            const open = spawns.filter(at => fits(at.x, at.z))
+            expect({ spot: spot.name, open: open.length >= 4 }).toEqual({ spot: spot.name, open: true })
+            for (const at of spawns) {
+                expect(inSpot(spot, at.x, at.z)).toBe(true)
+                expect(Math.max(Math.abs(at.x - spot.x), Math.abs(at.z - spot.z))).toBeGreaterThan(0.3)
+            }
         }
+    })
+
+    test('the spot is a square: its corner in, just past its side out', () => {
+        const spot = SIEGE_SPOTS[0]!
+        const h = spot.half
+        expect(inSpot(spot, spot.x + h * 0.95, spot.z - h * 0.95)).toBe(true)
+        expect(inSpot(spot, spot.x + h * 1.05, spot.z)).toBe(false)
+        expect(inSpot(spot, spot.x, spot.z - h * 1.05)).toBe(false)
+    })
+
+    test('the spot goes two walls up, not to the ceiling: on a desk in it counts, flying over it does not', () => {
+        const spot = SIEGE_SPOTS[0]!
+        expect(SPOT_HEIGHT).toBeCloseTo(2 * BUILD.size, 5)
+        expect(inSpot(spot, spot.x, spot.z, 0.76)).toBe(true)
+        expect(inSpot(spot, spot.x, spot.z, SPOT_HEIGHT + 0.01)).toBe(false)
     })
 
     test('each dome is at the far end, a mini fits at every attacker spawn in it, and no pickup, pad or portal is in it', () => {

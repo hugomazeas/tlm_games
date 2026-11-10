@@ -194,13 +194,43 @@ export interface SiegeSpawn {
 }
 
 /**
- * A spot of Siege: the circle the defenders hold (a column, like a zone), the dome the attackers
- * start in (the open floor furthest from it on foot: the far end of the office) and where the
- * defenders come back. Each match rolls one, played both halves.
+ * A spot of Siege: the square the defenders hold (`half` a side from its middle, squared to the
+ * office; a column, like a zone) and the dome the attackers start in (the open floor furthest from
+ * it on foot: the far end of the office). The defenders come back anywhere in the square but its
+ * middle (`spotSpawns`). Each match rolls one, played both halves.
  */
-export interface SiegeSpot extends Zone {
+export interface SiegeSpot {
+    name: string
+    x: number
+    z: number
+    half: number
     dome: { x: number; z: number }
-    defenders: readonly SiegeSpawn[]
+}
+
+/** The side of a Siege spot (m). */
+export const SPOT_SIDE = 1.5
+/** How high a Siege spot goes (m): two built walls, not to the ceiling. */
+export const SPOT_HEIGHT = 1.2
+
+/** In the spot: within its square on the floor plan, feet below its top (`y`, the feet; the floor by default). */
+export function inSpot(spot: SiegeSpot, x: number, z: number, y = 0): boolean {
+    return Math.abs(x - spot.x) <= spot.half && Math.abs(z - spot.z) <= spot.half && y < SPOT_HEIGHT
+}
+
+/**
+ * Where defenders may come back: the outer ring of a 5 × 5 grid over the square (its middle left
+ * out), facing out of it. The arena picks one at random where a mini fits.
+ */
+export function spotSpawns(spot: SiegeSpot): SiegeSpawn[] {
+    const step = (spot.half - 0.2) / 2
+    const spawns: SiegeSpawn[] = []
+    for (let i = -2; i <= 2; i++) {
+        for (let j = -2; j <= 2; j++) {
+            if (Math.max(Math.abs(i), Math.abs(j)) < 2) continue
+            spawns.push({ x: spot.x + i * step, z: spot.z + j * step, yaw: Math.atan2(-i, -j) })
+        }
+    }
+    return spawns
 }
 
 /** The east end of the open office and the west end by the windows: the two far ends, clear of pickups, portals and pads. */
@@ -213,48 +243,32 @@ export const SIEGE_SPOTS: readonly SiegeSpot[] = [
         name: 'Middle room',
         x: -2.2,
         z: -3.2,
-        radius: 1.0,
+        half: SPOT_SIDE / 2,
         dome: EAST_DOME,
-        defenders: [
-            { x: -2.0, z: -3.4, yaw: Math.PI / 2 },
-            { x: -3.2, z: -3.9, yaw: -Math.PI / 2 },
-        ],
     },
     {
         // One way in, glass sides (17 m).
         name: 'Closed office',
         x: -3.3,
         z: 3.7,
-        radius: 1.0,
+        half: SPOT_SIDE / 2,
         dome: EAST_DOME,
-        defenders: [
-            { x: -3.4, z: 3.6, yaw: Math.PI * 0.75 },
-            { x: -2.6, z: 4.3, yaw: Math.PI },
-        ],
     },
     {
         // Open, by the big windows: the defenders build the fort (18 m).
         name: 'Meeting room',
         x: -7.6,
         z: 0.0,
-        radius: 1.2,
+        half: SPOT_SIDE / 2,
         dome: EAST_DOME,
-        defenders: [
-            { x: -5.6, z: -0.4, yaw: Math.PI / 2 },
-            { x: -8.4, z: -2.2, yaw: Math.PI },
-        ],
     },
     {
         // Open to the open office (15 m).
         name: 'Ping-pong lounge',
         x: 6.1,
         z: -1.9,
-        radius: 1.2,
+        half: SPOT_SIDE / 2,
         dome: WEST_DOME,
-        defenders: [
-            { x: 5.0, z: -0.2, yaw: 0 },
-            { x: 7.9, z: 1.0, yaw: Math.PI / 2 },
-        ],
     },
 ]
 

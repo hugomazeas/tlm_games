@@ -306,7 +306,9 @@ controls.onBuild = () => {
     if (!buildAt || socket?.readyState !== WebSocket.OPEN) return
     const now = performance.now()
     if (now < nextBuildAt) return
-    if (buildAt.taken || siegeBlocks(buildAt.wall.x, buildAt.wall.z)) return sounds.buildRefused()
+    if (buildAt.taken || !buildAt.supported || siegeBlocks(buildAt.wall.x, buildAt.wall.z)) {
+        return sounds.buildRefused()
+    }
     nextBuildAt = now + BUILD_COOLDOWN_MS
     socket.send(JSON.stringify({ type: 'build', wall: buildAt.wall }))
 }
@@ -653,6 +655,17 @@ function onEvent(event: GameEvent, now: number): void {
             hud.toast('+1 POINT · BACK TO THE DOME', TEAM_COLORS[event.team])
             sounds.zoneMoved()
         } else sounds.zoneTick()
+        return
+    }
+    if (event.type === 'switched') {
+        const role = match?.siege ? (event.team === match.siege.attackers ? 'attack' : 'defend') : null
+        hud.killFeed(
+            `${colored(event.id)} <span style="opacity:.7">moved to</span> <b style="color:${TEAM_COLORS[event.team]}">${event.team}</b>${role ? ` <span style="opacity:.7">to ${role}</span>` : ''}`
+        )
+        if (event.id === me) {
+            hud.toast(`TEAMS REBALANCED · YOU NOW ${role === 'attack' ? 'ATTACK' : 'DEFEND'}`, TEAM_COLORS[event.team])
+            sounds.zoneMoved()
+        }
         return
     }
     if (event.type === 'pickup') {
@@ -1185,7 +1198,8 @@ function draw(now: number): void {
     hud.reload(building ? buildRing : reload)
     // Build mode: the gun put away, the ghost where the next wall goes, its line on the HUD.
     buildAt = building && body ? buildSlot(world, eyeOf(body), aimNow(body), controls.stance) : null
-    const refused = buildAt !== null && (buildAt.taken || siegeBlocks(buildAt.wall.x, buildAt.wall.z))
+    const refused =
+        buildAt !== null && (buildAt.taken || !buildAt.supported || siegeBlocks(buildAt.wall.x, buildAt.wall.z))
     wallViews.showGhost(buildAt?.wall ?? null, refused)
     wallViews.update(now)
     hud.building(building ? controls.stance : null)

@@ -266,16 +266,21 @@ Playable at `/games/office-fps`.
   `siege` Siege (red vs blue like `tdm`, `isTeamMode`): one of `SIEGE_SPOTS` (`sim/places.ts`: the
   middle room, the closed office, the meeting room, the ping-pong lounge) is rolled per match and
   played two halves (`SIEGE`: 45 s head start, then 5 min; the host's minutes don't apply). Each
-  half the defenders spawn by the spot (`defenders`) and build while the attackers wait in their
+  half the defenders spawn anywhere in the spot but its middle (`spotSpawns`: the outer ring of a
+  5 × 5 grid; the arena picks one where a mini fits) and build while the attackers wait in their
   dome (`domeSpawns`, at the far end on foot: `world.dome`, a half sphere `collideCapsule` keeps
   bodies on their side of and `rayHit`/`rayStop` stop at, both ways; the arena also ignores targets
   across it, since hit boxes poke through). Then an attacker who stays `SIEGE.holdMs` in the spot
-  (defenders in it don't block; leaving or dying starts over) scores a point for their side
+  (a `SPOT_SIDE` 1.5 m square squared to the office, `SPOT_HEIGHT` 1.2 m up (two walls; feet below
+  its top count), `inSpot`; defenders in it don't block; leaving
+  or dying starts over) scores a point for their side
   (`captured` event, `Score.points`) and respawns in the dome. A half ends at the limit
   (`fragLimit` points) or its time; the sides swap and the walls go (`respawnAll`). Most points
   wins, the faster to them on a tie (`siegeWinner`); the second half ends early once it can't change
-  that. Only defenders build, never within `SIEGE.noBuild` of the dome (`siegeForbidsBuild`, also
-  checked in the browser). `MatchView.siege` (spot, half, attackers, dome, points, times), snapshots'
+  that. The sides stay even with the attackers taking the odd one (2 v 1 is two attacking:
+  `rebalance`, on joins, leaves and each half's start; the last in on the bigger side moves, a
+  `switched` event, back at once on their new side). Only defenders build, never within
+  `SIEGE.noBuild` of the dome (`siegeForbidsBuild`, also checked in the browser). `MatchView.siege` (spot, half, attackers, dome, points, times), snapshots'
   `holds` (each attacker's stay); the browser puts the dome in its world for prediction
   (`syncDome`) and draws it (`DomeView`) and the spot (`ZoneView` over `SIEGE_SPOTS`). Laravel
   stores the mode and the sides; a player's points aren't stored yet.
@@ -387,10 +392,12 @@ Playable at `/games/office-fps`.
   (the reload's ring by the crosshair fills meanwhile, counted from the click); no limit per player, `BUILD.max` (120) on the map (past it the builder's
   oldest goes). `buildSlot` (shared): aimed at a built wall, the new one locks on to the edge nearest
   the crosshair, in line with it or turned a quarter on your side (corners, roofs); anywhere else it
-  goes where the crosshair is, set out of the surface. The browser sends the slot (`build`), the
-  arena checks reach (from the eyes, with `BUILD.slack`), that it's free and the pace. Walls live in the world
+  goes where the crosshair is, set out of the surface. Never in mid air: a wall must touch the floor,
+  the office (walls, glass, furniture) or a built wall within `SUPPORT_REACH` (`supported`; the ghost
+  shows red otherwise). The browser sends the slot (`build`), the
+  arena checks reach (from the eyes, with `BUILD.slack`), that it's free, supported and the pace. Walls live in the world
   (`FpsWorld.walls`, each lobby its own): `collideCapsule` (upright capsules: a wall put on a player
-  pushes them out), `rayHit`/`rayStop`/`rayDistance` (shots, rockets ×1.6: three take one down, cover, name tags, the
+  pushes them out), `rayHit`/`rayStop`/`rayDistance` (shots, rockets ×5.5 `ROCKET_WALL_FACTOR`: two take one down, cover, name tags, the
   third-person camera) all meet them. Events `built` / `wallHit` / `wallGone` / `walls` (a new match
   wipes them; a leaver's stay up, nobody's: `by` and `team` null, so no one, their side or their
   next connection included, takes them back or works their doors), the list in `welcome`. Hits on them leave no hole (it would

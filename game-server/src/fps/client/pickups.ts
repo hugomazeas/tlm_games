@@ -25,6 +25,8 @@ import {
     PICKUPS,
     type Portal,
     PORTAL,
+    type SiegeSpot,
+    SPOT_HEIGHT,
     type Zone,
     ZONES,
 } from '../sim/places.ts'
@@ -338,13 +340,20 @@ export class PortalViews {
 export class ZoneView {
     private readonly columns: Array<{
         column: Mesh
-        ring: Mesh
+        /** Its outline on the floor (and, a square's, at its top). */
+        ring: Group
         columnMaterial: MeshBasicMaterial
         ringMaterial: MeshBasicMaterial
     }>
 
-    constructor(scene: Scene, zones: readonly Zone[] = ZONES) {
-        this.columns = zones.map(zone => {
+    /** Round zones (king of the meeting room), or squares squared to the office (siege's spots: `half` a side). */
+    constructor(scene: Scene, zones: readonly (Zone | SiegeSpot)[] = ZONES) {
+        this.columns = zones.map(place => {
+            // A square is a four-sided cylinder through its corners, turned an eighth.
+            const square = 'half' in place
+            const zone = { ...place, radius: square ? place.half * Math.SQRT2 : place.radius }
+            const sides = square ? 4 : 48
+            const turn = square ? Math.PI / 4 : 0
             const columnMaterial = new MeshBasicMaterial({
                 color: 0xffffff,
                 transparent: true,
@@ -353,17 +362,29 @@ export class ZoneView {
                 depthWrite: false,
                 side: DoubleSide,
             })
-            const column = new Mesh(new CylinderGeometry(zone.radius, zone.radius, H, 48, 1, true), columnMaterial)
-            column.position.set(zone.x, H / 2, zone.z)
+            // A square (siege's spot) goes two walls up; a zone to the ceiling.
+            const height = square ? SPOT_HEIGHT : H
+            const column = new Mesh(
+                new CylinderGeometry(zone.radius, zone.radius, height, sides, 1, true),
+                columnMaterial
+            )
+            column.position.set(zone.x, height / 2, zone.z)
+            column.rotation.y = turn
             const ringMaterial = new MeshBasicMaterial({
                 color: 0xffffff,
                 transparent: true,
                 opacity: 0.85,
                 side: DoubleSide,
             })
-            const ring = new Mesh(new RingGeometry(zone.radius - 0.05, zone.radius, 64), ringMaterial)
-            ring.rotation.x = -Math.PI / 2
-            ring.position.set(zone.x, 0.008, zone.z)
+            const width = square ? 0.05 * Math.SQRT2 : 0.05
+            const outline = new RingGeometry(zone.radius - width, zone.radius, square ? 4 : 64, 1, turn)
+            const ring = new Group()
+            for (const y of square ? [0.008, height] : [0.008]) {
+                const edge = new Mesh(outline, ringMaterial)
+                edge.rotation.x = -Math.PI / 2
+                edge.position.set(zone.x, y, zone.z)
+                ring.add(edge)
+            }
             column.visible = ring.visible = false
             scene.add(column, ring)
             return { column, ring, columnMaterial, ringMaterial }

@@ -28,7 +28,17 @@ import {
 } from './protocol.ts'
 import { Arena, type ArenaEvent } from './sim/arena.ts'
 import { STEP_MS } from './sim/movement.ts'
-import { domeSpawns, inZone, SIEGE_SPOTS, siegeForbidsBuild, siegeWinner, ZONE_MS, ZONES } from './sim/places.ts'
+import {
+    domeSpawns,
+    inSpot,
+    inZone,
+    SIEGE_SPOTS,
+    siegeForbidsBuild,
+    siegeWinner,
+    spotSpawns,
+    ZONE_MS,
+    ZONES,
+} from './sim/places.ts'
 import { Walls } from './sim/walls.ts'
 import type { FpsWorld } from './sim/world.ts'
 
@@ -289,6 +299,7 @@ export class FpsLobby {
         if ((this.phase === 'countdown' || this.phase === 'playing') && this.seatedCount() < MIN_PLAYERS) {
             this.setPhase('warmup')
         } else {
+            if (this.phase === 'playing') this.rebalance(true)
             this.broadcast({ type: 'match', match: this.view() })
         }
     }
@@ -390,17 +401,56 @@ export class FpsLobby {
     private seat(member: Member): void {
         member.info.watching = false
         const tally = this.tallies.get(member.key)
-        // In a team match a newcomer joins the smaller side; someone back keeps theirs.
-        const team =
-            this.phase === 'playing' && isTeamMode(this.rules.mode) ? (tally?.team ?? this.smallerTeam()) : null
+        // In a team match a newcomer joins the smaller side (a siege's attackers when even); someone back keeps theirs.
+        const playing = this.phase === 'playing'
+        const newcomerSide = () => (this.siege ? this.siegeSideForNewcomer() : this.smallerTeam())
+        const team = playing && isTeamMode(this.rules.mode) ? (tally?.team ?? newcomerSide()) : null
         this.record(this.arena.add(member.conn.id, team, member.loadout))
         // Back in the same match (a dropped connection, a reload): their score is still theirs.
         if (tally) {
             tally.connId = member.conn.id
             tally.since = this.hooks.now()
-        } else if (this.phase === 'playing') {
+        } else if (playing) {
             this.tallies.set(member.key, this.newTally(member))
         }
+        if (playing) this.rebalance(true)
+    }
+
+    /** Siege: the side a newcomer (already counted as seated) joins, so the attackers have the odd one. */
+    private siegeSideForNewcomer(): Team {
+        const siege = this.siege!
+        const seated = this.seatedMembers()
+        const attackers = seated.filter(m => this.arena.teamOf(m.conn.id) === siege.attackers).length
+        return attackers < Math.ceil(seated.length / 2) ? siege.attackers : otherTeam(siege.attackers)
+    }
+
+    /**
+     * Siege: the sides kept even, the attackers taking the odd one (2 v 1 is two attacking). Whoever
+     * came in last on the bigger side moves over, and (`announce`, mid-half) comes back on their new
+     * side at once. Their points stay theirs; their side's stay with the side.
+     */
+    private rebalance(announce: boolean): void {
+        const siege = this.siege
+        if (!siege) return
+        const seated = this.seatedMembers()
+        const want = Math.ceil(seated.length / 2)
+        const on = (team: Team) => seated.filter(m => this.arena.teamOf(m.conn.id) === team)
+        const attackers = on(siege.attackers)
+        const defenders = on(otherTeam(siege.attackers))
+        const [from, to] =
+            attackers.length < want ? [defenders, siege.attackers] : [attackers, otherTeam(siege.attackers)]
+        const moves = Math.abs(attackers.length - want)
+        for (const member of from.slice(from.length - moves)) {
+            const id = member.conn.id
+            this.arena.setTeam(id, to)
+            const tally = this.tallies.get(member.key)
+            if (tally) tally.team = to
+            siege.holds.delete(id)
+            if (!announce) continue
+            this.events.push({ type: 'switched', id, team: to })
+            this.record(this.arena.respawn(id))
+        }
+        if (moves > 0 && announce) this.broadcast({ type: 'match', match: this.view() })
     }
 
     private seatNextWaiting(): void {
@@ -460,9 +510,12 @@ export class FpsLobby {
         siege.opensAt = now + SIEGE.headStartMs
         siege.endsAt = siege.opensAt + SIEGE.halfMs
         siege.holds.clear()
+        // The odd one attacks (the swap may have handed it to the defenders): before anyone spawns.
+        this.rebalance(false)
         this.world.dome = { ...spot.dome, radius: SIEGE.domeRadius }
         const dome = domeSpawns(spot)
-        this.arena.setSpawns(team => (team === siege.attackers ? dome : team ? spot.defenders : null))
+        const square = spotSpawns(spot)
+        this.arena.setSpawns(team => (team === siege.attackers ? dome : team ? square : null))
         this.record(this.arena.respawnAll())
     }
 
@@ -501,7 +554,7 @@ export class FpsLobby {
         const inside = new Set(
             this.arena
                 .states()
-                .filter(s => s.alive && s.team === siege.attackers && inZone(spot, s.x, s.z))
+                .filter(s => s.alive && s.team === siege.attackers && inSpot(spot, s.x, s.z, s.y))
                 .map(s => s.id)
         )
         for (const id of siege.holds.keys()) if (!inside.has(id)) siege.holds.delete(id)

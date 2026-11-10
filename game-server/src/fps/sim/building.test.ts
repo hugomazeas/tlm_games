@@ -3,7 +3,7 @@ import { Vector3 } from 'three'
 import { createRng } from '../../sim/rng.ts'
 import { BUTTON, type InputFrame, type WallKind, type WallSpec } from '../protocol.ts'
 import { Arena, type ArenaEvent } from './arena.ts'
-import { buildSlot } from './building.ts'
+import { buildSlot, supported } from './building.ts'
 import { aimDirection, GUNS } from './combat.ts'
 import { bodyAt, moveOf, PLAYER, stepBody } from './movement.ts'
 import { testWorld } from './testing.ts'
@@ -124,9 +124,31 @@ describe('build mode puts the next wall', () => {
 
         expect(slot.taken).toBe(true)
     })
+
+    test('only touching something: the floor, the office, another wall; never in mid air', () => {
+        const world = testWorld([], [{ min: [-2, 0, -1.5], max: [2, 2, -1.4] }])
+        // On the floor, against the office's wall, snapped onto a built one: all fine.
+        expect(supported(world, { axis: 'z', x: 0, y: S / 2, z: 0 })).toBe(true)
+        expect(supported(world, { axis: 'z', x: 0, y: 1.2, z: -1.4 + T / 2 })).toBe(true)
+        put(world, { axis: 'z', x: 0, y: S / 2, z: 0 })
+        expect(supported(world, { axis: 'z', x: 0, y: S / 2 + S, z: 0 })).toBe(true)
+        // In the air, a hand's width off anything: no.
+        expect(supported(world, { axis: 'z', x: 0, y: S / 2 + 0.1, z: 1 })).toBe(false)
+        expect(supported(world, { axis: 'z', x: 0, y: S * 2 + 0.1, z: 0 })).toBe(false)
+        // Aimed at nothing within reach, the slot hangs in the air: not supported.
+        const up = buildSlot(room(), eye, aimDirection(0, 0.3), { flat: false, turned: false })
+        expect(up.supported).toBe(false)
+    })
 })
 
 describe('the arena builds and breaks walls', () => {
+    test('refuses a wall in mid air', () => {
+        const arena = new Arena(room(), createRng(3))
+        arena.add('me')
+        expect(arena.build('me', { axis: 'z', x: 0, y: S / 2 + 0.2, z: -1 })).toBe(false)
+        expect(arena.build('me', { axis: 'z', x: 0, y: S / 2, z: -1 })).toBe(true)
+    })
+
     function game() {
         const world = room()
         const arena = new Arena(world, createRng(3))
@@ -173,7 +195,7 @@ describe('the arena builds and breaks walls', () => {
         expect(arena.wallStates()).toHaveLength(0)
     })
 
-    test('rockets take one down: seven of them', () => {
+    test('rockets take one down: two of them', () => {
         const { arena } = game()
         arena.setLoadout('me', { primary: 'rifle', secondary: 'launcher' })
         arena.build('me', before)
@@ -187,12 +209,12 @@ describe('the arena builds and breaks walls', () => {
         }
         const hits = events.filter(e => e.type === 'wallHit')
 
-        // A direct hit: about 155 of its 1050 (it goes off just short of it).
+        // A direct hit: about 535 of its 1050 (it goes off just short of it).
         const left = (hits[0] as { health: number }).health
-        expect(BUILD.health - left).toBeGreaterThan(150)
-        expect(BUILD.health - left).toBeLessThan(160)
+        expect(BUILD.health - left).toBeGreaterThan(525)
+        expect(BUILD.health - left).toBeLessThan(550)
         expect(events).toContainEqual({ type: 'wallGone', id: expect.any(Number), broken: true })
-        expect(events.filter(e => e.type === 'launch')).toHaveLength(7)
+        expect(events.filter(e => e.type === 'launch')).toHaveLength(2)
     })
 
     test('a teammate cannot shoot down their side’s wall', () => {

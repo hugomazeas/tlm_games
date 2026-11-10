@@ -1,11 +1,11 @@
-import { Vector3 } from 'three'
+import { Box3, Matrix4, Vector3 } from 'three'
 import type { WallAxis, WallSpec } from '../protocol.ts'
 import { BUILD, halfExtent, type Wall } from './walls.ts'
 import { type FpsWorld, rayHit } from './world.ts'
 
 /**
  * Build mode's aim: where the next wall goes. Your browser works it out to draw the ghost and
- * sends it; the server only checks it's in reach and free.
+ * sends it; the server checks it's in reach, free and touching something (`supported`).
  *
  * Aimed at a built wall, the new one locks on to it: on the edge nearest the crosshair, either in
  * line with it (wider, taller) or turned a quarter on your side of it (a corner, a roof), so
@@ -25,6 +25,32 @@ export interface BuildSlot {
     on: number | null
     /** A wall is already there. */
     taken: boolean
+    /** It would touch something (the floor, a wall, furniture, another built wall): nothing goes up in mid air. */
+    supported: boolean
+}
+
+/** How close (m) a new wall must come to something to count as touching it. */
+export const SUPPORT_REACH = 0.03
+const near = new Box3()
+const IDENTITY = new Matrix4()
+
+/** Would a wall here touch the office (floor, walls, glass, furniture) or a built wall? */
+export function supported(world: FpsWorld, spec: WallSpec): boolean {
+    const reach = (along: WallAxis) => halfExtent(spec.axis, along) + SUPPORT_REACH
+    near.min.set(spec.x - reach('x'), spec.y - reach('y'), spec.z - reach('z'))
+    near.max.set(spec.x + reach('x'), spec.y + reach('y'), spec.z + reach('z'))
+    // A built wall is its own box (all its parts).
+    for (const b of world.walls.all) {
+        const apart =
+            b.minX > near.max.x ||
+            b.maxX < near.min.x ||
+            b.minY > near.max.y ||
+            b.maxY < near.min.y ||
+            b.minZ > near.max.z ||
+            b.maxZ < near.min.z
+        if (!apart) return true
+    }
+    return world.meshes.some(mesh => mesh.geometry.boundsTree.intersectsBox(near, IDENTITY))
 }
 
 /** The axis a new wall faces: flat faces up; standing faces you (along x or z, whichever you look more along), or across with R. */
@@ -54,7 +80,7 @@ export function buildSlot(world: FpsWorld, eye: Vector3, direction: Vector3, sta
     }
     wall = { axis: wall.axis, x: round(wall.x), y: round(wall.y), z: round(wall.z) }
 
-    return { wall, on: hit?.wall?.id ?? null, taken: world.walls.taken(wall) }
+    return { wall, on: hit?.wall?.id ?? null, taken: world.walls.taken(wall), supported: supported(world, wall) }
 }
 
 /**
