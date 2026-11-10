@@ -296,6 +296,16 @@ Playable at `/games/office-fps`.
   whoever it meets: `'ball'`) and **spring trap** (carried, G drops it, `BUTTON.drop`; armed after
   0.8 s, the next other one on it goes straight up: `'spring'`, the `sprung` event); snapshots carry
   them in `shove` (`ShoveThings`, drawn by `client/shove-views.ts`).
+- **Cloud Nine's architecture and spawns:** ramps from the deck's ends up to the platforms (wedge
+  blocks: `Block.slope`, `boxTriangles` makes them for the collision and the drawing), a walkway behind
+  the tank joining the platforms on two pillars, crates, and a shelter (0.5 m: higher than a mini) in
+  front of each of the 8 spawns, L-shaped along the long sides (a test checks no spawn can be seen
+  from the middle of the deck). Spawn shield 2.5 s there (`FpsWorld.shieldMs`). The **elevator**
+  (`ELEVATOR`, `elevatorAt`) runs up the tank's front to the lid every 9 s (a mover). The **security
+  laser** (`LASER`, `laserAngle`, `Arena.sweepLaser`) sweeps the deck at ankle height every 12 s:
+  whoever it meets on the deck (not jumping, not up a ramp) is thrown mostly toward the middle (never
+  off the deck by itself: a test stands at every spawn through two turns), once a pass, Shove's % +5
+  (nobody's); the `zap` event.
 - **The gondola** (`GONDOLA`, `gondolaAt(step)` in `map/cloud-nine.ts`): a platform 1.45 m under
   the deck just out from its front edge, swinging end to end every 14 s. It's a `Mover` in the world
   (`FpsWorld.movers`, `clock`: the arena sets the step, the browser its estimate of the server's),

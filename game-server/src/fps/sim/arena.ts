@@ -23,6 +23,7 @@ import {
     weaponIn,
 } from '../protocol.ts'
 import { batHit, inCone, knockOf, SHOVE, stunOf } from './shove.ts'
+import { LASER, laserAngle } from '../map/cloud-nine.ts'
 import {
     ANVIL,
     BONUS,
@@ -101,6 +102,8 @@ const ROCKET_ARMED_STEPS = steps(150)
 const IDLE: InputFrame = { seq: 0, forward: 0, strafe: 0, yaw: 0, pitch: 0, buttons: 0, view: 0 }
 /** Under the floor (somehow): back to a spawn. */
 const LOST_BELOW = -2
+/** Cloud Nine's laser gets someone once a pass: not again for this long (1 s). */
+const LASER_COOLDOWN_STEPS = steps(1000)
 /** A ring-out counts for whoever last hit them this recently (5 s). */
 export const RING_OUT_CREDIT_STEPS = steps(5000)
 
@@ -225,6 +228,8 @@ interface Fighter {
     /** E and G in their last frame (each acts on a fresh press). */
     grabWas: boolean
     dropWas: boolean
+    /** The step Cloud Nine's laser last got them. */
+    zappedAt: number
     /** Their next wall can go up from this step. */
     nextBuildAt: number
 }
@@ -433,6 +438,7 @@ export class Arena {
             mash: 0,
             grabWas: false,
             dropWas: false,
+            zappedAt: -1e9,
         }
         this.fighters.set(id, fighter)
 
@@ -671,6 +677,7 @@ export class Arena {
         }
         this.flyRockets(events)
         this.magnets()
+        if (this.world.laser) this.sweepLaser(events)
         if (this.shove) {
             this.carryHeld(events)
             this.rollBalls(events)
@@ -1494,6 +1501,45 @@ export class Arena {
         })
     }
 
+    /**
+     * Cloud Nine's security laser, a step: whoever it sweeps past standing on the deck (not jumping,
+     * not up a ramp, not spawn-shielded) is knocked flying along its way. In Shove it adds a little
+     * %, nobody's (a ring-out after it still counts for whoever hit them last).
+     */
+    private sweepLaser(events: ArenaEvent[]): void {
+        const before = laserAngle(this.step - 1)
+        const now = laserAngle(this.step)
+        const swept = (now - before + Math.PI * 2) % (Math.PI * 2)
+        for (const f of this.fighters.values()) {
+            if (!f.alive || f.heldBy || !this.hurts(f) || f.body.y > LASER.height) continue
+            // Once a pass: the beam is still on them for a few steps.
+            if (this.step - f.zappedAt < LASER_COOLDOWN_STEPS) continue
+            const r = Math.hypot(f.body.x, f.body.z)
+            if (r < LASER.inner || r > LASER.outer) continue
+            const at = (Math.atan2(f.body.z, f.body.x) - before + Math.PI * 4) % (Math.PI * 2)
+            // Swept past this step (with a capsule's width ahead of the beam, at their distance).
+            const reach = sizeOf(f.body).radius / r
+            if (at > swept + reach) continue
+            f.zappedAt = this.step
+            // Thrown mostly inward, a little along its sweep: into the fight, not off the deck by itself.
+            const theta = Math.atan2(f.body.z, f.body.x)
+            const dx = -Math.cos(theta) - Math.sin(theta) * 0.5
+            const dz = -Math.sin(theta) + Math.cos(theta) * 0.5
+            const length = Math.hypot(dx, dz)
+            const knock = LASER.knock / this.weightOf(f) / length
+            f.body = {
+                ...f.body,
+                vx: f.body.vx + dx * knock,
+                vz: f.body.vz + dz * knock,
+                vy: Math.max(f.body.vy, LASER.lift / Math.sqrt(this.weightOf(f))),
+                onGround: false,
+                stun: Math.max(f.body.stun, stunOf(knock)),
+            }
+            if (this.shove) f.percent = Math.min(SHOVE.maxPercent, f.percent + LASER.percent)
+            events.push({ type: 'zap', on: f.id, at: [round(f.body.x, 2), 0.05, round(f.body.z, 2)] })
+        }
+    }
+
     /** Shove's magnets: whoever holds one pulls everyone near them in. */
     private magnets(): void {
         const dt = STEP_MS / 1000
@@ -1722,7 +1768,7 @@ export class Arena {
         fighter.jetting = false
         fighter.health = MAX_HEALTH
         fighter.alive = true
-        fighter.shieldUntil = this.step + SHIELD_STEPS
+        fighter.shieldUntil = this.step + (this.world.shieldMs ? steps(this.world.shieldMs) : SHIELD_STEPS)
         fighter.nextSwingAt = 0
         fighter.readyAt = 0
         fighter.lifeKills = 0

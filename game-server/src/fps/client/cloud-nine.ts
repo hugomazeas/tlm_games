@@ -2,7 +2,7 @@ import {
     AmbientLight,
     BackSide,
     BoxGeometry,
-    type BufferGeometry,
+    BufferGeometry,
     CanvasTexture,
     Color,
     CylinderGeometry,
@@ -27,7 +27,7 @@ import {
 } from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { createRng } from '../../sim/rng.ts'
-import { CLOUD_NINE, CLOUD_NINE_BLOCKS, type CloudNineLook } from '../map/cloud-nine.ts'
+import { boxTriangles, CLOUD_NINE, CLOUD_NINE_BLOCKS, type CloudNineLook } from '../map/cloud-nine.ts'
 import type { Office } from '../map/office.js'
 import { CloudNineLife, type CloudNineEggs } from './cloud-nine-life.ts'
 import type { MapId } from '../protocol.ts'
@@ -105,6 +105,12 @@ export function buildCloudNine(eggs: CloudNineEggs): CloudNineScene {
         cabinet: new MeshStandardMaterial({ color: 0x343e52, roughness: 0.5, metalness: 0.4 }),
         drone: metal,
         sign: metal,
+        // Ramps (their own material: wedges merge only with wedges), shelters, crates, the walkway.
+        ramp: new MeshStandardMaterial({ color: 0x3e4658, roughness: 0.75, metalness: 0.3 }),
+        shelter: new MeshStandardMaterial({ color: 0x2c3448, roughness: 0.55, metalness: 0.45 }),
+        crate: new MeshStandardMaterial({ color: 0x6b4a2e, roughness: 0.8, metalness: 0.05 }),
+        walkway: metal,
+        pillar: new MeshStandardMaterial({ color: 0x343e52, roughness: 0.5, metalness: 0.5 }),
     }
     const byMaterial = new Map<Material, BufferGeometry[]>()
     const add = (material: Material, geometry: BufferGeometry) => {
@@ -117,7 +123,20 @@ export function buildCloudNine(eggs: CloudNineEggs): CloudNineScene {
         g.translate((min[0]! + max[0]!) / 2, (min[1]! + max[1]!) / 2, (min[2]! + max[2]!) / 2)
         return g
     }
-    for (const block of CLOUD_NINE_BLOCKS) add(looks[block.look], box(block.min, block.max))
+    for (const block of CLOUD_NINE_BLOCKS) {
+        if (!block.slope) {
+            add(looks[block.look], box(block.min, block.max))
+            continue
+        }
+        // A ramp: the same wedge the server collides with.
+        const positions: number[] = []
+        boxTriangles(block, positions)
+        const wedge = new BufferGeometry()
+        wedge.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3))
+        wedge.setAttribute('uv', new BufferAttribute(new Float32Array((positions.length / 3) * 2), 2))
+        wedge.computeVertexNormals()
+        add(looks.ramp, wedge)
+    }
 
     // --- Neon: thin strips, lit by their own colour --------------------------------------------
     const cyan = new MeshBasicMaterial({ color: NEON.cyan, toneMapped: false })
@@ -179,6 +198,34 @@ export function buildCloudNine(eggs: CloudNineEggs): CloudNineScene {
             const lit = windowRows() < 0.25 ? cyan : amber
             add(lit, box([x, y, -2.21], [x + 0.36, y + 0.22, -2.2]))
             add(lit, box([x, y, 2.2], [x + 0.36, y + 0.22, 2.21]))
+        }
+    }
+    // The new architecture's trims: a cyan line along each shelter's top, magenta up the ramps'
+    // sides, cyan along the walkway's edges, amber bands round the crates.
+    for (const block of CLOUD_NINE_BLOCKS) {
+        const [x0, y0, z0] = block.min
+        const [x1, y1, z1] = block.max
+        if (block.look === 'shelter') add(cyan, box([x0 - 0.005, y1, z0 - 0.005], [x1 + 0.005, y1 + 0.012, z1 + 0.005]))
+        if (block.look === 'walkway') {
+            add(cyan, box([x0, y1 - 0.005, z0], [x1, y1 + 0.008, z0 + 0.03]))
+            add(cyan, box([x0, y1 - 0.005, z1 - 0.03], [x1, y1 + 0.008, z1]))
+        }
+        if (block.look === 'crate') {
+            add(amber, box([x0 - 0.005, y0 + 0.1, z0 - 0.005], [x1 + 0.005, y0 + 0.13, z1 + 0.005]))
+            add(amber, box([x0 - 0.005, y1 - 0.13, z0 - 0.005], [x1 + 0.005, y1 - 0.1, z1 + 0.005]))
+        }
+        if (block.slope) {
+            // A strip up each side of the ramp: a run of short boxes stepping up the slope.
+            const [lo, hi] = block.slope === 'x+' ? [x0, x1] : [x1, x0]
+            for (let i = 0; i < 12; i++) {
+                const t0 = i / 12
+                const xa = lo + (hi - lo) * t0
+                const xb = lo + (hi - lo) * (t0 + 1 / 12)
+                const y = y0 + (y1 - y0) * (t0 + 0.5 / 12)
+                const [xl, xh] = xa < xb ? [xa, xb] : [xb, xa]
+                add(magenta, box([xl, y - 0.006, z0 - 0.012], [xh, y + 0.006, z0]))
+                add(magenta, box([xl, y - 0.006, z1], [xh, y + 0.006, z1 + 0.012]))
+            }
         }
     }
     // Wind flags at the ends' corners (the gusts' warning, when there are gusts).
@@ -319,6 +366,7 @@ export function buildCloudNine(eggs: CloudNineEggs): CloudNineScene {
     // --- What moves and lives: the gondola, the tank's screen, the plane, the drones ----------------
     const life = new CloudNineLife(group, tankTexture, eggs)
     if (life.trackMesh) group.add(life.trackMesh)
+    group.add(...life.rails)
 
     return {
         group,

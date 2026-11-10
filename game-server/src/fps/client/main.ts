@@ -868,6 +868,13 @@ function onEvent(event: GameEvent, now: number): void {
         if (event.target && at) sounds.swing(spatial(listener(), at))
         return
     }
+    // Cloud Nine's laser caught someone: a magenta burst and a zap.
+    if (event.type === 'zap') {
+        effects.burst(new Vector3(...event.at), '#ff4f9e', now)
+        sounds.zap(event.on === me ? undefined : spatial(listener(), new Vector3(...event.at)))
+        if (event.on === me) hud.toast('ZAPPED: JUMP THE LASER', '#ff4f9e')
+        return
+    }
     if (event.type === 'sprung') {
         const at = new Vector3(...event.at)
         effects.burst(at, '#7cf75a', now)

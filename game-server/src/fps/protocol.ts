@@ -421,6 +421,8 @@ export type GameEvent =
     | { type: 'gust'; x: number; z: number; inMs: number; forMs: number }
     /** Shove: a spring trap went off under someone. */
     | { type: 'sprung'; id: number; on: string; at: [number, number, number] }
+    /** Cloud Nine's security laser caught someone on the deck (knocked flying). */
+    | { type: 'zap'; on: string; at: [number, number, number] }
     /** Shove: someone grabbed someone (`target`), or let them go (null: thrown, dropped, broke free). */
     | { type: 'grab'; by: string; target: string | null }
     | {

@@ -13,7 +13,7 @@ import {
     SphereGeometry,
     Vector3,
 } from 'three'
-import { CLOUD_NINE, GONDOLA, gondolaAt } from '../map/cloud-nine.ts'
+import { CLOUD_NINE, ELEVATOR, elevatorAt, GONDOLA, gondolaAt, LASER, laserAngle } from '../map/cloud-nine.ts'
 
 /**
  * What moves and lives on Cloud Nine, in the browser: the window-washer's gondola (its collision
@@ -64,14 +64,20 @@ export class CloudNineLife {
     ) {
         this.buildGondola(eggs)
         this.buildPlane(eggs.topFragger)
+        this.buildElevator()
+        this.buildLaser()
         for (let i = 0; i < 2; i++) this.drones.push(this.buildDrone())
-        parent.add(this.gondola, this.plane, ...this.drones.map(d => d.group))
+        parent.add(this.gondola, this.plane, this.elevator, this.laser, ...this.drones.map(d => d.group))
         this.draw()
     }
 
     /** Each frame: the gondola where the step puts it, the plane and drones on their way, the screen. */
     update(now: number, step: number, head: Vector3 | null): void {
         this.gondola.position.x = gondolaAt(step).x
+        this.elevator.position.y = elevatorAt(step).y
+        // The laser: round from +x toward +z (three turns +y the other way), flickering a little.
+        this.laser.rotation.y = -laserAngle(step)
+        this.beam.opacity = 0.75 + Math.sin(now * 0.05) * 0.15
         // The plane: round its circle, plus whatever the blower did (drifting back).
         const a = (now / PLANE.lapMs) * Math.PI * 2
         this.planeOff.add(this.planeDrift.clone().multiplyScalar(0.016))
@@ -150,6 +156,77 @@ export class CloudNineLife {
     }
 
     // --- Building ---------------------------------------------------------------------------------
+
+    private readonly elevator = new Group()
+    private readonly laser = new Group()
+    private readonly beam = new MeshBasicMaterial({
+        color: 0xff4f9e,
+        transparent: true,
+        opacity: 0.85,
+        toneMapped: false,
+        depthWrite: false,
+    })
+
+    /** The elevator's car: a plate with a cyan edge and a little amber light, on rails up the tank. */
+    private buildElevator(): void {
+        const [hx, hy, hz] = ELEVATOR.half
+        const plate = new Mesh(
+            new BoxGeometry(hx * 2, hy * 2, hz * 2),
+            new MeshStandardMaterial({ color: 0x5a6a86, roughness: 0.5, metalness: 0.5 })
+        )
+        const edge = new Mesh(
+            new BoxGeometry(hx * 2 + 0.01, 0.01, hz * 2 + 0.01),
+            new MeshBasicMaterial({ color: 0x3fd8d0, toneMapped: false })
+        )
+        edge.position.y = hy
+        const lamp = new Mesh(
+            new SphereGeometry(0.02, 8, 6),
+            new MeshBasicMaterial({ color: 0xffcf6b, toneMapped: false })
+        )
+        lamp.position.set(hx - 0.04, hy + 0.02, hz - 0.04)
+        this.elevator.add(plate, edge, lamp)
+        this.elevator.position.set(ELEVATOR.x, elevatorAt(0).y, ELEVATOR.z)
+        // Its rails (fixed), either side, from the deck to the lid.
+        const rail = new MeshStandardMaterial({ color: 0x343e52, roughness: 0.4, metalness: 0.7 })
+        for (const side of [-1, 1]) {
+            const post = new Mesh(new BoxGeometry(0.04, ELEVATOR.top, 0.04), rail)
+            post.position.set(ELEVATOR.x + side * (hx + 0.04), ELEVATOR.top / 2, ELEVATOR.z - hz + 0.04)
+            this.rails.push(post)
+        }
+    }
+
+    /** The elevator's rails: fixed, added beside it by the scene. */
+    readonly rails: Mesh[] = []
+
+    /** The security laser: a thin magenta beam from the tank's legs to past the corners, and its emitter. */
+    private buildLaser(): void {
+        const length = LASER.outer - LASER.inner
+        const beam = new Mesh(new BoxGeometry(length, 0.012, 0.012), this.beam)
+        beam.position.set(LASER.inner + length / 2, 0.07, 0)
+        const glow = new Mesh(
+            new BoxGeometry(length, 0.05, 0.05),
+            new MeshBasicMaterial({
+                color: 0xff4f9e,
+                transparent: true,
+                opacity: 0.18,
+                toneMapped: false,
+                depthWrite: false,
+            })
+        )
+        glow.position.copy(beam.position)
+        const emitter = new Mesh(
+            new CylinderGeometry(0.06, 0.08, 0.1, 12),
+            new MeshStandardMaterial({
+                color: 0x1b2230,
+                roughness: 0.4,
+                metalness: 0.7,
+                emissive: 0xff4f9e,
+                emissiveIntensity: 0.4,
+            })
+        )
+        emitter.position.set(LASER.inner - 0.05, 0.05, 0)
+        this.laser.add(beam, glow, emitter)
+    }
 
     private buildGondola(eggs: CloudNineEggs): void {
         const [hx, hy, hz] = GONDOLA.half

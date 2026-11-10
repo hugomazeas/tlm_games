@@ -255,6 +255,13 @@ export class Sounds {
         this.tone('square', 110, 70, 0.05, 0.2, 0, out)
     }
 
+    /** Cloud Nine's laser catches someone: an electric zap. */
+    zap(where?: { gain: number; pan: number }): void {
+        const out = where ? this.place(where, 0.7) : undefined
+        this.tone('sawtooth', 1400, 300, 0.12, 0.25, 0, out)
+        this.burst(0.08, 'highpass', 5000, 3000, 0.3, 0, out)
+    }
+
     /** Shove's bat connects: a hollow wooden crack. */
     batHit(): void {
         this.tone('triangle', 420, 160, 0.09, 0.6)

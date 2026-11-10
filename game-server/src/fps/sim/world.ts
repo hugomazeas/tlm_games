@@ -6,7 +6,10 @@ import {
     CLOUD_NINE_BLOCKS,
     CLOUD_NINE_PICKUPS,
     CLOUD_NINE_SPAWNS,
+    CLOUD_NINE_SHIELD_MS,
     CLOUD_NINE_VENTS,
+    ELEVATOR,
+    elevatorAt,
     GONDOLA,
     gondolaAt,
 } from '../map/cloud-nine.ts'
@@ -47,6 +50,10 @@ export interface FpsWorld {
     movers?: readonly Mover[]
     /** The step the movers are at: the arena's (the server), its estimate (the browser). Each world its own. */
     clock?: { step: number }
+    /** Cloud Nine's security laser sweeps the deck (`LASER`). */
+    laser?: boolean
+    /** Spawn-shielded this long here (none: the usual 1.5 s). */
+    shieldMs?: number
 }
 
 /** A moving box: its half size, and where it is (its middle) and how fast it goes along x at a step. */
@@ -93,7 +100,12 @@ export function cloudNineWorld(): FpsWorld {
             walls: new Walls(),
             outBelow: CLOUD_NINE.outBelow,
             ceiling: CLOUD_NINE.ceiling,
-            movers: [{ half: GONDOLA.half, at: gondolaAt }],
+            movers: [
+                { half: GONDOLA.half, at: gondolaAt },
+                { half: ELEVATOR.half, at: elevatorAt },
+            ],
+            laser: true,
+            shieldMs: CLOUD_NINE_SHIELD_MS,
         }
     }
 
