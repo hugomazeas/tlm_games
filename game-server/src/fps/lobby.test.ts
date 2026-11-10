@@ -1049,7 +1049,7 @@ describe('messages', () => {
             { type: 'input', frames: [[1, 2, 0, 0, 0, 0, 0]] },
             { type: 'input', frames: [[0, 0, 0, 0, 0, 0, 0]] },
             { type: 'input', frames: [[1, 0, 0, 0, 2, 0, 0]] },
-            { type: 'input', frames: [[1, 0, 0, 0, 0, 64, 0]] },
+            { type: 'input', frames: [[1, 0, 0, 0, 0, 256, 0]] },
             { type: 'input', frames: [[1, 0, 0, null, 0, 0, 0]] },
             { type: 'input', frames: [[1, 0, 0, 0, 0, 0, 0, 3]] },
             { type: 'input', frames: [[1, 0, 0, 0, 0, 0, 0, 0, 0]] },

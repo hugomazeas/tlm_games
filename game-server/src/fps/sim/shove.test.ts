@@ -3,8 +3,10 @@ import { createRng } from '../../sim/rng.ts'
 import { BUTTON, type InputFrame, type Slot } from '../protocol.ts'
 import { Arena, SHIELD_STEPS } from './arena.ts'
 import { STEP_MS } from './movement.ts'
+import { BOWLING } from './places.ts'
 import { batHit, inCone, knockOf, SHOVE, stunOf } from './shove.ts'
 import { testWorld } from './testing.ts'
+import type { PickupSpot } from './places.ts'
 
 describe("Shove's numbers", () => {
     test('a hit throws further the higher the %, less far the heavier', () => {
@@ -39,7 +41,7 @@ describe("Shove's numbers", () => {
  * Two minis `apart` m apart facing each other, with Shove's kit, past their spawn shields; `wall`: a
  * wall 0.6 m behind the southern one (they stay in reach, however hard they're thrown).
  */
-function face(apart = 1, wall = false) {
+function face(apart = 1, wall = false, pickups: PickupSpot[] = []) {
     const room = testWorld(
         [
             { name: 'north', position: [0, 0, -apart / 2], yaw: Math.PI },
@@ -51,7 +53,8 @@ function face(apart = 1, wall = false) {
                   { min: [-3, 0, apart / 2 + 0.6], max: [3, 2, apart / 2 + 0.8] },
                   { min: [-3, 0, -apart / 2 - 0.5], max: [3, 2, -apart / 2 - 0.3] },
               ]
-            : []
+            : [],
+        pickups
     )
     const a = new Arena(room, createRng(1))
     a.setKit('shove')
@@ -146,6 +149,71 @@ describe('Shove in the arena', () => {
         expect(first.percent).toBe(SHOVE.extinguisher.percent)
         expect(later.percent).toBe(SHOVE.extinguisher.percent * 6)
         expect(later.lift).toBeGreaterThan(first.lift * 1.3)
+    })
+
+    test('grab (E) holds them up in front of you; a click throws them', () => {
+        const { a, step, north, south } = face(0.5)
+        expect(step({ [north]: { buttons: BUTTON.grab } }).find(e => e.type === 'grab')).toMatchObject({
+            by: north,
+            target: south,
+        })
+        expect(a.shoveThings().holds).toEqual([[north, south]])
+        for (let i = 0; i < 10; i++) step({ [north]: { yaw: Math.PI + 0.5 } })
+        // Carried in front of the holder, wherever they turn.
+        const them = a.self(south)!.body
+        const me = a.self(north)!.body
+        expect(them.held).toBe(true)
+        expect(Math.hypot(them.x - me.x, them.z - me.z)).toBeCloseTo(0.3, 1)
+
+        step({ [north]: { buttons: BUTTON.fire } })
+        expect(a.shoveThings().holds).toEqual([])
+        expect(a.self(south)).toMatchObject({ percent: SHOVE.grab.percent })
+        expect(a.self(south)!.body.held).toBe(false)
+        expect(Math.hypot(a.self(south)!.body.vx, a.self(south)!.body.vz)).toBeGreaterThan(3)
+    })
+
+    test('held, enough presses of Space break free; else they drop after a while', () => {
+        const { a, step, north, south } = face(0.5)
+        step({ [north]: { buttons: BUTTON.grab } })
+        for (let i = 0; i < SHOVE.grab.mash; i++) {
+            step({ [south]: { buttons: BUTTON.jet } })
+            step()
+        }
+        expect(a.shoveThings().holds).toEqual([])
+
+        step()
+        step({ [north]: { buttons: BUTTON.grab } })
+        expect(a.shoveThings().holds).toHaveLength(1)
+        for (let i = 0; i < Math.ceil(SHOVE.grab.holdMs / STEP_MS) + 2; i++) step()
+        expect(a.shoveThings().holds).toEqual([])
+    })
+
+    test('a bowling ball rolls off the way you face and bowls them over', () => {
+        // The pickup just behind the northern spawn: they back onto it, facing south.
+        const { a, step, north, south } = face(1.2, false, [{ x: 0, z: -1.2, kind: 'bowling', room: 'here' }])
+        let struck = false
+        for (let i = 0; i < 120 && !struck; i++) {
+            step({ [north]: { forward: a.shoveThings().balls.length ? 0 : -1 } })
+            struck = (a.self(south)!.percent ?? 0) > 0
+        }
+        expect(a.self(south)!.percent).toBe(BOWLING.percent)
+        expect(a.self(south)!.body.vz).toBeGreaterThan(2)
+    })
+
+    test('a spring trap (G) goes off under the next one to step on it, not its owner', () => {
+        const { a, step, north, south } = face(1, false, [{ x: 0, z: -0.5, kind: 'spring', room: 'here' }])
+        expect(a.self(north)!.buffs.map(b => b.kind)).toContain('spring')
+        step({ [north]: { buttons: BUTTON.drop } })
+        expect(a.shoveThings().traps).toHaveLength(1)
+        // The owner steps off it; the other walks over it once it's armed.
+        for (let i = 0; i < 40; i++) step({ [north]: { forward: -1 } })
+        let sprung
+        for (let i = 0; i < 120 && !sprung; i++) {
+            sprung = step({ [south]: { forward: 1 } }).find(e => e.type === 'sprung')
+        }
+        expect(sprung).toMatchObject({ on: south })
+        expect(a.self(south)!.body.vy).toBeGreaterThan(5)
+        expect(a.shoveThings().traps).toEqual([])
     })
 
     test('a gust drifts whoever stands, not whoever lies prone', () => {

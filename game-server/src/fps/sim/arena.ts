@@ -13,6 +13,7 @@ import {
     type Loadout,
     type PlayerState,
     type RocketState,
+    type ShoveThings,
     type SelfState,
     type Slot,
     type Team,
@@ -30,6 +31,8 @@ import {
     HEALTH_PACK,
     MAGAZINE_FACTOR,
     MAGNET,
+    BOWLING,
+    SPRING,
     OVERTIME,
     PICKUP_HEIGHT,
     PICKUP_REACH,
@@ -60,7 +63,7 @@ import {
     swingStapler,
     type Target,
 } from './combat.ts'
-import { type Body, bodyAt, isJetting, moveOf, scaleOf, sizeAt, sizeOf, STEP_MS, stepBody } from './movement.ts'
+import { type Body, bodyAt, isJetting, MOVE, moveOf, scaleOf, sizeAt, sizeOf, STEP_MS, stepBody } from './movement.ts'
 import { supported } from './building.ts'
 import { BUILD, stateOf, type Wall } from './walls.ts'
 import { collideCapsule, type FpsWorld, rayDistance } from './world.ts'
@@ -107,6 +110,27 @@ interface GunState {
     /** Reloading until this frame of theirs (0: not). */
     reloadUntil: number
     nextShotAt: number
+}
+
+/** Shove's bowling ball, rolling: whose, where, how fast, since when, and who it has bowled over. */
+interface Ball {
+    id: number
+    by: string
+    position: Vector3
+    velocity: Vector3
+    born: number
+    struck: Set<string>
+}
+
+/** Shove's spring trap, lying: whose, where, armed from this step, gone at that one. */
+interface Trap {
+    id: number
+    by: string
+    x: number
+    y: number
+    z: number
+    armedAt: number
+    goneAt: number
 }
 
 interface Rocket {
@@ -191,6 +215,16 @@ interface Fighter {
     anvilUntil: number
     bubbleUntil: number
     magnetUntil: number
+    /** Shove: carrying a spring trap to drop (G), until this step. */
+    springUntil: number
+    /** Shove's grab: whom they hold, who holds them (since when, Space presses to break free). */
+    holding: string | null
+    heldBy: string | null
+    heldAt: number
+    mash: number
+    /** E and G in their last frame (each acts on a fresh press). */
+    grabWas: boolean
+    dropWas: boolean
     /** Their next wall can go up from this step. */
     nextBuildAt: number
 }
@@ -220,6 +254,42 @@ export class Arena {
     private kit: 'guns' | 'shove' = 'guns'
     /** A gust blowing now (m/s on the floor plan; zero: none). */
     private wind = { x: 0, z: 0 }
+    /** Shove's bowling balls rolling, and spring traps lying. */
+    private balls: Ball[] = []
+    private traps: Trap[] = []
+    private nextThingId = 1
+
+    /** Shove's things, for the snapshots. */
+    shoveThings(): ShoveThings {
+        const holds: Array<[string, string]> = []
+        for (const f of this.fighters.values()) if (f.holding) holds.push([f.id, f.holding])
+        return {
+            balls: this.balls.map(b => ({
+                id: b.id,
+                x: round(b.position.x, 3),
+                y: round(b.position.y, 3),
+                z: round(b.position.z, 3),
+                vx: round(b.velocity.x, 2),
+                vz: round(b.velocity.z, 2),
+            })),
+            traps: this.traps.map(t => ({
+                id: t.id,
+                x: round(t.x, 3),
+                y: round(t.y, 3),
+                z: round(t.z, 3),
+                armed: this.step >= t.armedAt,
+                by: t.by,
+            })),
+            holds,
+        }
+    }
+
+    /** Nothing of Shove's left lying or rolling, nobody held (a new map, a new kit, a new match). */
+    private clearShove(): void {
+        this.balls = []
+        this.traps = []
+        for (const f of this.fighters.values()) this.letGo(f)
+    }
 
     /** Guns or Shove's tools, for everyone (a Shove match, or back to the guns). Everyone's % back to 0. */
     setKit(kit: 'guns' | 'shove'): void {
@@ -229,6 +299,7 @@ export class Arena {
             f.chargeFrom = null
             f.out = false
         }
+        this.clearShove()
         this.rollPickups()
     }
 
@@ -270,6 +341,7 @@ export class Arena {
         this.pickupAt = world.pickups.map(() => 0)
         this.rollPickups()
         this.rockets = []
+        this.clearShove()
         this.history.length = 0
         this.pending = this.pending.filter(e => e.type !== 'built' && e.type !== 'wallHit' && e.type !== 'wallGone')
     }
@@ -354,6 +426,13 @@ export class Arena {
             anvilUntil: 0,
             bubbleUntil: 0,
             magnetUntil: 0,
+            springUntil: 0,
+            holding: null,
+            heldBy: null,
+            heldAt: 0,
+            mash: 0,
+            grabWas: false,
+            dropWas: false,
         }
         this.fighters.set(id, fighter)
 
@@ -362,6 +441,8 @@ export class Arena {
 
     /** Out of the game. Their walls stay up, nobody's from now on: no one inherits them, their side included. */
     remove(id: string): void {
+        const leaving = this.fighters.get(id)
+        if (leaving) this.letGo(leaving)
         this.fighters.delete(id)
         for (const wall of [...this.world.walls.all]) {
             if (wall.by === id) this.change(wall, { by: null, team: null })
@@ -509,6 +590,7 @@ export class Arena {
         this.pickupAt.fill(0)
         this.rollPickups()
         this.rockets = []
+        this.clearShove()
         // A clean office for the match.
         this.world.walls.clear()
         this.pending = this.pending.filter(e => e.type !== 'built' && e.type !== 'wallHit' && e.type !== 'wallGone')
@@ -543,6 +625,8 @@ export class Arena {
      */
     advance(): ArenaEvent[] {
         this.step++
+        // The moving things (Cloud Nine's gondola) are where this step puts them.
+        if (this.world.clock) this.world.clock.step = this.step
         const events: ArenaEvent[] = this.pending
         this.pending = []
         for (const fighter of this.fighters.values()) {
@@ -587,6 +671,11 @@ export class Arena {
         }
         this.flyRockets(events)
         this.magnets()
+        if (this.shove) {
+            this.carryHeld(events)
+            this.rollBalls(events)
+            this.springTraps(events)
+        }
         for (const fighter of this.fighters.values()) {
             if (!fighter.alive && this.step >= fighter.respawnAt) events.push(this.spawn(fighter))
         }
@@ -689,6 +778,7 @@ export class Arena {
         until('anvil', f.anvilUntil)
         until('bubble', f.bubbleUntil)
         until('magnet', f.magnetUntil)
+        until('spring', f.springUntil)
         return buffs
     }
 
@@ -771,6 +861,12 @@ export class Arena {
                 case 'magnet':
                     f.magnetUntil = until
                     break
+                case 'bowling':
+                    this.rollBall(f)
+                    break
+                case 'spring':
+                    f.springUntil = until
+                    break
             }
             f.health = Math.min(f.health, maxHealthOf(f.body))
             this.pickupAt[index] = this.step + steps(info.respawnMs)
@@ -793,6 +889,11 @@ export class Arena {
         fighter.yaw = frame.yaw
         fighter.pitch = frame.pitch
         const input = moveOf(frame)
+        // Held up (Shove): every fresh press of Space is a wriggle; enough of them and you're free.
+        if (fighter.heldBy && input.jet && !fighter.body.spaceHeld && ++fighter.mash >= SHOVE.grab.mash) {
+            const holder = this.fighters.get(fighter.heldBy)
+            if (holder) this.letGo(holder, events)
+        }
         fighter.jetting = isJetting(fighter.body, input)
         fighter.body = stepBody(this.world, fighter.body, input)
         if (this.fellOut(fighter, events)) return
@@ -1055,6 +1156,32 @@ export class Arena {
         const firing = Boolean(frame.buttons & BUTTON.fire)
         const eye = eyeOf(f.body)
         const aim = aimDirection(frame.yaw, frame.pitch)
+        // E and G act on a fresh press.
+        const grab = Boolean(frame.buttons & BUTTON.grab)
+        const freshGrab = grab && !f.grabWas
+        f.grabWas = grab
+        const drop = Boolean(frame.buttons & BUTTON.drop)
+        const freshDrop = drop && !f.dropWas
+        f.dropWas = drop
+        // Held up by someone: nothing to do but wriggle.
+        if (f.heldBy) return
+        if (freshDrop && f.springUntil > this.step) this.dropTrap(f)
+        // Holding someone: a click throws them, E lets go; the tools wait.
+        if (f.holding) {
+            const held = this.fighters.get(f.holding)
+            if (held && f.clicked) {
+                f.clicked = false
+                this.letGo(f, events)
+                this.throw(f, held, aim, SHOVE.grab.knock, SHOVE.grab.percent, 'throw', events)
+            } else if (freshGrab) {
+                this.letGo(f, events)
+            }
+            return
+        }
+        if (freshGrab) {
+            this.grab(f, frame, eye, aim, events)
+            return
+        }
         if (f.slot === 'primary') {
             if (!firing) return
             const { blower } = SHOVE
@@ -1206,6 +1333,167 @@ export class Arena {
         return size * (f.anvilUntil > this.step ? ANVIL.weight : 1)
     }
 
+    /** Grabs whoever is within reach in front of you (up, not held, not a giant): held up in front of you. */
+    private grab(f: Fighter, frame: InputFrame, eye: Vector3, aim: Vector3, events: ArenaEvent[]): void {
+        const reach = SHOVE.grab.reach * scaleOf(f.body)
+        const reached = swingStapler(this.world, eye, aim, this.targetsAt(frame.view, f.id), reach)
+        const victim = reached ? this.fighters.get(reached.id) : undefined
+        if (!victim || !this.hurts(victim) || victim.heldBy || victim.holding) return
+        if (this.weightOf(victim) > SHOVE.grab.maxWeight) return
+        f.shieldUntil = 0
+        f.holding = victim.id
+        victim.heldBy = f.id
+        victim.heldAt = this.step
+        victim.mash = 0
+        victim.chargeFrom = null
+        victim.body = { ...victim.body, held: true }
+        victim.lastHit = { by: f.id, weapon: 'throw', step: this.step }
+        events.push({ type: 'grab', by: f.id, target: victim.id })
+    }
+
+    /** Whoever `f` holds, or whoever holds `f`: let go (they drop where they are). */
+    private letGo(f: Fighter, events?: ArenaEvent[]): void {
+        const pairs: Array<[Fighter, Fighter]> = []
+        const held = f.holding ? this.fighters.get(f.holding) : undefined
+        if (held) pairs.push([f, held])
+        const holder = f.heldBy ? this.fighters.get(f.heldBy) : undefined
+        if (holder) pairs.push([holder, f])
+        f.holding = null
+        f.heldBy = null
+        f.body = { ...f.body, held: false }
+        for (const [h, v] of pairs) {
+            h.holding = null
+            v.heldBy = null
+            v.body = { ...v.body, held: false }
+            events?.push({ type: 'grab', by: h.id, target: null })
+        }
+    }
+
+    /** Everyone held, carried in front of their holder (up to SHOVE.grab.holdMs, then dropped). */
+    private carryHeld(events: ArenaEvent[]): void {
+        for (const h of this.fighters.values()) {
+            const v = h.holding ? this.fighters.get(h.holding) : undefined
+            if (!h.holding) continue
+            if (!v || !v.alive || !h.alive || this.step - v.heldAt > steps(SHOVE.grab.holdMs)) {
+                this.letGo(h, events)
+                continue
+            }
+            const scale = scaleOf(h.body)
+            const ahead = 0.3 * scale
+            v.body = {
+                ...v.body,
+                x: h.body.x - Math.sin(h.yaw) * ahead,
+                y: h.body.y + 0.16 * scale,
+                z: h.body.z - Math.cos(h.yaw) * ahead,
+                vx: 0,
+                vy: 0,
+                vz: 0,
+                held: true,
+            }
+        }
+    }
+
+    /** A spring trap down at their feet (armed a moment later). */
+    private dropTrap(f: Fighter): void {
+        f.springUntil = 0
+        this.traps.push({
+            id: this.nextThingId++,
+            by: f.id,
+            x: f.body.x,
+            y: f.body.y,
+            z: f.body.z,
+            armedAt: this.step + steps(SPRING.armMs),
+            goneAt: this.step + steps(SPRING.lifeMs),
+        })
+    }
+
+    /** Armed traps: the first one (not whoever dropped it) to step on one goes straight up. */
+    private springTraps(events: ArenaEvent[]): void {
+        this.traps = this.traps.filter(trap => {
+            if (this.step >= trap.goneAt) return false
+            if (this.step < trap.armedAt) return true
+            for (const v of this.fighters.values()) {
+                if (!v.alive || v.id === trap.by || v.heldBy) continue
+                const near = Math.hypot(v.body.x - trap.x, v.body.z - trap.z) <= SPRING.reach
+                if (!near || Math.abs(v.body.y - trap.y) > 0.15) continue
+                const by = this.fighters.get(trap.by)
+                if (by) this.addPercent(by, v, SPRING.percent, 'spring', events)
+                const weight = this.weightOf(v)
+                v.body = {
+                    ...v.body,
+                    vy: SPRING.launch / Math.sqrt(weight),
+                    onGround: false,
+                    stun: Math.max(v.body.stun, stunOf(4)),
+                }
+                events.push({ type: 'sprung', id: trap.id, on: v.id, at: [trap.x, trap.y, trap.z] })
+                return false
+            }
+            return true
+        })
+    }
+
+    /** A bowling ball off the way they face. */
+    private rollBall(f: Fighter): void {
+        const ahead = new Vector3(-Math.sin(f.yaw), 0, -Math.cos(f.yaw))
+        const at = new Vector3(f.body.x, f.body.y + BOWLING.radius, f.body.z).addScaledVector(ahead, 0.25)
+        this.balls.push({
+            id: this.nextThingId++,
+            by: f.id,
+            position: at,
+            velocity: ahead.multiplyScalar(BOWLING.speed),
+            born: this.step,
+            struck: new Set(),
+        })
+    }
+
+    /**
+     * The balls, a step: rolling on whatever is under them (falling where nothing is), bouncing off
+     * what they meet, bowling over whoever they reach (once each; not their roller at first).
+     */
+    private rollBalls(events: ArenaEvent[]): void {
+        const dt = STEP_MS / 1000
+        const down = new Vector3(0, -1, 0)
+        const lowest = (this.world.outBelow ?? LOST_BELOW) - 2
+        this.balls = this.balls.filter(ball => {
+            if (this.step - ball.born > steps(BOWLING.lifeMs) || ball.position.y < lowest) return false
+            const p = ball.position
+            const v = ball.velocity
+            // Ahead: something in the way bounces it back along that axis.
+            for (const axis of ['x', 'z'] as const) {
+                const speed = v[axis]
+                if (Math.abs(speed) < 1e-3) continue
+                const dir = new Vector3(axis === 'x' ? Math.sign(speed) : 0, 0, axis === 'z' ? Math.sign(speed) : 0)
+                const reach = Math.abs(speed) * dt + BOWLING.radius
+                if (rayDistance(this.world, p, dir, reach) < reach) v[axis] = -speed * 0.7
+            }
+            p.x += v.x * dt
+            p.z += v.z * dt
+            // Under it: the floor it rolls on, or a fall.
+            const floor = rayDistance(this.world, p, down, 0.5)
+            if (floor <= BOWLING.radius + 0.02 && v.y <= 0) {
+                p.y += BOWLING.radius - floor
+                v.y = 0
+            } else {
+                v.y += MOVE.gravity * dt
+                p.y += v.y * dt
+            }
+            const by = this.fighters.get(ball.by)
+            for (const f of this.fighters.values()) {
+                if (!f.alive || ball.struck.has(f.id) || f.heldBy) continue
+                if (f.id === ball.by && this.step - ball.born < steps(400)) continue
+                const size = sizeOf(f.body)
+                const near = Math.hypot(f.body.x - p.x, f.body.z - p.z) <= size.radius + BOWLING.radius
+                if (!near || p.y < f.body.y - BOWLING.radius || p.y > f.body.y + size.height) continue
+                // Spawn-shielded: it rolls on through (and may get them later).
+                if (!this.hurts(f)) continue
+                ball.struck.add(f.id)
+                if (!by || by === f) continue
+                this.throw(by, f, v.clone().normalize(), BOWLING.knock, BOWLING.percent, 'ball', events)
+            }
+            return true
+        })
+    }
+
     /** Shove's magnets: whoever holds one pulls everyone near them in. */
     private magnets(): void {
         const dt = STEP_MS / 1000
@@ -1304,6 +1592,8 @@ export class Arena {
         how: { headshot: boolean; weapon: Weapon; backstab: boolean; fall?: boolean },
         events: ArenaEvent[]
     ): void {
+        // Down: whoever they held drops, whoever held them lets go.
+        this.letGo(victim, events)
         // Read before they lose their powers below (the killer's are theirs, but they may be the same).
         const recap = by && by !== victim ? this.recap(by, victim, how.weapon) : undefined
         victim.alive = false
@@ -1406,6 +1696,7 @@ export class Arena {
         f.anvilUntil = 0
         f.bubbleUntil = 0
         f.magnetUntil = 0
+        f.springUntil = 0
     }
 
     private remember(): void {

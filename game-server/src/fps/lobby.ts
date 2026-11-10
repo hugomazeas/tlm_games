@@ -966,6 +966,7 @@ export class FpsLobby {
                 zone,
                 holds,
                 rockets,
+                shove: this.arena.shove ? this.arena.shoveThings() : null,
             })
         }
     }

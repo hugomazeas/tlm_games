@@ -1,6 +1,7 @@
 import {
     type BuffKind,
     FRAG_LIMITS,
+    isGun,
     isTool,
     type KillRecap,
     limitsOf,
@@ -333,6 +334,7 @@ export class Hud {
                 <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> weapons (or the wheel, <kbd>Q</kbd> the last) · <kbd>V</kbd> 1st / 3rd person<br>
                 <kbd>B</kbd> build walls (click to place, <kbd>R</kbd> turn, wheel flat / standing, <kbd>F</kbd> door, <kbd>G</kbd> window, <kbd>E</kbd> take back)<br>
                 <kbd>F</kbd> open / shut your side's doors<br>
+                Shove: <kbd>1</kbd> blower · <kbd>2</kbd> extinguisher · <kbd>3</kbd> bat · <kbd>E</kbd> grab (click throws) · <kbd>G</kbd> drop a spring trap<br>
                 <kbd>Tab</kbd> scores · <kbd>Esc</kbd> this menu · <kbd>N</kbd> next match (the host)</p>${back}`,
             playing: '',
             setup: '',
@@ -593,7 +595,7 @@ export class Hud {
             write(this.el.ammo!, `<small>${name} ${slots}</small><span style="font-size:16px">${how}</span>`)
         } else if (self.weapon === 'stapler') {
             write(this.el.ammo!, `<small>${name} ${slots}</small><span style="font-size:22px">📎 swing</span>`)
-        } else {
+        } else if (isGun(self.weapon)) {
             const big = self.magazine > magazineOf(self.weapon) ? ' style="color:#f2b134"' : ''
             const endless = self.buffs.some(b => b.kind === 'overtime')
             const rounds = endless
@@ -1058,8 +1060,8 @@ const MAP_ART: Record<MapId, string> = {
 
 /** Shove's tools: how each is used (the bat shows its wind-up instead). */
 const TOOL_HINTS: Record<'blower' | 'extinguisher', string> = {
-    blower: 'hold to blow · aim down to hover',
-    extinguisher: 'blast · kicks you back',
+    blower: 'hold to blow · aim down to hover · E grab',
+    extinguisher: 'blast · kicks you back · E grab',
 }
 
 /** Shove's lives as hearts: those left, then those lost (out of `of`). */
@@ -1112,6 +1114,7 @@ export const BUFF_LABELS: Record<BuffKind, { icon: string; label: string }> = {
     anvil: { icon: '🧱', label: 'Anvil' },
     bubble: { icon: '🫧', label: 'Bubble' },
     magnet: { icon: '🧲', label: 'Magnet' },
+    spring: { icon: '🪤', label: 'Spring trap (G)' },
 }
 export const BUFF_COLORS: Record<BuffKind, string> = {
     magazine: '#f2b134',
@@ -1127,6 +1130,7 @@ export const BUFF_COLORS: Record<BuffKind, string> = {
     anvil: '#9aa3ad',
     bubble: '#9fe3ff',
     magnet: '#ff5a5a',
+    spring: '#7cf75a',
 }
 
 /** How you went down, as the kill event told it. */

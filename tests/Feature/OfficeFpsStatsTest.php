@@ -274,7 +274,7 @@ class OfficeFpsStatsTest extends TestCase
     public function test_a_shove_match_on_cloud_nine_keeps_its_ring_outs_by_tool(): void
     {
         $match = $this->match(['mode' => 'shove', 'map' => 'cloud-nine', 'frag_limit' => 3]);
-        $match['kills'] = collect(['blower', 'extinguisher', 'bat'])
+        $match['kills'] = collect(['blower', 'extinguisher', 'bat', 'throw', 'ball', 'spring'])
             ->map(fn (string $weapon, int $i) => ['killer_id' => $this->ann->id, 'victim_id' => $this->bob->id, 'weapon' => $weapon, 'headshot' => false, 'backstab' => false, 'at_ms' => 1000 * ($i + 1)])
             ->all();
         $this->postJson('/internal/office-fps/results', $match, $this->secret())->assertCreated();

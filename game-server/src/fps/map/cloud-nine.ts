@@ -94,6 +94,34 @@ export const CLOUD_NINE_PICKUPS: readonly PickupSpot[] = [
     { x: 0, z: 2.2, room: 'the south side', roomy: true },
 ]
 
+/**
+ * The window-washer's gondola: a platform hanging 1.45 m under the deck along its front edge,
+ * swinging from end to end and past them (18 m) every 14 s. Stand on it and it carries you; fall
+ * onto it and it saves you. Where it is follows from the step alone, so the server and every
+ * browser agree.
+ */
+export const GONDOLA = {
+    /** Its half size (m), and its top's height. */
+    half: [0.8, 0.06, 0.4] as const,
+    top: -1.45,
+    /** Just out from the deck's front edge (z = 3): it catches who's knocked off that side. */
+    z: 3.45,
+    /** It swings ±reach m round x = 0, once there and back every `periodSteps`. */
+    reach: 9,
+    periodSteps: 14 * 60,
+} as const
+
+/** The gondola at step `step`: its middle, and its speed (m/s along x). */
+export function gondolaAt(step: number): { x: number; y: number; z: number; vx: number } {
+    const phase = (2 * Math.PI * step) / GONDOLA.periodSteps
+    return {
+        x: GONDOLA.reach * Math.sin(phase),
+        y: GONDOLA.top - GONDOLA.half[1],
+        z: GONDOLA.z,
+        vx: ((GONDOLA.reach * 2 * Math.PI) / (GONDOLA.periodSteps / 60)) * Math.cos(phase),
+    }
+}
+
 /** A block's triangles (all six sides), into `out` as x, y, z triples. */
 export function boxTriangles({ min, max }: Pick<Block, 'min' | 'max'>, out: number[]): void {
     const [x0, y0, z0] = min

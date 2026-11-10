@@ -18,8 +18,7 @@ import {
     type GameEvent,
     type Gun,
     type InputFrame,
-    isMelee,
-    isTool,
+    isGun,
     type Loadout,
     LOBBY_MAP,
     type MapId,
@@ -71,6 +70,8 @@ import { SHOVE } from '../sim/shove.ts'
 import { type FpsWorld, rayDistance, rayHit, worldFrom } from '../sim/world.ts'
 import { WallViews } from './building.ts'
 import { buildCloudNine, mapLooks } from './cloud-nine.ts'
+import type { CloudNineEggs } from './cloud-nine-life.ts'
+import { ShoveViews } from './shove-views.ts'
 import { Impacts } from './impacts.ts'
 import { Avatars } from './avatars.ts'
 import { announce, taunt } from './callouts.ts'
@@ -100,6 +101,8 @@ interface Config {
     playerId: number | null
     name: string
     backUrl: string
+    /** Cloud Nine's easter eggs (the Hub's: this week's top fragger, a driver's helmet). */
+    easterEggs?: CloudNineEggs
 }
 declare global {
     interface Window {
@@ -143,8 +146,12 @@ const officeExtras = new Group()
 scene.add(officeExtras)
 // Cloud Nine, built now (a few blocks and canvases) and hidden: the shader warm-up meets it, and a
 // match there never waits for this browser.
-const cloudNine = buildCloudNine()
+const cloudNine = buildCloudNine(
+    config.easterEggs ?? { topFragger: null, helmet: { name: 'Guest', body: '#d23c3c', accent: '#2b5fa8' } }
+)
 scene.add(cloudNine.group)
+/** Shove's balls and traps (only ever on Cloud Nine). */
+const shoveViews = new ShoveViews(cloudNine.group)
 /** Each map's world (what you collide with and predict on) and its pickups, pads and portals. */
 const places = {
     office: { world: worldFrom(office), parent: officeExtras as Object3D },
@@ -301,6 +308,8 @@ let nextLocalSwing = 0
 /** Shove: the bat was held last step (let go, it swings), and your blower is running. */
 let batHeld = false
 let blowingNow = false
+/** The plane's cheer, at most every few seconds. */
+let nextCheer = 0
 let wasFiring = false
 /** When your reload ends on this clock (null: not reloading); the ring and the animation run to it. */
 let reloadEndsAt: number | null = null
@@ -658,6 +667,11 @@ function snapshot(snap: Extract<ServerMessage, { type: 'snap' }>, now: number): 
     teams = new Map(snap.players.map(p => [p.id, p.team]))
     pickupsReady = snap.pickups
     rockets = snap.rockets
+    shoveViews.set(snap.shove ?? null, now)
+    // The tank's screen: Shove's leader and their %.
+    const leader = match?.mode === 'shove' && match.phase === 'playing' ? match.scores[0] : undefined
+    const leaderState = leader?.id ? snap.players.find(p => p.id === leader.id) : undefined
+    cloudNine.life.showLeader(leader?.name ?? null, leaderState?.percent ?? null)
     rocketsAt = now
     // The launcher in hand loaded again: a click.
     const loaded = self?.weapon === 'launcher' && self.ammo > 0 && !self.reloading
@@ -846,6 +860,21 @@ function onEvent(event: GameEvent, now: number): void {
         return
     }
     // Shove: a gust on its way, said with the way it'll blow (from where you're looking).
+    // Shove: a grab (said to both sides), a let-go, a spring trap going off.
+    if (event.type === 'grab') {
+        if (event.target === me) hud.toast('GRABBED! MASH SPACE TO BREAK FREE', '#ff4d4d')
+        else if (event.by === me && event.target) hud.toast('CLICK: THROW · E: LET GO', '#ffd166')
+        const at = avatars.centerOf(event.by)
+        if (event.target && at) sounds.swing(spatial(listener(), at))
+        return
+    }
+    if (event.type === 'sprung') {
+        const at = new Vector3(...event.at)
+        effects.burst(at, '#7cf75a', now)
+        sounds.pad()
+        if (event.on === me) hud.toast('BOING!', '#7cf75a')
+        return
+    }
     if (event.type === 'gust') {
         hud.toast(`GUST ${arrowFor(event.x, event.z)} IN ${Math.ceil(event.inMs / 1000)} s · GET LOW (C)`, '#9fe3ff')
         sounds.zoneMoved()
@@ -932,6 +961,8 @@ const PICKUP_TOASTS: Record<PickupKind, string> = {
     anvil: 'ANVIL: HEAVY, HITS COUNT DOUBLE, 8 s',
     bubble: 'BUBBLE: ONE SAVE FROM A FALL',
     magnet: 'MAGNET: PULLS EVERYONE IN, 3 s',
+    bowling: 'BOWLING BALL: STRIKE!',
+    spring: 'SPRING TRAP: G TO DROP IT',
 }
 
 /** A way across the floor plan as an arrow on screen, from where you're looking (↑ ahead, → to your right). */
@@ -948,7 +979,7 @@ function arrowFor(x: number, z: number): string {
 
 /** The gun in hand, if it's a gun (not the stapler, not one of Shove's tools). */
 function gunOf(weapon: Weapon): Gun | null {
-    return isMelee(weapon) || isTool(weapon) ? null : weapon
+    return isGun(weapon) ? weapon : null
 }
 
 /** A point in the world on screen (px), or null when it's behind the camera. */
@@ -1108,6 +1139,9 @@ requestAnimationFrame(frame)
 
 /** One 60 Hz step of yours: a frame, applied here and queued for the server. */
 function step(now: number): void {
+    // What moves on the step (Cloud Nine's gondola): where the server has it now, for the prediction.
+    const serverStep = clock.step(now)
+    if (world.clock && serverStep !== null) world.clock.step = Math.round(serverStep)
     if (!socket || socket.readyState !== WebSocket.OPEN || !me || !self) return
     const keys = controls.locked ? controls.read() : { forward: 0, strafe: 0, buttons: 0 }
     const body = prediction.body
@@ -1172,9 +1206,16 @@ function step(now: number): void {
     // Shove's tools, at once here too: the blower's air and roar, the extinguisher's blast and kick,
     // the bat's wind-up and swing (the server says what they hit).
     const blowing = ready && holding && held === 'blower' && self.weapon === held
+    const onCloud = mapNow === 'cloud-nine' && prediction.body !== null
     if (blowing) {
         viewmodel?.fire(now)
         effects.air(viewmodel?.muzzleIn() ?? eyeOf(prediction.body!), aimNow(prediction.body!), now)
+        // The paper plane with this week's top fragger on it: blown off course, a cheer.
+        if (onCloud && cloudNine.life.blowPlane(eyeOf(prediction.body!), aimNow(prediction.body!)) && now > nextCheer) {
+            nextCheer = now + 3000
+            hud.toast('🎉 YOU BLEW THE TOP FRAGGER’S PLANE AWAY', '#ffd166')
+            sounds.callout(1)
+        }
     }
     blowingNow = blowing
     sounds.blowing(blowing && controls.locked)
@@ -1183,6 +1224,10 @@ function step(now: number): void {
         viewmodel?.fire(now)
         effects.spray(viewmodel?.muzzleIn() ?? eyeOf(prediction.body!), aimNow(prediction.body!), now)
         sounds.spray()
+        // Blasting the tank's screen: it glitches to a hot potato ad.
+        if (onCloud && cloudNine.life.hitScreen(eyeOf(prediction.body!), aimNow(prediction.body!), 6, now)) {
+            hud.toast('📺 SCREEN HACKED: HOT POTATO AD', '#ffb347')
+        }
     }
     if (viewmodel) viewmodel.charge = held === 'bat' ? self.charge : null
     if (ready && held === 'bat' && self.weapon === held && !holding && batHeld && now >= nextLocalSwing) {
@@ -1190,6 +1235,15 @@ function step(now: number): void {
         viewmodel?.swing(now)
         if (me) avatars.swing(me, now)
         sounds.swing()
+        // A camera drone in reach of the swing: it follows you, filming, the tank's screen LIVE on you.
+        const eye = eyeOf(prediction.body!)
+        const swungAt = eye.clone().addScaledVector(aimNow(prediction.body!), 0.4)
+        if (onCloud && cloudNine.life.batDrone(swungAt, roster.get(me!)?.name ?? config.name)) {
+            hud.toast('🎥 YOU’RE LIVE: A DRONE IS FILMING YOU', '#3fd8d0')
+        }
+        if (onCloud && cloudNine.life.hitScreen(eye, aimNow(prediction.body!), 1, now)) {
+            hud.toast('📺 SCREEN HACKED: HOT POTATO AD', '#ffb347')
+        }
     }
     batHeld = holding && held === 'bat'
     if (ready && holding && held === 'stapler' && now >= nextLocalSwing) {
@@ -1416,7 +1470,13 @@ function draw(now: number): void {
     here.pickups.update(pickupsReady, now)
     here.pads.update(now)
     here.portals.update(now)
-    if (mapNow === 'cloud-nine') cloudNine.update(now)
+    if (mapNow === 'cloud-nine') {
+        cloudNine.update(now)
+        // The drone that films you hovers at your shoulder while you're up.
+        const head = self?.alive && prediction.body ? eyeOf(prediction.body) : null
+        cloudNine.life.update(now, world.clock?.step ?? 0, head)
+        shoveViews.update(now)
+    }
     zoneView.update(zone, colorOf, zone !== null && zone.holder === me, now)
     const siege = match?.phase === 'playing' ? match.siege : null
     // Siege's spot: white, or the attackers' colour while one of them stands in it.

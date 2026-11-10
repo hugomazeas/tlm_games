@@ -29,6 +29,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { createRng } from '../../sim/rng.ts'
 import { CLOUD_NINE, CLOUD_NINE_BLOCKS, type CloudNineLook } from '../map/cloud-nine.ts'
 import type { Office } from '../map/office.js'
+import { CloudNineLife, type CloudNineEggs } from './cloud-nine-life.ts'
 import type { MapId } from '../protocol.ts'
 import { cloudNineWorld, type FpsWorld } from '../sim/world.ts'
 
@@ -46,7 +47,9 @@ export const NEON = { cyan: 0x3fd8d0, magenta: 0xff4f9e, amber: 0xffcf6b } as co
 export interface CloudNineScene {
     group: Group
     world: FpsWorld
-    /** Blinks and scrolls (the antenna, the screens). */
+    /** The gondola, the tank's screen, the plane and the drones. */
+    life: CloudNineLife
+    /** Blinks (the antenna). */
     update(now: number): void
 }
 
@@ -87,7 +90,7 @@ function twoSided(width: number, height: number, material: Material): Group {
     return screen
 }
 
-export function buildCloudNine(): CloudNineScene {
+export function buildCloudNine(eggs: CloudNineEggs): CloudNineScene {
     const group = new Group()
     group.name = 'cloud-nine'
     const world = cloudNineWorld()
@@ -313,11 +316,15 @@ export function buildCloudNine(): CloudNineScene {
     group.add(city())
     group.add(sky())
 
+    // --- What moves and lives: the gondola, the tank's screen, the plane, the drones ----------------
+    const life = new CloudNineLife(group, tankTexture, eggs)
+    if (life.trackMesh) group.add(life.trackMesh)
+
     return {
         group,
         world,
+        life,
         update(now) {
-            tankTexture.offset.x = (now * 0.00004) % 1
             light.visible = Math.floor(now / 700) % 2 === 0
         },
     }

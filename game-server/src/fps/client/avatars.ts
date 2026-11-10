@@ -23,6 +23,7 @@ import {
     type BuffKind,
     type Gun,
     type Handheld,
+    isHandheld,
     isMelee,
     isTool,
     type Melee,
@@ -335,7 +336,7 @@ export class Avatars {
     /** The muzzle of the gun in someone's hands, in the world, while they're up and holding one. */
     muzzleOf(id: string): Vector3 | null {
         const avatar = this.avatars.get(id)
-        if (!avatar?.root.visible || !avatar.alive || isMelee(avatar.held)) return null
+        if (!avatar?.root.visible || !avatar.alive || !isHandheld(avatar.held)) return null
         const { inner, guns } = avatar.hold
         inner.updateWorldMatrix(true, false)
         return inner.localToWorld(guns[avatar.held].muzzle.clone())
@@ -400,7 +401,7 @@ export class Avatars {
         }
         avatar.aim.rotation.x = pose.pitch + (Math.PI / 2) * down
         if (isMelee(state.weapon)) this.holdMelee(avatar, state.weapon, now)
-        else this.holdGun(avatar, state.weapon, state.reload, now)
+        else if (isHandheld(state.weapon)) this.holdGun(avatar, state.weapon, state.reload, now)
 
         for (const [i, flame] of avatar.flames.entries()) {
             flame.visible = state.jet

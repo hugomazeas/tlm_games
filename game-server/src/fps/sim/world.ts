@@ -7,6 +7,8 @@ import {
     CLOUD_NINE_PICKUPS,
     CLOUD_NINE_SPAWNS,
     CLOUD_NINE_VENTS,
+    GONDOLA,
+    gondolaAt,
 } from '../map/cloud-nine.ts'
 import {
     buildOfficeGeometry,
@@ -17,7 +19,7 @@ import {
     SURFACES,
 } from '../map/office.js'
 import { type Dome, PADS, type Pad, PICKUP_SPOTS, type PickupSpot, type Portal, PORTALS } from './places.ts'
-import { collideWalls, rayWalls, type Wall, Walls } from './walls.ts'
+import { collideWalls, pushOut, rayWalls, type Wall, Walls } from './walls.ts'
 
 /**
  * What the game needs of the office: its exact collision triangles (with their BVH) and where
@@ -41,6 +43,31 @@ export interface FpsWorld {
     outBelow?: number
     /** The jetpack takes nobody higher (m). None: the office's own ceiling does. */
     ceiling?: number
+    /** Boxes that move on the step (Cloud Nine's gondola): bodies collide with them and ride them. */
+    movers?: readonly Mover[]
+    /** The step the movers are at: the arena's (the server), its estimate (the browser). Each world its own. */
+    clock?: { step: number }
+}
+
+/** A moving box: its half size, and where it is (its middle) and how fast it goes along x at a step. */
+export interface Mover {
+    half: readonly [number, number, number]
+    at(step: number): { x: number; y: number; z: number; vx: number }
+}
+
+const moverBox = { minX: 0, minY: 0, minZ: 0, maxX: 0, maxY: 0, maxZ: 0 }
+
+/** A mover's box now. */
+export function moverBoxOf(world: FpsWorld, mover: Mover): typeof moverBox {
+    const at = mover.at(world.clock?.step ?? 0)
+    const [hx, hy, hz] = mover.half
+    moverBox.minX = at.x - hx
+    moverBox.maxX = at.x + hx
+    moverBox.minY = at.y - hy
+    moverBox.maxY = at.y + hy
+    moverBox.minZ = at.z - hz
+    moverBox.maxZ = at.z + hz
+    return moverBox
 }
 
 let office: FpsWorld | null = null
@@ -66,10 +93,11 @@ export function cloudNineWorld(): FpsWorld {
             walls: new Walls(),
             outBelow: CLOUD_NINE.outBelow,
             ceiling: CLOUD_NINE.ceiling,
+            movers: [{ half: GONDOLA.half, at: gondolaAt }],
         }
     }
 
-    return { ...cloudNine, walls: new Walls() }
+    return { ...cloudNine, walls: new Walls(), clock: { step: 0 } }
 }
 
 /** The office, built once (about a second) and shared, with walls of its own for each caller (each game). */
@@ -105,6 +133,7 @@ const push = new Vector3()
 export function collideCapsule(world: FpsWorld, seg: Line3, radius: number): boolean {
     // The walls first: a wall placed on a player pushes them out of it, and the office then has the last word.
     let hit = world.walls.count > 0 && collideWalls(world.walls, seg, radius)
+    for (const mover of world.movers ?? []) hit = pushOut(moverBoxOf(world, mover), seg, radius) || hit
     cast.seg = seg
     cast.radius = radius
     for (const mesh of world.meshes) {

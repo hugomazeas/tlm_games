@@ -43,6 +43,23 @@ class OfficeFpsStats
     }
 
     /**
+     * Whoever has the most kills in matches that ended in the last 7 days (null: nobody has any):
+     * Cloud Nine's paper plane carries their name.
+     */
+    public function topFraggerOfTheWeek(): ?string
+    {
+        $top = OfficeFpsResult::query()
+            ->join('office_fps_matches', 'office_fps_matches.id', '=', 'office_fps_results.office_fps_match_id')
+            ->where('office_fps_matches.ended_at', '>=', now()->subDays(7))
+            ->groupBy('office_fps_results.player_id')
+            ->havingRaw('SUM(office_fps_results.kills) > 0')
+            ->orderByRaw('SUM(office_fps_results.kills) DESC')
+            ->value('office_fps_results.player_id');
+
+        return $top ? Player::find($top)?->name : null;
+    }
+
+    /**
      * A player's whole office FPS record, or null if they've never finished a match.
      *
      * @return array{totals: array<string, int|float>, modes: array<string, array{matches: int, wins: int}>, records: array<string, int>, weapons: array<string, array{kills: int, deaths: int}>, nemeses: Collection, victims: Collection, recent: Collection, rank: int|null}|null

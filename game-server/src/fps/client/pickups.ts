@@ -56,6 +56,8 @@ export const PICKUP_COLORS: Record<PickupKind, string> = {
     anvil: '#9aa3ad',
     bubble: '#9fe3ff',
     magnet: '#ff5a5a',
+    bowling: '#5b6bff',
+    spring: '#7cf75a',
 }
 
 /** An empty spot (taken, what comes back is a surprise): a dim neutral ring, no glow. */
@@ -135,6 +137,56 @@ export class PickupViews {
             spot.items.set(kind, item)
         }
     }
+}
+
+/** Shove's bowling ball (18 cm across, to a 40 cm mini): glossy blue with its three holes. */
+export function bowlingBall(): Group {
+    const group = new Group()
+    group.add(
+        new Mesh(
+            new SphereGeometry(0.09, 20, 14),
+            new MeshStandardMaterial({ color: 0x3340c8, roughness: 0.15, metalness: 0.2, emissive: 0x111a60 })
+        )
+    )
+    const hole = new MeshBasicMaterial({ color: 0x05060c })
+    for (const [x, y] of [
+        [-0.02, 0.07],
+        [0.02, 0.07],
+        [0, 0.045],
+    ] as const) {
+        const h = new Mesh(new CircleGeometry(0.011, 10), hole)
+        h.position.set(x, y, Math.sqrt(Math.max(0, 0.09 * 0.09 - x * x - y * y)) + 0.001)
+        group.add(h)
+    }
+    return group
+}
+
+/** Shove's spring trap: a green pad on a coiled spring (`armed`: its light on). */
+export function springTrap(armed: boolean): Group {
+    const group = new Group()
+    const base = new Mesh(
+        new CylinderGeometry(0.11, 0.12, 0.02, 20),
+        new MeshStandardMaterial({ color: 0x2b313a, roughness: 0.5, metalness: 0.6 })
+    )
+    base.position.y = 0.01
+    const coil = new Mesh(
+        new TorusGeometry(0.06, 0.008, 6, 18),
+        new MeshStandardMaterial({ color: 0xd5d9de, roughness: 0.2, metalness: 1 })
+    )
+    coil.rotation.x = Math.PI / 2
+    coil.position.y = 0.035
+    const pad = new Mesh(
+        new CylinderGeometry(0.09, 0.09, 0.015, 20),
+        new MeshStandardMaterial({ color: 0x7cf75a, roughness: 0.4, emissive: 0x7cf75a, emissiveIntensity: 0.3 })
+    )
+    pad.position.y = 0.055
+    const light = new Mesh(
+        new SphereGeometry(0.012, 8, 6),
+        new MeshBasicMaterial({ color: armed ? 0xff3b3b : 0x4a4f57 })
+    )
+    light.position.set(0.1, 0.03, 0)
+    group.add(base, coil, pad, light)
+    return group
 }
 
 /** A small model of each pickup (about 12 cm, to a 40 cm mini). */
@@ -263,6 +315,10 @@ function model(kind: PickupKind): Group {
             tip.position.set(x, -0.037, 0)
             group.add(leg, tip)
         }
+    } else if (kind === 'bowling') {
+        group.add(bowlingBall())
+    } else if (kind === 'spring') {
+        group.add(springTrap(true))
     } else {
         // An org chart: a box on top, three under it, joined by lines.
         const white = material(0xe8ecf2, 0.4)

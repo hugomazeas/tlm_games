@@ -21,7 +21,8 @@ export const MAX_FRAMES = 30
 export type Phase = 'warmup' | 'loading' | 'countdown' | 'playing' | 'intermission'
 
 /** Bits of an input frame's buttons. */
-export const BUTTON = { dash: 1, jet: 2, fire: 4, reload: 8, aim: 16, prone: 32 } as const
+/** Shove adds `grab` (E: grab whoever is in front of you, a click throws them) and `drop` (G: drop a spring trap). */
+export const BUTTON = { dash: 1, jet: 2, fire: 4, reload: 8, aim: 16, prone: 32, grab: 64, drop: 128 } as const
 
 /** The guns: three primaries, two secondaries, and the stapler (melee) everyone carries. */
 export const PRIMARIES = ['rifle', 'sniper', 'shotgun'] as const
@@ -32,7 +33,15 @@ export type Gun = Primary | Secondary
 /** Shove's kit, instead of the guns: a leaf blower, a fire extinguisher, a bat. */
 export const TOOLS = ['blower', 'extinguisher', 'bat'] as const
 export type Tool = (typeof TOOLS)[number]
-export type Weapon = Gun | 'stapler' | Tool
+/** Shove's other ways to throw someone: a grab and throw, a bowling ball, a spring trap. */
+export type Hazard = 'throw' | 'ball' | 'spring'
+export type Weapon = Gun | 'stapler' | Tool | Hazard
+export function isHandheld(weapon: Weapon): weapon is Handheld {
+    return isGun(weapon) || weapon === 'blower' || weapon === 'extinguisher'
+}
+export function isGun(weapon: Weapon): weapon is Gun {
+    return (PRIMARIES as readonly string[]).includes(weapon) || (SECONDARIES as readonly string[]).includes(weapon)
+}
 /** What's held in two hands and drawn like a gun (the guns, the blower, the extinguisher). */
 export type Handheld = Gun | 'blower' | 'extinguisher'
 /** Swung in one hand: the stapler, Shove's bat. */
@@ -53,6 +62,9 @@ export const WEAPON_NAMES: Record<Weapon, string> = {
     blower: 'Leaf blower',
     extinguisher: 'Fire extinguisher',
     bat: 'Bat',
+    throw: 'Throw',
+    ball: 'Bowling ball',
+    spring: 'Spring trap',
 }
 /** Shove's slots: the blower, the extinguisher, the bat (no guns, no loadout). */
 export const SHOVE_KIT: Record<Slot, Tool> = { primary: 'blower', secondary: 'extinguisher', melee: 'bat' }
@@ -223,6 +235,7 @@ export type BuffKind =
     | 'anvil'
     | 'bubble'
     | 'magnet'
+    | 'spring'
 
 /** Which way a built wall faces: its normal along x or z (standing), or y (flat: a floor, a roof). */
 export const WALL_AXES = ['x', 'y', 'z'] as const
@@ -406,6 +419,10 @@ export type GameEvent =
       }
     /** Shove: a gust is coming (`inMs`), then blows this way (m/s on the floor plan) for `forMs`. */
     | { type: 'gust'; x: number; z: number; inMs: number; forMs: number }
+    /** Shove: a spring trap went off under someone. */
+    | { type: 'sprung'; id: number; on: string; at: [number, number, number] }
+    /** Shove: someone grabbed someone (`target`), or let them go (null: thrown, dropped, broke free). */
+    | { type: 'grab'; by: string; target: string | null }
     | {
           type: 'kill'
           killer: string | null
@@ -504,6 +521,14 @@ export interface MatchView {
 
 export type ErrorCode = 'BAD_MESSAGE' | 'NOT_JOINED' | 'UNKNOWN_PLAYER' | 'UNAVAILABLE' | 'NOT_HOST' | 'NOT_ENOUGH'
 
+/** Shove's things in the world, every snapshot. */
+export interface ShoveThings {
+    balls: Array<{ id: number; x: number; y: number; z: number; vx: number; vz: number }>
+    traps: Array<{ id: number; x: number; y: number; z: number; armed: boolean; by: string }>
+    /** Who holds whom: [holder, held]. */
+    holds: Array<[string, string]>
+}
+
 /** A rocket in flight. */
 export interface RocketState {
     id: number
@@ -564,6 +589,8 @@ export type ServerMessage =
           /** Siege's attackers in the spot, while it's played. */
           holds: SiegeHold[] | null
           rockets: RocketState[]
+          /** Shove: bowling balls rolling, spring traps lying (armed or not), who holds whom. */
+          shove: ShoveThings | null
       }
     /** You joined from another tab; this one is closed. */
     | { type: 'replaced' }
@@ -664,7 +691,7 @@ function parseFrame(value: unknown): InputFrame | null {
     if (!Array.isArray(value) || (value.length !== 7 && value.length !== 8)) return null
     if (!value.every(n => typeof n === 'number' && Number.isFinite(n))) return null
     const [seq, forward, strafe, yaw, pitch, buttons, view, slot = 0] = value as number[]
-    if (!Number.isInteger(seq) || seq! < 1 || !Number.isInteger(buttons) || buttons! < 0 || buttons! > 63) return null
+    if (!Number.isInteger(seq) || seq! < 1 || !Number.isInteger(buttons) || buttons! < 0 || buttons! > 255) return null
     if (Math.abs(forward!) > 1 || Math.abs(strafe!) > 1 || Math.abs(pitch!) > Math.PI / 2) return null
     if (!Number.isInteger(view) || view! < 0) return null
     const held = SLOTS[slot]

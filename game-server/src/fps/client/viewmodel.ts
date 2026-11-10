@@ -13,7 +13,7 @@ import {
     type WebGLRenderer,
 } from 'three'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
-import { type Handheld, isMelee, isTool, type Weapon } from '../protocol.ts'
+import { type Handheld, isHandheld, isMelee, isTool, type Weapon } from '../protocol.ts'
 import { reloadMsOf, STAPLER, SWITCH_MS } from '../sim/combat.ts'
 import { SHOVE } from '../sim/shove.ts'
 import { rocketLook } from './effects.ts'
@@ -165,7 +165,7 @@ export class Viewmodel {
     hold(weapon: Weapon, now: number): void {
         if (weapon === this.held) return
         this.held = weapon
-        if (!isMelee(weapon)) this.lastGun = weapon
+        if (isHandheld(weapon)) this.lastGun = weapon
         this.switchAt = now
     }
 

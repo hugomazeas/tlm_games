@@ -1,7 +1,7 @@
 import { Line3, Vector3 } from 'three'
 import { BUTTON } from '../protocol.ts'
 import { ESPRESSO, INTERN, JETPACK_FACTOR, OVERTIME, PAD, PORTAL, partnerOf, PROMOTION } from './places.ts'
-import { collideCapsule, type FpsWorld } from './world.ts'
+import { collideCapsule, type FpsWorld, moverBoxOf } from './world.ts'
 
 /**
  * A player's body, stepped at a fixed 60 Hz by the server and, for your own player, by your
@@ -97,6 +97,8 @@ export interface Body {
     /** A gust (Shove on Cloud Nine): it drifts you this way (m/s), unless you lie prone. */
     windX: number
     windZ: number
+    /** Grabbed (Shove): someone holds you up in front of them; you don't move by yourself. */
+    held: boolean
 }
 
 /** Thrown, your steering in the air follows the keys this much as firmly as usual; on the ground, your grip is this much. */
@@ -190,6 +192,7 @@ export function bodyAt(x: number, y: number, z: number): Body {
         stun: 0,
         windX: 0,
         windZ: 0,
+        held: false,
     }
 }
 
@@ -220,6 +223,8 @@ function fits(world: FpsWorld, body: Body, scale: number, prone = false): boolea
 
 /** The body one step later. Pure: the input body is left as it was. */
 export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
+    // Held up by someone (Shove): where they carry you, nothing of your own.
+    if (body.held) return { ...body, spaceHeld: input.jet, vx: 0, vy: 0, vz: 0, onGround: false }
     const next = { ...body }
     next.overtime = Math.max(0, body.overtime - 1)
     next.espresso = Math.max(0, body.espresso - 1)
@@ -322,6 +327,19 @@ export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
             next.vx -= pushed.x * into
             next.vy -= pushed.y * into
             next.vz -= pushed.z * into
+        }
+    }
+    // Standing on something moving (Cloud Nine's gondola): it carries you.
+    if (next.onGround && world.movers) {
+        for (const mover of world.movers) {
+            const box = moverBoxOf(world, mover)
+            const on =
+                Math.abs(next.y - box.maxY) < 0.03 &&
+                next.x > box.minX - size.radius &&
+                next.x < box.maxX + size.radius &&
+                next.z > box.minZ - size.radius &&
+                next.z < box.maxZ + size.radius
+            if (on) next.x += mover.at(world.clock?.step ?? 0).vx * STEP_S
         }
     }
     // An open sky's ceiling (Cloud Nine): the jetpack takes nobody higher.

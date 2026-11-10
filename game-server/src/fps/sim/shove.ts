@@ -46,10 +46,16 @@ export const SHOVE = {
         /** Between swings. */
         intervalMs: 450,
     },
+    /**
+     * Grab and throw (E): whoever is within `reach` in front of you (not a giant), held up in front
+     * of you until you click (a throw) or press E again (let go), for `holdMs` at most; they break
+     * free with `mash` presses of Space.
+     */
+    grab: { reach: 0.45, holdMs: 2_500, mash: 8, knock: 4.6, percent: 10, maxWeight: 1.5 },
     /** A little lift on every throw, so it carries over the deck rather than along it. */
     lift: 0.45,
     /** Mid-match gusts on Cloud Nine: every `everyMs`, a warning, then `forMs` of wind at `speed` m/s. */
-    gust: { everyMs: 40_000, firstMs: 25_000, warnMs: 3_000, forMs: 4_000, speed: 1.5 },
+    gust: { everyMs: 40_000, firstMs: 25_000, warnMs: 3_000, forMs: 3_000, speed: 0.7 },
 } as const
 
 /** How hard a hit throws someone at `percent` (m/s), from its throw at 0%, by how heavy they are. */

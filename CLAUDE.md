@@ -289,8 +289,23 @@ Playable at `/games/office-fps`.
   lives anyone still in has. Its own pickups (`SHOVE_PICKUP_WEIGHTS`): anvil, bubble (one save from
   a fall), magnet, plus the movement powers. A gust every 40 s (a `gust` warning, then `Body.windX/Z`
   for 4 s; lying prone you don't drift). Tools are drawn like guns (`Handheld`: `buildBlower`,
-  `buildExtinguisher` in `guns.ts`) or like the stapler (`Melee`: the bat). Not built yet: grab and
-  throw, the bowling ball and the spring trap, the window-washer's gondola.
+  `buildExtinguisher` in `guns.ts`) or like the stapler (`Melee`: the bat). **Grab and throw** (E,
+  `BUTTON.grab`): whoever is in reach (not a giant) is held up in front of you (`Body.held`: they
+  don't move by themselves), a click throws them (`'throw'`), E lets go; 8 presses of Space break
+  free, 2.5 s at most. Pickups **bowling ball** (rolls off the way you face, bounces, bowls over
+  whoever it meets: `'ball'`) and **spring trap** (carried, G drops it, `BUTTON.drop`; armed after
+  0.8 s, the next other one on it goes straight up: `'spring'`, the `sprung` event); snapshots carry
+  them in `shove` (`ShoveThings`, drawn by `client/shove-views.ts`).
+- **The gondola** (`GONDOLA`, `gondolaAt(step)` in `map/cloud-nine.ts`): a platform 1.45 m under
+  the deck just out from its front edge, swinging end to end every 14 s. It's a `Mover` in the world
+  (`FpsWorld.movers`, `clock`: the arena sets the step, the browser its estimate of the server's),
+  so `collideCapsule` meets it and `stepBody` carries whoever stands on it (predicted).
+- **Cloud Nine's easter eggs** (`client/cloud-nine-life.ts`, this browser's alone): the tank's
+  screen shows Shove's leader and their % live, a hot potato ad for 10 s when your extinguisher or
+  bat hits it, LIVE while a drone films you; a paper plane circles with this week's top fragger on
+  its wing (`easterEggs.topFragger`, `OfficeFpsStats::topFraggerOfTheWeek`) and your blower blows it
+  off course; two camera drones (bat one and it follows you until you go down); a lost racing helmet
+  in the gondola's bucket, in the colours of the Hub's busiest driver (`easterEggs.helmet`).
 - **Modes** (`lobby.ts`): `ffa` free-for-all; `tdm` red vs blue (shuffled at the start, a
   latecomer joins the smaller side, no friendly fire, spawns away from enemies only, first team
   to the limit); `koth` King of the meeting room: one of four `ZONES` (`sim/places.ts`) is live,

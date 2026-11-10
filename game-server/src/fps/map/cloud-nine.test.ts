@@ -3,7 +3,7 @@ import { Line3, Vector3 } from 'three'
 import { BUTTON } from '../protocol.ts'
 import { type Body, bodyAt, moveOf, PLAYER, stepBody } from '../sim/movement.ts'
 import { collideCapsule, cloudNineWorld } from '../sim/world.ts'
-import { CLOUD_NINE } from './cloud-nine.ts'
+import { CLOUD_NINE, GONDOLA, gondolaAt } from './cloud-nine.ts'
 
 const world = cloudNineWorld()
 const idle = moveOf({ forward: 0, strafe: 0, yaw: 0, buttons: 0 })
@@ -70,6 +70,40 @@ describe('Cloud Nine', () => {
         for (let i = 0; i < 600; i++) body = stepBody(world, { ...body, fuel: 1 }, up)
         expect(body.y).toBeLessThanOrEqual(CLOUD_NINE.ceiling)
         expect(body.y).toBeGreaterThan(CLOUD_NINE.ceiling - 0.1)
+    })
+
+    test('the gondola swings end to end under the front edge, carries whoever stands on it, and catches a fall', () => {
+        const clock = world.clock!
+        const at = (step: number) => gondolaAt(step)
+        expect(at(GONDOLA.periodSteps / 4).x).toBeCloseTo(GONDOLA.reach)
+        expect(at((3 * GONDOLA.periodSteps) / 4).x).toBeCloseTo(-GONDOLA.reach)
+
+        // Standing on it at its middle (fastest), a second later it has carried you along.
+        clock.step = 0
+        let body = bodyAt(0, GONDOLA.top + 0.02, GONDOLA.z)
+        for (let i = 0; i < 60; i++) {
+            clock.step = i
+            body = stepBody(world, body, idle)
+        }
+        expect(body.y).toBeCloseTo(GONDOLA.top, 1)
+        expect(body.x).toBeGreaterThan(2)
+        expect(Math.abs(body.x - at(60).x)).toBeLessThan(0.4)
+
+        // Off the front edge (nothing under you there but air), over where it will be when you get down: caught.
+        expect(GONDOLA.z - GONDOLA.half[2]).toBeGreaterThan(CLOUD_NINE.halfZ)
+        let falling = bodyAt(at(35).x, 0.2, GONDOLA.z)
+        for (let i = 0; i < 90; i++) {
+            clock.step = i
+            falling = stepBody(world, falling, idle)
+        }
+        expect(falling.y).toBeGreaterThan(GONDOLA.top - 0.05)
+        // Not where it isn't: off the edge at the far end of its swing, you fall past.
+        let missed = bodyAt(-at(35).x, 0.2, GONDOLA.z)
+        for (let i = 0; i < 90; i++) {
+            clock.step = i
+            missed = stepBody(world, missed, idle)
+        }
+        expect(missed.y).toBeLessThan(GONDOLA.top - 1)
     })
 
     test('off the deck, nothing catches you: you fall past the line where you are out', () => {

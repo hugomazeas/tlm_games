@@ -20,6 +20,8 @@ export type PickupKind =
     | 'anvil'
     | 'bubble'
     | 'magnet'
+    | 'bowling'
+    | 'spring'
 
 export const PICKUPS: Record<PickupKind, { name: string; respawnMs: number; durationMs: number | null }> = {
     /** +50 health (only taken when hurt). */
@@ -50,7 +52,16 @@ export const PICKUPS: Record<PickupKind, { name: string; respawnMs: number; dura
     bubble: { name: 'Bubble', respawnMs: 40_000, durationMs: 30_000 },
     /** Shove: pulls everyone near you in. */
     magnet: { name: 'Magnet', respawnMs: 45_000, durationMs: 3_000 },
+    /** Shove: a bowling ball rolls off the way you face and bowls over whoever it meets. */
+    bowling: { name: 'Bowling ball', respawnMs: 30_000, durationMs: null },
+    /** Shove: a spring trap to drop (G); the next one to step on it goes straight up. */
+    spring: { name: 'Spring trap', respawnMs: 35_000, durationMs: 30_000 },
 }
+
+/** Shove's bowling ball: its size, speed, how long it rolls, and what it does to whoever it meets. */
+export const BOWLING = { radius: 0.09, speed: 4.5, lifeMs: 4_000, knock: 4.2, percent: 12 } as const
+/** Shove's spring trap: armed this long after it's down, what sets it off, its throw, how long it lies. */
+export const SPRING = { armMs: 800, reach: 0.22, launch: 9, percent: 6, lifeMs: 30_000 } as const
 
 /** Shove's anvil: how heavy it makes you (a hit throws you this many times less far), and your % ×. */
 export const ANVIL = { weight: 4, percent: 2 } as const
@@ -117,6 +128,8 @@ export const PICKUP_WEIGHTS: Record<PickupKind, number> = {
     anvil: 0,
     bubble: 0,
     magnet: 0,
+    bowling: 0,
+    spring: 0,
 }
 
 /** Shove's pool (no guns to feed, no health to heal): moving, weighing, saving, pulling. */
@@ -135,6 +148,8 @@ export const SHOVE_PICKUP_WEIGHTS: Record<PickupKind, number> = {
     anvil: 1.5,
     bubble: 2.5,
     magnet: 1.5,
+    bowling: 2,
+    spring: 1.5,
 }
 
 /**
