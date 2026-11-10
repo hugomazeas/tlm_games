@@ -263,6 +263,34 @@ Playable at `/games/office-fps`.
   map (the lobby keeps a world per map, `Arena.setWorld` moves everyone over, `MatchView.map`), the
   scoreboard (12 s, with awards) there, then warmup back in the office. The panel opens on the last
   match's rules (Rematch). Laravel stores each match's `map`.
+- **Cloud Nine** (`map/cloud-nine.ts`, pure: `CLOUD_NINE_BLOCKS`, spawns, vents, pickup spots;
+  `cloudNineWorld()` in `sim/world.ts` builds its collision BVH; the browser draws it in
+  `client/cloud-nine.ts`): a 14 × 6 m rooftop deck (top at y = 0) floating over a city at night, no
+  railings, a water tank whose lid (3 m) is the high ground, two platforms at 1.4 m (an ad drone's
+  screen, a neon sign), two server cabinets, a vent (jump pad) by each end. `FpsWorld.outBelow`
+  (-4): falling past it is a ring-out (`Arena.fellOut`, checked after every step, frozen tabs too),
+  a kill for whoever hit them last within 5 s (`RING_OUT_CREDIT_STEPS`, `Fighter.lastHit`, with what
+  they hit them with), else nobody's (`kill.fall`; never first blood). `FpsWorld.ceiling` (6 m) stops
+  the jetpack (`stepBody`). A pickup spot may sit on a raised floor (`PickupSpot.y`). The browser
+  builds it hidden at load (the shader warm-up meets it) and `mapLooks` switches: the office's rooms,
+  ceiling, street and sky hidden, the same lights retuned to night (no light added or removed: that
+  would compile every material again), the fog darkened, the shadow map redrawn. Neon is lit by
+  colour (`toneMapped: false`), not by lights.
+- **Shove** (`mode: 'shove'`, Cloud Nine only; `sim/shove.ts` has its numbers): no guns, no health.
+  `Arena.setKit('shove')` (from the countdown to the scoreboard) puts Shove's tools in the slots
+  (`SHOVE_KIT`: 1 a leaf blower, held, a steady push and % on whoever is in its cone, aimed down in
+  the air it holds you up; 2 a fire extinguisher, a blast every 1.1 s that throws them and kicks you
+  back the other way, weaker standing; 3 a bat, held to wind up, swung on release, from behind it
+  spikes them down). Every hit adds to the victim's `percent`; a throw's speed is `knockOf` (×(1 +
+  %/100), ÷ their weight: a Promotion and the anvil heavy, an Intern light) and `Body.stun` keeps
+  their steering weak while it carries (in the body, so it's predicted; jetpack and dodge still
+  work). `fragLimit` is lives (`SHOVE_LIVES`, `limitsOf`): a ring-out costs one, none left and
+  you're out (`Arena.eliminate`); the last one in with a life wins; a latecomer gets the fewest
+  lives anyone still in has. Its own pickups (`SHOVE_PICKUP_WEIGHTS`): anvil, bubble (one save from
+  a fall), magnet, plus the movement powers. A gust every 40 s (a `gust` warning, then `Body.windX/Z`
+  for 4 s; lying prone you don't drift). Tools are drawn like guns (`Handheld`: `buildBlower`,
+  `buildExtinguisher` in `guns.ts`) or like the stapler (`Melee`: the bat). Not built yet: grab and
+  throw, the bowling ball and the spring trap, the window-washer's gondola.
 - **Modes** (`lobby.ts`): `ffa` free-for-all; `tdm` red vs blue (shuffled at the start, a
   latecomer joins the smaller side, no friendly fire, spawns away from enemies only, first team
   to the limit); `koth` King of the meeting room: one of four `ZONES` (`sim/places.ts`) is live,

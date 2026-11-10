@@ -8,6 +8,7 @@ import {
     partnerOf,
     PICKUP_SPOTS,
     PICKUP_WEIGHTS,
+    SHOVE_PICKUP_WEIGHTS,
     PORTAL,
     PORTALS,
     PROMOTION,
@@ -60,12 +61,23 @@ describe('the pads, the portals and the big powers', () => {
             seen.set(kind, (seen.get(kind) ?? 0) + 1)
             expect(rollPickup(random, cramped, [])).not.toBe('promotion')
         }
-        expect(seen.size).toBe(Object.keys(PICKUP_WEIGHTS).length)
+        // Every kind the guns' pool weighs (Shove's own aren't in it).
+        const pooled = (weights: Record<string, number>) =>
+            Object.keys(weights)
+                .filter(k => weights[k]! > 0)
+                .sort()
+        expect([...seen.keys()].sort()).toEqual(pooled(PICKUP_WEIGHTS))
         expect(seen.get('health')!).toBeGreaterThan(seen.get('bonus')! * 2)
         // A Bonus already lying elsewhere: not a second one; a second health pack, yes.
         for (let i = 0; i < 500; i++) expect(rollPickup(random, roomy, ['bonus', 'health'])).not.toBe('bonus')
         // A spot with its own kind keeps it.
         expect(rollPickup(random, { ...cramped, kind: 'intern' }, [])).toBe('intern')
+
+        // Shove's pool: no guns to feed, no health to heal.
+        const shove = new Set<string>()
+        for (let i = 0; i < 4000; i++) shove.add(rollPickup(random, roomy, [], SHOVE_PICKUP_WEIGHTS))
+        expect([...shove].sort()).toEqual(pooled(SHOVE_PICKUP_WEIGHTS))
+        expect(shove.has('health') || shove.has('magazine') || shove.has('headshot')).toBe(false)
     })
 
     test('pads lie on open floor with room overhead to fly up', () => {

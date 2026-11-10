@@ -161,6 +161,59 @@ export class Effects {
         }
     }
 
+    /** Shove's leaf blower running (`key`: whose): faint air puffs streaming out of the nozzle, a leaf now and then. */
+    air(from: Vector3, toward: Vector3, now: number, key = ''): void {
+        if (now - (this.lastAir.get(key) ?? 0) < 30) return
+        this.lastAir.set(key, now)
+        for (let i = 0; i < 2; i++) {
+            const material = new MeshBasicMaterial({
+                color: 0xe6f2f2,
+                transparent: true,
+                opacity: 0.3,
+                depthWrite: false,
+            })
+            const puff = new Mesh(puffGeometry, material)
+            puff.position.copy(from)
+            const velocity = jittered(toward, 0.25).multiplyScalar(3.5 + Math.random() * 2)
+            this.add(puff, material, now, 320, { opacity: 0.3, scale: [0.5, 2.6], out: true, velocity, gravity: 0 })
+        }
+        if (Math.random() < 0.25) {
+            const material = new MeshBasicMaterial({
+                color: Math.random() < 0.5 ? 0x9a7b3a : 0x6f8f3a,
+                transparent: true,
+            })
+            const leaf = new Mesh(bitGeometry, material)
+            leaf.scale.set(0.8, 0.15, 0.6)
+            leaf.position.copy(from)
+            const velocity = jittered(toward, 0.35).multiplyScalar(3 + Math.random() * 2)
+            this.add(leaf, material, now, 600, { velocity, gravity: 2 })
+        }
+    }
+
+    /** Shove's fire extinguisher going off: a white cloud out of the horn, spreading as it goes. */
+    spray(from: Vector3, toward: Vector3, now: number): void {
+        for (let i = 0; i < 14; i++) {
+            const material = new MeshBasicMaterial({
+                color: 0xf4f6f8,
+                transparent: true,
+                opacity: 0.7,
+                depthWrite: false,
+            })
+            const puff = new Mesh(puffGeometry, material)
+            puff.position.copy(from)
+            const velocity = jittered(toward, 0.45).multiplyScalar(2 + Math.random() * 4)
+            this.add(puff, material, now, 650 + Math.random() * 250, {
+                opacity: 0.7,
+                scale: [1, 5 + Math.random() * 3],
+                out: true,
+                velocity,
+                gravity: -0.4,
+            })
+        }
+    }
+
+    private readonly lastAir = new Map<string, number>()
+
     /**
      * The rockets in flight, every frame (already where they should be drawn): each one along its
      * velocity, its tail burning, a smoke trail behind. The ones gone are taken away.
@@ -326,6 +379,15 @@ export class Effects {
             at: now,
         })
     }
+}
+
+/** A unit direction turned a random bit off `toward` (up to `spread`, in radians, roughly). */
+function jittered(toward: Vector3, spread: number): Vector3 {
+    return new Vector3(
+        toward.x + (Math.random() - 0.5) * spread * 2,
+        toward.y + (Math.random() - 0.5) * spread * 2,
+        toward.z + (Math.random() - 0.5) * spread * 2
+    ).normalize()
 }
 
 function makeRocket(now: number): Flying {

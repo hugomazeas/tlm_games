@@ -163,7 +163,7 @@ class OfficeFpsStats
                 'kills' => (int) ($kills[$weapon] ?? 0),
                 'deaths' => (int) ($deaths[$weapon] ?? 0),
             ]])
-            ->reject(fn (array $counts, string $weapon) => in_array($weapon, OfficeFpsKill::RETIRED_WEAPONS, true)
+            ->reject(fn (array $counts, string $weapon) => in_array($weapon, OfficeFpsKill::LISTED_WHEN_USED, true)
                 && $counts['kills'] + $counts['deaths'] === 0)
             ->all();
     }

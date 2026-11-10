@@ -13,10 +13,12 @@ import {
     type WebGLRenderer,
 } from 'three'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
-import type { Gun, Weapon } from '../protocol.ts'
+import { type Handheld, isMelee, isTool, type Weapon } from '../protocol.ts'
 import { reloadMsOf, STAPLER, SWITCH_MS } from '../sim/combat.ts'
+import { SHOVE } from '../sim/shove.ts'
 import { rocketLook } from './effects.ts'
 import {
+    buildBat,
     buildCase,
     buildFlash,
     buildGuns,
@@ -61,13 +63,17 @@ export class Viewmodel {
     /** The gun's own frame, inside `root`: the guns, hands and cases. */
     private readonly inner = new Group()
     private anchor: Object3D | null = null
-    private readonly guns: Record<Gun, GunModel>
+    private readonly guns: Record<Handheld, GunModel>
     private readonly stapler: { group: Group; arm: Group; right: Pose }
+    /** Shove's bat, swung like the stapler (harder, after a wind-up). */
+    private readonly bat: { group: Group; arm: Group; right: Pose }
     private readonly hands: Record<'left' | 'right', Hand>
     private readonly sleeves: Record<'left' | 'right', Mesh>
     private held: Weapon = 'rifle'
     /** The last gun held: the stapler aims and fires from nothing, so its questions go there. */
-    private lastGun: Gun = 'rifle'
+    private lastGun: Handheld = 'rifle'
+    /** Shove: how wound up the bat is (0–1; null: not winding up). */
+    charge: number | null = null
     private isLoaded = true
     private switchAt = -1e9
     private swingAt = -1e9
@@ -75,7 +81,7 @@ export class Viewmodel {
     private readonly flash: ReturnType<typeof buildFlash>
     private readonly light = new PointLight(0xffc070, 0, 1.2)
     /** Recent shots, for their spent cases. */
-    private shots: Array<{ at: number; gun: Gun }> = []
+    private shots: Array<{ at: number; gun: Handheld }> = []
     private readonly cases: Record<Ejection['kind'], Group[]>
     private environmentReady = false
 
@@ -83,6 +89,8 @@ export class Viewmodel {
         const kit = kitFor(color)
         this.guns = buildGuns(kit, rocketLook)
         this.stapler = buildStapler(kit)
+        this.bat = buildBat(kit)
+        this.bat.group.visible = false
         this.hands = { left: buildHand(kit, 'left'), right: buildHand(kit, 'right') }
         this.sleeves = { left: buildSleeve(kit), right: buildSleeve(kit) }
         this.flash = buildFlash()
@@ -100,6 +108,7 @@ export class Viewmodel {
         this.root.add(this.inner)
         this.inner.add(
             this.stapler.group,
+            this.bat.group,
             this.flash.group,
             this.light,
             this.hands.left.group,
@@ -156,7 +165,7 @@ export class Viewmodel {
     hold(weapon: Weapon, now: number): void {
         if (weapon === this.held) return
         this.held = weapon
-        if (weapon !== 'stapler') this.lastGun = weapon
+        if (!isMelee(weapon)) this.lastGun = weapon
         this.switchAt = now
     }
 
@@ -165,7 +174,8 @@ export class Viewmodel {
      * crosshair, and stops bobbing). `reload` 0–1: how far through a reload (null: none).
      */
     update(now: number, moving: boolean, aim = 0, reload: number | null = null): void {
-        const holdingGun = this.held !== 'stapler'
+        const holdingGun = !isMelee(this.held)
+        const swinging = this.held === 'bat' ? this.bat : this.stapler
         const gun = this.guns[this.lastGun]
         const since = now - this.kickAt
         const k = Math.max(0, 1 - since / gun.kick.ms)
@@ -179,9 +189,10 @@ export class Viewmodel {
         const r = holdingGun ? reload : null
         const tilt = r === null ? 0 : ease(Math.min(1, r / 0.12)) * ease(Math.min(1, (1 - r) / 0.12))
         const pose = gun.reloadPose
+        const reloadMs = isTool(this.lastGun) ? 1 : reloadMsOf(this.lastGun)
         const hands = holdingGun
-            ? gun.animate({ reload: r, reloadMs: reloadMsOf(this.lastGun), sinceShot: since, loaded: this.isLoaded })
-            : { left: null, right: this.staplerHand() }
+            ? gun.animate({ reload: r, reloadMs, sinceShot: since, loaded: this.isLoaded })
+            : { left: null, right: this.meleeHand(swinging) }
 
         // Aimed, the sight's point runs through the middle of the view: the crosshair sits on it.
         const sight = holdingGun ? gun.sight : this.guns.rifle.sight
@@ -193,7 +204,8 @@ export class Viewmodel {
         )
         this.root.rotation.set(kick * gun.kick.rise + tilt * pose.pitch, tilt * pose.yaw, tilt * pose.roll)
         for (const [name, model] of Object.entries(this.guns)) model.group.visible = name === this.held
-        this.stapler.group.visible = !holdingGun
+        this.stapler.group.visible = this.held === 'stapler'
+        this.bat.group.visible = this.held === 'bat'
         this.placeHand('left', hands.left)
         this.placeHand('right', hands.right)
 
@@ -208,14 +220,22 @@ export class Viewmodel {
         this.light.intensity = flashing ? 0.6 * Math.min(2, gun.kick.flash) : 0
         this.throwCases(now)
 
-        // The swing: back a little (wind-up), then a fast chop forward and down, then back.
-        const t = (now - this.swingAt) / STAPLER.intervalMs
+        // The swing: back a little (wind-up), then a fast chop forward and down, then back. The bat
+        // swings wider, and while it's wound up it's drawn back over the shoulder.
+        const bat = this.held === 'bat'
+        const t = (now - this.swingAt) / (bat ? SHOVE.bat.intervalMs : STAPLER.intervalMs)
         let chop = 0
         if (t < 0.15) chop = (-t / 0.15) * 0.35
         else if (t < 0.35) chop = -0.35 + ((t - 0.15) / 0.2) * 1.45
         else if (t < 1) chop = 1.1 * (1 - (t - 0.35) / 0.65)
-        this.stapler.arm.rotation.x = -chop
-        this.stapler.arm.position.z = -0.05 - Math.max(0, chop) * 0.03
+        if (bat) {
+            const wound = this.charge === null ? 0 : ease(this.charge)
+            this.bat.arm.rotation.set(-chop * 1.2 + wound * 0.6, -chop * 0.6, wound * 0.35)
+            this.bat.arm.position.z = -0.06 - Math.max(0, chop) * 0.04 + wound * 0.03
+        } else {
+            this.stapler.arm.rotation.x = -chop
+            this.stapler.arm.position.z = -0.05 - Math.max(0, chop) * 0.03
+        }
         this.sync()
     }
 
@@ -281,11 +301,11 @@ export class Viewmodel {
         this.holder.updateMatrixWorld(true)
     }
 
-    /** The right hand round the stapler's base, chopping with it. */
-    private staplerHand(): Pose {
-        const arm = this.stapler.arm
+    /** The right hand round the stapler's base (or the bat's grip), swinging with it. */
+    private meleeHand(melee: { arm: Group; right: Pose }): Pose {
+        const arm = melee.arm
         arm.updateMatrix()
-        const local = this.stapler.right
+        const local = melee.right
         const inArm = local.at.clone().sub(arm.position)
         return {
             at: inArm.applyQuaternion(arm.quaternion).add(arm.position),

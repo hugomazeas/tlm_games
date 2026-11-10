@@ -6,6 +6,7 @@ import {
     DEFAULT_RULES,
     encodeFrame,
     type InputFrame,
+    LOADING_MS,
     MAX_PLAYERS,
     parseClientMessage,
     type Rules,
@@ -246,6 +247,164 @@ describe('one game, joined on the fly', () => {
         expect(b.last('match')!.match).toMatchObject({ phase: 'countdown', next: DEFAULT_RULES, loading: null })
         lobby.plan(a.id, tdm)
         expect(b.last('match')!.match.next).toEqual(DEFAULT_RULES)
+    })
+
+    test('a match on another map: everyone loads it, plays there, then warms up in the office again', () => {
+        // Cloud Nine stands in as a room far off, to tell where everyone is.
+        const far = testWorld([
+            { name: 'west', position: [100, 0, 0], yaw: 0 },
+            { name: 'east', position: [104, 0, 0], yaw: 0 },
+        ])
+        lobby = new FpsLobby(
+            world,
+            { now: () => now, random: createRng(1), onResults: r => results.push(r) },
+            { 'cloud-nine': far }
+        )
+        const [a, b] = [client('a1'), client('b2')]
+        lobby.join(a, { playerId: 1, name: 'a1' })
+        lobby.join(b, { playerId: 2, name: 'b2' })
+        const rules: Rules = { map: 'cloud-nine', mode: 'ffa', fragLimit: 5, minutes: 3 }
+
+        lobby.start(a.id, rules)
+        expect(b.last('match')!.match).toMatchObject({ phase: 'loading', map: 'office', loading: { ready: 0, of: 2 } })
+        lobby.ready(a.id, 'cloud-nine')
+        expect(b.last('match')!.match).toMatchObject({ phase: 'loading', loading: { ready: 1, of: 2 } })
+        lobby.ready(b.id, 'cloud-nine')
+        expect(b.last('match')!.match).toMatchObject({ phase: 'countdown', map: 'cloud-nine', loading: null })
+        play(STEP_MS * 2)
+        expect(where(a, b.id).x).toBeGreaterThan(90)
+
+        play(COUNTDOWN_MS + rules.minutes * 60_000 + INTERMISSION_MS + STEP_MS * 2)
+        expect(b.last('match')!.match).toMatchObject({ phase: 'warmup', map: 'office' })
+        expect(results[0]!.rules.map).toBe('cloud-nine')
+        play(STEP_MS * 2)
+        expect(where(a, b.id).x).toBeLessThan(10)
+    })
+
+    test("loading waits for nobody longer than LOADING_MS; a map the game hasn't got is refused", () => {
+        const far = testWorld([{ name: 'far', position: [100, 0, 0], yaw: 0 }])
+        lobby = new FpsLobby(
+            world,
+            { now: () => now, random: createRng(1), onResults: r => results.push(r) },
+            { 'cloud-nine': far }
+        )
+        const [a, b] = [client('a1'), client('b2')]
+        lobby.join(a, { playerId: 1, name: 'a1' })
+        lobby.join(b, { playerId: 2, name: 'b2' })
+        lobby.start(a.id, { map: 'cloud-nine', mode: 'ffa', fragLimit: 5, minutes: 3 })
+        lobby.ready(a.id, 'cloud-nine')
+        play(LOADING_MS - 100)
+        expect(b.last('match')!.match.phase).toBe('loading')
+        play(200)
+        expect(b.last('match')!.match).toMatchObject({ phase: 'countdown', map: 'cloud-nine' })
+
+        // The office only.
+        lobby = new FpsLobby(world, { now: () => now, random: createRng(1), onResults: r => results.push(r) })
+        const [c, d] = [client('c3'), client('d4')]
+        lobby.join(c, { playerId: 3, name: 'c3' })
+        lobby.join(d, { playerId: 4, name: 'd4' })
+        lobby.start(c.id, { map: 'cloud-nine', mode: 'ffa', fragLimit: 5, minutes: 3 })
+        expect(c.last('error')).toEqual({ type: 'error', code: 'UNAVAILABLE' })
+        expect(c.last('match')!.match.phase).toBe('warmup')
+    })
+
+    test("a fall is nobody's first blood: the first kill by someone is", () => {
+        // A small floor with ledges, out 2 m below.
+        const ledges = testWorld(
+            [
+                { name: 'north', position: [0, 0, -2], yaw: Math.PI },
+                { name: 'south', position: [0, 0, 2], yaw: 0 },
+            ],
+            [],
+            [],
+            { floor: 3, outBelow: -2 }
+        )
+        lobby = new FpsLobby(ledges, { now: () => now, random: createRng(1), onResults: r => results.push(r) })
+        const [a, b] = [client('a1'), client('b2')]
+        startMatch(a, b)
+        const south = where(a, a.id).z > 0 ? a : b
+        const north = south === a ? b : a
+        const yaw = where(a, south.id).yaw
+        const events: ServerMessage[] = []
+        const seen = () => a.inbox.splice(0).filter(m => m.type === 'snap')
+        seen()
+        play(2000, () => [[south, { forward: -1, strafe: 0, yaw, pitch: 0, buttons: 0, view: 0 }]])
+        events.push(...seen())
+        const fall = events.flatMap(m => (m.type === 'snap' ? m.events : [])).find(e => e.type === 'kill')
+        expect(fall).toMatchObject({ killer: null, fall: true })
+        expect(fall?.type === 'kill' && fall.firstBlood).toBeFalsy()
+
+        play((RESPAWN_STEPS + SHIELD_STEPS) * STEP_MS + 100)
+        a.inbox.splice(0)
+        kill(north, south)
+        const first = a.inbox
+            .flatMap(m => (m.type === 'snap' ? m.events : []))
+            .find(e => e.type === 'kill' && e.killer === north.id)
+        expect(first?.type === 'kill' && first.firstBlood).toBe(true)
+    })
+
+    test('Shove: the tools, lives lost off the edge, out at none, the last one in wins, then the guns again', () => {
+        const ledges = testWorld(
+            [
+                { name: 'north', position: [0, 0, -2], yaw: Math.PI },
+                { name: 'south', position: [0, 0, 2], yaw: 0 },
+            ],
+            [],
+            [],
+            { floor: 3, outBelow: -2 }
+        )
+        lobby = new FpsLobby(
+            world,
+            { now: () => now, random: createRng(1), onResults: r => results.push(r) },
+            { 'cloud-nine': ledges }
+        )
+        const [a, b] = [client('a1'), client('b2')]
+        lobby.join(a, { playerId: 1, name: 'a1' })
+        lobby.join(b, { playerId: 2, name: 'b2' })
+        lobby.ready(a.id, 'cloud-nine')
+        lobby.ready(b.id, 'cloud-nine')
+        lobby.start(a.id, { map: 'cloud-nine', mode: 'shove', fragLimit: 2, minutes: 5 })
+        play(STEP_MS * 2)
+        expect(a.last('snap')!.you).toMatchObject({ weapon: 'blower', percent: 0 })
+        play(COUNTDOWN_MS + STEP_MS)
+        expect(a.last('match')!.match.scores.map(s => s.lives)).toEqual([2, 2])
+
+        // A latecomer gets the fewest lives anyone still in has.
+        const c = client('c3')
+        const walkOff = (who: Client) => {
+            const yaw = where(a, who.id).yaw
+            const toward = where(a, who.id).z > 0 ? -1 : 1
+            let down = false
+            for (let i = 0; i < 200 && !down; i++) {
+                play(STEP_MS, () => [[who, { forward: toward, strafe: 0, yaw, pitch: 0, buttons: 0, view: 0 }]])
+                down = where(a, who.id)?.alive === false
+            }
+            expect(down).toBe(true)
+        }
+        walkOff(b)
+        expect(a.last('match')!.match.scores.find(s => s.id === b.id)!.lives).toBe(1)
+        lobby.join(c, { playerId: 3, name: 'c3' })
+        expect(c.last('welcome')!.match.scores.find(s => s.id === c.id)!.lives).toBe(1)
+
+        // B's last life: out, and not coming back.
+        play((RESPAWN_STEPS + SHIELD_STEPS) * STEP_MS + 100)
+        walkOff(b)
+        expect(a.last('match')!.match.scores.find(s => s.id === b.id)!.lives).toBe(0)
+        play((RESPAWN_STEPS + 60) * STEP_MS)
+        expect(where(a, b.id).alive).toBe(false)
+        expect(a.last('match')!.match.phase).toBe('playing')
+
+        // C goes too: A is the last one in.
+        play(SHIELD_STEPS * STEP_MS + 100)
+        walkOff(c)
+        expect(a.last('match')!.match.phase).toBe('intermission')
+        expect(a.last('match')!.match.scores[0]!.id).toBe(a.id)
+        expect(results[0]!.rules).toMatchObject({ mode: 'shove', fragLimit: 2 })
+        expect(results[0]!.players.find(p => p.playerId === 1)).toMatchObject({ place: 1, won: true })
+
+        play(INTERMISSION_MS + STEP_MS * 3)
+        expect(a.last('match')!.match).toMatchObject({ phase: 'warmup', map: 'office' })
+        expect(a.last('snap')!.you).toMatchObject({ weapon: 'rifle', percent: null })
     })
 
     test('warmup kills count for nothing', () => {

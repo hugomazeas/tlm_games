@@ -9,6 +9,7 @@ import {
     Mesh,
     MeshBasicMaterial,
     MeshStandardMaterial,
+    type Object3D,
     RingGeometry,
     type Scene,
     SphereGeometry,
@@ -20,8 +21,8 @@ import {
     type Dome,
     PAD,
     type Pad,
-    PICKUP_SPOTS,
     type PickupKind,
+    type PickupSpot,
     PICKUPS,
     type Portal,
     PORTAL,
@@ -52,6 +53,9 @@ export const PICKUP_COLORS: Record<PickupKind, string> = {
     intern: '#b4f06b',
     bonus: '#ff4fa3',
     orgchart: '#e8ecf2',
+    anvil: '#9aa3ad',
+    bubble: '#9fe3ff',
+    magnet: '#ff5a5a',
 }
 
 /** An empty spot (taken, what comes back is a surprise): a dim neutral ring, no glow. */
@@ -64,18 +68,24 @@ interface SpotView {
     items: Map<PickupKind, Group>
     showing: PickupKind | null | undefined
     x: number
+    y: number
     z: number
 }
 
+/** A map's pickup spots, drawn into `scene` (a map's group: hidden with it). */
 export class PickupViews {
     private readonly spots: SpotView[] = []
 
-    constructor(private readonly scene: Scene) {
-        for (const spot of PICKUP_SPOTS) {
+    constructor(
+        private readonly scene: Object3D,
+        spots: readonly PickupSpot[]
+    ) {
+        for (const spot of spots) {
+            const y = spot.y ?? 0
             const padMaterial = new MeshBasicMaterial({ transparent: true, opacity: 0.8, side: DoubleSide })
             const pad = new Mesh(new RingGeometry(0.16, 0.24, 32), padMaterial)
             pad.rotation.x = -Math.PI / 2
-            pad.position.set(spot.x, 0.006, spot.z)
+            pad.position.set(spot.x, y + 0.006, spot.z)
             const glow = new Mesh(
                 new CylinderGeometry(0.22, 0.22, 0.5, 24, 1, true),
                 new MeshBasicMaterial({
@@ -86,9 +96,9 @@ export class PickupViews {
                     side: DoubleSide,
                 })
             )
-            glow.position.set(spot.x, 0.25, spot.z)
+            glow.position.set(spot.x, y + 0.25, spot.z)
             scene.add(pad, glow)
-            this.spots.push({ pad: padMaterial, glow, items: new Map(), showing: undefined, x: spot.x, z: spot.z })
+            this.spots.push({ pad: padMaterial, glow, items: new Map(), showing: undefined, x: spot.x, y, z: spot.z })
         }
         // One of each kind, hidden for good: their shaders compile at load (the spots' own models
         // come when first rolled).
@@ -106,7 +116,7 @@ export class PickupViews {
             const item = kind ? spot.items.get(kind) : undefined
             if (!item) return
             item.rotation.y = now * 0.0015 + i
-            item.position.y = 0.22 + Math.sin(now * 0.003 + i) * 0.03
+            item.position.y = spot.y + 0.22 + Math.sin(now * 0.003 + i) * 0.03
         })
     }
 
@@ -120,7 +130,7 @@ export class PickupViews {
         for (const [k, item] of spot.items) item.visible = k === kind
         if (kind && !spot.items.has(kind)) {
             const item = model(kind)
-            item.position.set(spot.x, 0.22, spot.z)
+            item.position.set(spot.x, spot.y + 0.22, spot.z)
             this.scene.add(item)
             spot.items.set(kind, item)
         }
@@ -214,6 +224,45 @@ function model(kind: PickupKind): Group {
             c.position.set((i % 2) * 0.006, -0.03 + i * 0.016, 0)
             group.add(c)
         }
+    } else if (kind === 'anvil') {
+        // An anvil: a heavy grey block, its horn out front, on a narrower foot.
+        const iron = material(0x6a727c, 0.15)
+        const top = new Mesh(new BoxGeometry(0.09, 0.03, 0.05), iron)
+        top.position.y = 0.025
+        const horn = new Mesh(new ConeGeometry(0.02, 0.06, 10), iron)
+        horn.rotation.z = Math.PI / 2
+        horn.position.set(0.075, 0.03, 0)
+        const foot = new Mesh(new BoxGeometry(0.05, 0.05, 0.04), iron)
+        foot.position.y = -0.015
+        group.add(top, horn, foot)
+    } else if (kind === 'bubble') {
+        // A soap bubble: a clear sphere with a shine.
+        const film = new MeshStandardMaterial({
+            color: 0x9fe3ff,
+            roughness: 0.05,
+            metalness: 0.3,
+            transparent: true,
+            opacity: 0.45,
+            emissive: 0x9fe3ff,
+            emissiveIntensity: 0.3,
+        })
+        group.add(new Mesh(new SphereGeometry(0.06, 20, 14), film))
+        const shine = new Mesh(new SphereGeometry(0.012, 8, 6), material(0xffffff, 0.8))
+        shine.position.set(-0.025, 0.03, 0.04)
+        group.add(shine)
+    } else if (kind === 'magnet') {
+        // A horseshoe magnet, red with silver tips.
+        const red = material(0xe02424, 0.3)
+        const bend = new Mesh(new TorusGeometry(0.035, 0.013, 8, 16, Math.PI), red)
+        bend.position.y = 0.01
+        group.add(bend)
+        for (const x of [-0.035, 0.035]) {
+            const leg = new Mesh(new BoxGeometry(0.026, 0.04, 0.026), red)
+            leg.position.set(x, -0.01, 0)
+            const tip = new Mesh(new BoxGeometry(0.027, 0.015, 0.027), material(0xd5d9de, 0.2))
+            tip.position.set(x, -0.037, 0)
+            group.add(leg, tip)
+        }
     } else {
         // An org chart: a box on top, three under it, joined by lines.
         const white = material(0xe8ecf2, 0.4)
@@ -238,7 +287,7 @@ function model(kind: PickupKind): Group {
 export class PadViews {
     private readonly rings: Array<{ ring: Mesh; material: MeshBasicMaterial }> = []
 
-    constructor(scene: Scene, pads: readonly Pad[]) {
+    constructor(scene: Object3D, pads: readonly Pad[]) {
         for (const pad of pads) {
             const base = new Mesh(
                 new CylinderGeometry(PAD.radius + 0.04, PAD.radius + 0.06, 0.02, 32),
@@ -293,7 +342,7 @@ export class PadViews {
 export class PortalViews {
     private readonly swirls: Mesh[] = []
 
-    constructor(scene: Scene, portals: readonly Portal[]) {
+    constructor(scene: Object3D, portals: readonly Portal[]) {
         const PAIR_COLORS = [0xff9a3c, 0x3ca8ff]
         for (const [i, portal] of portals.entries()) {
             const color = PAIR_COLORS[Math.floor(i / 2) % PAIR_COLORS.length]!

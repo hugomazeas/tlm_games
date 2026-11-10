@@ -238,6 +238,7 @@ class OfficeFpsStatsTest extends TestCase
             'tdm' => ['matches' => 1, 'wins' => 0],
             'koth' => ['matches' => 2, 'wins' => 2],
             'siege' => ['matches' => 0, 'wins' => 0],
+            'shove' => ['matches' => 0, 'wins' => 0],
         ], $stats['modes']);
     }
 
@@ -268,6 +269,21 @@ class OfficeFpsStatsTest extends TestCase
         $this->postJson('/internal/office-fps/results', $this->match(['map' => 'office']), $this->secret())->assertCreated();
 
         $this->assertSame('office', OfficeFpsMatch::sole()->map);
+    }
+
+    public function test_a_shove_match_on_cloud_nine_keeps_its_ring_outs_by_tool(): void
+    {
+        $match = $this->match(['mode' => 'shove', 'map' => 'cloud-nine', 'frag_limit' => 3]);
+        $match['kills'] = collect(['blower', 'extinguisher', 'bat'])
+            ->map(fn (string $weapon, int $i) => ['killer_id' => $this->ann->id, 'victim_id' => $this->bob->id, 'weapon' => $weapon, 'headshot' => false, 'backstab' => false, 'at_ms' => 1000 * ($i + 1)])
+            ->all();
+        $this->postJson('/internal/office-fps/results', $match, $this->secret())->assertCreated();
+
+        $this->assertSame(['shove', 'cloud-nine', 3], [OfficeFpsMatch::sole()->mode, OfficeFpsMatch::sole()->map, OfficeFpsMatch::sole()->frag_limit]);
+        $weapons = $this->get('/games/office-fps/players/'.$this->ann->id)->assertOk()->assertSee('Shove')->assertSee('Leaf blower')->viewData('stats')['weapons'];
+        $this->assertSame(['kills' => 1, 'deaths' => 0], $weapons['bat']);
+        // Someone who never played Shove has no tool rows.
+        $this->assertArrayNotHasKey('bat', $this->get('/games/office-fps/players/'.$this->cat->id)->viewData('stats')['weapons']);
     }
 
     public function test_unknown_modes_maps_and_teams_are_refused(): void

@@ -1,5 +1,13 @@
-import { Box3, DoubleSide, Line3, Ray, Vector3 } from 'three'
-import type { ExtendedTriangle } from 'three-mesh-bvh'
+import { Box3, BufferGeometry, DoubleSide, Float32BufferAttribute, Line3, Mesh, Ray, Vector3 } from 'three'
+import { type ExtendedTriangle, MeshBVH } from 'three-mesh-bvh'
+import {
+    boxTriangles,
+    CLOUD_NINE,
+    CLOUD_NINE_BLOCKS,
+    CLOUD_NINE_PICKUPS,
+    CLOUD_NINE_SPAWNS,
+    CLOUD_NINE_VENTS,
+} from '../map/cloud-nine.ts'
 import {
     buildOfficeGeometry,
     type CollisionMesh,
@@ -29,9 +37,40 @@ export interface FpsWorld {
     walls: Walls
     /** Siege's dome while it stands (each game its own, like the walls): nothing gets in or out. */
     dome?: Dome | null
+    /** Fall below this (m) and you're out: a kill for whoever last hit you (Cloud Nine's ledges). None: the office. */
+    outBelow?: number
+    /** The jetpack takes nobody higher (m). None: the office's own ceiling does. */
+    ceiling?: number
 }
 
 let office: FpsWorld | null = null
+let cloudNine: FpsWorld | null = null
+
+/** Cloud Nine, built once (its few blocks) and shared, with walls of its own for each caller. */
+export function cloudNineWorld(): FpsWorld {
+    if (!cloudNine) {
+        const positions: number[] = []
+        for (const block of CLOUD_NINE_BLOCKS) boxTriangles(block, positions)
+        const geometry = new BufferGeometry()
+        geometry.setAttribute('position', new Float32BufferAttribute(positions, 3))
+        const solid = new Mesh(geometry) as unknown as CollisionMesh
+        solid.geometry.boundsTree = new MeshBVH(geometry)
+        // What the impacts make of it: metal (the surfaces' index).
+        solid.userData.surfaces = new Uint8Array(positions.length / 9).fill(SURFACES.indexOf('metal'))
+        cloudNine = {
+            meshes: [solid],
+            spawnPoints: CLOUD_NINE_SPAWNS,
+            pickups: CLOUD_NINE_PICKUPS,
+            pads: CLOUD_NINE_VENTS,
+            portals: [],
+            walls: new Walls(),
+            outBelow: CLOUD_NINE.outBelow,
+            ceiling: CLOUD_NINE.ceiling,
+        }
+    }
+
+    return { ...cloudNine, walls: new Walls() }
+}
 
 /** The office, built once (about a second) and shared, with walls of its own for each caller (each game). */
 export function officeWorld(): FpsWorld {

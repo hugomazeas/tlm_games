@@ -1,5 +1,6 @@
 import {
     ACESFilmicToneMapping,
+    Group,
     type Material,
     type Object3D,
     PCFShadowMap,
@@ -17,7 +18,12 @@ import {
     type GameEvent,
     type Gun,
     type InputFrame,
+    isMelee,
+    isTool,
     type Loadout,
+    LOBBY_MAP,
+    type MapId,
+    MAPS,
     parseLoadout,
     type RocketState,
     WEAPON_NAMES,
@@ -61,8 +67,10 @@ import {
 } from '../sim/places.ts'
 import { buildSlot, type BuildSlot } from '../sim/building.ts'
 import { BUILD, type Wall } from '../sim/walls.ts'
-import { rayDistance, rayHit, worldFrom } from '../sim/world.ts'
+import { SHOVE } from '../sim/shove.ts'
+import { type FpsWorld, rayDistance, rayHit, worldFrom } from '../sim/world.ts'
 import { WallViews } from './building.ts'
+import { buildCloudNine, mapLooks } from './cloud-nine.ts'
 import { Impacts } from './impacts.ts'
 import { Avatars } from './avatars.ts'
 import { announce, taunt } from './callouts.ts'
@@ -130,10 +138,36 @@ const camera = new PerspectiveCamera(78, innerWidth / innerHeight, 0.01, 900)
 camera.rotation.order = 'YXZ'
 scene.add(camera)
 const office = buildOffice(scene, renderer)
-const world = worldFrom(office)
-const pickupViews = new PickupViews(scene)
-const padViews = new PadViews(scene, world.pads)
-const portalViews = new PortalViews(scene, world.portals)
+/** The office's pickups, pads and portals: hidden with it on another map. */
+const officeExtras = new Group()
+scene.add(officeExtras)
+// Cloud Nine, built now (a few blocks and canvases) and hidden: the shader warm-up meets it, and a
+// match there never waits for this browser.
+const cloudNine = buildCloudNine()
+scene.add(cloudNine.group)
+/** Each map's world (what you collide with and predict on) and its pickups, pads and portals. */
+const places = {
+    office: { world: worldFrom(office), parent: officeExtras as Object3D },
+    'cloud-nine': { world: cloudNine.world, parent: cloudNine.group as Object3D },
+} satisfies Record<MapId, { world: FpsWorld; parent: Object3D }>
+const views = Object.fromEntries(
+    MAPS.map(id => {
+        const { world: w, parent } = places[id]
+        return [
+            id,
+            {
+                pickups: new PickupViews(parent, w.pickups),
+                pads: new PadViews(parent, w.pads),
+                portals: new PortalViews(parent, w.portals),
+            },
+        ]
+    })
+) as Record<MapId, { pickups: PickupViews; pads: PadViews; portals: PortalViews }>
+const showMap = mapLooks(scene, office, cloudNine, officeExtras, renderer)
+showMap(LOBBY_MAP)
+/** The map you're on, and its world. */
+let mapNow: MapId = LOBBY_MAP
+let world: FpsWorld = places[LOBBY_MAP].world
 const zoneView = new ZoneView(scene)
 const spotView = new ZoneView(scene, SIEGE_SPOTS)
 const domeView = new DomeView(scene)
@@ -264,6 +298,9 @@ let others = new Interpolator()
 const smoothing = new Vector3()
 let nextLocalShot = 0
 let nextLocalSwing = 0
+/** Shove: the bat was held last step (let go, it swings), and your blower is running. */
+let batHeld = false
+let blowingNow = false
 let wasFiring = false
 /** When your reload ends on this clock (null: not reloading); the ring and the animation run to it. */
 let reloadEndsAt: number | null = null
@@ -444,6 +481,11 @@ function receive(message: ServerMessage): void {
         case 'welcome':
             me = message.you
             roster = new Map(message.players.map(p => [p.id, p]))
+            useMap(message.match.map, now)
+            // Every map is built at load: ready for a match on any of them.
+            for (const id of MAPS) {
+                if (id !== LOBBY_MAP) socket?.send(JSON.stringify({ type: 'ready', map: id }))
+            }
             prediction = new Prediction(world)
             clock = new ServerClock()
             others = new Interpolator()
@@ -477,6 +519,7 @@ function receive(message: ServerMessage): void {
             const siegeBefore = before === 'playing' ? (match?.siege ?? null) : null
             match = message.match
             matchAt = now
+            useMap(match.map, now)
             syncDome(match)
             siegeNews(siegeBefore, match)
             hud.setMatch(message.match, now)
@@ -512,6 +555,22 @@ function updateHost(): void {
     const host = match?.host ?? null
     const seated = [...roster.values()].filter(p => !p.watching).length
     hud.setHost({ isHost: host !== null && host === me, name: host ? (roster.get(host)?.name ?? null) : null, seated })
+}
+
+/**
+ * Over to the map everyone is on now (the server moved them: a match's countdown, or back to the
+ * office): its world to collide with and predict on, its look, nobody drawn where they were.
+ */
+function useMap(map: MapId, now: number): void {
+    if (map === mapNow) return
+    mapNow = map
+    world = places[map].world
+    world.walls.clear()
+    wallViews.sync(world.walls, now)
+    prediction = new Prediction(world)
+    others = new Interpolator()
+    pickupsReady = []
+    showMap(map)
 }
 
 /** Siege's dome from the match: in the world while it stands, so your prediction meets it as the server does. */
@@ -579,7 +638,8 @@ function snapshot(snap: Extract<ServerMessage, { type: 'snap' }>, now: number): 
         // The reload's end, on this clock (the ring and the animation run to it between snapshots).
         reloadEndsAt = self.reloadLeftMs === null ? null : now + self.reloadLeftMs
         if (self.reloading && !wasReloading && self.reloadLeftMs !== null) sounds.reload(self.reloadLeftMs)
-        const spawned = self.alive && !wasAlive
+        // Back from down, or put straight on a fresh spawn (a match starting, a move to another map).
+        const spawned = self.alive && (!wasAlive || snap.events.some(e => e.type === 'spawn' && e.id === me))
         if (spawned && wasConnectedAlive) sounds.spawn()
         wasConnectedAlive = true
         const correction = prediction.reconcile(snap.ack, self.body, self.alive)
@@ -765,6 +825,32 @@ function onEvent(event: GameEvent, now: number): void {
         }
         return
     }
+    // Shove: someone's extinguisher (yours was drawn when fired), and what it hit.
+    if (event.type === 'spray') {
+        const from = new Vector3(...event.from)
+        const toward = new Vector3(...event.toward).sub(from).normalize()
+        if (event.by !== me) {
+            effects.spray(avatars.muzzleOf(event.by) ?? from, toward, now)
+            avatars.fire(event.by, 'extinguisher', now)
+            sounds.spray(spatial(listener(), from))
+        }
+        for (const hit of event.hits) {
+            const struck = avatars.centerOf(hit.id)
+            if (struck) avatars.hit(hit.id, now, [from.x, from.y, from.z])
+            if (hit.id === me) hud.damageFrom(bearingTo(event.from))
+            if (event.by !== me || !struck) continue
+            hud.hitMarker(false)
+            const at = toScreen(new Vector3(struck.x, struck.y, struck.z))
+            if (at) hud.damageNumber(hit.percent, false, at.x, at.y, true)
+        }
+        return
+    }
+    // Shove: a gust on its way, said with the way it'll blow (from where you're looking).
+    if (event.type === 'gust') {
+        hud.toast(`GUST ${arrowFor(event.x, event.z)} IN ${Math.ceil(event.inMs / 1000)} s · GET LOW (C)`, '#9fe3ff')
+        sounds.zoneMoved()
+        return
+    }
     if (event.type === 'swing') {
         if (event.hit && event.damage > 0) {
             const by = avatars.centerOf(event.by)
@@ -775,10 +861,11 @@ function onEvent(event: GameEvent, now: number): void {
             const struck = event.hit ? avatars.centerOf(event.hit) : null
             if (event.hit && event.damage > 0) {
                 hud.hitMarker(event.backstab)
-                sounds.swingHit(event.backstab)
+                if (event.weapon === 'bat') sounds.batHit()
+                else sounds.swingHit(event.backstab)
             }
             const at = struck ? toScreen(new Vector3(struck.x, struck.y, struck.z)) : null
-            if (event.hit && at) hud.damageNumber(event.damage, event.backstab, at.x, at.y)
+            if (event.hit && at) hud.damageNumber(event.damage, event.backstab, at.x, at.y, event.weapon === 'bat')
             return
         }
         avatars.swing(event.by, now)
@@ -798,9 +885,13 @@ function onEvent(event: GameEvent, now: number): void {
                 : `${WEAPON_NAMES[event.weapon]}${event.headshot ? ' ⌖' : ''}`
         const how = `<span style="opacity:.7">[${icon}]</span>`
         hud.killFeed(
-            event.killer === null
-                ? `${colored(event.victim)} <span style="opacity:.7">blew themselves up</span>`
-                : `${colored(event.killer)} ${how} ${colored(event.victim)}`
+            event.fall
+                ? event.killer === null
+                    ? `${colored(event.victim)} <span style="opacity:.7">fell off</span>`
+                    : `${colored(event.killer)} <span style="opacity:.7">knocked</span> ${colored(event.victim)} <span style="opacity:.7">off [${icon}]</span>`
+                : event.killer === null
+                  ? `${colored(event.victim)} <span style="opacity:.7">blew themselves up</span>`
+                  : `${colored(event.killer)} ${how} ${colored(event.victim)}`
         )
         // Still drawn where they fell (they disappear on the next frame).
         const fell = avatars.centerOf(event.victim)
@@ -809,7 +900,7 @@ function onEvent(event: GameEvent, now: number): void {
             killer = event.killer ? name(event.killer) : null
             deathTaunt = event.killer && event.killer !== me ? taunt(event, Math.random) : null
             const { weapon, headshot, backstab, recap } = event
-            deathCause = { weapon, headshot, backstab, recap }
+            deathCause = { weapon, headshot, backstab, recap, fall: event.fall ?? false }
         }
         if (event.killer === me && event.victim !== me) {
             hud.hitMarker(event.headshot, true)
@@ -838,6 +929,26 @@ const PICKUP_TOASTS: Record<PickupKind, string> = {
     intern: 'INTERN: HALF SIZE, 60 HEALTH, 30 s',
     bonus: 'BONUS: DOUBLE DAMAGE FOR 15 s',
     orgchart: 'ORG CHART: SEE EVERYONE THROUGH WALLS, 15 s',
+    anvil: 'ANVIL: HEAVY, HITS COUNT DOUBLE, 8 s',
+    bubble: 'BUBBLE: ONE SAVE FROM A FALL',
+    magnet: 'MAGNET: PULLS EVERYONE IN, 3 s',
+}
+
+/** A way across the floor plan as an arrow on screen, from where you're looking (↑ ahead, → to your right). */
+function arrowFor(x: number, z: number): string {
+    const fx = -Math.sin(controls.yaw)
+    const fz = -Math.cos(controls.yaw)
+    // Ahead and to the right (the right of forward is (-fz, fx)).
+    const ahead = x * fx + z * fz
+    const right = -x * fz + z * fx
+    const arrows = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖']
+    const turn = Math.atan2(right, ahead)
+    return arrows[(Math.round(turn / (Math.PI / 4)) + 8) % 8]!
+}
+
+/** The gun in hand, if it's a gun (not the stapler, not one of Shove's tools). */
+function gunOf(weapon: Weapon): Gun | null {
+    return isMelee(weapon) || isTool(weapon) ? null : weapon
 }
 
 /** A point in the world on screen (px), or null when it's behind the camera. */
@@ -1030,7 +1141,7 @@ function step(now: number): void {
     sounds.jetting(jetting && self.alive && controls.locked)
 
     // A new weapon in hand: like the server, it can't be used for a moment.
-    const wanted = weaponIn(controls.slot, self.loadout)
+    const wanted = weaponIn(controls.slot, self.loadout, self.percent !== null)
     if (wanted !== held) {
         held = wanted
         readyAt = now + SWITCH_MS
@@ -1044,19 +1155,43 @@ function step(now: number): void {
     const ready = self.alive && now >= readyAt
     // Your own shot or swing shows (and sounds) at once: the server's answer only says what it hit.
     // The rounds are the server's: only fire here once it has the same gun in hand.
-    if (ready && held !== 'stapler' && self.weapon === held) {
-        const auto = held !== 'launcher' && GUNS[held].auto
+    const gun = gunOf(held)
+    if (ready && gun && self.weapon === held) {
+        const auto = gun !== 'launcher' && GUNS[gun].auto
         const trigger = auto ? holding : clicked
         const canFire = !self.reloading && self.ammo > 0 && now >= nextLocalShot
         if (trigger && canFire) {
             clicked = false
-            nextLocalShot = now + (held === 'launcher' ? LAUNCHER.intervalMs : GUNS[held].intervalMs)
-            fireLocally(held, input, now)
+            nextLocalShot = now + (gun === 'launcher' ? LAUNCHER.intervalMs : GUNS[gun].intervalMs)
+            fireLocally(gun, input, now)
         } else if (trigger && clicked && (self.reloading || self.ammo === 0)) {
             clicked = false
             sounds.empty()
         }
     }
+    // Shove's tools, at once here too: the blower's air and roar, the extinguisher's blast and kick,
+    // the bat's wind-up and swing (the server says what they hit).
+    const blowing = ready && holding && held === 'blower' && self.weapon === held
+    if (blowing) {
+        viewmodel?.fire(now)
+        effects.air(viewmodel?.muzzleIn() ?? eyeOf(prediction.body!), aimNow(prediction.body!), now)
+    }
+    blowingNow = blowing
+    sounds.blowing(blowing && controls.locked)
+    if (ready && holding && held === 'extinguisher' && self.weapon === held && now >= nextLocalShot) {
+        nextLocalShot = now + SHOVE.extinguisher.cooldownMs
+        viewmodel?.fire(now)
+        effects.spray(viewmodel?.muzzleIn() ?? eyeOf(prediction.body!), aimNow(prediction.body!), now)
+        sounds.spray()
+    }
+    if (viewmodel) viewmodel.charge = held === 'bat' ? self.charge : null
+    if (ready && held === 'bat' && self.weapon === held && !holding && batHeld && now >= nextLocalSwing) {
+        nextLocalSwing = now + SHOVE.bat.intervalMs
+        viewmodel?.swing(now)
+        if (me) avatars.swing(me, now)
+        sounds.swing()
+    }
+    batHeld = holding && held === 'bat'
     if (ready && holding && held === 'stapler' && now >= nextLocalSwing) {
         nextLocalSwing = now + STAPLER.intervalMs
         viewmodel?.swing(now)
@@ -1157,7 +1292,7 @@ function draw(now: number): void {
     smoothing.multiplyScalar(Math.exp(-12 * dt))
 
     const body = prediction.body
-    office.ceiling.visible = Boolean(self)
+    office.ceiling.visible = Boolean(self) && mapNow === LOBBY_MAP
     const third = thirdPerson && Boolean(self?.alive)
     if (self && body) {
         // Your eyes at your size (high on a Promotion, low as an Intern, near the floor prone, eased
@@ -1178,10 +1313,11 @@ function draw(now: number): void {
     // Aiming (right mouse, a gun): the view zooms in (as far as the gun's sights go; the sniper's
     // scope much further), the mouse slows to match (times your aiming sensitivity), the gun
     // centres on its sights.
-    const aimingNow = controls.aiming && Boolean(self?.alive) && held !== 'stapler'
+    const gun = gunOf(held)
+    const aimingNow = controls.aiming && Boolean(self?.alive) && gun !== null
     aimBlend += ((aimingNow ? 1 : 0) - aimBlend) * Math.min(1, dt * (held === 'sniper' ? 10 : 14))
     const hipFov = settings.fov
-    const gunFov = held === 'stapler' ? null : held === 'launcher' ? LAUNCHER.aimFov : GUNS[held].aimFov
+    const gunFov = gun === null ? null : gun === 'launcher' ? LAUNCHER.aimFov : GUNS[gun].aimFov
     const fov = hipFov + (Math.min(hipFov, gunFov ?? aimFov(hipFov)) - hipFov) * aimBlend
     // The sniper's scope: once it's up, the scope's ring instead of the rifle.
     const scoped = held === 'sniper' && aimBlend > 0.85 && !third
@@ -1194,8 +1330,7 @@ function draw(now: number): void {
     controls.sensitivityScale = settings.sensitivity * (fov / hipFov) * aimedSensitivity
     hud.aiming = aimingNow
     // The crosshair's ticks on the hip-fire cone (wider moving, wider still in the air), eased.
-    const cone =
-        self?.alive && body && held !== 'stapler' && held !== 'launcher' ? spreadOf(GUNS[held], false, body) : null
+    const cone = self?.alive && body && gun && gun !== 'launcher' ? spreadOf(GUNS[gun], false, body) : null
     if (cone === null) spreadPx = null
     else {
         const target = (Math.tan(cone) / Math.tan((camera.fov * Math.PI) / 360)) * (innerHeight / 2)
@@ -1204,10 +1339,9 @@ function draw(now: number): void {
     hud.spread(spreadPx)
     // A reload: the ring by the crosshair and the gun's animation, run to its end between snapshots.
     const reloading = Boolean(
-        self?.alive && self.reloading && held !== 'stapler' && self.weapon === held && reloadEndsAt !== null
+        self?.alive && self.reloading && gun !== null && self.weapon === held && reloadEndsAt !== null
     )
-    const reload =
-        reloading && held !== 'stapler' ? reloadProgress(Math.max(0, reloadEndsAt! - now), reloadMsOf(held)) : null
+    const reload = reloading && gun ? reloadProgress(Math.max(0, reloadEndsAt! - now), reloadMsOf(gun)) : null
     // Building, the ring is the wall's: filling until the next can go up.
     const building = controls.building && Boolean(self?.alive) && body !== null && match?.phase !== 'intermission'
     const buildRing = building && now < nextBuildAt ? reloadProgress(nextBuildAt - now, BUILD_COOLDOWN_MS) : null
@@ -1256,12 +1390,20 @@ function draw(now: number): void {
             reload,
             team: teams.get(me) ?? null,
             buffs: self.buffs.map(b => b.kind),
+            percent: self.percent,
+            blowing: blowingNow,
         }
         poses.set(me, { ...where, ...facing, state })
     }
     // The Org chart: everyone shows through the walls.
     const xray = Boolean(self?.alive && self.buffs.some(b => b.kind === 'orgchart'))
     avatars.update(poses, roster, third ? null : me, now, xray)
+    // Shove: the air out of everyone else's blower.
+    for (const [id, pose] of poses) {
+        if (id === me || !pose.state.blowing) continue
+        const muzzle = avatars.muzzleOf(id)
+        if (muzzle) effects.air(muzzle, aimDirection(pose.yaw, pose.pitch), now, id)
+    }
     effects.update(now)
     impacts.update(now, camera)
     // Rockets fly straight: from the last snapshot, ahead by their speed.
@@ -1270,9 +1412,11 @@ function draw(now: number): void {
         rockets.map(r => ({ ...r, x: r.x + r.vx * ahead, y: r.y + r.vy * ahead, z: r.z + r.vz * ahead })),
         now
     )
-    pickupViews.update(pickupsReady, now)
-    padViews.update(now)
-    portalViews.update(now)
+    const here = views[mapNow]
+    here.pickups.update(pickupsReady, now)
+    here.pads.update(now)
+    here.portals.update(now)
+    if (mapNow === 'cloud-nine') cloudNine.update(now)
     zoneView.update(zone, colorOf, zone !== null && zone.holder === me, now)
     const siege = match?.phase === 'playing' ? match.siege : null
     // Siege's spot: white, or the attackers' colour while one of them stands in it.
@@ -1385,6 +1529,12 @@ function showTarget(poses: Map<string, Pose>): void {
     const info = roster.get(id)
     const buffs = pose.state.buffs.map(kind => BUFF_LABELS[kind].icon).join('')
     const label = `${info?.name ?? '?'}${buffs ? ` ${buffs}` : ''}`
-    const who = { name: label, color: colorOf(id), health: pose.state.health, maxHealth: maxHealthOf(powers) }
+    const who = {
+        name: label,
+        color: colorOf(id),
+        health: pose.state.health,
+        maxHealth: maxHealthOf(powers),
+        percent: pose.state.percent,
+    }
     hud.target(who, at.x, at.y)
 }

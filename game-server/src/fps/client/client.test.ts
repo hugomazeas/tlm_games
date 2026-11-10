@@ -551,6 +551,8 @@ describe('drawing the others', () => {
         buffs: [],
         jet: false,
         shielded: false,
+        percent: null,
+        blowing: false,
     })
 
     test('between two snapshots, in proportion', () => {

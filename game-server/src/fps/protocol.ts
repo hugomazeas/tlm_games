@@ -29,7 +29,20 @@ export const SECONDARIES = ['pistol', 'launcher'] as const
 export type Primary = (typeof PRIMARIES)[number]
 export type Secondary = (typeof SECONDARIES)[number]
 export type Gun = Primary | Secondary
-export type Weapon = Gun | 'stapler'
+/** Shove's kit, instead of the guns: a leaf blower, a fire extinguisher, a bat. */
+export const TOOLS = ['blower', 'extinguisher', 'bat'] as const
+export type Tool = (typeof TOOLS)[number]
+export type Weapon = Gun | 'stapler' | Tool
+/** What's held in two hands and drawn like a gun (the guns, the blower, the extinguisher). */
+export type Handheld = Gun | 'blower' | 'extinguisher'
+/** Swung in one hand: the stapler, Shove's bat. */
+export type Melee = 'stapler' | 'bat'
+export function isMelee(weapon: Weapon): weapon is Melee {
+    return weapon === 'stapler' || weapon === 'bat'
+}
+export function isTool(weapon: Weapon): weapon is Tool {
+    return (TOOLS as readonly string[]).includes(weapon)
+}
 export const WEAPON_NAMES: Record<Weapon, string> = {
     rifle: 'Assault rifle',
     sniper: 'Sniper',
@@ -37,7 +50,12 @@ export const WEAPON_NAMES: Record<Weapon, string> = {
     pistol: 'Pistol',
     launcher: 'Launcher',
     stapler: 'Stapler',
+    blower: 'Leaf blower',
+    extinguisher: 'Fire extinguisher',
+    bat: 'Bat',
 }
+/** Shove's slots: the blower, the extinguisher, the bat (no guns, no loadout). */
+export const SHOVE_KIT: Record<Slot, Tool> = { primary: 'blower', secondary: 'extinguisher', melee: 'bat' }
 
 /** What you carry: a primary in slot 1, a secondary in slot 2 (the stapler is slot 3). */
 export interface Loadout {
@@ -50,8 +68,9 @@ export const DEFAULT_LOADOUT: Loadout = { primary: 'rifle', secondary: 'pistol' 
 export const SLOTS = ['primary', 'secondary', 'melee'] as const
 export type Slot = (typeof SLOTS)[number]
 
-/** The weapon in a slot, with this loadout. */
-export function weaponIn(slot: Slot, loadout: Loadout): Weapon {
+/** The weapon in a slot, with this loadout (Shove's tools when `shove`). */
+export function weaponIn(slot: Slot, loadout: Loadout, shove = false): Weapon {
+    if (shove) return SHOVE_KIT[slot]
     return slot === 'primary' ? loadout.primary : slot === 'secondary' ? loadout.secondary : 'stapler'
 }
 
@@ -70,20 +89,28 @@ export function parseLoadout(value: unknown): Loadout | null {
  * the active zone alone; the zone moves around the office) and siege (one side defends a spot,
  * the other takes it, then they swap).
  */
-export const MODES = ['ffa', 'tdm', 'koth', 'siege'] as const
+export const MODES = ['ffa', 'tdm', 'koth', 'siege', 'shove'] as const
 export type Mode = (typeof MODES)[number]
 export const MODE_NAMES: Record<Mode, string> = {
     ffa: 'Free for all',
     tdm: 'Team deathmatch',
     koth: 'King of the meeting room',
     siege: 'Siege',
+    shove: 'Shove',
 }
+
+/**
+ * Shove: no guns and no health. Each hit adds to your damage % and the higher it is, the further
+ * the next one throws you; off the edge, you lose a life (`fragLimit` lives each). The last one
+ * with a life left wins; at the time limit, the most lives (then the most ring-outs).
+ */
+export const SHOVE_LIVES = [1, 2, 3, 5] as const
 
 /**
  * The maps. Everyone warms up in the office (`LOBBY_MAP`); the host picks the map a match is
  * played on, and the modes it allows (Siege's spots and the meeting rooms are the office's).
  */
-export const MAPS = ['office'] as const
+export const MAPS = ['office', 'cloud-nine'] as const
 export type MapId = (typeof MAPS)[number]
 export const LOBBY_MAP: MapId = 'office'
 export interface MapInfo {
@@ -100,6 +127,12 @@ export const MAP_INFO: Record<MapId, MapInfo> = {
         blurb: 'The 3rd floor: desks, glass, the kitchen and the meeting rooms.',
         players: '2–12',
         modes: ['ffa', 'tdm', 'koth', 'siege'],
+    },
+    'cloud-nine': {
+        name: 'Cloud Nine',
+        blurb: 'A rooftop floating over the city at night. No railings: fall off and you’re out.',
+        players: '2–8',
+        modes: ['shove', 'ffa'],
     },
 }
 
@@ -167,6 +200,11 @@ export interface Rules {
     minutes: number
 }
 export const DEFAULT_RULES: Rules = { map: LOBBY_MAP, mode: 'ffa', fragLimit: 15, minutes: 5 }
+
+/** The limits a mode offers: kills (or points, or zone time), or Shove's lives. */
+export function limitsOf(mode: Mode): readonly number[] {
+    return mode === 'shove' ? SHOVE_LIVES : FRAG_LIMITS
+}
 /** King of the meeting room: seconds in the zone to win, per point of the limit. */
 export const ZONE_SECONDS_PER_POINT = 10
 
@@ -182,6 +220,9 @@ export type BuffKind =
     | 'intern'
     | 'bonus'
     | 'orgchart'
+    | 'anvil'
+    | 'bubble'
+    | 'magnet'
 
 /** Which way a built wall faces: its normal along x or z (standing), or y (flat: a floor, a roof). */
 export const WALL_AXES = ['x', 'y', 'z'] as const
@@ -283,6 +324,10 @@ export interface PlayerState {
     team: Team | null
     /** The pickups' powers they carry (everyone sees them). */
     buffs: BuffKind[]
+    /** Shove: their damage % (null outside Shove). */
+    percent: number | null
+    /** Shove: their leaf blower is running (everyone sees the air). */
+    blowing: boolean
 }
 
 /** You, in full: your browser predicts from it. */
@@ -308,6 +353,10 @@ export interface SelfState {
     magazine: number
     /** Your powers, with what's left of each (ms; the firewall also its damage left to soak, `points`). */
     buffs: Array<{ kind: BuffKind; leftMs: number; points?: number }>
+    /** Shove: your damage % (null outside Shove). */
+    percent: number | null
+    /** Shove: how wound up your bat is (0–1), null when not winding up. */
+    charge: number | null
 }
 
 export type GameEvent =
@@ -334,8 +383,29 @@ export type GameEvent =
           at: [number, number, number]
           hits: Array<{ id: string; damage: number }>
       }
-    /** A stapler swing: who it hit (null: air), for how much, and whether it was from behind. */
-    | { type: 'swing'; by: string; hit: string | null; damage: number; backstab: boolean }
+    /**
+     * A stapler swing (or Shove's bat: `damage` is the % it added, `charge` how wound up it was): who
+     * it hit (null: air), and whether it was from behind.
+     */
+    | {
+          type: 'swing'
+          by: string
+          hit: string | null
+          damage: number
+          backstab: boolean
+          weapon?: Melee
+          charge?: number
+      }
+    /** Shove: a fire extinguisher's blast from `from` along `toward`, and the % it added to whom. */
+    | {
+          type: 'spray'
+          by: string
+          from: [number, number, number]
+          toward: [number, number, number]
+          hits: Array<{ id: string; percent: number }>
+      }
+    /** Shove: a gust is coming (`inMs`), then blows this way (m/s on the floor plan) for `forMs`. */
+    | { type: 'gust'; x: number; z: number; inMs: number; forMs: number }
     | {
           type: 'kill'
           killer: string | null
@@ -348,6 +418,8 @@ export type GameEvent =
           victimStreak: number
           /** The match's first kill. */
           firstBlood?: boolean
+          /** Off the map (Cloud Nine's ledges): the killer, if any, was the last to hit them, with `weapon`. */
+          fall?: boolean
           /** How it happened, for the victim's death screen (absent when nobody killed them). */
           recap?: KillRecap
       }
@@ -400,6 +472,8 @@ export interface Score {
     team: Team | null
     /** Seconds holding the zone (king of the meeting room), or the spot taken (siege). */
     points: number
+    /** Shove: lives left (0: out of the match), null otherwise. */
+    lives: number | null
 }
 
 export interface MatchView {
@@ -566,10 +640,10 @@ export function parseClientMessage(raw: string): ClientMessage | null {
 /** A match's rules from untrusted input (a mode its map allows), or null. */
 export function parseRules(value: unknown): Rules | null {
     const rules = value as Record<string, unknown> | null | undefined
-    const fragLimit = FRAG_LIMITS.find(n => n === rules?.fragLimit)
     const minutes = MATCH_MINUTES.find(n => n === rules?.minutes)
     // No mode (an older tab): free for all; no map: the office.
     const mode = rules?.mode === undefined ? 'ffa' : MODES.find(m => m === rules.mode)
+    const fragLimit = mode && limitsOf(mode).find(n => n === rules?.fragLimit)
     const map = rules?.map === undefined ? LOBBY_MAP : MAPS.find(m => m === rules.map)
     if (fragLimit === undefined || minutes === undefined || mode === undefined || map === undefined) return null
     if (!playableOn(map, mode)) return null

@@ -19,7 +19,17 @@ import {
     Vector3,
 } from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
-import { type BuffKind, type Gun, type PlayerInfo, TEAM_COLORS, type Weapon } from '../protocol.ts'
+import {
+    type BuffKind,
+    type Gun,
+    type Handheld,
+    isMelee,
+    isTool,
+    type Melee,
+    type PlayerInfo,
+    TEAM_COLORS,
+    type Weapon,
+} from '../protocol.ts'
 import { powersOf, reloadMsOf, SWITCH_MS } from '../sim/combat.ts'
 import { PLAYER, scaleOf } from '../sim/movement.ts'
 import { rocketLook } from './effects.ts'
@@ -96,6 +106,9 @@ const shape = {
     core: new ConeGeometry(0.011, 0.07, 8).rotateX(Math.PI).translate(0, -0.035, 0),
     staplerBase: new BoxGeometry(0.03, 0.012, 0.11),
     staplerArm: new BoxGeometry(0.026, 0.018, 0.1),
+    // Shove's bat, along -Z from the hand: the grip, then the barrel swelling to its end.
+    batGrip: new CylinderGeometry(0.007, 0.007, 0.05, 8).rotateX(Math.PI / 2).translate(0, 0, -0.02),
+    batBarrel: new CylinderGeometry(0.016, 0.008, 0.16, 10).rotateX(Math.PI / 2).translate(0, 0, -0.12),
     shield: new SphereGeometry(0.29, 24, 16),
     firewall: new SphereGeometry(0.27, 6, 4),
     halo: new TorusGeometry(0.07, 0.008, 6, 28),
@@ -105,6 +118,7 @@ const shape = {
 const metal = new MeshStandardMaterial({ color: 0x3b4048, roughness: 0.35, metalness: 0.75 })
 const dark = new MeshStandardMaterial({ color: 0x1d2026, roughness: 0.55, metalness: 0.2 })
 const white = new MeshStandardMaterial({ color: 0xeeeeea, roughness: 0.45 })
+const wood = new MeshStandardMaterial({ color: 0xb07a45, roughness: 0.55, metalness: 0.05 })
 const visorMaterial = new MeshStandardMaterial({
     color: 0x0d1a26,
     roughness: 0.05,
@@ -166,7 +180,7 @@ interface Hold {
     group: Group
     /** The gun's own frame (the one your hands use), scaled down: the guns, their flash and cases. */
     inner: Group
-    guns: Record<Gun, GunModel>
+    guns: Record<Handheld, GunModel>
     flash: ReturnType<typeof buildFlash>
     cases: Record<Ejection['kind'], Group[]>
 }
@@ -185,6 +199,8 @@ interface Avatar {
     hold: Hold
     kit: Kit
     stapler: Group
+    /** Shove's bat, held like the stapler, swung wider. */
+    bat: Group
     swingAt: number
     head: Group
     flames: Group[]
@@ -213,7 +229,7 @@ interface Avatar {
     /** When their current reload started (this browser's clock), null when not reloading. */
     reloadFrom: number | null
     /** Their recent shots: the kick, the flash, the cases. */
-    shots: Array<{ at: number; gun: Gun }>
+    shots: Array<{ at: number; gun: Handheld }>
     /** The last hit: when, which way it pushed (world, flat, unit), a headshot, a blast. */
     hit: { at: number; push: Vector3; headshot: boolean; blast: boolean } | null
     /** Up or down as last drawn (null: not drawn yet). */
@@ -278,7 +294,7 @@ export class Avatars {
     }
 
     /** They fired (a round or a rocket): the gun kicks, flashes and throws a case. */
-    fire(id: string, gun: Gun, now: number): void {
+    fire(id: string, gun: Handheld, now: number): void {
         const avatar = this.avatars.get(id)
         if (!avatar) return
         avatar.shots.push({ at: now, gun })
@@ -319,7 +335,7 @@ export class Avatars {
     /** The muzzle of the gun in someone's hands, in the world, while they're up and holding one. */
     muzzleOf(id: string): Vector3 | null {
         const avatar = this.avatars.get(id)
-        if (!avatar?.root.visible || !avatar.alive || avatar.held === 'stapler') return null
+        if (!avatar?.root.visible || !avatar.alive || isMelee(avatar.held)) return null
         const { inner, guns } = avatar.hold
         inner.updateWorldMatrix(true, false)
         return inner.localToWorld(guns[avatar.held].muzzle.clone())
@@ -383,7 +399,7 @@ export class Avatars {
             avatar.switchAt = now
         }
         avatar.aim.rotation.x = pose.pitch + (Math.PI / 2) * down
-        if (state.weapon === 'stapler') this.holdStapler(avatar, now)
+        if (isMelee(state.weapon)) this.holdMelee(avatar, state.weapon, now)
         else this.holdGun(avatar, state.weapon, state.reload, now)
 
         for (const [i, flame] of avatar.flames.entries()) {
@@ -410,14 +426,16 @@ export class Avatars {
     }
 
     /** A gun in their hands: posed and animated as in yours, the arms reaching to where it puts the hands. */
-    private holdGun(avatar: Avatar, gunName: Gun, reported: number | null, now: number): void {
+    private holdGun(avatar: Avatar, gunName: Handheld, reported: number | null, now: number): void {
         const { group, inner, guns, flash } = avatar.hold
         const gun = guns[gunName]
-        const reloadMs = reloadMsOf(gunName)
-        const started = reloadStart(avatar.reloadFrom, reported, reloadMs, now)
+        // Shove's tools don't reload.
+        const reloads = isTool(gunName) ? null : gunName
+        const reloadMs = reloads ? reloadMsOf(reloads) : 1
+        const started = reloads ? reloadStart(avatar.reloadFrom, reported, reloadMs, now) : null
         // Heard from its start (not when someone comes into view half way through one).
-        if (avatar.reloadFrom === null && started !== null && reported !== null && reported < 0.25) {
-            this.onReload?.(avatar.id, gunName, reloadMs - (now - started))
+        if (reloads && avatar.reloadFrom === null && started !== null && reported !== null && reported < 0.25) {
+            this.onReload?.(avatar.id, reloads, reloadMs - (now - started))
         }
         avatar.reloadFrom = started
         const reload = avatar.reloadFrom === null ? null : Math.min(1, (now - avatar.reloadFrom) / reloadMs)
@@ -427,6 +445,7 @@ export class Avatars {
 
         group.visible = true
         avatar.stapler.visible = false
+        avatar.bat.visible = false
         for (const [name, model] of Object.entries(guns)) model.group.visible = name === gunName
 
         // Turned about the gun's middle: `inner` puts that middle at `group`'s origin.
@@ -470,18 +489,21 @@ export class Avatars {
         this.reach(avatar, 1, hands.left ? hands.left.at.clone().applyMatrix4(toAim) : null)
     }
 
-    /** The stapler in the right hand, chopping when they swing; the left hangs. */
-    private holdStapler(avatar: Avatar, now: number): void {
+    /** The stapler (or Shove's bat) in the right hand, chopping when they swing (the bat wider); the left hangs. */
+    private holdMelee(avatar: Avatar, weapon: Melee, now: number): void {
         avatar.hold.group.visible = false
         avatar.reloadFrom = null
-        const { stapler } = avatar
-        stapler.visible = true
-        const swung = (now - avatar.swingAt) / 300
-        stapler.rotation.x = swung < 1 ? -Math.sin(swung * Math.PI) * 1.1 : 0
+        const bat = weapon === 'bat'
+        const held = bat ? avatar.bat : avatar.stapler
+        avatar.stapler.visible = !bat
+        avatar.bat.visible = bat
+        const swung = (now - avatar.swingAt) / (bat ? 380 : 300)
+        held.rotation.x = swung < 1 ? -Math.sin(swung * Math.PI) * (bat ? 1.5 : 1.1) : bat ? 0.5 : 0
+        held.rotation.y = bat && swung < 1 ? -Math.sin(swung * Math.PI) * 0.8 : 0
         // Comes up from below after a switch.
-        stapler.position.y = -0.03 - (1 - ease(Math.min(1, (now - avatar.switchAt) / SWITCH_MS))) * 0.04
-        stapler.updateMatrix()
-        this.reach(avatar, 0, new Vector3(0, 0, -0.005).applyMatrix4(stapler.matrix))
+        held.position.y = -0.03 - (1 - ease(Math.min(1, (now - avatar.switchAt) / SWITCH_MS))) * 0.04
+        held.updateMatrix()
+        this.reach(avatar, 0, new Vector3(0, 0, -0.005).applyMatrix4(held.matrix))
         this.reach(avatar, 1, null)
     }
 
@@ -502,7 +524,7 @@ export class Avatars {
     }
 
     /** Spent cases out of the port, in the gun's frame, spinning, falling away. */
-    private throwCases(avatar: Avatar, held: Gun, now: number): void {
+    private throwCases(avatar: Avatar, held: Handheld, now: number): void {
         const { cases, guns } = avatar.hold
         const used: Record<Ejection['kind'], number> = { case: 0, long: 0, shell: 0 }
         for (const all of Object.values(cases)) for (const c of all) c.visible = false
@@ -687,7 +709,11 @@ export class Avatars {
         stapler.position.set(0.03, -0.03, -0.06)
         stapler.add(part(shape.staplerBase, dark, 0, -0.008, -0.05), part(shape.staplerArm, suit, 0, 0.008, -0.048))
         stapler.visible = false
-        aim.add(group, stapler)
+        const bat = new Group()
+        bat.position.set(0.03, -0.03, -0.04)
+        bat.add(part(shape.batGrip, suit), part(shape.batBarrel, wood))
+        bat.visible = false
+        aim.add(group, stapler, bat)
         body.add(aim)
 
         // Jetpack on the back (+Z): two tanks, nozzles with rings, a flame under each.
@@ -752,6 +778,7 @@ export class Avatars {
             hold: { group, inner, guns, flash, cases },
             kit,
             stapler,
+            bat,
             swingAt: -1e9,
             head,
             flames,

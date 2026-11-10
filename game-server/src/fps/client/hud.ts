@@ -1,7 +1,9 @@
 import {
     type BuffKind,
     FRAG_LIMITS,
+    isTool,
     type KillRecap,
+    limitsOf,
     type Loadout,
     LOBBY_MAP,
     MAP_INFO,
@@ -16,7 +18,6 @@ import {
     type MatchView,
     type Mode,
     MODE_NAMES,
-    MODES,
     type PlayerInfo,
     type Rules,
     type Score,
@@ -156,6 +157,8 @@ const CSS = `
 #fps-hud .setup .actions { display: flex; gap: 10px; margin-top: 18px; }
 #fps-hud .setup button[data-start] { background: #e4572e; border-color: #e4572e; font-weight: 700; padding: 8px 18px; }
 #fps-hud .card .next-line { font-size: 13px; }
+#fps-hud .charge { display: inline-block; width: 110px; height: 8px; border-radius: 4px; background: rgba(255,255,255,.15); overflow: hidden; vertical-align: middle; }
+#fps-hud .charge i { display: block; height: 100%; background: linear-gradient(90deg, #ffd166, #ff4d4d); }
 #fps-hud .card .section { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.12); text-align: left; }
 #fps-hud .card h2 { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; opacity: .6; margin: 0 0 8px; }
 #fps-hud .card .row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
@@ -202,6 +205,7 @@ export class Hud {
     private matchAt = 0
     private lastHealth = MAX_HEALTH
     private lastFull = MAX_HEALTH
+    private lastPercent = 0
     private boardForced = false
 
     private cardState = 'connecting'
@@ -406,15 +410,19 @@ export class Hud {
                     <b>${escape(MAP_INFO[id].name)}</b><small>${escape(MAP_INFO[id].blurb)} · ${MAP_INFO[id].players} players</small>
                 </button>`
         ).join('')
-        const modes = MODES.filter(m => playableOn(draft.map, m))
+        // The map's modes, its own first (Cloud Nine's Shove).
+        const modes = MAP_INFO[draft.map].modes
             .map(
                 m =>
                     `<button type="button" data-mode="${m}" class="${m === draft.mode ? 'on' : ''}">${MODE_NAMES[m]}</button>`
             )
             .join('')
-        const limits = FRAG_LIMITS.map(
-            v => `<option value="${v}"${v === draft.fragLimit ? ' selected' : ''}>${limitLabel(draft.mode, v)}</option>`
-        ).join('')
+        const limits = limitsOf(draft.mode)
+            .map(
+                v =>
+                    `<option value="${v}"${v === draft.fragLimit ? ' selected' : ''}>${limitLabel(draft.mode, v)}</option>`
+            )
+            .join('')
         const minutes = MATCH_MINUTES.map(
             v => `<option value="${v}"${v === draft.minutes ? ' selected' : ''}>${v} min</option>`
         ).join('')
@@ -442,8 +450,11 @@ export class Hud {
             <p class="hint">${enough ? (this.hostNotice ?? 'Everyone warms up in the office; the match moves them to its map.') : 'Needs a second player.'}</p>`
         const change = (to: Partial<Rules>) => {
             const next = { ...draft, ...to }
-            // A map that doesn't have the mode: its first one.
+            // Another map: its own mode first (Cloud Nine is for Shove); one without the mode: its first.
+            if (to.map && to.map !== draft.map) next.mode = MAP_INFO[next.map].modes[0]!
             if (!playableOn(next.map, next.mode)) next.mode = MAP_INFO[next.map].modes[0]!
+            // A limit the mode doesn't count in (kills, or Shove's lives): its usual one.
+            if (!limitsOf(next.mode).includes(next.fragLimit)) next.fragLimit = next.mode === 'shove' ? 3 : 15
             this.draft = next
             this.hooks.onPlan(next)
             this.renderSetup()
@@ -558,12 +569,29 @@ export class Hud {
         const outOf = full !== MAX_HEALTH ? `<span style="opacity:.5;font-size:16px"> / ${full}</span>` : ''
         const wall = self.buffs.find(b => b.kind === 'firewall')?.points
         const shield = wall ? `<span style="color:${BUFF_COLORS.firewall};font-size:18px"> +${wall}</span>` : ''
-        write(this.el.health!, `<small>Health</small>${self.alive ? self.health : 0}${outOf}${shield}`)
+        const shove = self.percent !== null
+        // Shove: no health, your % (white, then yellow, orange, red as it climbs).
+        write(
+            this.el.health!,
+            shove
+                ? `<small>Damage</small><span style="color:${percentColor(self.percent ?? 0)}">${self.percent}%</span>`
+                : `<small>Health</small>${self.alive ? self.health : 0}${outOf}${shield}`
+        )
         const slot = (n: number, slotName: 'primary' | 'secondary' | 'melee') =>
-            `<b class="${weaponIn(slotName, self.loadout) === self.weapon ? 'on' : ''}">${n}</b>`
+            `<b class="${weaponIn(slotName, self.loadout, shove) === self.weapon ? 'on' : ''}">${n}</b>`
         const slots = `<span class="slots">${slot(1, 'primary')}${slot(2, 'secondary')}${slot(3, 'melee')}</span>`
         const name = WEAPON_NAMES[self.weapon]
-        if (self.weapon === 'stapler') {
+        if (isTool(self.weapon)) {
+            // The bat's wind-up as a bar; the others say how they're used.
+            const charge = self.charge ?? 0
+            const how =
+                self.weapon === 'bat'
+                    ? self.charge !== null
+                        ? `<span class="charge"><i style="width:${Math.round(charge * 100)}%"></i></span>`
+                        : 'hold to wind up'
+                    : TOOL_HINTS[self.weapon]
+            write(this.el.ammo!, `<small>${name} ${slots}</small><span style="font-size:16px">${how}</span>`)
+        } else if (self.weapon === 'stapler') {
             write(this.el.ammo!, `<small>${name} ${slots}</small><span style="font-size:22px">📎 swing</span>`)
         } else {
             const big = self.magazine > magazineOf(self.weapon) ? ' style="color:#f2b134"' : ''
@@ -588,6 +616,9 @@ export class Hud {
         this.el.fuel!.style.background = self.body.jetBoost > 0 ? 'linear-gradient(90deg,#29a3e0,#7fd1ff)' : ''
         // Hurt, not a power ending (a Promotion's 500 back down to 100) or an Intern's lower ceiling.
         if (self.alive && self.health < this.lastHealth && full >= this.lastFull) this.flashHurt()
+        // Shove: a hit is your % jumping.
+        if (shove && self.alive && (self.percent ?? 0) >= this.lastPercent + 5) this.flashHurt()
+        this.lastPercent = self.alive ? (self.percent ?? 0) : 0
         this.lastHealth = self.alive ? self.health : MAX_HEALTH
         this.lastFull = full
         // Your powers, each with its time left.
@@ -682,10 +713,11 @@ export class Hud {
     }
 
     /** The damage you did, popping up where it landed (screen px), rising as it fades. */
-    damageNumber(amount: number, headshot: boolean, x: number, y: number): void {
+    /** The number a hit did where it landed (`percent`: Shove's, "+12%"). */
+    damageNumber(amount: number, headshot: boolean, x: number, y: number, percent = false): void {
         const pop = document.createElement('div')
         pop.className = `pop${headshot ? ' head' : ''}${amount === 0 ? ' none' : ''}`
-        pop.textContent = amount === 0 ? 'shielded' : String(amount)
+        pop.textContent = amount === 0 ? 'shielded' : percent ? `+${amount}%` : String(amount)
         pop.style.left = `${x + (Math.random() - 0.5) * 24}px`
         pop.style.top = `${y}px`
         this.root.append(pop)
@@ -792,16 +824,25 @@ export class Hud {
     }
 
     /** Over the player your crosshair is on (screen px of the top of their head), or hidden. */
-    target(who: { name: string; color: string; health: number; maxHealth: number } | null, x = 0, y = 0): void {
+    /** The name over whoever is under your crosshair, with their health (Shove: their %, coloured, no bar). */
+    target(
+        who: { name: string; color: string; health: number; maxHealth: number; percent?: number | null } | null,
+        x = 0,
+        y = 0
+    ): void {
         const target = this.el.target!
         target.classList.toggle('hidden', who === null)
         if (!who) return
         target.style.left = `${x}px`
         target.style.top = `${y}px`
         const name = target.querySelector<HTMLElement>('.name')!
-        if (name.textContent !== who.name) name.textContent = who.name
+        const shove = who.percent !== undefined && who.percent !== null
+        const label = shove ? `${who.name} · ${who.percent}%` : who.name
+        if (name.textContent !== label) name.textContent = label
+        name.style.color = shove ? percentColor(who.percent!) : ''
         name.style.boxShadow = `inset 0 -2px 0 ${who.color}`
         const bar = target.querySelector<HTMLElement>('.bar div')!
+        target.querySelector<HTMLElement>('.bar')!.style.display = shove ? 'none' : ''
         const share = Math.max(0, Math.min(1, who.health / who.maxHealth))
         bar.style.width = `${share * 100}%`
         bar.style.background = share > 0.6 ? '#5ad16b' : share > 0.3 ? '#f2b134' : '#ff4d4d'
@@ -845,12 +886,26 @@ export class Hud {
         let middle = ''
         if (opts.me && !opts.self) middle = `Watching<small>The game is full: you're in at the next free seat.</small>`
         else if (opts.self && !opts.self.alive) {
-            const by = opts.killer ? `Fragged by ${escape(opts.killer)}` : 'Down'
+            const fell = opts.cause?.fall ?? false
+            const by = opts.killer
+                ? `${fell ? 'Knocked off by' : 'Fragged by'} ${escape(opts.killer)}`
+                : fell
+                  ? 'Fell off'
+                  : 'Down'
             const taunt = opts.taunt ? `<small class="taunt">${escape(opts.taunt)}</small>` : ''
             const next = opts.self.nextLoadout
             const guns = `${WEAPON_NAMES[next.primary]} + ${WEAPON_NAMES[next.secondary]}`
-            const recap = opts.cause ? deathRecap(opts.cause) : ''
-            middle = `${by}${taunt}${recap}<small>Back in ${Math.ceil((opts.self.respawnInMs ?? 0) / 1000)} with ${escape(guns)} · <kbd>Esc</kbd> to change</small>`
+            // A fall with nobody behind it has nothing to recap (the weapon would be your own).
+            const recap = opts.cause && (opts.killer || !fell) ? deathRecap(opts.cause) : ''
+            const back = Math.ceil((opts.self.respawnInMs ?? 0) / 1000)
+            // Shove: no loadout to change, and out of lives is out of the match.
+            const comeback =
+                opts.self.percent === null
+                    ? `Back in ${back} with ${escape(guns)} · <kbd>Esc</kbd> to change`
+                    : opts.self.respawnInMs === null
+                      ? 'Out of lives: watching the rest of the match'
+                      : `Back in ${back}`
+            middle = `${by}${taunt}${recap}<small>${comeback}</small>`
         } else if (match.phase === 'countdown') {
             middle = `${Math.ceil((left ?? 0) / 1000)}<small>Warmup kills don't count</small>`
         }
@@ -879,6 +934,12 @@ export class Hud {
             return `${side('red')} – ${side('blue')} · first to ${match.fragLimit}`
         }
         const leader = match.scores[0]
+        if (match.mode === 'shove') {
+            const still = match.scores.filter(s => s.id !== null && (s.lives ?? 0) > 0).length
+            const you = match.scores.find(s => s.id === me)
+            const hearts = you ? `you ${livesOf(you.lives ?? 0, match.fragLimit)} · ` : ''
+            return `${hearts}${still} still in · last one standing wins`
+        }
         if (match.mode === 'koth') {
             const goal = match.fragLimit * ZONE_SECONDS_PER_POINT
             const you = match.scores.find(s => s.id === me)
@@ -893,8 +954,15 @@ export class Hud {
         const siege = match.siege
         const row = (classes: string, place: string, name: string, cells: string[]) =>
             `<tr class="${classes}"><td>${place}</td><td>${name}</td>${cells.map(c => `<td class="n">${c}</td>`).join('')}</tr>`
+        const shove = match.mode === 'shove'
         const cellsOf = (s: Score) => [
-            ...(koth ? [`${s.points} s`] : siege ? [String(s.points)] : []),
+            ...(koth
+                ? [`${s.points} s`]
+                : siege
+                  ? [String(s.points)]
+                  : shove
+                    ? [livesOf(s.lives ?? 0, match.fragLimit)]
+                    : []),
             String(s.kills),
             String(s.deaths),
         ]
@@ -905,8 +973,16 @@ export class Hud {
                 `${dot(s.color)} ${escape(s.name)}`,
                 cellsOf(s)
             )
-        const extra = koth ? '<th class="n">Zone</th>' : siege ? '<th class="n">Points</th>' : ''
-        const head = `<tr><th></th><th>Player</th>${extra}<th class="n">Kills</th><th class="n">Deaths</th></tr>`
+        const extra = koth
+            ? '<th class="n">Zone</th>'
+            : siege
+              ? '<th class="n">Points</th>'
+              : shove
+                ? '<th class="n">Lives</th>'
+                : ''
+        // Shove's kills are ring-outs, its deaths falls.
+        const [kills, deaths] = shove ? ['Ring-outs', 'Falls'] : ['Kills', 'Deaths']
+        const head = `<tr><th></th><th>Player</th>${extra}<th class="n">${kills}</th><th class="n">${deaths}</th></tr>`
 
         let title = ''
         if (match.phase === 'intermission' && siege) {
@@ -975,10 +1051,33 @@ type CardState = 'connecting' | 'paused' | 'playing' | 'setup' | 'replaced' | 'u
 /** Each map's picture on its card (CSS, no image to load). */
 const MAP_ART: Record<MapId, string> = {
     office: 'linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,.35)), repeating-linear-gradient(90deg, #c9a26b 0 34px, #b48c57 34px 36px), linear-gradient(#9fc4d8, #9fc4d8)',
+    // The deck's cyan edge over the city's lights, a magenta sign on the right.
+    'cloud-nine':
+        'linear-gradient(180deg, transparent 58%, #3fd8d0 58%, #3fd8d0 60%, #1d2534 60%, #1d2534 66%, transparent 66%), radial-gradient(circle at 78% 40%, rgba(255,79,158,.55) 0 9%, transparent 10%), repeating-linear-gradient(90deg, rgba(63,216,208,.18) 0 3px, transparent 3px 17px), linear-gradient(180deg, #04060c, #0a1222 55%, #3a1838)',
 }
 
-/** What the limit counts in a mode: kills, team kills, seconds in the zone, points a half. */
+/** Shove's tools: how each is used (the bat shows its wind-up instead). */
+const TOOL_HINTS: Record<'blower' | 'extinguisher', string> = {
+    blower: 'hold to blow · aim down to hover',
+    extinguisher: 'blast · kicks you back',
+}
+
+/** Shove's lives as hearts: those left, then those lost (out of `of`). */
+function livesOf(left: number, of: number): string {
+    return `${'♥'.repeat(left)}<span style="opacity:.3">${'♥'.repeat(Math.max(0, of - left))}</span>`
+}
+
+/** A Shove %, coloured as it climbs: white, yellow, orange, red. */
+export function percentColor(percent: number): string {
+    if (percent < 40) return '#f4f6f8'
+    if (percent < 80) return '#ffd166'
+    if (percent < 130) return '#ff9f1c'
+    return '#ff4d4d'
+}
+
+/** What the limit counts in a mode: kills, team kills, seconds in the zone, points a half, lives. */
 export function limitLabel(mode: Mode, value: number): string {
+    if (mode === 'shove') return `${value} ${value === 1 ? 'life' : 'lives'}`
     if (mode === 'koth') return `${value * ZONE_SECONDS_PER_POINT} s in the zone`
     if (mode === 'tdm') return `${value} team kills`
     if (mode === 'siege') return `${value} points a half`
@@ -996,6 +1095,7 @@ const MODE_HINTS: Record<Mode, string> = {
     tdm: 'Red against blue, sides balanced. No friendly fire.',
     koth: 'Hold the zone alone to score a second a second. It moves every minute.',
     siege: `Red against blue on one spot, two halves of ${SIEGE.halfMs / 60_000} min. Defenders get ${SIEGE.headStartMs / 1000} s to build while the attackers wait in their dome; an attacker ${SIEGE.holdMs / 1000} s in the spot scores a point. Then swap. Most points wins, the faster on a tie.`,
+    shove: 'No guns, no health: a leaf blower, a fire extinguisher and a bat. Every hit adds to your %, and the higher it is the further you fly. Off the edge, you lose a life; the last one standing wins.',
 }
 
 export const BUFF_LABELS: Record<BuffKind, { icon: string; label: string }> = {
@@ -1009,6 +1109,9 @@ export const BUFF_LABELS: Record<BuffKind, { icon: string; label: string }> = {
     intern: { icon: '🧑‍🎓', label: 'Intern' },
     bonus: { icon: '💰', label: 'Bonus ×2' },
     orgchart: { icon: '🗂️', label: 'Org chart' },
+    anvil: { icon: '🧱', label: 'Anvil' },
+    bubble: { icon: '🫧', label: 'Bubble' },
+    magnet: { icon: '🧲', label: 'Magnet' },
 }
 export const BUFF_COLORS: Record<BuffKind, string> = {
     magazine: '#f2b134',
@@ -1021,6 +1124,9 @@ export const BUFF_COLORS: Record<BuffKind, string> = {
     intern: '#b4f06b',
     bonus: '#ff4fa3',
     orgchart: '#e8ecf2',
+    anvil: '#9aa3ad',
+    bubble: '#9fe3ff',
+    magnet: '#ff5a5a',
 }
 
 /** How you went down, as the kill event told it. */
@@ -1029,6 +1135,8 @@ export interface DeathCause {
     headshot: boolean
     backstab: boolean
     recap?: KillRecap
+    /** Off the map (Cloud Nine): knocked off by the killer, or fell by themselves. */
+    fall?: boolean
 }
 
 /**

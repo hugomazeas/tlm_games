@@ -92,7 +92,16 @@ export interface Body {
     jumped: boolean
     /** Space was held last step (a jump needs a fresh press). */
     spaceHeld: boolean
+    /** Steps left of being thrown (Shove): the keys barely steer, so the throw carries (jetpack and dodge still work). */
+    stun: number
+    /** A gust (Shove on Cloud Nine): it drifts you this way (m/s), unless you lie prone. */
+    windX: number
+    windZ: number
 }
+
+/** Thrown, your steering in the air follows the keys this much as firmly as usual; on the ground, your grip is this much. */
+export const STUN_STEER = 0.25
+export const STUN_GRIP = 0.4
 
 /** The powers that change a body's size and health (a body, or one rebuilt from a player's buffs). */
 export interface Powers {
@@ -178,6 +187,9 @@ export function bodyAt(x: number, y: number, z: number): Body {
         prone: false,
         jumped: false,
         spaceHeld: false,
+        stun: 0,
+        windX: 0,
+        windZ: 0,
     }
 }
 
@@ -214,6 +226,7 @@ export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
     next.big = Math.max(0, body.big - 1)
     next.small = Math.max(0, body.small - 1)
     next.portalCooldown = Math.max(0, body.portalCooldown - 1)
+    next.stun = Math.max(0, body.stun - 1)
     // An intern grows back only where a mini fits (not under a chair): until then they stay small.
     // Prone: down while held (from the ground, or already down); up once let go, only where a standing mini fits.
     if (input.prone && (body.onGround || body.prone)) next.prone = true
@@ -245,7 +258,16 @@ export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
             wx = (wx / length) * walk
             wz = (wz / length) * walk
         }
-        const follow = 1 - Math.exp(-(body.onGround ? MOVE.groundResponse : MOVE.airResponse) * STEP_S)
+        // A gust drifts you its way (not lying flat).
+        if (!next.prone) {
+            wx += body.windX
+            wz += body.windZ
+        }
+        // Thrown: barely steering in the air; on the ground, some grip still (a slide, not a skate off the edge).
+        const response = body.onGround
+            ? MOVE.groundResponse * (body.stun > 0 ? STUN_GRIP : 1)
+            : MOVE.airResponse * (body.stun > 0 ? STUN_STEER : 1)
+        const follow = 1 - Math.exp(-response * STEP_S)
         next.vx += (wx - next.vx) * follow
         next.vz += (wz - next.vz) * follow
     }
@@ -301,6 +323,11 @@ export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
             next.vy -= pushed.y * into
             next.vz -= pushed.z * into
         }
+    }
+    // An open sky's ceiling (Cloud Nine): the jetpack takes nobody higher.
+    if (world.ceiling !== undefined && next.y > world.ceiling) {
+        next.y = world.ceiling
+        next.vy = Math.min(next.vy, 0)
     }
     // A jump's way up is over at its top, or on landing: from there Space held burns the jetpack.
     if (next.onGround || next.vy <= 0) next.jumped = false

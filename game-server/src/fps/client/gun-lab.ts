@@ -26,7 +26,7 @@ import {
     WebGLRenderer,
 } from 'three'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
-import { type Gun, WEAPON_NAMES, type Weapon } from '../protocol.ts'
+import { type Gun, isMelee, isTool, WEAPON_NAMES, type Weapon } from '../protocol.ts'
 import {
     aimDirection,
     damageAt,
@@ -333,7 +333,7 @@ let clicked = false
 let lastFrame = performance.now()
 
 function gunOf(weapon: Weapon): Gun | null {
-    return weapon === 'stapler' ? null : weapon
+    return isMelee(weapon) || isTool(weapon) ? null : weapon
 }
 
 function select(weapon: Weapon): void {
