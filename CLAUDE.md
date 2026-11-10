@@ -253,10 +253,16 @@ Playable at `/games/office-fps`.
   profile's line) and each player's page `/games/office-fps/players/{player}` (totals and rates,
   records, per weapon, per mode, nemesis and favourite target, recent matches). The `game_types` and
   `game_modes` rows come from migrations (deploys don't seed).
-- **Host and rules:** no match starts by itself. Everyone warms up until the host (the longest
-  seated; it passes on when they leave) picks a mode, a limit and a length (`Rules`: `MODES`,
-  `FRAG_LIMITS`, `MATCH_MINUTES`) on their Esc menu and sends `start`; after the scoreboard
-  (12 s, with awards) it's warmup again.
+- **Host and rules:** no match starts by itself. Everyone warms up **in the office** until the host
+  (the longest seated; it passes on when they leave) opens their **Next match** panel (N, or the
+  Esc menu's button; `hud.renderSetup`) and picks a map, a mode that map allows and a limit and a
+  length (`Rules`: `MAPS` / `MAP_INFO` / `playableOn`, `MODES`, `FRAG_LIMITS`, `MATCH_MINUTES`). Each
+  change goes out as `plan` (`MatchView.next`: everyone's warmup line shows it, browsers build its
+  map); Start sends `start`. Then `loading` (each browser says `ready` once it has the map; the
+  office counts as built at join; at most `LOADING_MS`, 15 s), the countdown and the match on that
+  map (the lobby keeps a world per map, `Arena.setWorld` moves everyone over, `MatchView.map`), the
+  scoreboard (12 s, with awards) there, then warmup back in the office. The panel opens on the last
+  match's rules (Rematch). Laravel stores each match's `map`.
 - **Modes** (`lobby.ts`): `ffa` free-for-all; `tdm` red vs blue (shuffled at the start, a
   latecomer joins the smaller side, no friendly fire, spawns away from enemies only, first team
   to the limit); `koth` King of the meeting room: one of four `ZONES` (`sim/places.ts`) is live,

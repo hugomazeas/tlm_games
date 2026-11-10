@@ -7,7 +7,10 @@ import {
     DEFAULT_LOADOUT,
     type InputFrame,
     isTeamMode,
+    LOADING_MS,
+    LOBBY_MAP,
     type Loadout,
+    type MapId,
     MAX_PLAYERS,
     type MatchView,
     type Mode,
@@ -160,6 +163,8 @@ interface Member {
     key: string
     /** Their guns (kept while they watch, for when a seat frees). */
     loadout: Loadout
+    /** The maps their browser has built and can play on (it says so with `ready`). */
+    maps: Set<MapId>
 }
 
 interface Tally {
@@ -223,15 +228,25 @@ export class FpsLobby {
     /** The clock the steps run on: step n is due at clockStart + n × STEP_MS. */
     private clockStart: number
     private events: GameEvent[] = []
-    /** The game's world: the office, with its own walls and dome. */
-    private readonly world: FpsWorld
+    /** The maps this game can be played on, each with its own walls and dome; the office is the lobby. */
+    private readonly worlds = new Map<MapId, FpsWorld>()
+    /** The map everyone is on now, and its world. */
+    private map: MapId = LOBBY_MAP
+    private world: FpsWorld
+    /** What the host has lined up for the next match (null until they pick). */
+    private next: Rules | null = null
 
     constructor(
-        world: FpsWorld,
-        private readonly hooks: LobbyHooks
+        office: FpsWorld,
+        private readonly hooks: LobbyHooks,
+        /** The other maps' worlds (none: the office only). */
+        maps: Partial<Record<MapId, FpsWorld>> = {}
     ) {
         // The game's own walls: what's built here stays here.
-        this.world = { ...world, walls: new Walls(), dome: null }
+        for (const [id, world] of Object.entries({ ...maps, [LOBBY_MAP]: office }) as Array<[MapId, FpsWorld]>) {
+            this.worlds.set(id, { ...world, walls: new Walls(), dome: null })
+        }
+        this.world = this.worlds.get(LOBBY_MAP)!
         this.arena = new Arena(this.world, hooks.random)
         this.clockStart = hooks.now()
     }
@@ -261,6 +276,8 @@ export class FpsLobby {
             info,
             key: joiner.playerId !== null ? `p${joiner.playerId}` : conn.id,
             loadout: joiner.loadout ?? DEFAULT_LOADOUT,
+            // The office is built before a browser connects: it's where everyone lands.
+            maps: new Set([LOBBY_MAP]),
         }
         this.members.set(conn.id, member)
         if (seated) this.seat(member)
@@ -296,11 +313,14 @@ export class FpsLobby {
         }
         this.broadcast({ type: 'roster', players: this.roster() })
         // Too few to go on: called off.
-        if ((this.phase === 'countdown' || this.phase === 'playing') && this.seatedCount() < MIN_PLAYERS) {
+        const under = this.phase === 'loading' || this.phase === 'countdown' || this.phase === 'playing'
+        if (under && this.seatedCount() < MIN_PLAYERS) {
             this.setPhase('warmup')
         } else {
             if (this.phase === 'playing') this.rebalance(true)
             this.broadcast({ type: 'match', match: this.view() })
+            // The one everyone was waiting for may have left.
+            if (this.phase === 'loading') this.loaded()
         }
     }
 
@@ -350,15 +370,60 @@ export class FpsLobby {
         this.arena.door(connId, id)
     }
 
-    /** The host starts a match with these rules (from warmup, with someone to play). */
+    /**
+     * The host starts a match with these rules (from warmup, with someone to play, on a map this
+     * game has): everyone's browser gets its map ready, then the countdown on it.
+     */
     start(connId: string, rules: Rules): void {
         const member = this.members.get(connId)
         if (!member) return
         if (this.host() !== connId) return this.refuse(member, 'NOT_HOST')
         if (this.phase !== 'warmup') return
+        if (!this.worlds.has(rules.map)) return this.refuse(member, 'UNAVAILABLE')
         if (this.seatedCount() < MIN_PLAYERS) return this.refuse(member, 'NOT_ENOUGH')
         this.rules = { ...rules }
+        this.next = { ...rules }
+        this.setPhase('loading')
+        this.loaded()
+    }
+
+    /** The host lines up the next match (in warmup): everyone sees it, and their browsers get its map ready. */
+    plan(connId: string, rules: Rules): void {
+        if (this.host() !== connId || this.phase !== 'warmup' || !this.worlds.has(rules.map)) return
+        this.next = { ...rules }
+        this.broadcast({ type: 'match', match: this.view() })
+    }
+
+    /** Their browser has this map built. */
+    ready(connId: string, map: MapId): void {
+        const member = this.members.get(connId)
+        if (!member || member.maps.has(map)) return
+        member.maps.add(map)
+        if (this.phase === 'loading') this.loaded()
+    }
+
+    /** Loading: once every seated browser has the match's map, on to the countdown (on it). */
+    private loaded(): void {
+        if (this.phase !== 'loading') return
+        const waiting = this.seatedMembers().filter(m => !m.maps.has(this.rules.map)).length
+        if (waiting === 0) this.toCountdown()
+        else this.broadcast({ type: 'match', match: this.view() })
+    }
+
+    /** Everyone onto the match's map, and the countdown. */
+    private toCountdown(): void {
+        this.useMap(this.rules.map)
         this.setPhase('countdown')
+    }
+
+    /** Everyone over to a map (fresh: its walls down, everyone respawned on it). */
+    private useMap(map: MapId): void {
+        if (map === this.map) return
+        this.world.dome = null
+        this.world = this.worlds.get(map)!
+        this.map = map
+        this.arena.setWorld(this.world)
+        this.record(this.arena.respawnAll())
     }
 
     /** Runs the steps that are due, moves the phases on and sends the snapshots. Call it often (every few ms). */
@@ -381,7 +446,9 @@ export class FpsLobby {
         }
 
         if (this.phaseEndsAt !== null && now >= this.phaseEndsAt) {
-            if (this.phase === 'countdown') this.startMatch()
+            // Not everyone's browser has the map (an old tab, a slow one): the match goes on, they join it when it's built.
+            if (this.phase === 'loading') this.toCountdown()
+            else if (this.phase === 'countdown') this.startMatch()
             else if (this.phase === 'playing' && this.siege) this.siegeClock()
             else if (this.phase === 'playing') this.endMatch()
             else if (this.phase === 'intermission') this.setPhase('warmup')
@@ -730,15 +797,18 @@ export class FpsLobby {
 
     private setPhase(phase: Phase): void {
         this.phase = phase
+        // Warmup is the office's.
+        if (phase === 'warmup') this.useMap(LOBBY_MAP)
         const length = {
             warmup: null,
+            loading: LOADING_MS,
             countdown: COUNTDOWN_MS,
             // A siege runs on its own clock: first to the dome's opening.
             playing: this.siege ? SIEGE.headStartMs : this.rules.minutes * 60_000,
             intermission: INTERMISSION_MS,
         }[phase]
         this.phaseEndsAt = length === null ? null : this.hooks.now() + length
-        if (phase === 'warmup' || phase === 'countdown') {
+        if (phase === 'warmup' || phase === 'loading' || phase === 'countdown') {
             // Warmup and the countdown are for practice: nobody's counted, and no sides.
             this.tallies = new Map()
             for (const member of this.seatedMembers()) this.arena.setTeam(member.conn.id, null)
@@ -844,9 +914,18 @@ export class FpsLobby {
         return {
             phase: this.phase,
             remainingMs: this.phaseEndsAt === null ? null : Math.max(0, this.phaseEndsAt - now),
+            map: this.map,
             mode: this.rules.mode,
             fragLimit: this.rules.fragLimit,
             minutes: this.rules.minutes,
+            next: this.next ? { ...this.next } : null,
+            loading:
+                this.phase === 'loading'
+                    ? {
+                          ready: this.seatedMembers().filter(m => m.maps.has(this.rules.map)).length,
+                          of: this.seatedCount(),
+                      }
+                    : null,
             host: this.host(),
             scores: this.ranked().map(
                 (t): Score => ({

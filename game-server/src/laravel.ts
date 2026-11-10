@@ -165,6 +165,7 @@ export class LaravelClient {
             started_at: new Date(result.startedAt).toISOString(),
             ended_at: new Date(result.endedAt).toISOString(),
             mode: result.rules.mode,
+            map: result.rules.map,
             frag_limit: result.rules.fragLimit,
             minutes: result.rules.minutes,
             player_count: result.playerCount,

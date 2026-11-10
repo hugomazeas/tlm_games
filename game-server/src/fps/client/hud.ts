@@ -3,6 +3,11 @@ import {
     FRAG_LIMITS,
     type KillRecap,
     type Loadout,
+    LOBBY_MAP,
+    MAP_INFO,
+    type MapId,
+    MAPS,
+    playableOn,
     PRIMARIES,
     SECONDARIES,
     WEAPON_NAMES,
@@ -134,6 +139,23 @@ const CSS = `
 #fps-hud kbd { background: rgba(255,255,255,.12); border-radius: 4px; padding: 1px 6px; font: inherit; font-size: 12px; }
 #fps-hud .card a { color: #ffd166; }
 #fps-hud .card { max-height: calc(100vh - 40px); overflow-y: auto; }
+#fps-hud .setup { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); pointer-events: auto; width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow-y: auto; padding: 22px 26px; }
+#fps-hud .setup h1 { font-size: 22px; margin: 0 0 14px; }
+#fps-hud .setup h2 { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; opacity: .6; margin: 16px 0 8px; }
+#fps-hud .setup button, #fps-hud .setup select { font: inherit; font-size: 13px; color: #f4f6f8; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18); border-radius: 7px; padding: 6px 12px; cursor: pointer; }
+#fps-hud .setup button.on { background: rgba(255,209,102,.18); border-color: #ffd166; }
+#fps-hud .setup button:disabled { opacity: .45; cursor: default; }
+#fps-hud .setup .maps { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+#fps-hud .setup .maps button { padding: 0; text-align: left; overflow: hidden; }
+#fps-hud .setup .maps .art { height: 92px; display: block; }
+#fps-hud .setup .maps b { display: block; padding: 8px 10px 0; font-size: 14px; }
+#fps-hud .setup .maps small { display: block; padding: 2px 10px 10px; font-size: 11.5px; font-weight: 500; opacity: .75; }
+#fps-hud .setup .modes { display: flex; flex-wrap: wrap; gap: 6px; }
+#fps-hud .setup .row { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+#fps-hud .setup .hint { font-size: 12px; opacity: .72; margin: 8px 0 0; min-height: 1em; font-weight: 500; }
+#fps-hud .setup .actions { display: flex; gap: 10px; margin-top: 18px; }
+#fps-hud .setup button[data-start] { background: #e4572e; border-color: #e4572e; font-weight: 700; padding: 8px 18px; }
+#fps-hud .card .next-line { font-size: 13px; }
 #fps-hud .card .section { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.12); text-align: left; }
 #fps-hud .card h2 { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; opacity: .6; margin: 0 0 8px; }
 #fps-hud .card .row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
@@ -192,6 +214,10 @@ export class Hud {
             settings: Settings
             onSettings(settings: Settings): void
             onStart(rules: Rules): void
+            /** The host changed what's lined up on their Next match panel. */
+            onPlan(rules: Rules): void
+            /** The host asked for the Next match panel (the button on the menu). */
+            onSetup(): void
             /** The guns this browser picked last. */
             loadout: Loadout
             onLoadout(loadout: Loadout): void
@@ -238,7 +264,8 @@ export class Hud {
                 <div class="section hidden" data-el="loadout"></div>
                 <div class="section hidden" data-el="host"></div>
                 <div class="section hidden" data-el="settings"></div>
-            </div>`
+            </div>
+            <div class="panel setup hidden" data-el="setup"></div>`
         for (const node of this.root.querySelectorAll<HTMLElement>('[data-el]')) this.el[node.dataset.el!] = node
         document.body.append(this.root)
         this.buildSettings()
@@ -281,10 +308,15 @@ export class Hud {
         }
     }
 
-    /** The middle card: while connecting, while the mouse is free (with the host's controls and the settings), or when the game is closed to you. */
-    card(state: 'connecting' | 'paused' | 'playing' | 'replaced' | 'unavailable' | 'unknown'): void {
+    /**
+     * The middle card: while connecting, while the mouse is free (with the host's controls and the
+     * settings), or when the game is closed to you. `setup`: the host's Next match panel instead.
+     */
+    card(state: CardState): void {
         this.cardState = state
-        this.el.card!.classList.toggle('hidden', state === 'playing')
+        this.el.card!.classList.toggle('hidden', state === 'playing' || state === 'setup')
+        this.renderSetup()
+        if (state === 'setup') return
         this.el.settings!.classList.toggle('hidden', state !== 'paused')
         this.el.loadout!.classList.toggle('hidden', state !== 'paused')
         this.renderHost()
@@ -297,8 +329,9 @@ export class Hud {
                 <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> weapons (or the wheel, <kbd>Q</kbd> the last) · <kbd>V</kbd> 1st / 3rd person<br>
                 <kbd>B</kbd> build walls (click to place, <kbd>R</kbd> turn, wheel flat / standing, <kbd>F</kbd> door, <kbd>G</kbd> window, <kbd>E</kbd> take back)<br>
                 <kbd>F</kbd> open / shut your side's doors<br>
-                <kbd>Tab</kbd> scores · <kbd>Esc</kbd> this menu</p>${back}`,
+                <kbd>Tab</kbd> scores · <kbd>Esc</kbd> this menu · <kbd>N</kbd> next match (the host)</p>${back}`,
             playing: '',
+            setup: '',
             replaced: `<h1>Playing in another tab</h1><p>This one let go.</p>${back}`,
             unavailable: `<h1>The game server is unavailable</h1><p>Retrying…</p>${back}`,
             unknown: `<h1>Unknown player</h1><p>Pick yourself again from the Hub.</p>${back}`,
@@ -307,73 +340,127 @@ export class Hud {
 
     /** Who hosts, and whether it's you: the host's controls show on your menu in warmup. */
     setHost(host: { isHost: boolean; name: string | null; seated: number }): void {
+        const before = this.host
         this.host = host
         this.renderHost()
+        // Only a change redraws the panel (it would lose an open select otherwise).
+        if (before.isHost !== host.isHost || before.seated !== host.seated) this.leaveSetupIfDone()
     }
 
     /** A refusal from the server, shown on the menu (the host's start, mostly). */
     notice(text: string): void {
         this.hostNotice = text
         this.renderHost()
+        if (this.cardState === 'setup') this.renderSetup()
     }
 
-    /** The host's controls (warmup, your menu): the rules and Start. Others see who they wait for. */
+    /**
+     * The host's line on the menu (warmup): what's lined up, and the button to their Next match
+     * panel. Others see who they wait for, and what's coming.
+     */
     private renderHost(): void {
         const panel = this.el.host!
         const match = this.match
         const show = this.cardState === 'paused' && match?.phase === 'warmup'
         panel.classList.toggle('hidden', !show)
         if (!show || !match) return
+        const next = match.next ? `<p class="next-line">Next: <b>${escape(describeRules(match.next))}</b></p>` : ''
         if (!this.host.isHost) {
-            panel.innerHTML = `<p>Waiting for <b>${escape(this.host.name ?? 'the host')}</b> to start the next match.</p>`
+            panel.innerHTML = `<p>Waiting for <b>${escape(this.host.name ?? 'the host')}</b> to start the next match.</p>${next}`
             return
         }
+        panel.innerHTML = `<h2>You're the host</h2>${next}
+            <button type="button" data-setup>Set up the next match <kbd>N</kbd></button>`
+        panel.querySelector('[data-setup]')!.addEventListener('click', () => this.hooks.onSetup())
+    }
+
+    /** What the host is lining up on their panel (starts from what's lined up, else the last match's rules). */
+    private draft: Rules | null = null
+
+    /** Is the Next match panel for you now (you host, it's warmup)? */
+    get canSetUp(): boolean {
+        return this.host.isHost && this.match?.phase === 'warmup'
+    }
+
+    /**
+     * The host's Next match panel (warmup): a map, a mode it allows, the limit and the length, then
+     * Start. Every change is sent (`onPlan`), so everyone sees what's coming and gets its map ready.
+     */
+    private renderSetup(): void {
+        const panel = this.el.setup!
+        const match = this.match
+        const show = this.cardState === 'setup' && match !== null && this.canSetUp
+        panel.classList.toggle('hidden', !show)
+        if (!show || !match) return
+        const draft = (this.draft ??= match.next ?? {
+            map: LOBBY_MAP,
+            mode: match.mode,
+            fragLimit: match.fragLimit,
+            minutes: match.minutes,
+        })
         const enough = this.host.seated >= 2
-        const modes = MODES.map(
-            m => `<option value="${m}"${m === match.mode ? ' selected' : ''}>${MODE_NAMES[m]}</option>`
+        const maps = MAPS.map(
+            id =>
+                `<button type="button" data-map="${id}" class="${id === draft.map ? 'on' : ''}">
+                    <span class="art" style="background:${MAP_ART[id]}"></span>
+                    <b>${escape(MAP_INFO[id].name)}</b><small>${escape(MAP_INFO[id].blurb)} · ${MAP_INFO[id].players} players</small>
+                </button>`
+        ).join('')
+        const modes = MODES.filter(m => playableOn(draft.map, m))
+            .map(
+                m =>
+                    `<button type="button" data-mode="${m}" class="${m === draft.mode ? 'on' : ''}">${MODE_NAMES[m]}</button>`
+            )
+            .join('')
+        const limits = FRAG_LIMITS.map(
+            v => `<option value="${v}"${v === draft.fragLimit ? ' selected' : ''}>${limitLabel(draft.mode, v)}</option>`
         ).join('')
         const minutes = MATCH_MINUTES.map(
-            v => `<option value="${v}"${v === match.minutes ? ' selected' : ''}>${v} min</option>`
+            v => `<option value="${v}"${v === draft.minutes ? ' selected' : ''}>${v} min</option>`
         ).join('')
+        // The same rules as the match just played: a rematch.
+        const rematch =
+            this.played &&
+            match.next !== null &&
+            draft.map === match.next.map &&
+            draft.mode === match.mode &&
+            draft.fragLimit === match.fragLimit &&
+            draft.minutes === match.minutes
         panel.innerHTML = `
-            <h2>You're the host</h2>
-            <div class="row"><label>Mode <select data-rule="mode">${modes}</select></label></div>
+            <h1>Next match</h1>
+            <h2>Map</h2><div class="maps">${maps}</div>
+            <h2>Mode</h2><div class="modes">${modes}</div>
+            <p class="hint">${MODE_HINTS[draft.mode]}</p>
             <div class="row">
-                <label>First to <select data-rule="fragLimit"></select></label>
-                <label>or <select data-rule="minutes">${minutes}</select></label>
+                <label>First to <select data-rule="fragLimit">${limits}</select></label>
+                <label>or <select data-rule="minutes" ${draft.mode === 'siege' ? 'disabled' : ''}>${minutes}</select></label>
             </div>
-            <p class="hint" data-explain></p>
-            <button type="button" data-start ${enough ? '' : 'disabled'}>Start match</button>
-            <p class="hint">${enough ? (this.hostNotice ?? '') : 'Needs a second player.'}</p>`
-        const select = (rule: string) => panel.querySelector<HTMLSelectElement>(`[data-rule="${rule}"]`)!
-        // The limit reads as kills, team kills or seconds in the zone, depending on the mode.
-        const describe = () => {
-            const mode = select('mode').value as Mode
-            const chosen = Number(select('fragLimit').value) || match.fragLimit
-            select('fragLimit').innerHTML = FRAG_LIMITS.map(v => {
-                const label =
-                    mode === 'koth'
-                        ? `${v * ZONE_SECONDS_PER_POINT} s in the zone`
-                        : mode === 'tdm'
-                          ? `${v} team kills`
-                          : mode === 'siege'
-                            ? `${v} points a half`
-                            : `${v} kills`
-                return `<option value="${v}"${v === chosen ? ' selected' : ''}>${label}</option>`
-            }).join('')
-            panel.querySelector('[data-explain]')!.textContent = MODE_HINTS[mode]
-            // Siege's halves have their own length.
-            select('minutes').disabled = mode === 'siege'
+            <div class="actions">
+                <button type="button" data-start ${enough ? '' : 'disabled'}>${rematch ? 'Rematch' : 'Start match'}</button>
+                <button type="button" data-back>Back to warmup</button>
+            </div>
+            <p class="hint">${enough ? (this.hostNotice ?? 'Everyone warms up in the office; the match moves them to its map.') : 'Needs a second player.'}</p>`
+        const change = (to: Partial<Rules>) => {
+            const next = { ...draft, ...to }
+            // A map that doesn't have the mode: its first one.
+            if (!playableOn(next.map, next.mode)) next.mode = MAP_INFO[next.map].modes[0]!
+            this.draft = next
+            this.hooks.onPlan(next)
+            this.renderSetup()
         }
-        describe()
-        select('mode').addEventListener('change', describe)
+        for (const node of panel.querySelectorAll<HTMLButtonElement>('[data-map]')) {
+            node.addEventListener('click', () => change({ map: node.dataset.map as MapId }))
+        }
+        for (const node of panel.querySelectorAll<HTMLButtonElement>('[data-mode]')) {
+            node.addEventListener('click', () => change({ mode: node.dataset.mode as Mode }))
+        }
+        const select = (rule: string) => panel.querySelector<HTMLSelectElement>(`[data-rule="${rule}"]`)!
+        select('fragLimit').addEventListener('change', () => change({ fragLimit: Number(select('fragLimit').value) }))
+        select('minutes').addEventListener('change', () => change({ minutes: Number(select('minutes').value) }))
+        panel.querySelector('[data-back]')!.addEventListener('click', () => this.card('paused'))
         panel.querySelector('[data-start]')!.addEventListener('click', () => {
             this.hostNotice = null
-            this.hooks.onStart({
-                mode: select('mode').value as Mode,
-                fragLimit: Number(select('fragLimit').value),
-                minutes: Number(select('minutes').value),
-            })
+            this.hooks.onStart(draft)
         })
     }
 
@@ -444,7 +531,20 @@ export class Hud {
         this.match = match
         this.matchAt = at
         this.boardForced = match.phase === 'intermission'
+        if (match.phase === 'intermission') this.played = true
+        // Past warmup, the next panel starts again from what was played.
+        if (match.phase !== 'warmup') this.draft = null
         this.renderHost()
+        this.leaveSetupIfDone()
+    }
+
+    /** A match has been played here (the panel offers a rematch). */
+    private played = false
+
+    /** The Next match panel is the host's, in warmup: otherwise back to the menu. */
+    private leaveSetupIfDone(): void {
+        if (this.cardState === 'setup' && !this.canSetUp) this.card('paused')
+        else if (this.cardState === 'setup') this.renderSetup()
     }
 
     /** Your state from the latest snapshot (null: watching). */
@@ -725,14 +825,17 @@ export class Hud {
         const match = this.match
         if (!match) return
         const left = match.remainingMs === null ? null : Math.max(0, match.remainingMs - (now - this.matchAt))
+        const lined = match.next ? ` · next: ${escape(describeRules(match.next))}` : ''
+        const loading = match.loading ? ` · ${match.loading.ready}/${match.loading.of} ready` : ''
         const top = {
             warmup: `Warmup <small style="opacity:.7">· ${
                 this.host.isHost
                     ? this.host.seated >= 2
-                        ? "you're the host: Esc to start a match"
+                        ? "you're the host: N to set up the next match"
                         : 'waiting for a second player'
                     : `${escape(this.host.name ?? 'the host')} starts the next match`
-            }</small>`,
+            }${lined}</small>`,
+            loading: `Loading ${escape(MAP_INFO[match.next?.map ?? match.map].name.toLowerCase())}<small style="opacity:.7">${loading}</small>`,
             countdown: `${MODE_NAMES[match.mode]} in <b>${Math.ceil((left ?? 0) / 1000)}</b>`,
             playing: `<b>${clock(left ?? 0)}</b> <small style="opacity:.7">· ${this.standing(match, opts.me)}</small>`,
             intermission: `Match over <small style="opacity:.7">· back to warmup in ${Math.ceil((left ?? 0) / 1000)}</small>`,
@@ -865,6 +968,27 @@ export class Hud {
 function clock(ms: number): string {
     const s = Math.ceil(ms / 1000)
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
+type CardState = 'connecting' | 'paused' | 'playing' | 'setup' | 'replaced' | 'unavailable' | 'unknown'
+
+/** Each map's picture on its card (CSS, no image to load). */
+const MAP_ART: Record<MapId, string> = {
+    office: 'linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,.35)), repeating-linear-gradient(90deg, #c9a26b 0 34px, #b48c57 34px 36px), linear-gradient(#9fc4d8, #9fc4d8)',
+}
+
+/** What the limit counts in a mode: kills, team kills, seconds in the zone, points a half. */
+export function limitLabel(mode: Mode, value: number): string {
+    if (mode === 'koth') return `${value * ZONE_SECONDS_PER_POINT} s in the zone`
+    if (mode === 'tdm') return `${value} team kills`
+    if (mode === 'siege') return `${value} points a half`
+    return `${value} kills`
+}
+
+/** A match's rules in a line: "Siege on the office, 5 points a half". */
+export function describeRules(rules: Rules): string {
+    const length = rules.mode === 'siege' ? '' : `, ${rules.minutes} min`
+    return `${MODE_NAMES[rules.mode]} on ${MAP_INFO[rules.map].name.replace(/^The /, 'the ')}, ${limitLabel(rules.mode, rules.fragLimit)}${length}`
 }
 
 const MODE_HINTS: Record<Mode, string> = {

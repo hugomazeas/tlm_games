@@ -186,17 +186,31 @@ export class Arena {
     /** What happened between steps or to the walls (a build, a leave, a shot wall): out with the next step's events. */
     private pending: ArenaEvent[] = []
     /** Each pickup spot: there to take from this step on, and what lies there (rolled when it comes back). */
-    private readonly pickupAt: number[]
+    private pickupAt: number[]
     private readonly pickupKind: PickupKind[] = []
     /** Where each side spawns, when the match says (siege); null or an empty list: the usual, away from the enemy. */
     private spawnsOf: ((team: Team | null) => readonly SiegeSpawn[] | null) | null = null
 
     constructor(
-        private readonly world: FpsWorld,
+        private world: FpsWorld,
         private readonly random: Rng
     ) {
         this.pickupAt = world.pickups.map(() => 0)
         this.rollPickups()
+    }
+
+    /**
+     * Everyone over to another map (a match on it, or back to the office): its pickups, nothing in
+     * flight, no rewind across the move. Then `respawnAll` puts them on it.
+     */
+    setWorld(world: FpsWorld): void {
+        if (world === this.world) return
+        this.world = world
+        this.pickupAt = world.pickups.map(() => 0)
+        this.rollPickups()
+        this.rockets = []
+        this.history.length = 0
+        this.pending = this.pending.filter(e => e.type !== 'built' && e.type !== 'wallHit' && e.type !== 'wallGone')
     }
 
     /** Fixed spawns per side (siege), or back to the usual (null). */

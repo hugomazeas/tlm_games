@@ -257,16 +257,27 @@ class OfficeFpsStatsTest extends TestCase
         $this->postJson('/internal/office-fps/results', $this->match(), $this->secret())->assertCreated();
 
         $this->assertSame('ffa', OfficeFpsMatch::sole()->mode);
+        $this->assertSame('office', OfficeFpsMatch::sole()->map);
         $this->assertDatabaseHas('office_fps_results', ['player_id' => $this->ann->id, 'team' => null, 'won' => true, 'zone_ms' => 0, 'pickups' => 0]);
         $this->assertDatabaseHas('office_fps_results', ['player_id' => $this->bob->id, 'won' => false]);
         $this->get('/games/office-fps/players/'.$this->ann->id)->assertOk()->assertSee('Free for all');
     }
 
-    public function test_unknown_modes_and_teams_are_refused(): void
+    public function test_a_match_keeps_the_map_it_was_played_on(): void
+    {
+        $this->postJson('/internal/office-fps/results', $this->match(['map' => 'office']), $this->secret())->assertCreated();
+
+        $this->assertSame('office', OfficeFpsMatch::sole()->map);
+    }
+
+    public function test_unknown_modes_maps_and_teams_are_refused(): void
     {
         $this->postJson('/internal/office-fps/results', $this->match(['mode' => 'deathmatch']), $this->secret())
             ->assertUnprocessable()
             ->assertJsonValidationErrors('mode');
+        $this->postJson('/internal/office-fps/results', $this->match(['map' => 'the-moon']), $this->secret())
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('map');
 
         $bad = $this->teamMatch();
         $bad['players'][0]['team'] = 'green';
