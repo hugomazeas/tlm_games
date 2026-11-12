@@ -17,7 +17,7 @@ import {
 } from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import type { Gun, Handheld } from '../protocol.ts'
+import type { Gun } from '../protocol.ts'
 
 /**
  * The guns in your hands, in the camera's frame (x right, y up, -z ahead; metres), with the gloved
@@ -961,137 +961,14 @@ export function buildStapler(kit: Kit): { group: Group; arm: Group; right: Pose 
     return { group, arm, right: pose([x + 0.004, top - 0.046, -0.042], [-0.35, 0, 0]) }
 }
 
-/** Everything held in two hands: the guns, and Shove's blower and extinguisher. */
-export function buildGuns(kit: Kit, rocketLook: RocketLook): Record<Handheld, GunModel> {
+export function buildGuns(kit: Kit, rocketLook: RocketLook): Record<Gun, GunModel> {
     return {
         rifle: buildRifle(kit),
         sniper: buildSniper(kit),
         shotgun: buildShotgun(kit),
         pistol: buildPistol(kit),
         launcher: buildLauncher(kit, rocketLook),
-        blower: buildBlower(kit),
-        extinguisher: buildExtinguisher(kit),
     }
-}
-
-/**
- * Shove's leaf blower: an engine housing in your colour with its cooling fins and fuel cap, a top
- * handle (the right hand), and a long nozzle the left hand steadies. It shudders while it runs.
- */
-function buildBlower(kit: Kit): GunModel {
-    const x = 0.045
-    const y = -0.07
-    const group = new Group()
-    const body = new Group()
-    body.add(
-        ...merged([
-            rbox([0.056, 0.05, 0.08], kit.trim, [x, y - 0.004, -0.065], 0.01),
-            ...[0, 1, 2, 3].map(i => box([0.06, 0.003, 0.045], kit.dark, [x, y - 0.02 + i * 0.01, -0.055])),
-            upright(0.009, 0.008, kit.dark, [x + 0.02, y + 0.034, -0.035]),
-            // The top handle: two posts and the bar.
-            box([0.006, 0.03, 0.008], kit.dark, [x, y + 0.045, -0.025]),
-            box([0.006, 0.03, 0.008], kit.dark, [x, y + 0.045, -0.095]),
-            rbox([0.014, 0.012, 0.085], kit.rubber, [x, y + 0.062, -0.06], 0.005),
-            // The nozzle: a fat collar, a long tube, a flared mouth.
-            tube(0.022, 0.03, kit.dark, [x, y - 0.006, -0.12]),
-            tube(0.016, 0.2, kit.polymer, [x, y - 0.006, -0.235], 0.014),
-            tube(0.014, 0.02, kit.trim, [x, y - 0.006, -0.345], 0.019),
-        ])
-    )
-    group.add(body)
-    const tip = sphere(0.0014, kit.dot, [x, y + 0.07, -0.06])
-    tip.visible = false
-    group.add(tip)
-    const right = pose([x + 0.004, y + 0.056, -0.06], [0, 0, 0])
-    const left = cradle([x - 0.006, y - 0.026, -0.22])
-
-    return {
-        group,
-        sight: new Vector3(x, y + 0.07, 0),
-        tip,
-        muzzle: new Vector3(x, y - 0.006, -0.36),
-        kick: { back: 0.004, rise: 0.02, ms: 60, flash: 0 },
-        reloadPose: { roll: 0, pitch: 0, yaw: 0, push: 0 },
-        eject: null,
-        animate({ sinceShot }) {
-            // Running (a "shot" every frame it blows): a fine shudder.
-            const running = sinceShot < 80
-            body.position.set(
-                running ? (Math.random() - 0.5) * 0.002 : 0,
-                running ? (Math.random() - 0.5) * 0.002 : 0,
-                0
-            )
-            return { left, right }
-        },
-    }
-}
-
-/**
- * Shove's fire extinguisher, held out in front like a cannon: the red tank along the view, its
- * valve and handle at the back (the right hand), a black horn at the front; the left hand under the
- * tank. Each blast kicks it back hard.
- */
-function buildExtinguisher(kit: Kit): GunModel {
-    const x = 0.045
-    const y = -0.075
-    const group = new Group()
-    group.add(
-        ...merged([
-            tube(0.032, 0.16, kit.red, [x, y, -0.13]),
-            sphere(0.032, kit.red, [x, y, -0.05]),
-            sphere(0.032, kit.red, [x, y, -0.21]),
-            // A label band.
-            tube(0.0325, 0.05, kit.chrome, [x, y, -0.13]),
-            // The valve and its handle.
-            upright(0.008, 0.03, kit.chrome, [x, y + 0.035, -0.06]),
-            box([0.012, 0.008, 0.06], kit.dark, [x, y + 0.052, -0.04], [0.15, 0, 0]),
-            box([0.01, 0.006, 0.05], kit.chrome, [x, y + 0.042, -0.035], [-0.1, 0, 0]),
-            // The horn.
-            tube(0.006, 0.05, kit.black, [x, y + 0.005, -0.255]),
-            tube(0.006, 0.06, kit.black, [x, y + 0.005, -0.31], 0.022),
-        ])
-    )
-    const tip = sphere(0.0014, kit.dot, [x, y + 0.06, -0.06])
-    tip.visible = false
-    group.add(tip)
-    const right = pose([x + 0.003, y + 0.05, -0.045], [0, 0, 0])
-    const left = cradle([x - 0.004, y - 0.038, -0.15])
-
-    return {
-        group,
-        sight: new Vector3(x, y + 0.06, 0),
-        tip,
-        muzzle: new Vector3(x, y + 0.005, -0.34),
-        kick: { back: 0.05, rise: 0.22, ms: 220, flash: 0 },
-        reloadPose: { roll: 0, pitch: 0, yaw: 0, push: 0 },
-        eject: null,
-        animate: () => ({ left, right }),
-    }
-}
-
-/** Shove's bat: a wooden bat, the grip taped in your colour, held up at the right; it pivots at the hands. */
-export function buildBat(kit: Kit): { group: Group; arm: Group; right: Pose } {
-    const x = 0.075
-    const y = -0.08
-    const group = new Group()
-    const arm = new Group()
-    arm.position.set(x, y, -0.06)
-    const wood = new MeshStandardMaterial({ color: 0xb07a45, roughness: 0.55, metalness: 0.05 })
-    // Up and a little forward from the hands: knob, taped grip, the barrel swelling to its end.
-    const bat = new Group()
-    bat.add(
-        upright(0.012, 0.008, wood, [0, -0.04, 0]),
-        upright(0.0085, 0.07, kit.trim, [0, 0, 0]),
-        new Mesh(new CylinderGeometry(0.022, 0.009, 0.2, 14), wood).translateY(0.135),
-        upright(0.022, 0.012, wood, [0, 0.24, 0])
-    )
-    // Smaller than life in the view (the guns are), leaning out to the right.
-    bat.scale.setScalar(0.62)
-    bat.rotation.set(-0.45, 0, -0.55)
-    arm.add(bat)
-    group.add(arm)
-
-    return { group, arm, right: pose([x + 0.004, y - 0.002, -0.058], [-0.35, 0, 0]) }
 }
 
 // --- Hands ------------------------------------------------------------------------------------

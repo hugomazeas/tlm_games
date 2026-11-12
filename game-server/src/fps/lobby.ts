@@ -31,7 +31,6 @@ import {
 } from './protocol.ts'
 import { Arena, type ArenaEvent } from './sim/arena.ts'
 import { STEP_MS } from './sim/movement.ts'
-import { SHOVE } from './sim/shove.ts'
 import {
     domeSpawns,
     inSpot,
@@ -191,9 +190,6 @@ interface Tally {
     pickups: number
     /** In the match since (ms), while they're connected. */
     since: number | null
-    /** Shove: lives left (null outside Shove), and when the last went (ms; null: still in). */
-    lives: number | null
-    outAt: number | null
 }
 
 /** A siege being played: see SiegeView. */
@@ -223,8 +219,6 @@ export class FpsLobby {
     private matchStartedAt = 0
     private tallies = new Map<string, Tally>()
     private kills: MatchResult['kills'] = []
-    /** Someone has killed someone this match (first blood is gone). */
-    private bloodied = false
     private awards: Award[] | null = null
     /** King of the meeting room: the order the zones come in, and the one now. */
     private zoneOrder: number[] = []
@@ -241,8 +235,6 @@ export class FpsLobby {
     private world: FpsWorld
     /** What the host has lined up for the next match (null until they pick). */
     private next: Rules | null = null
-    /** Shove's next gust: when it blows, which way, and where it's got to. */
-    private gust = { at: 0, x: 0, z: 0, warned: false, blowing: false }
 
     constructor(
         office: FpsWorld,
@@ -418,38 +410,10 @@ export class FpsLobby {
         else this.broadcast({ type: 'match', match: this.view() })
     }
 
-    /** Everyone onto the match's map with its kit (Shove's tools, or the guns), and the countdown. */
+    /** Everyone onto the match's map, and the countdown. */
     private toCountdown(): void {
-        this.arena.setKit(this.rules.mode === 'shove' ? 'shove' : 'guns')
         this.useMap(this.rules.map)
         this.setPhase('countdown')
-    }
-
-    /**
-     * Shove's gusts (on a map with ledges): every SHOVE.gust.everyMs, a warning (the `gust` event),
-     * then the wind for `forMs`, any way at all.
-     */
-    private gusts(): void {
-        const { gust } = SHOVE
-        const now = this.hooks.now()
-        const g = this.gust
-        if (!g.warned && now >= g.at - gust.warnMs) {
-            const angle = this.hooks.random() * Math.PI * 2
-            g.x = Math.round(Math.cos(angle) * gust.speed * 100) / 100
-            g.z = Math.round(Math.sin(angle) * gust.speed * 100) / 100
-            g.warned = true
-            this.events.push({ type: 'gust', x: g.x, z: g.z, inMs: Math.max(0, g.at - now), forMs: gust.forMs })
-        }
-        if (g.warned && !g.blowing && now >= g.at) {
-            this.arena.setWind(g.x, g.z)
-            g.blowing = true
-        }
-        if (g.blowing && now >= g.at + gust.forMs) {
-            this.arena.setWind(0, 0)
-            g.blowing = false
-            g.warned = false
-            g.at += gust.everyMs
-        }
     }
 
     /** Everyone over to a map (fresh: its walls down, everyone respawned on it). */
@@ -477,9 +441,6 @@ export class FpsLobby {
             this.record(this.arena.advance())
             if (this.phase === 'playing' && this.rules.mode === 'koth') this.holdZone()
             if (this.phase === 'playing' && this.siege) this.holdSpot()
-            if (this.phase === 'playing' && this.rules.mode === 'shove' && this.world.outBelow !== undefined) {
-                this.gusts()
-            }
             if (this.phase === 'playing' && this.reachedLimit()) this.endMatch()
             if (this.arena.step % SNAPSHOT_EVERY === 0) this.snapshot()
         }
@@ -516,8 +477,6 @@ export class FpsLobby {
         if (tally) {
             tally.connId = member.conn.id
             tally.since = this.hooks.now()
-            // Shove: out of lives is out, reload or not.
-            if (playing && tally.lives === 0) this.arena.eliminate(member.conn.id)
         } else if (playing) {
             this.tallies.set(member.key, this.newTally(member))
         }
@@ -579,7 +538,6 @@ export class FpsLobby {
     private startMatch(): void {
         this.tallies = new Map()
         this.kills = []
-        this.bloodied = false
         this.awards = null
         const seated = this.shuffled(this.seatedMembers())
         seated.forEach((member, i) => {
@@ -589,7 +547,6 @@ export class FpsLobby {
         this.zoneOrder = this.shuffled(ZONES.map((_, i) => i))
         this.zone = null
         this.matchStartedAt = this.hooks.now()
-        this.gust = { at: this.matchStartedAt + SHOVE.gust.firstMs, x: 0, z: 0, warned: false, blowing: false }
         if (this.rules.mode === 'siege') {
             this.siege = {
                 spot: Math.floor(this.hooks.random() * SIEGE_SPOTS.length),
@@ -710,8 +667,6 @@ export class FpsLobby {
             return tallies.some(t => t.zoneMs >= needed)
         }
         if (this.rules.mode === 'tdm') return Math.max(...Object.values(this.teamKills())) >= this.rules.fragLimit
-        // Shove: the last one here with a life left wins.
-        if (this.rules.mode === 'shove') return tallies.filter(t => t.connId !== null && (t.lives ?? 0) > 0).length <= 1
         return tallies.some(t => t.kills >= this.rules.fragLimit)
     }
 
@@ -798,9 +753,7 @@ export class FpsLobby {
                     ? `${Math.floor(mvp.zoneMs / 1000)} s in the zone`
                     : this.rules.mode === 'siege'
                       ? `${mvp.captures} point${mvp.captures === 1 ? '' : 's'}, ${mvp.kills} kills`
-                      : this.rules.mode === 'shove'
-                        ? `${mvp.lives ?? 0} ${mvp.lives === 1 ? 'life' : 'lives'} left, ${mvp.kills} ring-out${mvp.kills === 1 ? '' : 's'}`
-                        : `${mvp.kills} kills`
+                      : `${mvp.kills} kills`
             awards.push({ title: 'MVP', detail, name: mvp.name, color: mvp.color })
         }
         const accuracy = (t: Tally) => (t.shots >= 10 ? Math.round((t.hits / t.shots) * 100) : 0)
@@ -863,13 +816,10 @@ export class FpsLobby {
             this.siege = null
         }
         if (phase !== 'playing') {
-            // No dome, and the usual spawns, outside a siege's play (its scoreboard keeps its score); no gust.
+            // No dome, and the usual spawns, outside a siege's play (its scoreboard keeps its score).
             this.world.dome = null
             this.arena.setSpawns(null)
-            this.arena.setWind(0, 0)
         }
-        // Back to the guns for warmup.
-        if (phase === 'warmup') this.arena.setKit('guns')
         if (phase !== 'intermission') this.awards = null
         this.broadcast({ type: 'match', match: this.view() })
     }
@@ -879,11 +829,7 @@ export class FpsLobby {
         let scored = false
         for (const event of events) {
             if (this.phase === 'playing') {
-                // The match's first kill by someone (a fall or your own rocket isn't one).
-                if (event.type === 'kill' && event.killer !== null && !this.bloodied) {
-                    event.firstBlood = true
-                    this.bloodied = true
-                }
+                if (event.type === 'kill' && this.kills.length === 0) event.firstBlood = true
                 scored = this.count(event) || scored
             }
             if (event.type !== 'damage') this.events.push(event)
@@ -915,14 +861,6 @@ export class FpsLobby {
         if (victim) {
             victim.deaths++
             victim.streak = 0
-            // Shove: a life gone; the last one, and they're out of the match.
-            if (victim.lives !== null) {
-                victim.lives = Math.max(0, victim.lives - 1)
-                if (victim.lives === 0) {
-                    victim.outAt = this.hooks.now()
-                    this.arena.eliminate(event.victim)
-                }
-            }
         }
         if (killer) {
             killer.kills++
@@ -966,7 +904,6 @@ export class FpsLobby {
                 zone,
                 holds,
                 rockets,
-                shove: this.arena.shove ? this.arena.shoveThings() : null,
             })
         }
     }
@@ -999,7 +936,6 @@ export class FpsLobby {
                     deaths: t.deaths,
                     team: t.team,
                     points: this.siege ? t.captures : Math.floor(t.zoneMs / 1000),
-                    lives: t.lives,
                 })
             ),
             teams: isTeamMode(this.rules.mode) && this.tallies.size > 0 ? this.teamKills() : null,
@@ -1035,19 +971,12 @@ export class FpsLobby {
      */
     private ranked(): Tally[] {
         const mode: Mode = this.rules.mode
-        // Shove: still in before out, the later out the better.
-        const lasted = (t: Tally) => t.outAt ?? Number.POSITIVE_INFINITY
         return [...this.tallies.values()].sort((a, b) =>
             mode === 'koth'
                 ? b.zoneMs - a.zoneMs || b.kills - a.kills
                 : mode === 'siege'
                   ? b.captures - a.captures || b.kills - a.kills || a.deaths - b.deaths
-                  : mode === 'shove'
-                    ? (b.lives ?? 0) - (a.lives ?? 0) ||
-                      (lasted(b) === lasted(a) ? 0 : lasted(b) > lasted(a) ? 1 : -1) ||
-                      b.kills - a.kills ||
-                      a.deaths - b.deaths
-                    : b.kills - a.kills || a.deaths - b.deaths
+                  : b.kills - a.kills || a.deaths - b.deaths
         )
     }
 
@@ -1085,19 +1014,7 @@ export class FpsLobby {
             captures: 0,
             pickups: 0,
             since: this.hooks.now(),
-            lives: this.rules.mode === 'shove' ? this.livesForNewcomer() : null,
-            outAt: null,
         }
-    }
-
-    /**
-     * Shove: a newcomer's lives. At the start, the limit; mid-match, the fewest anyone still in has
-     * (at least one), so arriving late isn't a head start.
-     */
-    private livesForNewcomer(): number {
-        if (this.phase !== 'playing') return this.rules.fragLimit
-        const left = [...this.tallies.values()].map(t => t.lives ?? 0).filter(l => l > 0)
-        return Math.max(1, Math.min(this.rules.fragLimit, ...left))
     }
 
     /** A copy in random order (the hooks' randomness, so tests can pin it). */

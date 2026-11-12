@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { createRng } from '../../sim/rng.ts'
 import { BUTTON, DEFAULT_LOADOUT, type InputFrame, type Loadout, type Slot, type Team } from '../protocol.ts'
 import { BONUS, FIREWALL, INTERN, OVERTIME, type PickupSpot, PROMOTION } from './places.ts'
-import { Arena, MAX_BURST, RESPAWN_STEPS, RING_OUT_CREDIT_STEPS, SHIELD_STEPS } from './arena.ts'
+import { Arena, MAX_BURST, RESPAWN_STEPS, SHIELD_STEPS } from './arena.ts'
 import { GUNS, LAUNCHER, REGEN, STAPLER } from './combat.ts'
 
 const RIFLE = GUNS.rifle
@@ -129,90 +129,6 @@ describe('inputs are used as they arrive, never queued', () => {
         // Frames 1, 7, 13, 19 and 25: one every 100 ms of theirs.
         expect(shots).toHaveLength(5)
         expect(a.self('me')!.ammo).toBe(RIFLE.magazine - 5)
-    })
-})
-
-describe('falling off (a map with ledges)', () => {
-    /** A 6 × 6 m floor with nothing round it, two spawns 4 m apart facing each other; out 2 m below. */
-    function ledges() {
-        const room = testWorld(
-            [
-                { name: 'north', position: [0, 0, -2], yaw: Math.PI },
-                { name: 'south', position: [0, 0, 2], yaw: 0 },
-            ],
-            [],
-            [],
-            { floor: 3, outBelow: -2 }
-        )
-        const a = new Arena(room, createRng(1))
-        a.add('a')
-        a.add('b')
-        const seqs = { a: 0, b: 0 }
-        const step = (inputs: Partial<Record<'a' | 'b', Partial<InputFrame>>> = {}) => {
-            for (const id of ['a', 'b'] as const) {
-                const yaw = a.states().find(s => s.id === id)!.yaw
-                const frame = { forward: 0, strafe: 0, yaw, pitch: 0, buttons: 0, view: a.step, ...inputs[id] }
-                a.queue(id, [{ ...frame, seq: ++seqs[id] }])
-            }
-            return a.advance()
-        }
-        // Whoever is south walks backwards (+z) off the edge: 1 m to go.
-        const south = a.self('a')!.body.z > 0 ? 'a' : 'b'
-        const north = south === 'a' ? 'b' : 'a'
-        return { a, step, south, north }
-    }
-
-    test('walking off is out, a kill for nobody', () => {
-        const { a, step, south } = ledges()
-        const yaw = a.states().find(s => s.id === south)!.yaw
-        let kill
-        for (let i = 0; i < 120 && !kill; i++) {
-            kill = step({ [south]: { forward: -1, yaw } }).find(e => e.type === 'kill')
-        }
-
-        expect(kill).toMatchObject({ killer: null, victim: south, fall: true })
-        expect(a.states().find(s => s.id === south)!.alive).toBe(false)
-    })
-
-    test('knocked off, it counts for whoever hit them last (with what), if that was recent', () => {
-        const { a, step, south, north } = ledges()
-        for (let i = 0; i < SHIELD_STEPS + 1; i++) step()
-        const aim = { yaw: Math.PI, pitch: Math.atan2(0.2 - 0.34, 4), buttons: BUTTON.fire | BUTTON.aim }
-        expect(step({ [north]: aim }).find(e => e.type === 'shot')).toMatchObject({ hit: south })
-
-        const yaw = a.states().find(s => s.id === south)!.yaw
-        let kill
-        for (let i = 0; i < 120 && !kill; i++) {
-            kill = step({ [south]: { forward: -1, yaw } }).find(e => e.type === 'kill')
-        }
-        expect(kill).toMatchObject({ killer: north, victim: south, weapon: 'rifle', fall: true })
-    })
-
-    test('a hit too long ago is forgotten: the fall is nobody’s', () => {
-        const { a, step, south, north } = ledges()
-        for (let i = 0; i < SHIELD_STEPS + 1; i++) step()
-        const aim = { yaw: Math.PI, pitch: Math.atan2(0.2 - 0.34, 4), buttons: BUTTON.fire | BUTTON.aim }
-        step({ [north]: aim })
-        for (let i = 0; i < RING_OUT_CREDIT_STEPS; i++) step()
-
-        const yaw = a.states().find(s => s.id === south)!.yaw
-        let kill
-        for (let i = 0; i < 120 && !kill; i++) {
-            kill = step({ [south]: { forward: -1, yaw } }).find(e => e.type === 'kill')
-        }
-        expect(kill).toMatchObject({ killer: null, victim: south })
-    })
-
-    test('a frozen tab falling off is out all the same', () => {
-        const { a, step, south } = ledges()
-        const yaw = a.states().find(s => s.id === south)!.yaw
-        // Walk to the edge and over it, then nothing more from them.
-        for (let i = 0; i < 40; i++) step({ [south]: { forward: -1, yaw } })
-        let kill
-        for (let i = 0; i < 240 && !kill; i++) {
-            kill = a.advance().find(e => e.type === 'kill')
-        }
-        expect(kill).toMatchObject({ victim: south, fall: true })
     })
 })
 

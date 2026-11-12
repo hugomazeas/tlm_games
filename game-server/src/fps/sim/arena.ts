@@ -7,13 +7,10 @@ import {
     type GameEvent,
     type Gun,
     type InputFrame,
-    isMelee,
-    isTool,
     type KillRecap,
     type Loadout,
     type PlayerState,
     type RocketState,
-    type ShoveThings,
     type SelfState,
     type Slot,
     type Team,
@@ -22,26 +19,17 @@ import {
     type Weapon,
     weaponIn,
 } from '../protocol.ts'
-import { batHit, inCone, knockOf, SHOVE, stunOf } from './shove.ts'
-import { LASER, laserAngle } from '../map/cloud-nine.ts'
 import {
-    ANVIL,
     BONUS,
-    BUBBLE,
     FIREWALL,
     HEALTH_PACK,
     MAGAZINE_FACTOR,
-    MAGNET,
-    BOWLING,
-    SPRING,
     OVERTIME,
     PICKUP_HEIGHT,
     PICKUP_REACH,
-    PICKUP_WEIGHTS,
     PICKUPS,
     type PickupKind,
     rollPickup,
-    SHOVE_PICKUP_WEIGHTS,
     type SiegeSpawn,
 } from './places.ts'
 import {
@@ -64,7 +52,7 @@ import {
     swingStapler,
     type Target,
 } from './combat.ts'
-import { type Body, bodyAt, isJetting, MOVE, moveOf, scaleOf, sizeAt, sizeOf, STEP_MS, stepBody } from './movement.ts'
+import { type Body, bodyAt, isJetting, moveOf, scaleOf, sizeAt, sizeOf, STEP_MS, stepBody } from './movement.ts'
 import { supported } from './building.ts'
 import { BUILD, stateOf, type Wall } from './walls.ts'
 import { collideCapsule, type FpsWorld, rayDistance } from './world.ts'
@@ -102,10 +90,6 @@ const ROCKET_ARMED_STEPS = steps(150)
 const IDLE: InputFrame = { seq: 0, forward: 0, strafe: 0, yaw: 0, pitch: 0, buttons: 0, view: 0 }
 /** Under the floor (somehow): back to a spawn. */
 const LOST_BELOW = -2
-/** Cloud Nine's laser gets someone once a pass: not again for this long (1 s). */
-const LASER_COOLDOWN_STEPS = steps(1000)
-/** A ring-out counts for whoever last hit them this recently (5 s). */
-export const RING_OUT_CREDIT_STEPS = steps(5000)
 
 /** A gun's state: kept while it's holstered, so switching back finds its rounds. */
 interface GunState {
@@ -113,27 +97,6 @@ interface GunState {
     /** Reloading until this frame of theirs (0: not). */
     reloadUntil: number
     nextShotAt: number
-}
-
-/** Shove's bowling ball, rolling: whose, where, how fast, since when, and who it has bowled over. */
-interface Ball {
-    id: number
-    by: string
-    position: Vector3
-    velocity: Vector3
-    born: number
-    struck: Set<string>
-}
-
-/** Shove's spring trap, lying: whose, where, armed from this step, gone at that one. */
-interface Trap {
-    id: number
-    by: string
-    x: number
-    y: number
-    z: number
-    armedAt: number
-    goneAt: number
 }
 
 interface Rocket {
@@ -202,34 +165,6 @@ interface Fighter {
     hurtAt: number
     /** Who hurt them this life (for the death recap): hits, damage, headshots, the step of the first. */
     taken: Map<string, { hits: number; damage: number; headshots: number; since: number }>
-    /** The last to hit them this life, with what and when (a ring-out is theirs for a while after). */
-    lastHit: { by: string; weapon: Weapon; step: number } | null
-    /** Shove: their damage % (every hit throws them further), back to 0 each life. */
-    percent: number
-    /** Shove: winding the bat up since this frame of theirs (null: not). */
-    chargeFrom: number | null
-    /** Shove: the extinguisher's next blast, from this frame of theirs. */
-    nextSprayAt: number
-    /** Shove: their blower ran this step. */
-    blowing: boolean
-    /** Shove: out of lives, down for the rest of the match. */
-    out: boolean
-    /** Shove's powers, until these steps: the anvil, the bubble (one save), the magnet. */
-    anvilUntil: number
-    bubbleUntil: number
-    magnetUntil: number
-    /** Shove: carrying a spring trap to drop (G), until this step. */
-    springUntil: number
-    /** Shove's grab: whom they hold, who holds them (since when, Space presses to break free). */
-    holding: string | null
-    heldBy: string | null
-    heldAt: number
-    mash: number
-    /** E and G in their last frame (each acts on a fresh press). */
-    grabWas: boolean
-    dropWas: boolean
-    /** The step Cloud Nine's laser last got them. */
-    zappedAt: number
     /** Their next wall can go up from this step. */
     nextBuildAt: number
 }
@@ -255,78 +190,6 @@ export class Arena {
     private readonly pickupKind: PickupKind[] = []
     /** Where each side spawns, when the match says (siege); null or an empty list: the usual, away from the enemy. */
     private spawnsOf: ((team: Team | null) => readonly SiegeSpawn[] | null) | null = null
-    /** What everyone carries: the guns, or Shove's tools (no health, a damage %, no guns). */
-    private kit: 'guns' | 'shove' = 'guns'
-    /** A gust blowing now (m/s on the floor plan; zero: none). */
-    private wind = { x: 0, z: 0 }
-    /** Shove's bowling balls rolling, and spring traps lying. */
-    private balls: Ball[] = []
-    private traps: Trap[] = []
-    private nextThingId = 1
-
-    /** Shove's things, for the snapshots. */
-    shoveThings(): ShoveThings {
-        const holds: Array<[string, string]> = []
-        for (const f of this.fighters.values()) if (f.holding) holds.push([f.id, f.holding])
-        return {
-            balls: this.balls.map(b => ({
-                id: b.id,
-                x: round(b.position.x, 3),
-                y: round(b.position.y, 3),
-                z: round(b.position.z, 3),
-                vx: round(b.velocity.x, 2),
-                vz: round(b.velocity.z, 2),
-            })),
-            traps: this.traps.map(t => ({
-                id: t.id,
-                x: round(t.x, 3),
-                y: round(t.y, 3),
-                z: round(t.z, 3),
-                armed: this.step >= t.armedAt,
-                by: t.by,
-            })),
-            holds,
-        }
-    }
-
-    /** Nothing of Shove's left lying or rolling, nobody held (a new map, a new kit, a new match). */
-    private clearShove(): void {
-        this.balls = []
-        this.traps = []
-        for (const f of this.fighters.values()) this.letGo(f)
-    }
-
-    /** Guns or Shove's tools, for everyone (a Shove match, or back to the guns). Everyone's % back to 0. */
-    setKit(kit: 'guns' | 'shove'): void {
-        this.kit = kit
-        for (const f of this.fighters.values()) {
-            f.percent = 0
-            f.chargeFrom = null
-            f.out = false
-        }
-        this.clearShove()
-        this.rollPickups()
-    }
-
-    get shove(): boolean {
-        return this.kit === 'shove'
-    }
-
-    /** A gust (m/s; zero to stop it): everyone standing drifts with it. */
-    setWind(x: number, z: number): void {
-        this.wind = { x, z }
-    }
-
-    /** Shove: out of lives, they stay down for the rest of the match. */
-    eliminate(id: string): void {
-        const fighter = this.fighters.get(id)
-        if (!fighter) return
-        fighter.out = true
-        fighter.alive = false
-        fighter.jetting = false
-        fighter.blowing = false
-        fighter.respawnAt = Number.POSITIVE_INFINITY
-    }
 
     constructor(
         private world: FpsWorld,
@@ -346,7 +209,6 @@ export class Arena {
         this.pickupAt = world.pickups.map(() => 0)
         this.rollPickups()
         this.rockets = []
-        this.clearShove()
         this.history.length = 0
         this.pending = this.pending.filter(e => e.type !== 'built' && e.type !== 'wallHit' && e.type !== 'wallGone')
     }
@@ -365,14 +227,7 @@ export class Arena {
     /** A fresh roll on every spot (a new arena, a new match). */
     private rollPickups(): void {
         this.pickupKind.length = 0
-        for (const spot of this.world.pickups) {
-            this.pickupKind.push(rollPickup(this.random, spot, this.pickupKind, this.pickupWeights))
-        }
-    }
-
-    /** What may lie on the spots: the guns' pool, or Shove's. */
-    private get pickupWeights(): Record<PickupKind, number> {
-        return this.kit === 'shove' ? SHOVE_PICKUP_WEIGHTS : PICKUP_WEIGHTS
+        for (const spot of this.world.pickups) this.pickupKind.push(rollPickup(this.random, spot, this.pickupKind))
     }
 
     has(id: string): boolean {
@@ -421,24 +276,7 @@ export class Arena {
             firewallUntil: 0,
             hurtAt: 0,
             taken: new Map(),
-            lastHit: null,
             nextBuildAt: 0,
-            percent: 0,
-            chargeFrom: null,
-            nextSprayAt: 0,
-            blowing: false,
-            out: false,
-            anvilUntil: 0,
-            bubbleUntil: 0,
-            magnetUntil: 0,
-            springUntil: 0,
-            holding: null,
-            heldBy: null,
-            heldAt: 0,
-            mash: 0,
-            grabWas: false,
-            dropWas: false,
-            zappedAt: -1e9,
         }
         this.fighters.set(id, fighter)
 
@@ -447,8 +285,6 @@ export class Arena {
 
     /** Out of the game. Their walls stay up, nobody's from now on: no one inherits them, their side included. */
     remove(id: string): void {
-        const leaving = this.fighters.get(id)
-        if (leaving) this.letGo(leaving)
         this.fighters.delete(id)
         for (const wall of [...this.world.walls.all]) {
             if (wall.by === id) this.change(wall, { by: null, team: null })
@@ -596,7 +432,6 @@ export class Arena {
         this.pickupAt.fill(0)
         this.rollPickups()
         this.rockets = []
-        this.clearShove()
         // A clean office for the match.
         this.world.walls.clear()
         this.pending = this.pending.filter(e => e.type !== 'built' && e.type !== 'wallHit' && e.type !== 'wallGone')
@@ -631,16 +466,10 @@ export class Arena {
      */
     advance(): ArenaEvent[] {
         this.step++
-        // The moving things (Cloud Nine's gondola) are where this step puts them.
-        if (this.world.clock) this.world.clock.step = this.step
         const events: ArenaEvent[] = this.pending
         this.pending = []
         for (const fighter of this.fighters.values()) {
             fighter.budget = Math.min(MAX_BURST, fighter.budget + 1)
-            // A gust: in the body, so their browser drifts them with it too.
-            if (fighter.body.windX !== this.wind.x || fighter.body.windZ !== this.wind.z) {
-                fighter.body = { ...fighter.body, windX: this.wind.x, windZ: this.wind.z }
-            }
             let used = 0
             while (fighter.queue.length > 0 && fighter.budget >= 1) {
                 const frame = fighter.queue.shift()!
@@ -654,10 +483,7 @@ export class Arena {
             if (fighter.starved > STARVED_STEPS && fighter.alive) {
                 fighter.body = stepBody(this.world, fighter.body, moveOf({ ...IDLE, yaw: fighter.yaw }))
                 fighter.jetting = false
-                fighter.blowing = false
-                this.fellOut(fighter, events)
             }
-            if (fighter.alive) this.bubbleCatch(fighter)
             if (fighter.alive) this.collect(fighter, events)
             // A Promotion or Overtime running out: their health back down to what they can hold now.
             fighter.health = Math.min(fighter.health, maxHealthOf(fighter.body))
@@ -676,13 +502,6 @@ export class Arena {
             }
         }
         this.flyRockets(events)
-        this.magnets()
-        if (this.world.laser) this.sweepLaser(events)
-        if (this.shove) {
-            this.carryHeld(events)
-            this.rollBalls(events)
-            this.springTraps(events)
-        }
         for (const fighter of this.fighters.values()) {
             if (!fighter.alive && this.step >= fighter.respawnAt) events.push(this.spawn(fighter))
         }
@@ -715,14 +534,12 @@ export class Arena {
             health: f.alive ? Math.ceil(f.health) : 0,
             jet: f.alive && f.jetting,
             shielded: this.shielded(f),
-            weapon: weaponIn(f.slot, f.loadout, this.shove),
-            aiming: f.alive && f.aiming && f.slot !== 'melee' && !this.shove,
+            weapon: weaponIn(f.slot, f.loadout),
+            aiming: f.alive && f.aiming && f.slot !== 'melee',
             prone: f.alive && f.body.prone,
-            reload: f.alive && !this.shove ? reloadOf(f) : null,
+            reload: f.alive ? reloadOf(f) : null,
             team: f.team,
             buffs: f.alive ? this.buffsOf(f).map(b => b.kind) : [],
-            percent: this.shove ? Math.floor(f.percent) : null,
-            blowing: f.alive && f.blowing,
         }))
     }
 
@@ -744,19 +561,13 @@ export class Arena {
             reloading: gun.reloadUntil > f.clock,
             reloadLeftMs: gun.reloadUntil > f.clock ? Math.round((gun.reloadUntil - f.clock) * STEP_MS) : null,
             shielded: this.shielded(f),
-            weapon: weaponIn(f.slot, f.loadout, this.shove),
+            weapon: weaponIn(f.slot, f.loadout),
             loadout: f.loadout,
             nextLoadout: f.nextLoadout,
             otherAmmo: other?.ammo ?? null,
-            // Out of lives (Shove): not coming back this match.
-            respawnInMs: f.alive || f.out ? null : Math.max(0, Math.round((f.respawnAt - this.step) * STEP_MS)),
+            respawnInMs: f.alive ? null : Math.max(0, Math.round((f.respawnAt - this.step) * STEP_MS)),
             magazine: this.magazineOf(f, gunIn(f, slot)),
             buffs: f.alive ? this.buffsOf(f) : [],
-            percent: this.shove ? Math.floor(f.percent) : null,
-            charge:
-                this.shove && f.chargeFrom !== null
-                    ? round(Math.min(1, (f.clock - f.chargeFrom) / steps(SHOVE.bat.chargeMs)), 2)
-                    : null,
         }
     }
 
@@ -782,10 +593,6 @@ export class Arena {
         }
         until('bonus', f.bonusUntil)
         until('orgchart', f.orgchartUntil)
-        until('anvil', f.anvilUntil)
-        until('bubble', f.bubbleUntil)
-        until('magnet', f.magnetUntil)
-        until('spring', f.springUntil)
         return buffs
     }
 
@@ -805,8 +612,7 @@ export class Arena {
         this.world.pickups.forEach((spot, index) => {
             if (this.step < this.pickupAt[index]!) return
             const near = Math.hypot(f.body.x - spot.x, f.body.z - spot.z) <= PICKUP_REACH
-            const floor = spot.y ?? 0
-            if (!near || f.body.y < floor - 0.05 || f.body.y > floor + PICKUP_HEIGHT) return
+            if (!near || f.body.y > PICKUP_HEIGHT) return
             const kind = this.pickupKind[index]!
             if (kind === 'health' && f.health >= maxHealthOf(f.body)) return
 
@@ -859,27 +665,12 @@ export class Arena {
                 case 'orgchart':
                     f.orgchartUntil = until
                     break
-                case 'anvil':
-                    f.anvilUntil = until
-                    break
-                case 'bubble':
-                    f.bubbleUntil = until
-                    break
-                case 'magnet':
-                    f.magnetUntil = until
-                    break
-                case 'bowling':
-                    this.rollBall(f)
-                    break
-                case 'spring':
-                    f.springUntil = until
-                    break
             }
             f.health = Math.min(f.health, maxHealthOf(f.body))
             this.pickupAt[index] = this.step + steps(info.respawnMs)
             // What comes back here is rolled now (snapshots only show it once it's back), not
             // a power already lying elsewhere.
-            this.pickupKind[index] = rollPickup(this.random, spot, this.pickups(), this.pickupWeights)
+            this.pickupKind[index] = rollPickup(this.random, spot, this.pickups())
             events.push({ type: 'pickup', by: f.id, spot: index, kind })
         })
     }
@@ -896,14 +687,12 @@ export class Arena {
         fighter.yaw = frame.yaw
         fighter.pitch = frame.pitch
         const input = moveOf(frame)
-        // Held up (Shove): every fresh press of Space is a wriggle; enough of them and you're free.
-        if (fighter.heldBy && input.jet && !fighter.body.spaceHeld && ++fighter.mash >= SHOVE.grab.mash) {
-            const holder = this.fighters.get(fighter.heldBy)
-            if (holder) this.letGo(holder, events)
-        }
         fighter.jetting = isJetting(fighter.body, input)
         fighter.body = stepBody(this.world, fighter.body, input)
-        if (this.fellOut(fighter, events)) return
+        if (fighter.body.y < LOST_BELOW) {
+            events.push(this.spawn(fighter))
+            return
+        }
         // A different weapon in hand: it takes a moment before it can be used, and the one put
         // away stops reloading.
         const wanted = frame.slot ?? 'primary'
@@ -918,10 +707,8 @@ export class Arena {
         if (!firing) fighter.clicked = false
         fighter.wasFiring = firing
         fighter.aiming = Boolean(frame.buttons & BUTTON.aim)
-        fighter.blowing = false
         if (fighter.clock < fighter.readyAt) return
-        if (this.shove) this.tool(fighter, frame, events)
-        else if (fighter.slot === 'melee') this.stapler(fighter, frame, events)
+        if (fighter.slot === 'melee') this.stapler(fighter, frame, events)
         else this.gun(fighter, fighter.slot, frame, events)
     }
 
@@ -1153,419 +940,6 @@ export class Arena {
         }
     }
 
-    /**
-     * Shove's tools, by slot: the leaf blower (held: a steady push on whoever is in its stream, and
-     * aimed down in the air it holds you up), the fire extinguisher (a blast that throws whoever it
-     * meets and kicks you back the other way, every SHOVE.extinguisher.cooldownMs), the bat (held to
-     * wind it up, swung when let go; from behind it spikes them down).
-     */
-    private tool(f: Fighter, frame: InputFrame, events: ArenaEvent[]): void {
-        const firing = Boolean(frame.buttons & BUTTON.fire)
-        const eye = eyeOf(f.body)
-        const aim = aimDirection(frame.yaw, frame.pitch)
-        // E and G act on a fresh press.
-        const grab = Boolean(frame.buttons & BUTTON.grab)
-        const freshGrab = grab && !f.grabWas
-        f.grabWas = grab
-        const drop = Boolean(frame.buttons & BUTTON.drop)
-        const freshDrop = drop && !f.dropWas
-        f.dropWas = drop
-        // Held up by someone: nothing to do but wriggle.
-        if (f.heldBy) return
-        if (freshDrop && f.springUntil > this.step) this.dropTrap(f)
-        // Holding someone: a click throws them, E lets go; the tools wait.
-        if (f.holding) {
-            const held = this.fighters.get(f.holding)
-            if (held && f.clicked) {
-                f.clicked = false
-                this.letGo(f, events)
-                this.throw(f, held, aim, SHOVE.grab.knock, SHOVE.grab.percent, 'throw', events)
-            } else if (freshGrab) {
-                this.letGo(f, events)
-            }
-            return
-        }
-        if (freshGrab) {
-            this.grab(f, frame, eye, aim, events)
-            return
-        }
-        if (f.slot === 'primary') {
-            if (!firing) return
-            const { blower } = SHOVE
-            const dt = STEP_MS / 1000
-            f.blowing = true
-            f.shieldUntil = 0
-            const along = flat(aim)
-            for (const v of this.inStream(f, eye, aim, blower.range, blower.cone)) {
-                if (!this.hurts(v)) continue
-                const push = knockOf(blower.push, v.percent, this.weightOf(v)) * dt
-                const away = along ?? flat(new Vector3(v.body.x - f.body.x, 0, v.body.z - f.body.z))
-                if (!away) continue
-                v.body = { ...v.body, vx: v.body.vx + away.x * push, vz: v.body.vz + away.z * push }
-                this.addPercent(f, v, blower.percentPerSecond * dt, 'blower', events)
-            }
-            // Pointed down in the air: a little lift, to slow a fall or reach the deck again.
-            if (!f.body.onGround && frame.pitch < -0.9) {
-                f.body = { ...f.body, vy: f.body.vy + blower.hover * dt }
-            }
-            return
-        }
-        if (f.slot === 'secondary') {
-            const { extinguisher } = SHOVE
-            if (!firing || f.clock < f.nextSprayAt) return
-            f.nextSprayAt = f.clock + steps(extinguisher.cooldownMs)
-            f.shieldUntil = 0
-            const hits: Array<{ id: string; percent: number }> = []
-            for (const v of this.inStream(f, eye, aim, extinguisher.range, extinguisher.cone)) {
-                const added = this.throw(f, v, aim, extinguisher.knock, extinguisher.percent, 'extinguisher', events)
-                if (added > 0) hits.push({ id: v.id, percent: added })
-            }
-            // The kick back: the way you came, if you aim at the deck behind you. Standing, your feet take most of it.
-            const kick = extinguisher.recoil * (f.body.onGround ? extinguisher.groundRecoil : 1)
-            f.body = {
-                ...f.body,
-                vx: f.body.vx - aim.x * kick,
-                vy: f.body.vy - aim.y * kick,
-                vz: f.body.vz - aim.z * kick,
-                onGround: f.body.onGround && -aim.y * kick <= 0,
-                stun: Math.max(f.body.stun, stunOf(kick)),
-            }
-            const to = eye.clone().addScaledVector(aim, extinguisher.range)
-            events.push({
-                type: 'spray',
-                by: f.id,
-                from: [round(eye.x, 3), round(eye.y, 3), round(eye.z, 3)],
-                toward: [round(to.x, 3), round(to.y, 3), round(to.z, 3)],
-                hits,
-            })
-            return
-        }
-        // The bat: wound up while held, swung when let go.
-        if (firing) {
-            if (f.chargeFrom === null && f.clock >= f.nextSwingAt) f.chargeFrom = f.clock
-            return
-        }
-        if (f.chargeFrom === null) return
-        const charge = Math.min(1, (f.clock - f.chargeFrom) / steps(SHOVE.bat.chargeMs))
-        f.chargeFrom = null
-        f.nextSwingAt = f.clock + steps(SHOVE.bat.intervalMs)
-        f.shieldUntil = 0
-        const reach = SHOVE.bat.reach * scaleOf(f.body)
-        const reached = swingStapler(this.world, eye, aim, this.targetsAt(frame.view, f.id), reach)
-        const victim = reached ? this.fighters.get(reached.id) : undefined
-        const backstab = reached?.backstab ?? false
-        const { percent, knock } = batHit(charge)
-        const added = victim ? this.throw(f, victim, aim, knock, percent, 'bat', events, backstab) : 0
-        events.push({
-            type: 'swing',
-            by: f.id,
-            hit: victim?.id ?? null,
-            damage: added,
-            backstab,
-            weapon: 'bat',
-            charge: round(charge, 2),
-        })
-    }
-
-    /** Whoever is in a stream from `eye` along `aim` (their middle within its cone and reach, nothing in between). */
-    private inStream(f: Fighter, eye: Vector3, aim: Vector3, range: number, cone: number): Fighter[] {
-        const found: Fighter[] = []
-        for (const v of this.fighters.values()) {
-            if (v === f || !v.alive || (f.team !== null && v.team === f.team)) continue
-            const middle = middleOf(v.body)
-            const dx = middle.x - eye.x
-            const dy = middle.y - eye.y
-            const dz = middle.z - eye.z
-            // A giant's middle is far up: their reach counts from their capsule's edge.
-            const edge = sizeOf(v.body).radius
-            if (!inCone(dx, dy, dz, aim.x, aim.y, aim.z, range + edge, cone)) continue
-            const distance = Math.hypot(dx, dy, dz)
-            const to = new Vector3(dx, dy, dz).divideScalar(Math.max(distance, 1e-6))
-            if (rayDistance(this.world, eye, to, distance) < distance - 0.05) continue
-            found.push(v)
-        }
-        return found
-    }
-
-    /**
-     * Shove's hit: % on them, then a throw along `aim` (flattened, with a lift; from behind with the
-     * bat, down), as far as their % and their weight say, and their steering weak while it carries.
-     * Returns the % added (0: they couldn't be hit).
-     */
-    private throw(
-        by: Fighter,
-        victim: Fighter,
-        aim: Vector3,
-        knock: number,
-        percent: number,
-        weapon: Weapon,
-        events: ArenaEvent[],
-        spike = false
-    ): number {
-        if (!this.hurts(victim)) return 0
-        const added = this.addPercent(by, victim, percent, weapon, events)
-        const speed = knockOf(knock, victim.percent, this.weightOf(victim))
-        const along = flat(aim) ?? flat(new Vector3(victim.body.x - by.body.x, 0, victim.body.z - by.body.z))
-        const [x, z] = along ? [along.x, along.z] : [0, 0]
-        const body = victim.body
-        victim.body = spike
-            ? { ...body, vx: body.vx + x * speed * 0.3, vy: body.vy - speed, vz: body.vz + z * speed * 0.3 }
-            : {
-                  ...body,
-                  vx: body.vx + x * speed,
-                  vy: Math.max(body.vy, 0) + speed * SHOVE.lift + Math.max(0, aim.y) * speed * 0.5,
-                  vz: body.vz + z * speed,
-                  onGround: false,
-              }
-        victim.body.stun = Math.max(body.stun, stunOf(speed))
-
-        return added
-    }
-
-    /** % on `victim` from `by` (an anvil and the Bonus count), remembered as their last hit. Returns what was added. */
-    private addPercent(by: Fighter, victim: Fighter, amount: number, weapon: Weapon, events: ArenaEvent[]): number {
-        const added = amount * (by.anvilUntil > this.step ? ANVIL.percent : 1) * this.bonusOf(by)
-        const before = Math.floor(victim.percent)
-        victim.percent = Math.min(SHOVE.maxPercent, victim.percent + added)
-        victim.lastHit = { by: by.id, weapon, step: this.step }
-        // Whole points, for the tallies (the blower adds fractions a step).
-        const whole = Math.floor(victim.percent) - before
-        if (whole > 0) events.push({ type: 'damage', by: by.id, target: victim.id, amount: whole, headshot: false })
-        return Math.round(added)
-    }
-
-    /** How heavy they are: a giant and an anvil barely move, an intern flies. */
-    private weightOf(f: Fighter): number {
-        const size = f.body.big > 0 ? 2.5 : f.body.small > 0 ? 0.6 : 1
-        return size * (f.anvilUntil > this.step ? ANVIL.weight : 1)
-    }
-
-    /** Grabs whoever is within reach in front of you (up, not held, not a giant): held up in front of you. */
-    private grab(f: Fighter, frame: InputFrame, eye: Vector3, aim: Vector3, events: ArenaEvent[]): void {
-        const reach = SHOVE.grab.reach * scaleOf(f.body)
-        const reached = swingStapler(this.world, eye, aim, this.targetsAt(frame.view, f.id), reach)
-        const victim = reached ? this.fighters.get(reached.id) : undefined
-        if (!victim || !this.hurts(victim) || victim.heldBy || victim.holding) return
-        if (this.weightOf(victim) > SHOVE.grab.maxWeight) return
-        f.shieldUntil = 0
-        f.holding = victim.id
-        victim.heldBy = f.id
-        victim.heldAt = this.step
-        victim.mash = 0
-        victim.chargeFrom = null
-        victim.body = { ...victim.body, held: true }
-        victim.lastHit = { by: f.id, weapon: 'throw', step: this.step }
-        events.push({ type: 'grab', by: f.id, target: victim.id })
-    }
-
-    /** Whoever `f` holds, or whoever holds `f`: let go (they drop where they are). */
-    private letGo(f: Fighter, events?: ArenaEvent[]): void {
-        const pairs: Array<[Fighter, Fighter]> = []
-        const held = f.holding ? this.fighters.get(f.holding) : undefined
-        if (held) pairs.push([f, held])
-        const holder = f.heldBy ? this.fighters.get(f.heldBy) : undefined
-        if (holder) pairs.push([holder, f])
-        f.holding = null
-        f.heldBy = null
-        f.body = { ...f.body, held: false }
-        for (const [h, v] of pairs) {
-            h.holding = null
-            v.heldBy = null
-            v.body = { ...v.body, held: false }
-            events?.push({ type: 'grab', by: h.id, target: null })
-        }
-    }
-
-    /** Everyone held, carried in front of their holder (up to SHOVE.grab.holdMs, then dropped). */
-    private carryHeld(events: ArenaEvent[]): void {
-        for (const h of this.fighters.values()) {
-            const v = h.holding ? this.fighters.get(h.holding) : undefined
-            if (!h.holding) continue
-            if (!v || !v.alive || !h.alive || this.step - v.heldAt > steps(SHOVE.grab.holdMs)) {
-                this.letGo(h, events)
-                continue
-            }
-            const scale = scaleOf(h.body)
-            const ahead = 0.3 * scale
-            v.body = {
-                ...v.body,
-                x: h.body.x - Math.sin(h.yaw) * ahead,
-                y: h.body.y + 0.16 * scale,
-                z: h.body.z - Math.cos(h.yaw) * ahead,
-                vx: 0,
-                vy: 0,
-                vz: 0,
-                held: true,
-            }
-        }
-    }
-
-    /** A spring trap down at their feet (armed a moment later). */
-    private dropTrap(f: Fighter): void {
-        f.springUntil = 0
-        this.traps.push({
-            id: this.nextThingId++,
-            by: f.id,
-            x: f.body.x,
-            y: f.body.y,
-            z: f.body.z,
-            armedAt: this.step + steps(SPRING.armMs),
-            goneAt: this.step + steps(SPRING.lifeMs),
-        })
-    }
-
-    /** Armed traps: the first one (not whoever dropped it) to step on one goes straight up. */
-    private springTraps(events: ArenaEvent[]): void {
-        this.traps = this.traps.filter(trap => {
-            if (this.step >= trap.goneAt) return false
-            if (this.step < trap.armedAt) return true
-            for (const v of this.fighters.values()) {
-                if (!v.alive || v.id === trap.by || v.heldBy) continue
-                const near = Math.hypot(v.body.x - trap.x, v.body.z - trap.z) <= SPRING.reach
-                if (!near || Math.abs(v.body.y - trap.y) > 0.15) continue
-                const by = this.fighters.get(trap.by)
-                if (by) this.addPercent(by, v, SPRING.percent, 'spring', events)
-                const weight = this.weightOf(v)
-                v.body = {
-                    ...v.body,
-                    vy: SPRING.launch / Math.sqrt(weight),
-                    onGround: false,
-                    stun: Math.max(v.body.stun, stunOf(4)),
-                }
-                events.push({ type: 'sprung', id: trap.id, on: v.id, at: [trap.x, trap.y, trap.z] })
-                return false
-            }
-            return true
-        })
-    }
-
-    /** A bowling ball off the way they face. */
-    private rollBall(f: Fighter): void {
-        const ahead = new Vector3(-Math.sin(f.yaw), 0, -Math.cos(f.yaw))
-        const at = new Vector3(f.body.x, f.body.y + BOWLING.radius, f.body.z).addScaledVector(ahead, 0.25)
-        this.balls.push({
-            id: this.nextThingId++,
-            by: f.id,
-            position: at,
-            velocity: ahead.multiplyScalar(BOWLING.speed),
-            born: this.step,
-            struck: new Set(),
-        })
-    }
-
-    /**
-     * The balls, a step: rolling on whatever is under them (falling where nothing is), bouncing off
-     * what they meet, bowling over whoever they reach (once each; not their roller at first).
-     */
-    private rollBalls(events: ArenaEvent[]): void {
-        const dt = STEP_MS / 1000
-        const down = new Vector3(0, -1, 0)
-        const lowest = (this.world.outBelow ?? LOST_BELOW) - 2
-        this.balls = this.balls.filter(ball => {
-            if (this.step - ball.born > steps(BOWLING.lifeMs) || ball.position.y < lowest) return false
-            const p = ball.position
-            const v = ball.velocity
-            // Ahead: something in the way bounces it back along that axis.
-            for (const axis of ['x', 'z'] as const) {
-                const speed = v[axis]
-                if (Math.abs(speed) < 1e-3) continue
-                const dir = new Vector3(axis === 'x' ? Math.sign(speed) : 0, 0, axis === 'z' ? Math.sign(speed) : 0)
-                const reach = Math.abs(speed) * dt + BOWLING.radius
-                if (rayDistance(this.world, p, dir, reach) < reach) v[axis] = -speed * 0.7
-            }
-            p.x += v.x * dt
-            p.z += v.z * dt
-            // Under it: the floor it rolls on, or a fall.
-            const floor = rayDistance(this.world, p, down, 0.5)
-            if (floor <= BOWLING.radius + 0.02 && v.y <= 0) {
-                p.y += BOWLING.radius - floor
-                v.y = 0
-            } else {
-                v.y += MOVE.gravity * dt
-                p.y += v.y * dt
-            }
-            const by = this.fighters.get(ball.by)
-            for (const f of this.fighters.values()) {
-                if (!f.alive || ball.struck.has(f.id) || f.heldBy) continue
-                if (f.id === ball.by && this.step - ball.born < steps(400)) continue
-                const size = sizeOf(f.body)
-                const near = Math.hypot(f.body.x - p.x, f.body.z - p.z) <= size.radius + BOWLING.radius
-                if (!near || p.y < f.body.y - BOWLING.radius || p.y > f.body.y + size.height) continue
-                // Spawn-shielded: it rolls on through (and may get them later).
-                if (!this.hurts(f)) continue
-                ball.struck.add(f.id)
-                if (!by || by === f) continue
-                this.throw(by, f, v.clone().normalize(), BOWLING.knock, BOWLING.percent, 'ball', events)
-            }
-            return true
-        })
-    }
-
-    /**
-     * Cloud Nine's security laser, a step: whoever it sweeps past standing on the deck (not jumping,
-     * not up a ramp, not spawn-shielded) is knocked flying along its way. In Shove it adds a little
-     * %, nobody's (a ring-out after it still counts for whoever hit them last).
-     */
-    private sweepLaser(events: ArenaEvent[]): void {
-        const before = laserAngle(this.step - 1)
-        const now = laserAngle(this.step)
-        const swept = (now - before + Math.PI * 2) % (Math.PI * 2)
-        for (const f of this.fighters.values()) {
-            if (!f.alive || f.heldBy || !this.hurts(f) || f.body.y > LASER.height) continue
-            // Once a pass: the beam is still on them for a few steps.
-            if (this.step - f.zappedAt < LASER_COOLDOWN_STEPS) continue
-            const r = Math.hypot(f.body.x, f.body.z)
-            if (r < LASER.inner || r > LASER.outer) continue
-            const at = (Math.atan2(f.body.z, f.body.x) - before + Math.PI * 4) % (Math.PI * 2)
-            // Swept past this step (with a capsule's width ahead of the beam, at their distance).
-            const reach = sizeOf(f.body).radius / r
-            if (at > swept + reach) continue
-            f.zappedAt = this.step
-            // Thrown mostly inward, a little along its sweep: into the fight, not off the deck by itself.
-            const theta = Math.atan2(f.body.z, f.body.x)
-            const dx = -Math.cos(theta) - Math.sin(theta) * 0.5
-            const dz = -Math.sin(theta) + Math.cos(theta) * 0.5
-            const length = Math.hypot(dx, dz)
-            const knock = LASER.knock / this.weightOf(f) / length
-            f.body = {
-                ...f.body,
-                vx: f.body.vx + dx * knock,
-                vz: f.body.vz + dz * knock,
-                vy: Math.max(f.body.vy, LASER.lift / Math.sqrt(this.weightOf(f))),
-                onGround: false,
-                stun: Math.max(f.body.stun, stunOf(knock)),
-            }
-            if (this.shove) f.percent = Math.min(SHOVE.maxPercent, f.percent + LASER.percent)
-            events.push({ type: 'zap', on: f.id, at: [round(f.body.x, 2), 0.05, round(f.body.z, 2)] })
-        }
-    }
-
-    /** Shove's magnets: whoever holds one pulls everyone near them in. */
-    private magnets(): void {
-        const dt = STEP_MS / 1000
-        for (const m of this.fighters.values()) {
-            if (!m.alive || m.magnetUntil <= this.step) continue
-            for (const v of this.fighters.values()) {
-                if (v === m || !v.alive || (m.team !== null && v.team === m.team)) continue
-                const dx = m.body.x - v.body.x
-                const dz = m.body.z - v.body.z
-                const distance = Math.hypot(dx, dz)
-                if (distance > MAGNET.reach || distance < 0.2) continue
-                const pull = (MAGNET.pull * dt) / this.weightOf(v)
-                v.body = { ...v.body, vx: v.body.vx + (dx / distance) * pull, vz: v.body.vz + (dz / distance) * pull }
-            }
-        }
-    }
-
-    /** Shove's bubble: falling off the deck, it floats you back up once, toward the middle. */
-    private bubbleCatch(f: Fighter): void {
-        if (f.bubbleUntil <= this.step || this.world.outBelow === undefined || f.body.y > BUBBLE.catchBelow) return
-        f.bubbleUntil = 0
-        const out = Math.hypot(f.body.x, f.body.z)
-        const [bx, bz] = out > 1e-6 ? [-f.body.x / out, -f.body.z / out] : [0, 0]
-        f.body = { ...f.body, vx: bx * 3, vy: BUBBLE.lift, vz: bz * 3, stun: 0 }
-    }
-
     /** Their damage multiplier: the Bonus doubles it. */
     private bonusOf(fighter: Fighter): number {
         return fighter.bonusUntil > this.step ? BONUS : 1
@@ -1603,43 +977,9 @@ export class Arena {
             tally.damage += dealt
             if (how.headshot) tally.headshots++
             victim.taken.set(by.id, tally)
-            victim.lastHit = { by: by.id, weapon: how.weapon, step: this.step }
         }
         if (victim.health > 0) return
-        this.down(by, victim, how, events)
-    }
 
-    /**
-     * Off the map (Cloud Nine's ledges): out, a kill for whoever hit them last if that was within
-     * RING_OUT_CREDIT_STEPS (with what they hit them with), else nobody's. In the office, falling
-     * through the floor (somehow) only puts them back at a spawn. True when they're gone.
-     */
-    private fellOut(fighter: Fighter, events: ArenaEvent[]): boolean {
-        const outBelow = this.world.outBelow
-        if (!fighter.alive || fighter.body.y >= (outBelow ?? LOST_BELOW)) return false
-        if (outBelow === undefined) {
-            events.push(this.spawn(fighter))
-            return true
-        }
-        const last = fighter.lastHit
-        const recent = last && this.step - last.step <= RING_OUT_CREDIT_STEPS ? last : null
-        const by = recent ? (this.fighters.get(recent.by) ?? null) : null
-        const weapon = recent?.weapon ?? weaponIn(fighter.slot, fighter.loadout, this.shove)
-        fighter.health = 0
-        this.down(by, fighter, { headshot: false, weapon, backstab: false, fall: true }, events)
-
-        return true
-    }
-
-    /** Down: the kill (for `by`, unless that's nobody or themselves), their powers gone, the respawn timer running. */
-    private down(
-        by: Fighter | null,
-        victim: Fighter,
-        how: { headshot: boolean; weapon: Weapon; backstab: boolean; fall?: boolean },
-        events: ArenaEvent[]
-    ): void {
-        // Down: whoever they held drops, whoever held them lets go.
-        this.letGo(victim, events)
         // Read before they lose their powers below (the killer's are theirs, but they may be the same).
         const recap = by && by !== victim ? this.recap(by, victim, how.weapon) : undefined
         victim.alive = false
@@ -1664,9 +1004,7 @@ export class Arena {
 
     /** How `killer` just killed `victim` with `weapon`, for the victim's death screen. */
     private recap(killer: Fighter, victim: Fighter, weapon: Weapon): KillRecap {
-        // A gun's rounds left (not the stapler's, not Shove's tools).
-        const slot =
-            isMelee(weapon) || isTool(weapon) ? null : killer.loadout.primary === weapon ? 'primary' : 'secondary'
+        const slot = weapon === 'stapler' ? null : killer.loadout.primary === weapon ? 'primary' : 'secondary'
         const own = victim.taken.get(killer.id) ?? { hits: 0, damage: 0, headshots: 0, since: this.step }
         let othersDamage = 0
         for (const [id, tally] of victim.taken) if (id !== killer.id) othersDamage += tally.damage
@@ -1739,10 +1077,6 @@ export class Arena {
         f.orgchartUntil = 0
         f.firewall = 0
         f.firewallUntil = 0
-        f.anvilUntil = 0
-        f.bubbleUntil = 0
-        f.magnetUntil = 0
-        f.springUntil = 0
     }
 
     private remember(): void {
@@ -1768,18 +1102,12 @@ export class Arena {
         fighter.jetting = false
         fighter.health = MAX_HEALTH
         fighter.alive = true
-        fighter.shieldUntil = this.step + (this.world.shieldMs ? steps(this.world.shieldMs) : SHIELD_STEPS)
+        fighter.shieldUntil = this.step + SHIELD_STEPS
         fighter.nextSwingAt = 0
         fighter.readyAt = 0
         fighter.lifeKills = 0
         this.losePowers(fighter)
         fighter.taken.clear()
-        fighter.lastHit = null
-        fighter.percent = 0
-        fighter.chargeFrom = null
-        fighter.blowing = false
-        fighter.body.windX = this.wind.x
-        fighter.body.windZ = this.wind.z
         this.arm(fighter)
 
         return { type: 'spawn', id: fighter.id }
@@ -1831,12 +1159,6 @@ export class Arena {
     private shielded(fighter: Fighter): boolean {
         return fighter.alive && this.step < fighter.shieldUntil
     }
-}
-
-/** A direction flattened onto the floor plan, as a unit vector (null when it points straight up or down). */
-function flat(v: Vector3): Vector3 | null {
-    const h = Math.hypot(v.x, v.z)
-    return h > 1e-3 ? new Vector3(v.x / h, 0, v.z / h) : null
 }
 
 /** Halfway up a body (whichever side of a dome that is, the body is). */

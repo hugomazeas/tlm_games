@@ -17,11 +17,6 @@ export type PickupKind =
     | 'intern'
     | 'bonus'
     | 'orgchart'
-    | 'anvil'
-    | 'bubble'
-    | 'magnet'
-    | 'bowling'
-    | 'spring'
 
 export const PICKUPS: Record<PickupKind, { name: string; respawnMs: number; durationMs: number | null }> = {
     /** +50 health (only taken when hurt). */
@@ -46,29 +41,7 @@ export const PICKUPS: Record<PickupKind, { name: string; respawnMs: number; dura
     bonus: { name: 'Bonus', respawnMs: 60_000, durationMs: 15_000 },
     /** Everyone shows through the walls (to you). */
     orgchart: { name: 'Org chart', respawnMs: 45_000, durationMs: 15_000 },
-    /** Shove: heavy (hits barely move you) and your hits count double. */
-    anvil: { name: 'Anvil', respawnMs: 45_000, durationMs: 8_000 },
-    /** Shove: the next fall off the deck floats you back up instead. */
-    bubble: { name: 'Bubble', respawnMs: 40_000, durationMs: 30_000 },
-    /** Shove: pulls everyone near you in. */
-    magnet: { name: 'Magnet', respawnMs: 45_000, durationMs: 3_000 },
-    /** Shove: a bowling ball rolls off the way you face and bowls over whoever it meets. */
-    bowling: { name: 'Bowling ball', respawnMs: 30_000, durationMs: null },
-    /** Shove: a spring trap to drop (G); the next one to step on it goes straight up. */
-    spring: { name: 'Spring trap', respawnMs: 35_000, durationMs: 30_000 },
 }
-
-/** Shove's bowling ball: its size, speed, how long it rolls, and what it does to whoever it meets. */
-export const BOWLING = { radius: 0.09, speed: 4.5, lifeMs: 4_000, knock: 4.2, percent: 12 } as const
-/** Shove's spring trap: armed this long after it's down, what sets it off, its throw, how long it lies. */
-export const SPRING = { armMs: 800, reach: 0.22, launch: 9, percent: 6, lifeMs: 30_000 } as const
-
-/** Shove's anvil: how heavy it makes you (a hit throws you this many times less far), and your % ×. */
-export const ANVIL = { weight: 4, percent: 2 } as const
-/** Shove's magnet: its pull (m/s²) on whoever is within `reach` (m). */
-export const MAGNET = { pull: 5, reach: 2.5 } as const
-/** Shove's bubble: below this (m) it catches you, and throws you back up at `lift` m/s toward the deck. */
-export const BUBBLE = { catchBelow: -1.2, lift: 9 } as const
 
 export const HEALTH_PACK = 50
 export const MAGAZINE_FACTOR = 1.5
@@ -90,8 +63,6 @@ export interface PickupSpot {
     roomy?: boolean
     x: number
     z: number
-    /** The floor it lies on, when it isn't the floor (a lid, a platform: m). */
-    y?: number
     /** Where it is, for the kill feed ("in the kitchen"). */
     room: string
 }
@@ -125,54 +96,22 @@ export const PICKUP_WEIGHTS: Record<PickupKind, number> = {
     intern: 1,
     bonus: 1,
     orgchart: 1,
-    anvil: 0,
-    bubble: 0,
-    magnet: 0,
-    bowling: 0,
-    spring: 0,
-}
-
-/** Shove's pool (no guns to feed, no health to heal): moving, weighing, saving, pulling. */
-export const SHOVE_PICKUP_WEIGHTS: Record<PickupKind, number> = {
-    health: 0,
-    magazine: 0,
-    jetpack: 3,
-    headshot: 0,
-    overtime: 0,
-    promotion: 1,
-    firewall: 0,
-    espresso: 2,
-    intern: 1,
-    bonus: 1.5,
-    orgchart: 0,
-    anvil: 1.5,
-    bubble: 2.5,
-    magnet: 1.5,
-    bowling: 2,
-    spring: 1.5,
 }
 
 /**
- * What comes back on `spot`: its own kind if it has one, else a weighted roll from `weights` (the
- * guns' pool, or Shove's). A Promotion only where a giant fits; a power already lying elsewhere
- * (`out`) isn't rolled twice (the basics may be).
+ * What comes back on `spot`: its own kind if it has one, else a weighted roll. A Promotion only
+ * where a giant fits; a power already lying elsewhere (`out`) isn't rolled twice (the basics may be).
  */
-export function rollPickup(
-    random: () => number,
-    spot: PickupSpot,
-    out: readonly (PickupKind | null)[],
-    weights: Record<PickupKind, number> = PICKUP_WEIGHTS
-): PickupKind {
+export function rollPickup(random: () => number, spot: PickupSpot, out: readonly (PickupKind | null)[]): PickupKind {
     if (spot.kind) return spot.kind
-    const basics: readonly PickupKind[] = ['health', 'magazine', 'jetpack', 'bubble']
-    const choices = (Object.keys(weights) as PickupKind[]).filter(
-        kind =>
-            weights[kind] > 0 && (kind !== 'promotion' || spot.roomy) && (basics.includes(kind) || !out.includes(kind))
+    const basics: readonly PickupKind[] = ['health', 'magazine', 'jetpack']
+    const choices = (Object.keys(PICKUP_WEIGHTS) as PickupKind[]).filter(
+        kind => (kind !== 'promotion' || spot.roomy) && (basics.includes(kind) || !out.includes(kind))
     )
-    const total = choices.reduce((sum, kind) => sum + weights[kind], 0)
+    const total = choices.reduce((sum, kind) => sum + PICKUP_WEIGHTS[kind], 0)
     let roll = random() * total
     for (const kind of choices) {
-        roll -= weights[kind]
+        roll -= PICKUP_WEIGHTS[kind]
         if (roll < 0) return kind
     }
 

@@ -1,7 +1,7 @@
 import { Line3, Vector3 } from 'three'
 import { BUTTON } from '../protocol.ts'
 import { ESPRESSO, INTERN, JETPACK_FACTOR, OVERTIME, PAD, PORTAL, partnerOf, PROMOTION } from './places.ts'
-import { collideCapsule, type FpsWorld, moverBoxOf } from './world.ts'
+import { collideCapsule, type FpsWorld } from './world.ts'
 
 /**
  * A player's body, stepped at a fixed 60 Hz by the server and, for your own player, by your
@@ -92,18 +92,7 @@ export interface Body {
     jumped: boolean
     /** Space was held last step (a jump needs a fresh press). */
     spaceHeld: boolean
-    /** Steps left of being thrown (Shove): the keys barely steer, so the throw carries (jetpack and dodge still work). */
-    stun: number
-    /** A gust (Shove on Cloud Nine): it drifts you this way (m/s), unless you lie prone. */
-    windX: number
-    windZ: number
-    /** Grabbed (Shove): someone holds you up in front of them; you don't move by yourself. */
-    held: boolean
 }
-
-/** Thrown, your steering in the air follows the keys this much as firmly as usual; on the ground, your grip is this much. */
-export const STUN_STEER = 0.25
-export const STUN_GRIP = 0.4
 
 /** The powers that change a body's size and health (a body, or one rebuilt from a player's buffs). */
 export interface Powers {
@@ -189,10 +178,6 @@ export function bodyAt(x: number, y: number, z: number): Body {
         prone: false,
         jumped: false,
         spaceHeld: false,
-        stun: 0,
-        windX: 0,
-        windZ: 0,
-        held: false,
     }
 }
 
@@ -223,15 +208,12 @@ function fits(world: FpsWorld, body: Body, scale: number, prone = false): boolea
 
 /** The body one step later. Pure: the input body is left as it was. */
 export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
-    // Held up by someone (Shove): where they carry you, nothing of your own.
-    if (body.held) return { ...body, spaceHeld: input.jet, vx: 0, vy: 0, vz: 0, onGround: false }
     const next = { ...body }
     next.overtime = Math.max(0, body.overtime - 1)
     next.espresso = Math.max(0, body.espresso - 1)
     next.big = Math.max(0, body.big - 1)
     next.small = Math.max(0, body.small - 1)
     next.portalCooldown = Math.max(0, body.portalCooldown - 1)
-    next.stun = Math.max(0, body.stun - 1)
     // An intern grows back only where a mini fits (not under a chair): until then they stay small.
     // Prone: down while held (from the ground, or already down); up once let go, only where a standing mini fits.
     if (input.prone && (body.onGround || body.prone)) next.prone = true
@@ -263,16 +245,7 @@ export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
             wx = (wx / length) * walk
             wz = (wz / length) * walk
         }
-        // A gust drifts you its way (not lying flat).
-        if (!next.prone) {
-            wx += body.windX
-            wz += body.windZ
-        }
-        // Thrown: barely steering in the air; on the ground, some grip still (a slide, not a skate off the edge).
-        const response = body.onGround
-            ? MOVE.groundResponse * (body.stun > 0 ? STUN_GRIP : 1)
-            : MOVE.airResponse * (body.stun > 0 ? STUN_STEER : 1)
-        const follow = 1 - Math.exp(-response * STEP_S)
+        const follow = 1 - Math.exp(-(body.onGround ? MOVE.groundResponse : MOVE.airResponse) * STEP_S)
         next.vx += (wx - next.vx) * follow
         next.vz += (wz - next.vz) * follow
     }
@@ -328,24 +301,6 @@ export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
             next.vy -= pushed.y * into
             next.vz -= pushed.z * into
         }
-    }
-    // Standing on something moving (Cloud Nine's gondola): it carries you.
-    if (next.onGround && world.movers) {
-        for (const mover of world.movers) {
-            const box = moverBoxOf(world, mover)
-            const on =
-                Math.abs(next.y - box.maxY) < 0.03 &&
-                next.x > box.minX - size.radius &&
-                next.x < box.maxX + size.radius &&
-                next.z > box.minZ - size.radius &&
-                next.z < box.maxZ + size.radius
-            if (on) next.x += mover.at(world.clock?.step ?? 0).vx * STEP_S
-        }
-    }
-    // An open sky's ceiling (Cloud Nine): the jetpack takes nobody higher.
-    if (world.ceiling !== undefined && next.y > world.ceiling) {
-        next.y = world.ceiling
-        next.vy = Math.min(next.vy, 0)
     }
     // A jump's way up is over at its top, or on landing: from there Space held burns the jetpack.
     if (next.onGround || next.vy <= 0) next.jumped = false

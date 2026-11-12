@@ -8,7 +8,6 @@
             'playerId' => $player?->id,
             'name' => $player?->name ?? 'Guest',
             'backUrl' => url('/games/office-fps'),
-            'easterEggs' => $easterEggs,
         ];
     @endphp
 

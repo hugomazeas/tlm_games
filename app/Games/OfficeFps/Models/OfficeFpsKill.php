@@ -9,17 +9,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** One kill in a match. A guest's side (killer or victim) is null. */
 class OfficeFpsKill extends Model
 {
-    /**
-     * What a kill can be made with: today's guns and the stapler, Shove's tools (a ring-out counts
-     * for the last to hit them, with what they hit them with), and the blaster of older matches.
-     */
-    public const WEAPONS = ['rifle', 'sniper', 'shotgun', 'pistol', 'launcher', 'stapler', 'blower', 'extinguisher', 'bat', 'throw', 'ball', 'spring', 'blaster'];
+    /** What a kill can be made with: today's guns and the stapler, and the blaster of older matches. */
+    public const WEAPONS = ['rifle', 'sniper', 'shotgun', 'pistol', 'launcher', 'stapler', 'blaster'];
 
     /** The blaster was replaced by the loadout's guns; its kills stay in the records. */
     public const RETIRED_WEAPONS = ['blaster'];
-
-    /** Listed on a player's page only once they've a kill or a death with it: the retired, and Shove's tools. */
-    public const LISTED_WHEN_USED = ['blaster', 'blower', 'extinguisher', 'bat', 'throw', 'ball', 'spring'];
 
     public const WEAPON_LABELS = [
         'rifle' => '🔫 Assault rifle',
@@ -28,12 +22,6 @@ class OfficeFpsKill extends Model
         'pistol' => '🔫 Pistol',
         'launcher' => '🚀 Launcher',
         'stapler' => '📎 Stapler',
-        'blower' => '🍃 Leaf blower',
-        'extinguisher' => '🧯 Fire extinguisher',
-        'bat' => '🏏 Bat',
-        'throw' => '🤾 Throw',
-        'ball' => '🎳 Bowling ball',
-        'spring' => '🪤 Spring trap',
         'blaster' => '🔫 Blaster',
     ];
 

@@ -21,8 +21,7 @@ export const MAX_FRAMES = 30
 export type Phase = 'warmup' | 'loading' | 'countdown' | 'playing' | 'intermission'
 
 /** Bits of an input frame's buttons. */
-/** Shove adds `grab` (E: grab whoever is in front of you, a click throws them) and `drop` (G: drop a spring trap). */
-export const BUTTON = { dash: 1, jet: 2, fire: 4, reload: 8, aim: 16, prone: 32, grab: 64, drop: 128 } as const
+export const BUTTON = { dash: 1, jet: 2, fire: 4, reload: 8, aim: 16, prone: 32 } as const
 
 /** The guns: three primaries, two secondaries, and the stapler (melee) everyone carries. */
 export const PRIMARIES = ['rifle', 'sniper', 'shotgun'] as const
@@ -30,28 +29,7 @@ export const SECONDARIES = ['pistol', 'launcher'] as const
 export type Primary = (typeof PRIMARIES)[number]
 export type Secondary = (typeof SECONDARIES)[number]
 export type Gun = Primary | Secondary
-/** Shove's kit, instead of the guns: a leaf blower, a fire extinguisher, a bat. */
-export const TOOLS = ['blower', 'extinguisher', 'bat'] as const
-export type Tool = (typeof TOOLS)[number]
-/** Shove's other ways to throw someone: a grab and throw, a bowling ball, a spring trap. */
-export type Hazard = 'throw' | 'ball' | 'spring'
-export type Weapon = Gun | 'stapler' | Tool | Hazard
-export function isHandheld(weapon: Weapon): weapon is Handheld {
-    return isGun(weapon) || weapon === 'blower' || weapon === 'extinguisher'
-}
-export function isGun(weapon: Weapon): weapon is Gun {
-    return (PRIMARIES as readonly string[]).includes(weapon) || (SECONDARIES as readonly string[]).includes(weapon)
-}
-/** What's held in two hands and drawn like a gun (the guns, the blower, the extinguisher). */
-export type Handheld = Gun | 'blower' | 'extinguisher'
-/** Swung in one hand: the stapler, Shove's bat. */
-export type Melee = 'stapler' | 'bat'
-export function isMelee(weapon: Weapon): weapon is Melee {
-    return weapon === 'stapler' || weapon === 'bat'
-}
-export function isTool(weapon: Weapon): weapon is Tool {
-    return (TOOLS as readonly string[]).includes(weapon)
-}
+export type Weapon = Gun | 'stapler'
 export const WEAPON_NAMES: Record<Weapon, string> = {
     rifle: 'Assault rifle',
     sniper: 'Sniper',
@@ -59,15 +37,7 @@ export const WEAPON_NAMES: Record<Weapon, string> = {
     pistol: 'Pistol',
     launcher: 'Launcher',
     stapler: 'Stapler',
-    blower: 'Leaf blower',
-    extinguisher: 'Fire extinguisher',
-    bat: 'Bat',
-    throw: 'Throw',
-    ball: 'Bowling ball',
-    spring: 'Spring trap',
 }
-/** Shove's slots: the blower, the extinguisher, the bat (no guns, no loadout). */
-export const SHOVE_KIT: Record<Slot, Tool> = { primary: 'blower', secondary: 'extinguisher', melee: 'bat' }
 
 /** What you carry: a primary in slot 1, a secondary in slot 2 (the stapler is slot 3). */
 export interface Loadout {
@@ -80,9 +50,8 @@ export const DEFAULT_LOADOUT: Loadout = { primary: 'rifle', secondary: 'pistol' 
 export const SLOTS = ['primary', 'secondary', 'melee'] as const
 export type Slot = (typeof SLOTS)[number]
 
-/** The weapon in a slot, with this loadout (Shove's tools when `shove`). */
-export function weaponIn(slot: Slot, loadout: Loadout, shove = false): Weapon {
-    if (shove) return SHOVE_KIT[slot]
+/** The weapon in a slot, with this loadout. */
+export function weaponIn(slot: Slot, loadout: Loadout): Weapon {
     return slot === 'primary' ? loadout.primary : slot === 'secondary' ? loadout.secondary : 'stapler'
 }
 
@@ -101,28 +70,20 @@ export function parseLoadout(value: unknown): Loadout | null {
  * the active zone alone; the zone moves around the office) and siege (one side defends a spot,
  * the other takes it, then they swap).
  */
-export const MODES = ['ffa', 'tdm', 'koth', 'siege', 'shove'] as const
+export const MODES = ['ffa', 'tdm', 'koth', 'siege'] as const
 export type Mode = (typeof MODES)[number]
 export const MODE_NAMES: Record<Mode, string> = {
     ffa: 'Free for all',
     tdm: 'Team deathmatch',
     koth: 'King of the meeting room',
     siege: 'Siege',
-    shove: 'Shove',
 }
-
-/**
- * Shove: no guns and no health. Each hit adds to your damage % and the higher it is, the further
- * the next one throws you; off the edge, you lose a life (`fragLimit` lives each). The last one
- * with a life left wins; at the time limit, the most lives (then the most ring-outs).
- */
-export const SHOVE_LIVES = [1, 2, 3, 5] as const
 
 /**
  * The maps. Everyone warms up in the office (`LOBBY_MAP`); the host picks the map a match is
  * played on, and the modes it allows (Siege's spots and the meeting rooms are the office's).
  */
-export const MAPS = ['office', 'cloud-nine'] as const
+export const MAPS = ['office'] as const
 export type MapId = (typeof MAPS)[number]
 export const LOBBY_MAP: MapId = 'office'
 export interface MapInfo {
@@ -139,12 +100,6 @@ export const MAP_INFO: Record<MapId, MapInfo> = {
         blurb: 'The 3rd floor: desks, glass, the kitchen and the meeting rooms.',
         players: '2–12',
         modes: ['ffa', 'tdm', 'koth', 'siege'],
-    },
-    'cloud-nine': {
-        name: 'Cloud Nine',
-        blurb: 'A rooftop floating over the city at night. No railings: fall off and you’re out.',
-        players: '2–8',
-        modes: ['shove', 'ffa'],
     },
 }
 
@@ -212,11 +167,6 @@ export interface Rules {
     minutes: number
 }
 export const DEFAULT_RULES: Rules = { map: LOBBY_MAP, mode: 'ffa', fragLimit: 15, minutes: 5 }
-
-/** The limits a mode offers: kills (or points, or zone time), or Shove's lives. */
-export function limitsOf(mode: Mode): readonly number[] {
-    return mode === 'shove' ? SHOVE_LIVES : FRAG_LIMITS
-}
 /** King of the meeting room: seconds in the zone to win, per point of the limit. */
 export const ZONE_SECONDS_PER_POINT = 10
 
@@ -232,10 +182,6 @@ export type BuffKind =
     | 'intern'
     | 'bonus'
     | 'orgchart'
-    | 'anvil'
-    | 'bubble'
-    | 'magnet'
-    | 'spring'
 
 /** Which way a built wall faces: its normal along x or z (standing), or y (flat: a floor, a roof). */
 export const WALL_AXES = ['x', 'y', 'z'] as const
@@ -337,10 +283,6 @@ export interface PlayerState {
     team: Team | null
     /** The pickups' powers they carry (everyone sees them). */
     buffs: BuffKind[]
-    /** Shove: their damage % (null outside Shove). */
-    percent: number | null
-    /** Shove: their leaf blower is running (everyone sees the air). */
-    blowing: boolean
 }
 
 /** You, in full: your browser predicts from it. */
@@ -366,10 +308,6 @@ export interface SelfState {
     magazine: number
     /** Your powers, with what's left of each (ms; the firewall also its damage left to soak, `points`). */
     buffs: Array<{ kind: BuffKind; leftMs: number; points?: number }>
-    /** Shove: your damage % (null outside Shove). */
-    percent: number | null
-    /** Shove: how wound up your bat is (0–1), null when not winding up. */
-    charge: number | null
 }
 
 export type GameEvent =
@@ -396,35 +334,8 @@ export type GameEvent =
           at: [number, number, number]
           hits: Array<{ id: string; damage: number }>
       }
-    /**
-     * A stapler swing (or Shove's bat: `damage` is the % it added, `charge` how wound up it was): who
-     * it hit (null: air), and whether it was from behind.
-     */
-    | {
-          type: 'swing'
-          by: string
-          hit: string | null
-          damage: number
-          backstab: boolean
-          weapon?: Melee
-          charge?: number
-      }
-    /** Shove: a fire extinguisher's blast from `from` along `toward`, and the % it added to whom. */
-    | {
-          type: 'spray'
-          by: string
-          from: [number, number, number]
-          toward: [number, number, number]
-          hits: Array<{ id: string; percent: number }>
-      }
-    /** Shove: a gust is coming (`inMs`), then blows this way (m/s on the floor plan) for `forMs`. */
-    | { type: 'gust'; x: number; z: number; inMs: number; forMs: number }
-    /** Shove: a spring trap went off under someone. */
-    | { type: 'sprung'; id: number; on: string; at: [number, number, number] }
-    /** Cloud Nine's security laser caught someone on the deck (knocked flying). */
-    | { type: 'zap'; on: string; at: [number, number, number] }
-    /** Shove: someone grabbed someone (`target`), or let them go (null: thrown, dropped, broke free). */
-    | { type: 'grab'; by: string; target: string | null }
+    /** A stapler swing: who it hit (null: air), for how much, and whether it was from behind. */
+    | { type: 'swing'; by: string; hit: string | null; damage: number; backstab: boolean }
     | {
           type: 'kill'
           killer: string | null
@@ -437,8 +348,6 @@ export type GameEvent =
           victimStreak: number
           /** The match's first kill. */
           firstBlood?: boolean
-          /** Off the map (Cloud Nine's ledges): the killer, if any, was the last to hit them, with `weapon`. */
-          fall?: boolean
           /** How it happened, for the victim's death screen (absent when nobody killed them). */
           recap?: KillRecap
       }
@@ -491,8 +400,6 @@ export interface Score {
     team: Team | null
     /** Seconds holding the zone (king of the meeting room), or the spot taken (siege). */
     points: number
-    /** Shove: lives left (0: out of the match), null otherwise. */
-    lives: number | null
 }
 
 export interface MatchView {
@@ -522,14 +429,6 @@ export interface MatchView {
 }
 
 export type ErrorCode = 'BAD_MESSAGE' | 'NOT_JOINED' | 'UNKNOWN_PLAYER' | 'UNAVAILABLE' | 'NOT_HOST' | 'NOT_ENOUGH'
-
-/** Shove's things in the world, every snapshot. */
-export interface ShoveThings {
-    balls: Array<{ id: number; x: number; y: number; z: number; vx: number; vz: number }>
-    traps: Array<{ id: number; x: number; y: number; z: number; armed: boolean; by: string }>
-    /** Who holds whom: [holder, held]. */
-    holds: Array<[string, string]>
-}
 
 /** A rocket in flight. */
 export interface RocketState {
@@ -591,8 +490,6 @@ export type ServerMessage =
           /** Siege's attackers in the spot, while it's played. */
           holds: SiegeHold[] | null
           rockets: RocketState[]
-          /** Shove: bowling balls rolling, spring traps lying (armed or not), who holds whom. */
-          shove: ShoveThings | null
       }
     /** You joined from another tab; this one is closed. */
     | { type: 'replaced' }
@@ -669,10 +566,10 @@ export function parseClientMessage(raw: string): ClientMessage | null {
 /** A match's rules from untrusted input (a mode its map allows), or null. */
 export function parseRules(value: unknown): Rules | null {
     const rules = value as Record<string, unknown> | null | undefined
+    const fragLimit = FRAG_LIMITS.find(n => n === rules?.fragLimit)
     const minutes = MATCH_MINUTES.find(n => n === rules?.minutes)
     // No mode (an older tab): free for all; no map: the office.
     const mode = rules?.mode === undefined ? 'ffa' : MODES.find(m => m === rules.mode)
-    const fragLimit = mode && limitsOf(mode).find(n => n === rules?.fragLimit)
     const map = rules?.map === undefined ? LOBBY_MAP : MAPS.find(m => m === rules.map)
     if (fragLimit === undefined || minutes === undefined || mode === undefined || map === undefined) return null
     if (!playableOn(map, mode)) return null
@@ -693,7 +590,7 @@ function parseFrame(value: unknown): InputFrame | null {
     if (!Array.isArray(value) || (value.length !== 7 && value.length !== 8)) return null
     if (!value.every(n => typeof n === 'number' && Number.isFinite(n))) return null
     const [seq, forward, strafe, yaw, pitch, buttons, view, slot = 0] = value as number[]
-    if (!Number.isInteger(seq) || seq! < 1 || !Number.isInteger(buttons) || buttons! < 0 || buttons! > 255) return null
+    if (!Number.isInteger(seq) || seq! < 1 || !Number.isInteger(buttons) || buttons! < 0 || buttons! > 63) return null
     if (Math.abs(forward!) > 1 || Math.abs(strafe!) > 1 || Math.abs(pitch!) > Math.PI / 2) return null
     if (!Number.isInteger(view) || view! < 0) return null
     const held = SLOTS[slot]

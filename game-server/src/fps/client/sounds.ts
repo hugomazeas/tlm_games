@@ -218,56 +218,6 @@ export class Sounds {
         if (this.jet) this.jet.gain.gain.setTargetAtTime(on ? 0.18 : 0, this.ctx.currentTime, on ? 0.04 : 0.08)
     }
 
-    /** Shove's leaf blower running: a two-stroke buzz under a rush of air, while it's held. */
-    blowing(on: boolean): void {
-        if (!this.ctx || !this.master || !this.noise) return
-        if (on && !this.blower) {
-            const source = this.ctx.createBufferSource()
-            source.buffer = this.noise
-            source.loop = true
-            const filter = this.ctx.createBiquadFilter()
-            filter.type = 'bandpass'
-            filter.frequency.value = 1400
-            filter.Q.value = 0.6
-            const engine = this.ctx.createOscillator()
-            engine.type = 'sawtooth'
-            engine.frequency.value = 95
-            const engineGain = this.ctx.createGain()
-            engineGain.gain.value = 0.25
-            const gain = this.ctx.createGain()
-            gain.gain.value = 0
-            source.connect(filter).connect(gain)
-            engine.connect(engineGain).connect(gain)
-            gain.connect(this.master)
-            source.start()
-            engine.start()
-            this.blower = { gain, source, engine }
-        }
-        if (this.blower) this.blower.gain.gain.setTargetAtTime(on ? 0.16 : 0, this.ctx.currentTime, on ? 0.05 : 0.1)
-    }
-
-    private blower: { gain: GainNode; source: AudioBufferSourceNode; engine: OscillatorNode } | null = null
-
-    /** Shove's fire extinguisher: a hard hiss that tails off, and a clunk of the valve. */
-    spray(where?: { gain: number; pan: number }): void {
-        const out = where ? this.place(where, 0.8) : undefined
-        this.burst(0.45, 'highpass', 2500, 1200, 0.5, 0, out)
-        this.tone('square', 110, 70, 0.05, 0.2, 0, out)
-    }
-
-    /** Cloud Nine's laser catches someone: an electric zap. */
-    zap(where?: { gain: number; pan: number }): void {
-        const out = where ? this.place(where, 0.7) : undefined
-        this.tone('sawtooth', 1400, 300, 0.12, 0.25, 0, out)
-        this.burst(0.08, 'highpass', 5000, 3000, 0.3, 0, out)
-    }
-
-    /** Shove's bat connects: a hollow wooden crack. */
-    batHit(): void {
-        this.tone('triangle', 420, 160, 0.09, 0.6)
-        this.burst(0.06, 'bandpass', 1800, 900, 0.45)
-    }
-
     /** A jump: a soft push off the floor. */
     jump(): void {
         this.burst(0.06, 'lowpass', 900, 300, 0.18)

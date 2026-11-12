@@ -86,11 +86,6 @@ function agrees(a: Body, b: Body): boolean {
         // Prone and the jump: what Space and C do next step depends on them.
         a.prone === b.prone &&
         a.jumped === b.jumped &&
-        a.spaceHeld === b.spaceHeld &&
-        // Shove: a throw's stun and a gust (the server sets them; your steering depends on them).
-        a.stun === b.stun &&
-        a.windX === b.windX &&
-        a.windZ === b.windZ &&
-        a.held === b.held
+        a.spaceHeld === b.spaceHeld
     )
 }

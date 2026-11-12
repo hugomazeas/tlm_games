@@ -229,8 +229,8 @@ function near(b: Box, seg: Line3, radius: number): boolean {
     return y1 >= b.minY - radius && y0 <= b.maxY + radius
 }
 
-/** Pushes the upright capsule out of one box; true when it had to (also Cloud Nine's gondola). */
-export function pushOut(b: Box, seg: Line3, radius: number): boolean {
+/** Pushes the upright capsule out of one box; true when it had to. */
+function pushOut(b: Box, seg: Line3, radius: number): boolean {
     if (!near(b, seg, radius)) return false
     const x = seg.start.x
     const z = seg.start.z

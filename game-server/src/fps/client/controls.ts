@@ -284,9 +284,6 @@ export class Controls {
         if (held('Space')) buttons |= BUTTON.jet
         // C held: prone.
         if (held('KeyC')) buttons |= BUTTON.prone
-        // Shove: E grabs (and lets go), G drops a spring trap. In build mode they're the walls' keys.
-        if (held('KeyE') && !this.building) buttons |= BUTTON.grab
-        if (held('KeyG') && !this.building) buttons |= BUTTON.drop
         // Building: the gun's away (it neither fires, reloads nor aims).
         if (this.firing && !this.building) buttons |= BUTTON.fire
         if (this.reloadAsked && !this.building) buttons |= BUTTON.reload

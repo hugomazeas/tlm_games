@@ -14,14 +14,12 @@ export function testWorld(
     spawnPoints: SpawnPoint[],
     walls: Array<{ min: [number, number, number]; max: [number, number, number] }> = [],
     pickups: PickupSpot[] = [],
-    /** `floor`: its half size (20); `outBelow`: falling past it is out (a floor with edges to fall off). */
-    extras: { pads?: Pad[]; portals?: Portal[]; floor?: number; outBelow?: number } = {}
+    extras: { pads?: Pad[]; portals?: Portal[] } = {}
 ): FpsWorld {
     const positions: number[] = []
     const quad = (a: number[], b: number[], c: number[], d: number[]) =>
         positions.push(...a, ...b, ...c, ...a, ...c, ...d)
-    const f = extras.floor ?? 20
-    quad([-f, 0, -f], [-f, 0, f], [f, 0, f], [f, 0, -f])
+    quad([-20, 0, -20], [-20, 0, 20], [20, 0, 20], [20, 0, -20])
     for (const { min, max } of walls) {
         const [x0, y0, z0] = min
         const [x1, y1, z1] = max
@@ -43,6 +41,5 @@ export function testWorld(
         pads: extras.pads ?? [],
         portals: extras.portals ?? [],
         walls: new Walls(),
-        ...(extras.outBelow !== undefined ? { outBelow: extras.outBelow } : {}),
     }
 }

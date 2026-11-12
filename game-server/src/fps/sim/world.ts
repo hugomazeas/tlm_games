@@ -1,18 +1,5 @@
-import { Box3, BufferGeometry, DoubleSide, Float32BufferAttribute, Line3, Mesh, Ray, Vector3 } from 'three'
-import { type ExtendedTriangle, MeshBVH } from 'three-mesh-bvh'
-import {
-    boxTriangles,
-    CLOUD_NINE,
-    CLOUD_NINE_BLOCKS,
-    CLOUD_NINE_PICKUPS,
-    CLOUD_NINE_SPAWNS,
-    CLOUD_NINE_SHIELD_MS,
-    CLOUD_NINE_VENTS,
-    ELEVATOR,
-    elevatorAt,
-    GONDOLA,
-    gondolaAt,
-} from '../map/cloud-nine.ts'
+import { Box3, DoubleSide, Line3, Ray, Vector3 } from 'three'
+import type { ExtendedTriangle } from 'three-mesh-bvh'
 import {
     buildOfficeGeometry,
     type CollisionMesh,
@@ -22,7 +9,7 @@ import {
     SURFACES,
 } from '../map/office.js'
 import { type Dome, PADS, type Pad, PICKUP_SPOTS, type PickupSpot, type Portal, PORTALS } from './places.ts'
-import { collideWalls, pushOut, rayWalls, type Wall, Walls } from './walls.ts'
+import { collideWalls, rayWalls, type Wall, Walls } from './walls.ts'
 
 /**
  * What the game needs of the office: its exact collision triangles (with their BVH) and where
@@ -42,75 +29,9 @@ export interface FpsWorld {
     walls: Walls
     /** Siege's dome while it stands (each game its own, like the walls): nothing gets in or out. */
     dome?: Dome | null
-    /** Fall below this (m) and you're out: a kill for whoever last hit you (Cloud Nine's ledges). None: the office. */
-    outBelow?: number
-    /** The jetpack takes nobody higher (m). None: the office's own ceiling does. */
-    ceiling?: number
-    /** Boxes that move on the step (Cloud Nine's gondola): bodies collide with them and ride them. */
-    movers?: readonly Mover[]
-    /** The step the movers are at: the arena's (the server), its estimate (the browser). Each world its own. */
-    clock?: { step: number }
-    /** Cloud Nine's security laser sweeps the deck (`LASER`). */
-    laser?: boolean
-    /** Spawn-shielded this long here (none: the usual 1.5 s). */
-    shieldMs?: number
-}
-
-/** A moving box: its half size, and where it is (its middle) and how fast it goes along x at a step. */
-export interface Mover {
-    half: readonly [number, number, number]
-    at(step: number): { x: number; y: number; z: number; vx: number }
-}
-
-const moverBox = { minX: 0, minY: 0, minZ: 0, maxX: 0, maxY: 0, maxZ: 0 }
-
-/** A mover's box now. */
-export function moverBoxOf(world: FpsWorld, mover: Mover): typeof moverBox {
-    const at = mover.at(world.clock?.step ?? 0)
-    const [hx, hy, hz] = mover.half
-    moverBox.minX = at.x - hx
-    moverBox.maxX = at.x + hx
-    moverBox.minY = at.y - hy
-    moverBox.maxY = at.y + hy
-    moverBox.minZ = at.z - hz
-    moverBox.maxZ = at.z + hz
-    return moverBox
 }
 
 let office: FpsWorld | null = null
-let cloudNine: FpsWorld | null = null
-
-/** Cloud Nine, built once (its few blocks) and shared, with walls of its own for each caller. */
-export function cloudNineWorld(): FpsWorld {
-    if (!cloudNine) {
-        const positions: number[] = []
-        for (const block of CLOUD_NINE_BLOCKS) boxTriangles(block, positions)
-        const geometry = new BufferGeometry()
-        geometry.setAttribute('position', new Float32BufferAttribute(positions, 3))
-        const solid = new Mesh(geometry) as unknown as CollisionMesh
-        solid.geometry.boundsTree = new MeshBVH(geometry)
-        // What the impacts make of it: metal (the surfaces' index).
-        solid.userData.surfaces = new Uint8Array(positions.length / 9).fill(SURFACES.indexOf('metal'))
-        cloudNine = {
-            meshes: [solid],
-            spawnPoints: CLOUD_NINE_SPAWNS,
-            pickups: CLOUD_NINE_PICKUPS,
-            pads: CLOUD_NINE_VENTS,
-            portals: [],
-            walls: new Walls(),
-            outBelow: CLOUD_NINE.outBelow,
-            ceiling: CLOUD_NINE.ceiling,
-            movers: [
-                { half: GONDOLA.half, at: gondolaAt },
-                { half: ELEVATOR.half, at: elevatorAt },
-            ],
-            laser: true,
-            shieldMs: CLOUD_NINE_SHIELD_MS,
-        }
-    }
-
-    return { ...cloudNine, walls: new Walls(), clock: { step: 0 } }
-}
 
 /** The office, built once (about a second) and shared, with walls of its own for each caller (each game). */
 export function officeWorld(): FpsWorld {
@@ -145,7 +66,6 @@ const push = new Vector3()
 export function collideCapsule(world: FpsWorld, seg: Line3, radius: number): boolean {
     // The walls first: a wall placed on a player pushes them out of it, and the office then has the last word.
     let hit = world.walls.count > 0 && collideWalls(world.walls, seg, radius)
-    for (const mover of world.movers ?? []) hit = pushOut(moverBoxOf(world, mover), seg, radius) || hit
     cast.seg = seg
     cast.radius = radius
     for (const mesh of world.meshes) {

@@ -3,8 +3,6 @@
 namespace App\Games\OfficeFps\Controllers;
 
 use App\Games\OfficeFps\Services\OfficeFpsStats;
-use App\Games\Racing\Models\RacingKart;
-use App\Games\Racing\Models\RacingResult;
 use App\Http\Controllers\Controller;
 use App\Models\Player;
 use Illuminate\Http\Request;
@@ -27,31 +25,7 @@ class OfficeFpsController extends Controller
             ]);
         }
 
-        return view('games.office-fps.play', [
-            'player' => $player,
-            'easterEggs' => $this->easterEggs(),
-        ]);
-    }
-
-    /**
-     * What Cloud Nine's easter eggs show: this week's top fragger (on the paper plane's wing) and
-     * the kart colours of the Hub's busiest racing driver (the helmet in the gondola's bucket).
-     *
-     * @return array{topFragger: string|null, helmet: array{name: string, body: string, accent: string}}
-     */
-    private function easterEggs(): array
-    {
-        $driver = RacingResult::query()
-            ->whereNotNull('player_id')
-            ->groupBy('player_id')
-            ->orderByRaw('COUNT(*) DESC')
-            ->value('player_id');
-        $look = RacingKart::lookOf($driver ? Player::find($driver) : null);
-
-        return [
-            'topFragger' => app(OfficeFpsStats::class)->topFraggerOfTheWeek(),
-            'helmet' => ['name' => $look['name'], 'body' => $look['body'], 'accent' => $look['accent']],
-        ];
+        return view('games.office-fps.play', ['player' => $player]);
     }
 
     /** A player's office FPS record: totals, rates, records, weapons, rivals, recent matches. */
