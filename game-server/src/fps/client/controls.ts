@@ -132,6 +132,8 @@ export class Controls {
     onUse: (() => void) | null = null
     /** G in build mode: cut a window into a wall of your side's. */
     onWindow: (() => void) | null = null
+    /** N: the host's Next match panel. */
+    onNextMatch: (() => void) | null = null
     readonly mouse = new MouseFilter()
     /** Raw mouse input (no OS acceleration): asked for on every lock; null until the first. */
     rawInput: boolean | null = null
@@ -212,6 +214,7 @@ export class Controls {
             }
             if (e.code === 'KeyF' && !e.repeat) this.onUse?.()
             if (e.code === 'KeyV' && !e.repeat) this.onToggleView?.()
+            if (e.code === 'KeyN' && !e.repeat) this.onNextMatch?.()
             if (e.code === 'Digit1') this.select('primary')
             if (e.code === 'Digit2') this.select('secondary')
             if (e.code === 'Digit3') this.select('melee')

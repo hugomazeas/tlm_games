@@ -14,7 +14,11 @@ export const MAX_PLAYERS = 12
 /** Frames a message may carry (the socket takes 4 KB a message). */
 export const MAX_FRAMES = 30
 
-export type Phase = 'warmup' | 'countdown' | 'playing' | 'intermission'
+/**
+ * Warmup (always in the office), loading (the match's map, in every browser: up to LOADING_MS),
+ * the countdown and the match on that map, the scoreboard there, then warmup in the office again.
+ */
+export type Phase = 'warmup' | 'loading' | 'countdown' | 'playing' | 'intermission'
 
 /** Bits of an input frame's buttons. */
 export const BUTTON = { dash: 1, jet: 2, fire: 4, reload: 8, aim: 16, prone: 32 } as const
@@ -75,6 +79,44 @@ export const MODE_NAMES: Record<Mode, string> = {
     siege: 'Siege',
 }
 
+/**
+ * The maps. Everyone warms up in the office (`LOBBY_MAP`); the host picks the map a match is
+ * played on, and the modes it allows (each map has its own zones and Siege spots).
+ */
+export const MAPS = ['office', 'erables'] as const
+export type MapId = (typeof MAPS)[number]
+export const LOBBY_MAP: MapId = 'office'
+export interface MapInfo {
+    name: string
+    /** One line on the host's map card. */
+    blurb: string
+    /** How many it suits, said on the card. */
+    players: string
+    modes: readonly Mode[]
+}
+export const MAP_INFO: Record<MapId, MapInfo> = {
+    office: {
+        name: 'The office',
+        blurb: 'The 3rd floor: desks, glass, the kitchen and the meeting rooms.',
+        players: '2–12',
+        modes: ['ffa', 'tdm', 'koth', 'siege'],
+    },
+    erables: {
+        name: 'Rue des Érables',
+        blurb: 'A Québec street in October, at full size: two houses, the yards behind, the road closed at both ends.',
+        players: '4–12',
+        modes: ['ffa', 'tdm', 'koth', 'siege'],
+    },
+}
+
+/** Can this mode be played on this map? */
+export function playableOn(map: MapId, mode: Mode): boolean {
+    return MAP_INFO[map].modes.includes(mode)
+}
+
+/** The longest a match waits for everyone's browser to have its map (then it starts with whoever's ready). */
+export const LOADING_MS = 15_000
+
 /** The modes played in two sides, red and blue (no friendly fire). */
 export function isTeamMode(mode: Mode): boolean {
     return mode === 'tdm' || mode === 'siege'
@@ -125,11 +167,12 @@ export const TEAM_COLORS: Record<Team, string> = { red: '#e4572e', blue: '#29a3e
 export const FRAG_LIMITS = [5, 10, 15, 20, 25, 30, 50] as const
 export const MATCH_MINUTES = [3, 5, 10, 15, 20] as const
 export interface Rules {
+    map: MapId
     mode: Mode
     fragLimit: number
     minutes: number
 }
-export const DEFAULT_RULES: Rules = { mode: 'ffa', fragLimit: 15, minutes: 5 }
+export const DEFAULT_RULES: Rules = { map: LOBBY_MAP, mode: 'ffa', fragLimit: 15, minutes: 5 }
 /** King of the meeting room: seconds in the zone to win, per point of the limit. */
 export const ZONE_SECONDS_PER_POINT = 10
 
@@ -369,10 +412,16 @@ export interface MatchView {
     phase: Phase
     /** Until the phase moves on (ms; null in warmup). */
     remainingMs: number | null
+    /** The map everyone is on now: the office in warmup, the match's from its countdown to its scoreboard. */
+    map: MapId
     /** The match's rules: the one being played, or (in warmup) the last one's. */
     mode: Mode
     fragLimit: number
     minutes: number
+    /** What the host has lined up for the next match (warmup; null until they pick): browsers get its map ready. */
+    next: Rules | null
+    /** While loading: how many seated browsers have the map, of how many. */
+    loading: { ready: number; of: number } | null
     /** Who starts the next match and picks its rules (a connection id): the longest seated. */
     host: string | null
     /** Best first. In warmup, nobody's counted. */
@@ -409,6 +458,10 @@ export type ClientMessage =
     | { type: 'input'; frames: InputFrame[] }
     | { type: 'loadout'; loadout: Loadout }
     | { type: 'start'; rules: Rules }
+    /** The host lines up the next match (their panel, before Start): everyone sees it, and gets its map ready. */
+    | { type: 'plan'; rules: Rules }
+    /** This browser has a map built and ready to play on. */
+    | { type: 'ready'; map: MapId }
     /** Build mode: a wall here (the slot your browser worked out), or take one of yours back. */
     | { type: 'build'; wall: WallSpec }
     | { type: 'unbuild'; id: number }
@@ -484,15 +537,15 @@ export function parseClientMessage(raw: string): ClientMessage | null {
 
         return { type: 'input', frames: parsed }
     }
-    if (message.type === 'start') {
-        const rules = message.rules as Record<string, unknown> | null | undefined
-        const fragLimit = FRAG_LIMITS.find(n => n === rules?.fragLimit)
-        const minutes = MATCH_MINUTES.find(n => n === rules?.minutes)
-        // No mode (an older tab): free for all.
-        const mode = rules?.mode === undefined ? 'ffa' : MODES.find(m => m === rules.mode)
-        if (fragLimit === undefined || minutes === undefined || mode === undefined) return null
+    if (message.type === 'start' || message.type === 'plan') {
+        const rules = parseRules(message.rules)
 
-        return { type: 'start', rules: { mode, fragLimit, minutes } }
+        return rules ? { type: message.type, rules } : null
+    }
+    if (message.type === 'ready') {
+        const map = MAPS.find(m => m === message.map)
+
+        return map ? { type: 'ready', map } : null
     }
     if (message.type === 'build') {
         const wall = message.wall as Record<string, unknown> | null | undefined
@@ -514,6 +567,20 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     }
 
     return null
+}
+
+/** A match's rules from untrusted input (a mode its map allows), or null. */
+export function parseRules(value: unknown): Rules | null {
+    const rules = value as Record<string, unknown> | null | undefined
+    const fragLimit = FRAG_LIMITS.find(n => n === rules?.fragLimit)
+    const minutes = MATCH_MINUTES.find(n => n === rules?.minutes)
+    // No mode (an older tab): free for all; no map: the office.
+    const mode = rules?.mode === undefined ? 'ffa' : MODES.find(m => m === rules.mode)
+    const map = rules?.map === undefined ? LOBBY_MAP : MAPS.find(m => m === rules.map)
+    if (fragLimit === undefined || minutes === undefined || mode === undefined || map === undefined) return null
+    if (!playableOn(map, mode)) return null
+
+    return { map, mode, fragLimit, minutes }
 }
 
 /**

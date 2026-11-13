@@ -115,9 +115,9 @@ export function reloadMsOf(gun: Gun): number {
     return gun === 'launcher' ? LAUNCHER.reloadMs : GUNS[gun].reloadMs
 }
 
-/** The cone shots land in, for how they're fired. */
-export function spreadOf(spec: GunSpec, aiming: boolean, body: Body): number {
-    const moving = Math.hypot(body.vx, body.vz) > 1.2
+/** The cone shots land in, for how they're fired (`movingAbove`: the map's walking threshold, m/s). */
+export function spreadOf(spec: GunSpec, aiming: boolean, body: Body, movingAbove = 1.2): number {
+    const moving = Math.hypot(body.vx, body.vz) > movingAbove
     const cone =
         (aiming ? spec.spread.aim : spec.spread.hip) +
         (moving ? spec.spread.moving : 0) +

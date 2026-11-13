@@ -9,7 +9,8 @@
         "format": "prettier --write \"src/**/*.ts\"",
         "race:map": "bun src/race/map/build.ts",
         "race:viewer": "bun src/race/poc-server.ts",
-        "fps:guns": "bun src/fps/gun-lab.ts"
+        "fps:guns": "bun src/fps/gun-lab.ts",
+        "fps:assets": "bun src/fps/assets/lab.ts"
     },
     "devDependencies": {
         "@types/bun": "1.3.0",

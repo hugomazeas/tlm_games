@@ -3,7 +3,7 @@ import { MeshBVH } from 'three-mesh-bvh'
 import type { CollisionMesh, SpawnPoint } from '../map/office.js'
 import type { Pad, PickupSpot, Portal } from './places.ts'
 import { Walls } from './walls.ts'
-import type { FpsWorld } from './world.ts'
+import { type FpsWorld, officePlaces } from './world.ts'
 
 /**
  * A bare room for tests: a 40 × 40 m floor at y = 0, nothing else unless asked (`walls`: boxes
@@ -35,6 +35,7 @@ export function testWorld(
     solid.geometry.boundsTree = new MeshBVH(geometry)
 
     return {
+        ...officePlaces(),
         meshes: [solid],
         spawnPoints,
         pickups,

@@ -8,30 +8,48 @@ import {
     type Surface,
     SURFACES,
 } from '../map/office.js'
-import { type Dome, PADS, type Pad, PICKUP_SPOTS, type PickupSpot, type Portal, PORTALS } from './places.ts'
+import { buildErablesGeometry, ERABLES_PLACES } from '../map/erables.ts'
+import type { MapId } from '../protocol.ts'
+import { OFFICE_MOVEMENT } from './movement.ts'
+import { type Dome, type MapPlaces, PADS, PICKUP_SPOTS, PICKUP_WEIGHTS, PORTALS, SIEGE_SPOTS, ZONES } from './places.ts'
 import { collideWalls, rayWalls, type Wall, Walls } from './walls.ts'
 
 /**
- * What the game needs of the office: its exact collision triangles (with their BVH) and where
- * people spawn. The same build runs on the game server and in the browser, so both collide with
- * the triangles the browser draws.
+ * What the game needs of a map: its exact collision triangles (with their BVH), where people
+ * spawn, and its places (pickups, pads, portals, zones, Siege's spots) and movement. The same
+ * build runs on the game server and in the browser, so both collide with the triangles the
+ * browser draws.
  */
-export interface FpsWorld {
+export interface FpsWorld extends MapPlaces {
     /** Solid first, then glass: both stop players and bullets. */
     meshes: readonly CollisionMesh[]
     spawnPoints: readonly SpawnPoint[]
-    /** Where the pickups lie (the office's; none in a test room unless it says so). */
-    pickups: readonly PickupSpot[]
-    /** Jump pads and portals (the office's; likewise none in a test room unless asked). */
-    pads: readonly Pad[]
-    portals: readonly Portal[]
     /** What the players built: this world's own (each game has its walls; the office is shared). */
     walls: Walls
     /** Siege's dome while it stands (each game its own, like the walls): nothing gets in or out. */
     dome?: Dome | null
 }
 
+/**
+ * The office's places and movement (minis with jetpacks). A function, not a constant: movement.ts
+ * and this module import each other, and a constant here could be read before movement.ts is.
+ */
+export function officePlaces(): MapPlaces {
+    return {
+        pickups: PICKUP_SPOTS,
+        pickupWeights: PICKUP_WEIGHTS,
+        pads: PADS,
+        portals: PORTALS,
+        zones: ZONES,
+        zoneHeight: 2.7,
+        siegeSpots: SIEGE_SPOTS,
+        move: OFFICE_MOVEMENT,
+        unit: 1,
+    }
+}
+
 let office: FpsWorld | null = null
+let erables: FpsWorld | null = null
 
 /** The office, built once (about a second) and shared, with walls of its own for each caller (each game). */
 export function officeWorld(): FpsWorld {
@@ -40,16 +58,29 @@ export function officeWorld(): FpsWorld {
     return { ...office, walls: new Walls() }
 }
 
-/** The world of an office already built (the browser's, drawn and collided with alike). */
-export function worldFrom(built: { collision: OfficeCollision | null; spawnPoints: readonly SpawnPoint[] }): FpsWorld {
-    if (!built.collision) throw new Error('The office was built without its collision meshes')
+/** A map's places and movement (its zones, Siege spots and pickups by index, as snapshots name them). */
+export function placesOf(map: MapId): MapPlaces {
+    return map === 'erables' ? ERABLES_PLACES : officePlaces()
+}
+
+/** Rue des Érables, built once and shared like the office, with walls of its own for each caller. */
+export function erablesWorld(): FpsWorld {
+    erables ??= worldFrom(buildErablesGeometry(), ERABLES_PLACES)
+
+    return { ...erables, walls: new Walls() }
+}
+
+/** The world of a map already built (the browser's, drawn and collided with alike): the office's places unless given. */
+export function worldFrom(
+    built: { collision: OfficeCollision | null; spawnPoints: readonly SpawnPoint[] },
+    places: MapPlaces = officePlaces()
+): FpsWorld {
+    if (!built.collision) throw new Error('The map was built without its collision meshes')
 
     return {
+        ...places,
         meshes: [built.collision.solid, built.collision.glass],
         spawnPoints: built.spawnPoints,
-        pickups: PICKUP_SPOTS,
-        pads: PADS,
-        portals: PORTALS,
         walls: new Walls(),
     }
 }

@@ -1,5 +1,6 @@
 import {
     ACESFilmicToneMapping,
+    Group,
     type Material,
     type Object3D,
     PCFShadowMap,
@@ -18,6 +19,9 @@ import {
     type Gun,
     type InputFrame,
     type Loadout,
+    LOBBY_MAP,
+    type MapId,
+    MAPS,
     parseLoadout,
     type RocketState,
     WEAPON_NAMES,
@@ -49,20 +53,12 @@ import {
     SWITCH_MS,
 } from '../sim/combat.ts'
 import { jetBurns, MOVE, moveOf, PLAYER, scaleOf, STEP_MS } from '../sim/movement.ts'
-import {
-    PICKUP_SPOTS,
-    type PickupKind,
-    PICKUPS,
-    PORTAL,
-    SIEGE_SPOTS,
-    siegeForbidsBuild,
-    siegeWinner,
-    ZONES,
-} from '../sim/places.ts'
+import { type PickupKind, PICKUPS, PORTAL, siegeForbidsBuild, siegeWinner } from '../sim/places.ts'
 import { buildSlot, type BuildSlot } from '../sim/building.ts'
 import { BUILD, type Wall } from '../sim/walls.ts'
-import { rayDistance, rayHit, worldFrom } from '../sim/world.ts'
+import { type FpsWorld, rayDistance, rayHit, worldFrom } from '../sim/world.ts'
 import { WallViews } from './building.ts'
+import { buildErables, erablesLooks } from './erables.ts'
 import { Impacts } from './impacts.ts'
 import { Avatars } from './avatars.ts'
 import { announce, taunt } from './callouts.ts'
@@ -130,12 +126,47 @@ const camera = new PerspectiveCamera(78, innerWidth / innerHeight, 0.01, 900)
 camera.rotation.order = 'YXZ'
 scene.add(camera)
 const office = buildOffice(scene, renderer)
-const world = worldFrom(office)
-const pickupViews = new PickupViews(scene)
-const padViews = new PadViews(scene, world.pads)
-const portalViews = new PortalViews(scene, world.portals)
-const zoneView = new ZoneView(scene)
-const spotView = new ZoneView(scene, SIEGE_SPOTS)
+// Rue des Érables, built now (a second or so of painting) and hidden: the shader warm-up meets it,
+// and a match there never waits for this browser.
+const erables = buildErables(office)
+scene.add(erables.group)
+/** Each map's world (what you collide with and predict on) and its pickups, pads, portals, zones and spots. */
+const maps = Object.fromEntries(
+    MAPS.map(id => {
+        const world = id === 'erables' ? erables.world : worldFrom(office)
+        const parent = new Group()
+        scene.add(parent)
+        return [
+            id,
+            {
+                world,
+                parent,
+                pickups: new PickupViews(parent, world.pickups),
+                // The office's pads are drawn as pads; the street's are its trampolines (part of the map).
+                pads: id === 'office' ? new PadViews(parent, world.pads) : null,
+                portals: new PortalViews(parent, world.portals),
+                zones: new ZoneView(parent, world.zones, world.zoneHeight),
+                spots: new ZoneView(parent, world.siegeSpots),
+            },
+        ]
+    })
+) as Record<
+    MapId,
+    {
+        world: FpsWorld
+        parent: Group
+        pickups: PickupViews
+        pads: PadViews | null
+        portals: PortalViews
+        zones: ZoneView
+        spots: ZoneView
+    }
+>
+const showMap = erablesLooks(scene, office, erables, [maps.office.parent], [maps.erables.parent], renderer)
+showMap(LOBBY_MAP)
+/** The map you're on, and its world. */
+let mapNow: MapId = LOBBY_MAP
+let world: FpsWorld = maps[LOBBY_MAP].world
 const domeView = new DomeView(scene)
 const wallViews = new WallViews(scene)
 addEventListener('resize', () => {
@@ -164,6 +195,10 @@ const hud = new Hud(config.backUrl, {
         if (resized) applyResolution()
     },
     onStart: rules => startMatch(rules),
+    onPlan: rules => {
+        if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'plan', rules }))
+    },
+    onSetup: () => openSetup(),
     loadout: picked,
     onLoadout: chosen => {
         picked = chosen
@@ -171,8 +206,11 @@ const hud = new Hud(config.backUrl, {
         if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'loadout', loadout: chosen }))
     },
 })
+/** The host's Next match panel is open (or opening: the mouse is being let go for it). */
+let settingUp = false
 const controls = new Controls(renderer.domElement, locked => {
-    hud.card(locked ? 'playing' : 'paused')
+    if (locked) settingUp = false
+    hud.card(locked ? 'playing' : settingUp ? 'setup' : 'paused')
     // The click that takes the mouse is the one browsers need before any sound.
     if (locked) sounds.unlock()
     else sounds.jetting(false)
@@ -315,7 +353,7 @@ controls.onBuild = () => {
 /** Siege refuses a wall here (you attack, or it's by the dome): refused in the browser, as the server would. */
 function siegeBlocks(x: number, z: number): boolean {
     const siege = match?.phase === 'playing' ? match.siege : null
-    return Boolean(siege && me && siegeForbidsBuild(siege, teams.get(me) ?? null, x, z))
+    return Boolean(siege && me && siegeForbidsBuild(siege, teams.get(me) ?? null, x, z, world.siegeSpots))
 }
 /** E in build mode: the wall under the crosshair, if it's yours and in reach, comes down. */
 controls.onUnbuild = () => {
@@ -437,6 +475,11 @@ function receive(message: ServerMessage): void {
         case 'welcome':
             me = message.you
             roster = new Map(message.players.map(p => [p.id, p]))
+            useMap(message.match.map, now)
+            // Every map is built at load: ready for a match on any of them.
+            for (const id of MAPS) {
+                if (id !== LOBBY_MAP) socket?.send(JSON.stringify({ type: 'ready', map: id }))
+            }
             prediction = new Prediction(world)
             clock = new ServerClock()
             others = new Interpolator()
@@ -470,6 +513,7 @@ function receive(message: ServerMessage): void {
             const siegeBefore = before === 'playing' ? (match?.siege ?? null) : null
             match = message.match
             matchAt = now
+            useMap(match.map, now)
             syncDome(match)
             siegeNews(siegeBefore, match)
             hud.setMatch(message.match, now)
@@ -507,6 +551,25 @@ function updateHost(): void {
     hud.setHost({ isHost: host !== null && host === me, name: host ? (roster.get(host)?.name ?? null) : null, seated })
 }
 
+/**
+ * Over to the map everyone is on now (the server moved them: a match's countdown, or back to the
+ * office): its world to collide with and predict on, its look, nobody drawn where they were.
+ */
+function useMap(map: MapId, now: number): void {
+    if (map === mapNow) return
+    mapNow = map
+    world = maps[map].world
+    world.walls.clear()
+    wallViews.sync(world.walls, now)
+    prediction = new Prediction(world)
+    others = new Interpolator()
+    pickupsReady = []
+    zone = null
+    holds = []
+    hud.jetpack = world.move.jetpack
+    showMap(map)
+}
+
 /** Siege's dome from the match: in the world while it stands, so your prediction meets it as the server does. */
 function syncDome(view: MatchView): void {
     world.dome = view.phase === 'playing' ? (view.siege?.dome ?? null) : null
@@ -517,7 +580,7 @@ function siegeNews(was: SiegeView | null, view: MatchView): void {
     const siege = view.phase === 'playing' ? view.siege : null
     const team = view.scores.find(s => s.id === me)?.team
     if (!siege || !team) return
-    const spot = SIEGE_SPOTS[siege.spot]!.name.toUpperCase()
+    const spot = (world.siegeSpots[siege.spot]?.name ?? 'spot').toUpperCase()
     const attacking = team === siege.attackers
     const color = TEAM_COLORS[team]
     if (!was || was.half !== siege.half) {
@@ -550,6 +613,15 @@ function iWon(view: MatchView): boolean {
 function startMatch(rules: Rules): void {
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'start', rules }))
 }
+
+/** The host's Next match panel (N, or the menu's button): the mouse let go, the panel up. */
+function openSetup(): void {
+    if (!hud.canSetUp) return
+    settingUp = true
+    if (controls.locked) document.exitPointerLock()
+    else hud.card('setup')
+}
+controls.onNextMatch = () => openSetup()
 
 function snapshot(snap: Extract<ServerMessage, { type: 'snap' }>, now: number): void {
     net.snaps++
@@ -590,7 +662,7 @@ function snapshot(snap: Extract<ServerMessage, { type: 'snap' }>, now: number): 
     // The zone moved on: two beeps and a word.
     if (snap.zone && zone && snap.zone.index !== zone.index) {
         sounds.zoneMoved()
-        hud.toast(`ZONE MOVED: ${ZONES[snap.zone.index]!.name.toUpperCase()}`, '#ffffff')
+        hud.toast(`ZONE MOVED: ${(world.zones[snap.zone.index]?.name ?? '').toUpperCase()}`, '#ffffff')
     }
     zone = snap.zone
     zoneAt = now
@@ -647,7 +719,7 @@ function onEvent(event: GameEvent, now: number): void {
         return
     }
     if (event.type === 'captured') {
-        const spot = match?.siege ? SIEGE_SPOTS[match.siege.spot]!.name : 'the spot'
+        const spot = match?.siege ? (world.siegeSpots[match.siege.spot]?.name ?? 'the spot') : 'the spot'
         hud.killFeed(
             `${colored(event.by)} <span style="opacity:.7">took the</span> <b>${escape(spot)}</b> <b style="color:${TEAM_COLORS[event.team]}">+1</b>`
         )
@@ -669,7 +741,7 @@ function onEvent(event: GameEvent, now: number): void {
         return
     }
     if (event.type === 'pickup') {
-        const spot = PICKUP_SPOTS[event.spot]
+        const spot = world.pickups[event.spot]
         if (!spot) return
         const { kind } = event
         hud.killFeed(
@@ -793,7 +865,7 @@ function onEvent(event: GameEvent, now: number): void {
             killer = event.killer ? name(event.killer) : null
             deathTaunt = event.killer && event.killer !== me ? taunt(event, Math.random) : null
             const { weapon, headshot, backstab, recap } = event
-            deathCause = { weapon, headshot, backstab, recap }
+            deathCause = { weapon, headshot, backstab, recap, unit: world.unit }
         }
         if (event.killer === me && event.victim !== me) {
             hud.hitMarker(event.headshot, true)
@@ -997,7 +1069,7 @@ function step(now: number): void {
         slot: controls.slot,
     }
     // Space burns the jetpack only in the air, past a jump's top (Overtime and prone: never).
-    jetting = body ? jetBurns(body, moveOf(input)) : false
+    jetting = body ? jetBurns(body, moveOf(input), world.move) : false
     const before = prediction.body
     prediction.apply(input, self.alive)
     outbox.push(input)
@@ -1063,7 +1135,7 @@ function fireLocally(gun: Gun, input: InputFrame, now: number): void {
     const body = prediction.body!
     const eye = eyeOf(body)
     const aim = aimDirection(input.yaw, input.pitch)
-    const cone = spreadOf(spec, Boolean(input.buttons & BUTTON.aim), body)
+    const cone = spreadOf(spec, Boolean(input.buttons & BUTTON.aim), body, world.move.moving)
     // From the gun in your hands; in third person, your trooper's.
     const from = viewmodel && !thirdPerson ? viewmodel.muzzleIn() : ((me ? avatars.muzzleOf(me) : null) ?? eye)
     for (let pellet = 0; pellet < spec.pellets; pellet++) {
@@ -1141,7 +1213,8 @@ function draw(now: number): void {
     smoothing.multiplyScalar(Math.exp(-12 * dt))
 
     const body = prediction.body
-    office.ceiling.visible = Boolean(self)
+    office.ceiling.visible = Boolean(self) && mapNow === 'office'
+    erables.update(now)
     const third = thirdPerson && Boolean(self?.alive)
     if (self && body) {
         // Your eyes at your size (high on a Promotion, low as an Intern, near the floor prone, eased
@@ -1179,7 +1252,9 @@ function draw(now: number): void {
     hud.aiming = aimingNow
     // The crosshair's ticks on the hip-fire cone (wider moving, wider still in the air), eased.
     const cone =
-        self?.alive && body && held !== 'stapler' && held !== 'launcher' ? spreadOf(GUNS[held], false, body) : null
+        self?.alive && body && held !== 'stapler' && held !== 'launcher'
+            ? spreadOf(GUNS[held], false, body, world.move.moving)
+            : null
     if (cone === null) spreadPx = null
     else {
         const target = (Math.tan(cone) / Math.tan((camera.fov * Math.PI) / 360)) * (innerHeight / 2)
@@ -1254,14 +1329,15 @@ function draw(now: number): void {
         rockets.map(r => ({ ...r, x: r.x + r.vx * ahead, y: r.y + r.vy * ahead, z: r.z + r.vz * ahead })),
         now
     )
-    pickupViews.update(pickupsReady, now)
-    padViews.update(now)
-    portalViews.update(now)
-    zoneView.update(zone, colorOf, zone !== null && zone.holder === me, now)
+    const here = maps[mapNow]
+    here.pickups.update(pickupsReady, now)
+    here.pads?.update(now)
+    here.portals.update(now)
+    here.zones.update(zone, colorOf, zone !== null && zone.holder === me, now)
     const siege = match?.phase === 'playing' ? match.siege : null
     // Siege's spot: white, or the attackers' colour while one of them stands in it.
     const holder = holds.some(h => h.id === me) ? me : (holds[0]?.id ?? null)
-    spotView.update(
+    here.spots.update(
         siege ? { index: siege.spot, holder, contested: false, movesInMs: 0 } : null,
         colorOf,
         holder !== null && holder === me,
@@ -1286,7 +1362,8 @@ function draw(now: number): void {
 function showZone(now: number): void {
     if (match?.phase === 'playing' && match.siege && self?.alive) return showSpot(match.siege, now)
     if (!zone || match?.phase !== 'playing' || !self?.alive) return hud.zone(null, null)
-    const place = ZONES[zone.index]!
+    const place = world.zones[zone.index]
+    if (!place) return hud.zone(null, null)
     const holder = zone.holder
     const status = zone.contested
         ? { text: 'ZONE CONTESTED', color: '#ff9f1c' }
@@ -1304,7 +1381,8 @@ function showZone(now: number): void {
  * far through your stay you are) and a marker on the spot.
  */
 function showSpot(siege: SiegeView, now: number): void {
-    const spot = SIEGE_SPOTS[siege.spot]!
+    const spot = world.siegeSpots[siege.spot]
+    if (!spot) return hud.zone(null, null)
     const attacking = teams.get(me ?? '') === siege.attackers
     const left = Math.max(0, Math.ceil(((match?.remainingMs ?? 0) - (now - matchAt)) / 1000))
     const mine = holds.find(h => h.id === me)

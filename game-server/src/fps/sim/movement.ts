@@ -60,6 +60,42 @@ export const MOVE = {
     fuelRegen: 0.25,
 } as const
 
+/**
+ * How bodies move on a map. The office's is MOVE's (minis with jetpacks); a map built for people
+ * and shrunk to the minis' size (Rue des Érables) slows everything by its scale, gravity included,
+ * so a fall or a jump takes the time it would at full size, and turns the jetpack and the dodge off.
+ */
+export interface Movement {
+    /** Walking pace (m/s), and crawling prone. */
+    walk: number
+    crawl: number
+    /** A jump's speed off the ground (m/s). */
+    jump: number
+    /** m/s², negative. */
+    gravity: number
+    /** Space in the air burns the jetpack; Shift + a direction dodges. */
+    jetpack: boolean
+    dodge: boolean
+    /** A jump pad's throw (m/s up). */
+    padLaunch: number
+    /** A rocket's shove, times LAUNCHER.knockback. */
+    knockback: number
+    /** Faster than this over the ground (m/s), a gun's spread counts you as moving. */
+    moving: number
+}
+
+export const OFFICE_MOVEMENT: Movement = {
+    walk: MOVE.walk,
+    crawl: PRONE.crawl,
+    jump: MOVE.jump,
+    gravity: MOVE.gravity,
+    jetpack: true,
+    dodge: true,
+    padLaunch: PAD.launch,
+    knockback: 1,
+    moving: 1.2,
+}
+
 export interface Body {
     x: number
     y: number
@@ -123,11 +159,11 @@ export function sizeOf(feet: { big?: number; small?: number; prone?: boolean }):
     return sizeAt(scaleOf(feet), feet.prone ?? false)
 }
 
-/** Walking pace, for the powers they have (crawling, prone). */
-export function walkOf(body: Body): number {
-    if (body.prone) return PRONE.crawl * (body.big > 0 ? PROMOTION.scale * PROMOTION.walk : 1)
+/** Walking pace, for the powers they have (crawling, prone), on a map that moves this way. */
+export function walkOf(body: Body, move: Movement = OFFICE_MOVEMENT): number {
+    if (body.prone) return move.crawl * (body.big > 0 ? PROMOTION.scale * PROMOTION.walk : 1)
     const pace = body.overtime > 0 ? OVERTIME.walk : body.espresso > 0 ? ESPRESSO.walk : 1
-    return MOVE.walk * pace * (body.big > 0 ? PROMOTION.walk : 1)
+    return move.walk * pace * (body.big > 0 ? PROMOTION.walk : 1)
 }
 
 export interface MoveInput {
@@ -185,13 +221,14 @@ export function bodyAt(x: number, y: number, z: number): Body {
  * Does Space burn the jetpack this step (from this body)? In the air, past a jump's top, with fuel
  * (not on Overtime, not prone). On the ground Space jumps instead.
  */
-export function jetBurns(body: Body, input: MoveInput): boolean {
+export function jetBurns(body: Body, input: MoveInput, move: Movement = OFFICE_MOVEMENT): boolean {
+    if (!move.jetpack) return false
     return input.jet && body.fuel > 0 && body.overtime === 0 && !body.prone && !body.onGround && !body.jumped
 }
 
 /** Is the jetpack burning this step (its flame)? Space in the air, or a dodge's burst. */
-export function isJetting(body: Body, input: MoveInput): boolean {
-    return jetBurns(body, input) || body.dashLeft > 0
+export function isJetting(body: Body, input: MoveInput, move: Movement = OFFICE_MOVEMENT): boolean {
+    return jetBurns(body, input, move) || body.dashLeft > 0
 }
 
 const seg = new Line3()
@@ -208,6 +245,7 @@ function fits(world: FpsWorld, body: Body, scale: number, prone = false): boolea
 
 /** The body one step later. Pure: the input body is left as it was. */
 export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
+    const move = world.move
     const next = { ...body }
     next.overtime = Math.max(0, body.overtime - 1)
     next.espresso = Math.max(0, body.espresso - 1)
@@ -230,7 +268,8 @@ export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
     // The dodge: a burst the keys' way (forward when none are held), if it's ready and there's fuel.
     next.dashCooldown = Math.max(0, body.dashCooldown - 1)
     next.dashLeft = Math.max(0, body.dashLeft - 1)
-    if (input.dash && !grounded && !next.prone && body.dashCooldown === 0 && body.fuel >= MOVE.dashFuel) {
+    const dodges = move.dodge && input.dash && !grounded && !next.prone
+    if (dodges && body.dashCooldown === 0 && body.fuel >= MOVE.dashFuel) {
         const [dx, dz] = length > 0 ? [wx / length, wz / length] : [fx, fz]
         next.vx = dx * MOVE.dashSpeed
         next.vz = dz * MOVE.dashSpeed
@@ -241,7 +280,7 @@ export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
     } else if (body.dashLeft === 0) {
         // The keys steer, unless a dodge is carrying you.
         if (length > 0) {
-            const walk = walkOf(body)
+            const walk = walkOf(body, move)
             wx = (wx / length) * walk
             wz = (wz / length) * walk
         }
@@ -252,17 +291,17 @@ export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
     // A jump pad under your feet: thrown up, no fuel used.
     if (body.onGround && body.y <= PAD.height) {
         for (const pad of world.pads) {
-            if (Math.hypot(body.x - pad.x, body.z - pad.z) <= PAD.radius) next.vy = Math.max(next.vy, PAD.launch)
+            if (Math.hypot(body.x - pad.x, body.z - pad.z) <= PAD.radius) next.vy = Math.max(next.vy, move.padLaunch)
         }
     }
 
     // Space: a fresh press on the ground jumps (not prone, not on Overtime); in the air it's the jetpack.
     if (input.jet && !body.spaceHeld && body.onGround && !next.prone && !grounded) {
-        next.vy = Math.max(next.vy, MOVE.jump)
+        next.vy = Math.max(next.vy, move.jump)
         next.jumped = true
     }
     next.spaceHeld = input.jet
-    const jetting = jetBurns(body, input) && next.fuel > 0
+    const jetting = jetBurns(body, input, move) && next.fuel > 0
     next.jetBoost = Math.max(0, body.jetBoost - 1)
     const burn = MOVE.fuelUse / (body.jetBoost > 0 ? JETPACK_FACTOR : 1)
     const fuelRate = jetting ? -burn : body.onGround && next.dashLeft === 0 ? MOVE.fuelRegen : 0
@@ -270,13 +309,13 @@ export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
 
     const size = sizeAt(scaleOf(next), next.prone)
     // The furthest this step can carry it: its speed, plus what gravity or the jetpack add.
-    const accel = Math.abs(MOVE.gravity + (jetting ? MOVE.thrust : 0))
+    const accel = Math.abs(move.gravity + (jetting ? MOVE.thrust : 0))
     const reach = (Math.hypot(next.vx, next.vy, next.vz) + accel * STEP_S) * STEP_S
     const substeps = Math.min(MAX_SUBSTEPS, Math.max(1, Math.ceil(reach / (size.radius * SUBSTEP_REACH))))
     const h = STEP_S / substeps
     next.onGround = false
     for (let s = 0; s < substeps; s++) {
-        next.vy += (MOVE.gravity + (jetting ? MOVE.thrust : 0)) * h
+        next.vy += (move.gravity + (jetting ? MOVE.thrust : 0)) * h
         next.x += next.vx * h
         next.y += next.vy * h
         next.z += next.vz * h

@@ -4,6 +4,7 @@
  * collision in places.test.ts (open floor, inside the office).
  */
 import { SIEGE, type Team } from '../protocol.ts'
+import type { Movement } from './movement.ts'
 
 export type PickupKind =
     | 'health'
@@ -63,6 +64,8 @@ export interface PickupSpot {
     roomy?: boolean
     x: number
     z: number
+    /** The floor it lies on, when it isn't y = 0 (a raised house floor, a deck: m). */
+    y?: number
     /** Where it is, for the kill feed ("in the kitchen"). */
     room: string
 }
@@ -102,16 +105,22 @@ export const PICKUP_WEIGHTS: Record<PickupKind, number> = {
  * What comes back on `spot`: its own kind if it has one, else a weighted roll. A Promotion only
  * where a giant fits; a power already lying elsewhere (`out`) isn't rolled twice (the basics may be).
  */
-export function rollPickup(random: () => number, spot: PickupSpot, out: readonly (PickupKind | null)[]): PickupKind {
+export function rollPickup(
+    random: () => number,
+    spot: PickupSpot,
+    out: readonly (PickupKind | null)[],
+    weights: Record<PickupKind, number> = PICKUP_WEIGHTS
+): PickupKind {
     if (spot.kind) return spot.kind
     const basics: readonly PickupKind[] = ['health', 'magazine', 'jetpack']
-    const choices = (Object.keys(PICKUP_WEIGHTS) as PickupKind[]).filter(
-        kind => (kind !== 'promotion' || spot.roomy) && (basics.includes(kind) || !out.includes(kind))
+    const choices = (Object.keys(weights) as PickupKind[]).filter(
+        kind =>
+            weights[kind] > 0 && (kind !== 'promotion' || spot.roomy) && (basics.includes(kind) || !out.includes(kind))
     )
-    const total = choices.reduce((sum, kind) => sum + PICKUP_WEIGHTS[kind], 0)
+    const total = choices.reduce((sum, kind) => sum + weights[kind], 0)
     let roll = random() * total
     for (const kind of choices) {
-        roll -= PICKUP_WEIGHTS[kind]
+        roll -= weights[kind]
         if (roll < 0) return kind
     }
 
@@ -191,6 +200,8 @@ export interface SiegeSpawn {
     x: number
     z: number
     yaw: number
+    /** The floor, when it isn't y = 0 (a raised house floor). */
+    y?: number
 }
 
 /**
@@ -205,6 +216,8 @@ export interface SiegeSpot {
     z: number
     half: number
     dome: { x: number; z: number }
+    /** Its floor, when it isn't y = 0 (a raised house floor): the defenders come back on it. */
+    y?: number
 }
 
 /** The side of a Siege spot (m). */
@@ -214,7 +227,7 @@ export const SPOT_HEIGHT = 1.2
 
 /** In the spot: within its square on the floor plan, feet below its top (`y`, the feet; the floor by default). */
 export function inSpot(spot: SiegeSpot, x: number, z: number, y = 0): boolean {
-    return Math.abs(x - spot.x) <= spot.half && Math.abs(z - spot.z) <= spot.half && y < SPOT_HEIGHT
+    return Math.abs(x - spot.x) <= spot.half && Math.abs(z - spot.z) <= spot.half && y - (spot.y ?? 0) < SPOT_HEIGHT
 }
 
 /**
@@ -227,7 +240,7 @@ export function spotSpawns(spot: SiegeSpot): SiegeSpawn[] {
     for (let i = -2; i <= 2; i++) {
         for (let j = -2; j <= 2; j++) {
             if (Math.max(Math.abs(i), Math.abs(j)) < 2) continue
-            spawns.push({ x: spot.x + i * step, z: spot.z + j * step, yaw: Math.atan2(-i, -j) })
+            spawns.push({ x: spot.x + i * step, z: spot.z + j * step, yaw: Math.atan2(-i, -j), y: spot.y ?? 0 })
         }
     }
     return spawns
@@ -294,11 +307,36 @@ export function siegeForbidsBuild(
     siege: { spot: number; attackers: Team },
     team: Team | null,
     x: number,
-    z: number
+    z: number,
+    spots: readonly SiegeSpot[] = SIEGE_SPOTS
 ): boolean {
     if (team === siege.attackers) return true
-    const { dome } = SIEGE_SPOTS[siege.spot]!
+    const spot = spots[siege.spot]
+    if (!spot) return false
+    const { dome } = spot
     return Math.hypot(x - dome.x, z - dome.z) < SIEGE.domeRadius + SIEGE.noBuild
+}
+
+/**
+ * A map's places and how bodies move on it: everything the game needs of a map besides its
+ * collision and spawns. The office's are the ones above; another map brings its own.
+ */
+export interface MapPlaces {
+    pickups: readonly PickupSpot[]
+    /** How often each pickup turns up there (0: never: no jetpack extender where there's no jetpack). */
+    pickupWeights: Record<PickupKind, number>
+    pads: readonly Pad[]
+    portals: readonly Portal[]
+    /** King of the hill's zones, and how high their columns are drawn (the office's ceiling). */
+    zones: readonly Zone[]
+    zoneHeight: number
+    siegeSpots: readonly SiegeSpot[]
+    move: Movement
+    /**
+     * Real metres per metre of this world: 1 in the office (minis in a real office); a map built for
+     * people and shrunk to the minis' size says how much, so distances read as people would pace them.
+     */
+    unit: number
 }
 
 /** Who won a siege: the most points, then the faster to them; null when even (or nobody scored). */

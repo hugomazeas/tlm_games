@@ -18,6 +18,8 @@ import { GUNS } from './sim/combat.ts'
 import { PLAYER, STEP_MS } from './sim/movement.ts'
 import { testWorld } from './sim/testing.ts'
 import { inSpot, SIEGE_SPOTS, ZONE_MS, ZONES } from './sim/places.ts'
+import { erablesWorld } from './sim/world.ts'
+import { ERABLES_SIEGE_SPOTS, ERABLES_SPAWNS } from './map/erables.ts'
 
 /** Two spawn points 4 m apart in an open room: whoever is at one can shoot whoever is at the other. */
 const world = testWorld([
@@ -208,7 +210,7 @@ describe('one game, joined on the fly', () => {
         const [a, b] = [client('a1'), client('b2')]
         lobby.join(a, { playerId: 1, name: 'a1' })
         lobby.join(b, { playerId: 2, name: 'b2' })
-        lobby.start(a.id, { mode: 'ffa', fragLimit: 5, minutes: 10 })
+        lobby.start(a.id, { map: 'office', mode: 'ffa', fragLimit: 5, minutes: 10 })
         expect(b.last('match')!.match).toMatchObject({ phase: 'countdown', fragLimit: 5, minutes: 10 })
         play(COUNTDOWN_MS + STEP_MS + SHIELD_STEPS * STEP_MS + 100)
 
@@ -217,7 +219,7 @@ describe('one game, joined on the fly', () => {
             if (k < 4) play((RESPAWN_STEPS + SHIELD_STEPS) * STEP_MS + 100)
         }
         expect(a.last('match')!.match.phase).toBe('intermission')
-        expect(results[0]!.rules).toEqual({ mode: 'ffa', fragLimit: 5, minutes: 10 })
+        expect(results[0]!.rules).toEqual({ map: 'office', mode: 'ffa', fragLimit: 5, minutes: 10 })
     })
 
     test('the host passes to the next longest seated when they leave', () => {
@@ -228,6 +230,24 @@ describe('one game, joined on the fly', () => {
         expect(c.last('match')!.match.host).toBe('b2')
         lobby.start(b.id, DEFAULT_RULES)
         expect(c.last('match')!.match.phase).toBe('countdown')
+    })
+
+    test('the host lines up the next match: everyone sees it; nobody else can, and not mid-match', () => {
+        const [a, b] = [client('a1'), client('b2')]
+        lobby.join(a, { playerId: 1, name: 'a1' })
+        lobby.join(b, { playerId: 2, name: 'b2' })
+        const tdm: Rules = { map: 'office', mode: 'tdm', fragLimit: 10, minutes: 5 }
+
+        lobby.plan(b.id, tdm)
+        expect(a.last('match')!.match.next).toBeNull()
+        lobby.plan(a.id, tdm)
+        expect(b.last('match')!.match).toMatchObject({ phase: 'warmup', map: 'office', next: tdm })
+
+        // Starting lines it up too (the panel opens on it after: a rematch), and an office match needs no loading.
+        lobby.start(a.id, DEFAULT_RULES)
+        expect(b.last('match')!.match).toMatchObject({ phase: 'countdown', next: DEFAULT_RULES, loading: null })
+        lobby.plan(a.id, tdm)
+        expect(b.last('match')!.match.next).toEqual(DEFAULT_RULES)
     })
 
     test('warmup kills count for nothing', () => {
@@ -377,7 +397,7 @@ describe('modes', () => {
 
     test('team deathmatch: two even sides, kills count for the side, the winning side all won', () => {
         const [a, b] = [client('a1'), client('b2')]
-        startWith({ mode: 'tdm', fragLimit: 5, minutes: 10 }, a, b)
+        startWith({ map: 'office', mode: 'tdm', fragLimit: 5, minutes: 10 }, a, b)
         expect(new Set([teamOf(a, 'a1'), teamOf(a, 'b2')])).toEqual(new Set(['red', 'blue']))
 
         for (let k = 0; k < 5; k++) {
@@ -394,7 +414,7 @@ describe('modes', () => {
 
     test('team deathmatch: a newcomer joins the smaller side', () => {
         const [a, b, c] = [client('a1'), client('b2'), client('c3')]
-        startWith({ mode: 'tdm', fragLimit: 15, minutes: 10 }, a, b, c)
+        startWith({ map: 'office', mode: 'tdm', fragLimit: 15, minutes: 10 }, a, b, c)
         const count = (team: string) => a.last('snap')!.players.filter(p => p.team === team).length
         const smaller = count('red') < count('blue') ? 'red' : 'blue'
 
@@ -408,7 +428,7 @@ describe('modes', () => {
 
     test('king of the meeting room: alone in the zone scores, two in it score nothing, and it moves', () => {
         const [a, b] = [client('a1'), client('b2')]
-        startWith({ mode: 'koth', fragLimit: 5, minutes: 10 }, a, b)
+        startWith({ map: 'office', mode: 'koth', fragLimit: 5, minutes: 10 }, a, b)
         const zone = a.last('snap')!.zone!
         expect(zone.holder).toBeNull()
         const place = ZONES[zone.index]!
@@ -444,7 +464,7 @@ describe('modes', () => {
 
     test('king of the meeting room: ten times the limit in seconds wins it', () => {
         const [a, b] = [client('a1'), client('b2')]
-        startWith({ mode: 'koth', fragLimit: 5, minutes: 10 }, a, b)
+        startWith({ map: 'office', mode: 'koth', fragLimit: 5, minutes: 10 }, a, b)
         const place = ZONES[a.last('snap')!.zone!.index]!
         walkTo(a, place.x, place.z)
         play(5 * ZONE_SECONDS_PER_POINT * 1000 + 500, () => [[a, idle()]])
@@ -476,7 +496,7 @@ describe('modes', () => {
 })
 
 describe('siege', () => {
-    const SIEGE_RULES: Rules = { mode: 'siege', fragLimit: 5, minutes: 5 }
+    const SIEGE_RULES: Rules = { map: 'office', mode: 'siege', fragLimit: 5, minutes: 5 }
 
     /** Both join, the host starts a siege, the countdown runs out: the head start begins. */
     function startSiege(a: Client, b: Client): { attacker: Client; defender: Client } {
@@ -787,6 +807,58 @@ describe('building', () => {
     })
 })
 
+describe('a match on Rue des Érables', () => {
+    beforeEach(() => {
+        lobby = new FpsLobby(
+            world,
+            { now: () => now, random: createRng(1), onResults: r => results.push(r) },
+            { erables: erablesWorld() }
+        )
+    })
+
+    test('loads in every browser, plays on the street at a person’s pace (no jetpack), then back to the office', () => {
+        const [a, b] = [client('a1'), client('b2')]
+        lobby.join(a, { playerId: 1, name: 'a1' })
+        lobby.join(b, { playerId: 2, name: 'b2' })
+        lobby.start(a.id, { map: 'erables', mode: 'ffa', fragLimit: 5, minutes: 3 })
+        expect(b.last('match')!.match).toMatchObject({ phase: 'loading', loading: { ready: 0, of: 2 } })
+        lobby.ready(a.id, 'erables')
+        lobby.ready(b.id, 'erables')
+        expect(b.last('match')!.match).toMatchObject({ phase: 'countdown', map: 'erables' })
+
+        // Everyone on one of the street's spawn points.
+        const spawns = ERABLES_SPAWNS.map(s => `${s.position[0].toFixed(3)},${s.position[2].toFixed(3)}`)
+        play(STEP_MS * 2)
+        for (const id of ['a1', 'b2']) {
+            const p = where(a, id)
+            expect(spawns).toContain(`${p.x.toFixed(3)},${p.z.toFixed(3)}`)
+        }
+
+        // Space held: a jump, never the jetpack.
+        play(1000, () => [[a, { forward: 0, strafe: 0, yaw: 0, pitch: 0, buttons: BUTTON.jet, view: 0 }]])
+        expect(a.last('snap')!.you!.body.fuel).toBe(1)
+
+        play(COUNTDOWN_MS + 3 * 60_000 + INTERMISSION_MS + 1000)
+        expect(results[0]!.rules.map).toBe('erables')
+        expect(a.last('match')!.match).toMatchObject({ phase: 'warmup', map: 'office' })
+    })
+
+    test("Siege plays one of the street's own spots: its dome at the road works, the defenders round the spot", () => {
+        const [a, b] = [client('a1'), client('b2')]
+        for (const c of [a, b]) lobby.join(c, { playerId: Number(c.id.slice(1)), name: c.id })
+        lobby.start(a.id, { map: 'erables', mode: 'siege', fragLimit: 5, minutes: 5 })
+        for (const c of [a, b]) lobby.ready(c.id, 'erables')
+        play(COUNTDOWN_MS + 200)
+        const siege = a.last('match')!.match.siege!
+        expect(siege.dome).toMatchObject(ERABLES_SIEGE_SPOTS[siege.spot]!.dome)
+        // The defenders come back round the spot, on its floor.
+        const spot = ERABLES_SIEGE_SPOTS[siege.spot]!
+        const defender = a.last('snap')!.players.find(p => p.team !== siege.attackers)!
+        expect(Math.abs(defender.x - spot.x)).toBeLessThanOrEqual(spot.half)
+        expect(Math.abs(defender.z - spot.z)).toBeLessThanOrEqual(spot.half)
+    })
+})
+
 describe('messages', () => {
     test('inputs travel as compact frames and come back the same', () => {
         const frame = {
@@ -828,11 +900,13 @@ describe('messages', () => {
     test("the host's start carries rules from the allowed lists only", () => {
         const start = (rules: unknown) => parseClientMessage(JSON.stringify({ type: 'start', rules }))
 
-        const rules = { mode: 'koth' as const, fragLimit: 25, minutes: 10 }
+        const rules = { map: 'office' as const, mode: 'koth' as const, fragLimit: 25, minutes: 10 }
         expect(start(rules)).toEqual({ type: 'start', rules })
-        // No mode (an older tab): free for all. A made-up one: refused.
+        // No mode (an older tab): free for all, and no map: the office. A made-up one: refused.
         expect(start({ fragLimit: 25, minutes: 10 })).toEqual({ type: 'start', rules: { ...rules, mode: 'ffa' } })
+        expect(start({ ...rules, map: undefined })).toEqual({ type: 'start', rules })
         expect(start({ ...rules, mode: 'battle royale' })).toBeNull()
+        expect(start({ ...rules, map: 'the moon' })).toBeNull()
         expect(start({ fragLimit: 7, minutes: 10 })).toBeNull()
         expect(start({ fragLimit: 25, minutes: 1 })).toBeNull()
         expect(start(null)).toBeNull()
