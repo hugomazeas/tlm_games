@@ -513,8 +513,10 @@ Playable at `/games/office-fps`.
   `SUBSTEP_REACH` of the radius each: one walking, up to 8 falling; collision is most of the
   server's time, so keep `collideCapsule` allocation-free; walk/run/jetpack tuning at the top),
   shared with the browser for prediction; `combat.ts` has
-  the guns and hitscan (walls and glass stop shots, headshots on the top of the capsule, which
-  shots take `HITBOX_SCALE` 1.25× wider than it collides);
+  the guns and hitscan (walls and glass stop shots). Shots take a player as the drawn body, not
+  the 24 cm capsule they collide with: `HIT` (7 cm radius, their height; 4 cm prone), headshots
+  from the chin up (`HEAD_FROM` 0.85). Change the figure's width or height (`client/figure.ts`):
+  keep `HIT` round it;
   `arena.ts` runs everyone: one input frame per step (the last one repeated, without firing,
   when none came), shots judged where the shooter saw the target (up to 200 ms back), respawns
   at the spawn point furthest from everyone with a short shield.

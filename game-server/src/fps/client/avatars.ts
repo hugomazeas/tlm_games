@@ -20,7 +20,7 @@ import {
     Vector3,
 } from 'three'
 import { type BuffKind, type Gun, type PlayerInfo, TEAM_COLORS, type Weapon } from '../protocol.ts'
-import { powersOf, reloadMsOf, SWITCH_MS } from '../sim/combat.ts'
+import { HIT_RADIUS, powersOf, reloadMsOf, SWITCH_MS } from '../sim/combat.ts'
 import { PLAYER, scaleOf } from '../sim/movement.ts'
 import { rocketLook } from './effects.ts'
 import { applyFinish } from './finish.ts'
@@ -113,7 +113,7 @@ const shape = {
     firewall: new SphereGeometry(0.27, 6, 4),
     halo: new TorusGeometry(0.05, 0.007, 6, 28),
     // The Org chart's silhouette: the capsule shots take, seen through anything.
-    xray: new CapsuleGeometry(PLAYER.radius, PLAYER.height - 2 * PLAYER.radius, 4, 12),
+    xray: new CapsuleGeometry(HIT_RADIUS, PLAYER.height - 2 * HIT_RADIUS, 4, 12),
 }
 const dark = new MeshStandardMaterial({ color: 0x1d2026, roughness: 0.55, metalness: 0.2 })
 applyFinish(dark, 'rubber')

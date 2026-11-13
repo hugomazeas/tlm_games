@@ -36,19 +36,19 @@ import { mergeByMaterial } from './guns.ts'
 
 export const BODY = {
     /** Hip joints: height, and each one's distance from the middle. */
-    hipY: 0.212,
-    hipX: 0.022,
-    thigh: 0.1,
-    shin: 0.098,
+    hipY: 0.195,
+    hipX: 0.027,
+    thigh: 0.092,
+    shin: 0.087,
     /** The ankle above the floor, standing. */
     ankle: 0.016,
     /** Shoulder joints: height, and each one's distance from the middle. */
     shoulderY: 0.322,
-    shoulderX: 0.047,
+    shoulderX: 0.055,
     upperArm: 0.072,
     forearm: 0.066,
     /** Where the chest turns on the pelvis. */
-    waistY: 0.245,
+    waistY: 0.235,
     neckY: 0.338,
     /** The middle of the head (the eyes are on its line). */
     headY: 0.372,
@@ -235,9 +235,9 @@ export function buildFigure(look: Look): Figure {
     const torso = new Group()
     torso.position.y = BODY.hipY
     const hips: Mesh[] = [
-        at(new Mesh(new RoundedBoxGeometry(0.072, 0.042, 0.044, 3, 0.014), trousers), 0, 0.222 - BODY.hipY, 0.002),
-        at(new Mesh(new BoxGeometry(0.073, 0.007, 0.045), strapMaterial), 0, 0.244 - BODY.hipY, 0.002),
-        at(new Mesh(new BoxGeometry(0.011, 0.007, 0.004), nozzleMaterial), 0, 0.244 - BODY.hipY, -0.0215),
+        at(new Mesh(new RoundedBoxGeometry(0.086, 0.05, 0.052, 3, 0.017), trousers), 0, 0.008, 0.002),
+        at(new Mesh(new BoxGeometry(0.087, 0.008, 0.053), strapMaterial), 0, 0.031, 0.002),
+        at(new Mesh(new BoxGeometry(0.012, 0.008, 0.004), nozzleMaterial), 0, 0.031, -0.0255),
     ]
     for (const mesh of mergeByMaterial(hips)) torso.add(mesh)
 
@@ -246,15 +246,15 @@ export function buildFigure(look: Look): Figure {
     chestGroup.position.y = BODY.waistY - BODY.hipY
     torso.add(chestGroup)
     const y = (abs: number) => abs - BODY.waistY
-    const chest = new CapsuleGeometry(0.026, 0.03, 4, 12).scale(1.62, 1, 0.94)
-    const belly = new CapsuleGeometry(0.023, 0.018, 4, 12).scale(1.5, 1, 0.92)
+    const chest = new CapsuleGeometry(0.03, 0.03, 4, 12).scale(1.7, 1, 0.94)
+    const belly = new CapsuleGeometry(0.028, 0.024, 4, 12).scale(1.58, 1, 0.92)
     const parts: Mesh[] = [
         at(new Mesh(chest, shirt), 0, y(0.294), 0.001),
-        at(new Mesh(belly, shirt), 0, y(0.258), 0),
+        at(new Mesh(belly, shirt), 0, y(0.256), 0),
         // Shoulders rounded off, the neck.
-        at(new Mesh(cap(0.0125), shirt), BODY.shoulderX - 0.004, y(BODY.shoulderY), 0),
-        at(new Mesh(cap(0.0125), shirt), -BODY.shoulderX + 0.004, y(BODY.shoulderY), 0),
-        at(new Mesh(new CylinderGeometry(0.0085, 0.0095, 0.022, 10), skin), 0, y(BODY.neckY + 0.006), 0.001),
+        at(new Mesh(cap(0.0155), shirt), BODY.shoulderX - 0.005, y(BODY.shoulderY), 0),
+        at(new Mesh(cap(0.0155), shirt), -BODY.shoulderX + 0.005, y(BODY.shoulderY), 0),
+        at(new Mesh(new CylinderGeometry(0.0105, 0.012, 0.022, 10), skin), 0, y(BODY.neckY + 0.006), 0.001),
     ]
     if (look.top === 'shirt') {
         // Collar points, the tie (knot and blade), in their colour.
@@ -264,31 +264,31 @@ export function buildFigure(look: Look): Figure {
                     new Mesh(new BoxGeometry(0.012, 0.004, 0.009), shirt),
                     side * 0.007,
                     y(0.333),
-                    -0.014,
+                    -0.017,
                     0.6,
                     0,
                     side * 0.5
                 )
             )
         }
-        parts.push(at(new Mesh(new BoxGeometry(0.006, 0.006, 0.004), accent), 0, y(0.329), -0.0225))
+        parts.push(at(new Mesh(new BoxGeometry(0.007, 0.007, 0.004), accent), 0, y(0.329), -0.026))
         parts.push(
             at(
-                new Mesh(new CylinderGeometry(0.0045, 0.0028, 0.06, 4).rotateY(Math.PI / 4), accent),
+                new Mesh(new CylinderGeometry(0.005, 0.003, 0.064, 4).rotateY(Math.PI / 4), accent),
                 0,
-                y(0.297),
-                -0.0255,
+                y(0.295),
+                -0.0292,
                 -0.06
             )
         )
     } else {
         // The hood bunched behind the neck, a front pocket, drawstrings.
-        const hood = new TorusGeometry(0.017, 0.0075, 6, 14, Math.PI * 1.3).rotateX(Math.PI / 2).rotateZ(Math.PI * 0.85)
-        parts.push(at(new Mesh(hood, shirt), 0, y(0.334), 0.004, 0.25))
-        parts.push(at(new Mesh(new BoxGeometry(0.05, 0.02, 0.004), shirt), 0, y(0.258), -0.0215))
+        const hood = new TorusGeometry(0.019, 0.0085, 6, 14, Math.PI * 1.3).rotateX(Math.PI / 2).rotateZ(Math.PI * 0.85)
+        parts.push(at(new Mesh(hood, shirt), 0, y(0.334), 0.005, 0.25))
+        parts.push(at(new Mesh(new BoxGeometry(0.056, 0.022, 0.004), shirt), 0, y(0.256), -0.0262))
         for (const side of [-1, 1]) {
             parts.push(
-                at(new Mesh(new BoxGeometry(0.0015, 0.02, 0.0015), soleMaterial), side * 0.006, y(0.318), -0.025)
+                at(new Mesh(new BoxGeometry(0.0015, 0.02, 0.0015), soleMaterial), side * 0.007, y(0.318), -0.0285)
             )
         }
     }
@@ -296,18 +296,18 @@ export function buildFigure(look: Look): Figure {
     for (const side of [-1, 1]) {
         parts.push(
             at(
-                new Mesh(new BoxGeometry(0.0022, 0.04, 0.0012), accent),
-                side * 0.0085,
-                y(0.318),
-                -0.0242,
+                new Mesh(new BoxGeometry(0.0024, 0.042, 0.0012), accent),
+                side * 0.0095,
+                y(0.317),
+                -0.0278,
                 0,
                 0,
                 side * -0.22
             )
         )
     }
-    parts.push(at(new Mesh(new BoxGeometry(0.013, 0.017, 0.0016), soleMaterial), 0, y(0.293), -0.026, -0.08))
-    parts.push(at(new Mesh(new BoxGeometry(0.013, 0.004, 0.0018), accent), 0, y(0.2985), -0.0262, -0.08))
+    parts.push(at(new Mesh(new BoxGeometry(0.014, 0.018, 0.0016), soleMaterial), 0, y(0.292), -0.0298, -0.08))
+    parts.push(at(new Mesh(new BoxGeometry(0.014, 0.004, 0.0018), accent), 0, y(0.2975), -0.03, -0.08))
     for (const mesh of mergeByMaterial(parts)) chestGroup.add(mesh)
 
     // The head, turning about the top of the neck.
@@ -315,22 +315,22 @@ export function buildFigure(look: Look): Figure {
     head.position.y = y(BODY.neckY)
     const hy = BODY.headY - BODY.neckY
     const face: Mesh[] = [
-        at(new Mesh(new SphereGeometry(0.0235, 18, 14).scale(0.86, 1.04, 0.96), skin), 0, hy + 0.002, 0),
+        at(new Mesh(new SphereGeometry(0.025, 18, 14).scale(0.86, 1.02, 0.96), skin), 0, hy + 0.002, 0),
         // Jaw and chin.
-        at(new Mesh(new SphereGeometry(0.0165, 14, 10).scale(1, 0.85, 1), skin), 0, hy - 0.011, -0.005),
+        at(new Mesh(new SphereGeometry(0.0178, 14, 10).scale(1, 0.85, 1), skin), 0, hy - 0.011, -0.005),
         // Nose, ears.
-        at(new Mesh(new ConeGeometry(0.0034, 0.008, 6).rotateX(-Math.PI / 2), skin), 0, hy - 0.002, -0.0235, -0.25),
-        at(new Mesh(new SphereGeometry(0.0048, 8, 6).scale(0.5, 1, 0.8), skin), 0.0205, hy, 0.002),
-        at(new Mesh(new SphereGeometry(0.0048, 8, 6).scale(0.5, 1, 0.8), skin), -0.0205, hy, 0.002),
+        at(new Mesh(new ConeGeometry(0.0036, 0.008, 6).rotateX(-Math.PI / 2), skin), 0, hy - 0.002, -0.025, -0.25),
+        at(new Mesh(new SphereGeometry(0.005, 8, 6).scale(0.5, 1, 0.8), skin), 0.0218, hy, 0.002),
+        at(new Mesh(new SphereGeometry(0.005, 8, 6).scale(0.5, 1, 0.8), skin), -0.0218, hy, 0.002),
         // Eyes, brows.
-        at(new Mesh(new SphereGeometry(0.0027, 8, 6), eyeMaterial), 0.0085, hy + 0.004, -0.0195),
-        at(new Mesh(new SphereGeometry(0.0027, 8, 6), eyeMaterial), -0.0085, hy + 0.004, -0.0195),
-        at(new Mesh(new BoxGeometry(0.0085, 0.0017, 0.002), hair), 0.0088, hy + 0.0095, -0.0205, 0, 0, -0.08),
-        at(new Mesh(new BoxGeometry(0.0085, 0.0017, 0.002), hair), -0.0088, hy + 0.0095, -0.0205, 0, 0, 0.08),
+        at(new Mesh(new SphereGeometry(0.0028, 8, 6), eyeMaterial), 0.009, hy + 0.004, -0.0207),
+        at(new Mesh(new SphereGeometry(0.0028, 8, 6), eyeMaterial), -0.009, hy + 0.004, -0.0207),
+        at(new Mesh(new BoxGeometry(0.009, 0.0018, 0.002), hair), 0.0093, hy + 0.0098, -0.0218, 0, 0, -0.08),
+        at(new Mesh(new BoxGeometry(0.009, 0.0018, 0.002), hair), -0.0093, hy + 0.0098, -0.0218, 0, 0, 0.08),
     ]
     if (look.hairStyle !== 'bald') {
         // A cap of hair over the top and back, the forehead clear.
-        const cap = new SphereGeometry(0.0252, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.56).scale(0.88, 1.02, 0.99)
+        const cap = new SphereGeometry(0.0268, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.56).scale(0.88, 1.0, 0.99)
         face.push(at(new Mesh(cap, hair), 0, hy + 0.003, 0.0018, 0.38))
     }
     if (look.hairStyle === 'long') {
@@ -342,14 +342,14 @@ export function buildFigure(look: Look): Figure {
 
     // The jetpack, worn as a backpack: straps over the shoulders, two nozzles under it.
     const pack = new Group()
-    pack.position.set(0, y(0.29), 0.036)
+    pack.position.set(0, y(0.288), 0.042)
     const packParts: Mesh[] = [
         at(new Mesh(new RoundedBoxGeometry(0.06, 0.075, 0.028, 2, 0.008), strapMaterial), 0, 0, 0),
         at(new Mesh(new RoundedBoxGeometry(0.04, 0.03, 0.01, 2, 0.004), strapMaterial), 0, -0.012, 0.016),
     ]
     for (const side of [-1, 1]) {
         packParts.push(
-            at(new Mesh(new BoxGeometry(0.008, 0.06, 0.003), strapMaterial), side * 0.02, 0.012, -0.05, 0.12)
+            at(new Mesh(new BoxGeometry(0.008, 0.06, 0.003), strapMaterial), side * 0.022, 0.012, -0.058, 0.12)
         )
         packParts.push(
             at(new Mesh(new CylinderGeometry(0.007, 0.01, 0.014, 10), nozzleMaterial), side * 0.018, -0.043, 0.002)
@@ -362,33 +362,33 @@ export function buildFigure(look: Look): Figure {
     const arm = (): Limb => {
         const upper = new Group()
         upper.add(
-            new Mesh(limbShape(0.0105, 0.0088, BODY.upperArm), shirt),
-            at(new Mesh(cap(0.0088), shirt), 0, -BODY.upperArm, 0)
+            new Mesh(limbShape(0.0135, 0.011, BODY.upperArm), shirt),
+            at(new Mesh(cap(0.011), shirt), 0, -BODY.upperArm, 0)
         )
         const lower = new Group()
         const sleeve = look.top === 'shirt' && look.rolled ? skin : shirt
-        lower.add(new Mesh(limbShape(0.0088, 0.0068, BODY.forearm), sleeve))
+        lower.add(new Mesh(limbShape(0.011, 0.0085, BODY.forearm), sleeve))
         if (sleeve === skin)
-            lower.add(at(new Mesh(new CylinderGeometry(0.0098, 0.0098, 0.009, 10), shirt), 0, -0.004, 0))
+            lower.add(at(new Mesh(new CylinderGeometry(0.0122, 0.0122, 0.009, 10), shirt), 0, -0.004, 0))
         return { upper, lower }
     }
     // Legs: trousers to the ankle.
     const leg = (): Limb => {
         const upper = new Group()
         upper.add(
-            new Mesh(limbShape(0.0145, 0.0112, BODY.thigh), trousers),
-            at(new Mesh(cap(0.0112), trousers), 0, -BODY.thigh, 0)
+            new Mesh(limbShape(0.019, 0.0145, BODY.thigh), trousers),
+            at(new Mesh(cap(0.0145), trousers), 0, -BODY.thigh, 0)
         )
         const lower = new Group()
-        lower.add(new Mesh(limbShape(0.0112, 0.0082, BODY.shin), trousers))
+        lower.add(new Mesh(limbShape(0.0145, 0.0105, BODY.shin), trousers))
         return { upper, lower }
     }
     // Sneakers from the ankle: the upper, a white sole, toes forward (-Z).
     const foot = (): Group => {
         const group = new Group()
         const shoe: Mesh[] = [
-            at(new Mesh(new RoundedBoxGeometry(0.021, 0.014, 0.056, 2, 0.006), shoes), 0, -0.006, -0.012),
-            at(new Mesh(new BoxGeometry(0.022, 0.0045, 0.058), soleMaterial), 0, -0.0135, -0.012),
+            at(new Mesh(new RoundedBoxGeometry(0.025, 0.015, 0.058, 2, 0.007), shoes), 0, -0.006, -0.012),
+            at(new Mesh(new BoxGeometry(0.026, 0.0045, 0.06), soleMaterial), 0, -0.0135, -0.012),
         ]
         for (const mesh of mergeByMaterial(shoe)) group.add(mesh)
         return group

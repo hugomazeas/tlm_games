@@ -5,6 +5,7 @@ import {
     damageAt,
     fireShot,
     GUNS,
+    HEAD_FROM,
     HIT_RADIUS,
     magazineOf,
     rayCapsule,
@@ -25,25 +26,29 @@ describe('shots', () => {
         expect(hit!.along).toBeCloseTo(0.5, 5)
     })
 
-    test('shots take a mini a little wider than they are (no taller)', () => {
-        expect(HIT_RADIUS).toBeGreaterThan(PLAYER.radius)
+    test('shots take a player as their drawn body, narrower than the capsule they collide with', () => {
+        expect(HIT_RADIUS).toBeLessThan(PLAYER.radius)
+        // The drawn body (client/figure.ts: shoulders 5.5 cm out, the arms at their sides) is inside it.
+        expect(HIT_RADIUS).toBeGreaterThanOrEqual(0.068)
         const beside = (x: number) => rayCapsule(new Vector3(x, 0.2, -2), new Vector3(0, 0, 1), AT_ORIGIN)
-        expect(beside(PLAYER.radius + 0.01)).not.toBeNull()
+        expect(beside(HIT_RADIUS - 0.005)).not.toBeNull()
         expect(beside(HIT_RADIUS + 0.005)).toBeNull()
+        // Where the old 30 cm capsule took it, a round passing beside them misses.
+        expect(beside(0.12)).toBeNull()
         expect(rayCapsule(new Vector3(0, PLAYER.height + 0.005, -2), new Vector3(0, 0, 1), AT_ORIGIN)).toBeNull()
     })
 
     test('prone, a mini lies along where it faces: low, thin, its head the far end; it aims steadier', () => {
         // Facing -z (yaw 0): from the side (along x) the whole 40 cm length shows.
         const prone = { ...AT_ORIGIN, prone: true, yaw: 0 }
-        const side = (z: number, height = 0.08) => rayCapsule(new Vector3(-2, height, z), new Vector3(1, 0, 0), prone)
+        const side = (z: number, height = 0.04) => rayCapsule(new Vector3(-2, height, z), new Vector3(1, 0, 0), prone)
         expect(side(0)).not.toBeNull()
-        expect(side(-0.17)!.along).toBeGreaterThan(0.72) // the head
+        expect(side(-0.17)!.along).toBeGreaterThan(HEAD_FROM) // the head
         expect(side(0.17)!.along).toBeLessThan(0.2) // the feet
         expect(side(0.25)).toBeNull()
         expect(side(0, 0.25)).toBeNull()
         // From the front: only its head end, a narrow target.
-        expect(rayCapsule(new Vector3(0.11, 0.08, -2), new Vector3(0, 0, 1), prone)).toBeNull()
+        expect(rayCapsule(new Vector3(0.06, 0.04, -2), new Vector3(0, 0, 1), prone)).toBeNull()
 
         const standing = { ...bodyAt(0, 0, 0), onGround: true }
         expect(spreadOf(GUNS.rifle, false, { ...standing, prone: true })).toBeLessThan(
@@ -51,8 +56,10 @@ describe('shots', () => {
         )
     })
 
-    test('the top of the capsule is the head', () => {
-        expect(rayCapsule(new Vector3(0, 0.36, -2), new Vector3(0, 0, 1), AT_ORIGIN)!.along).toBeGreaterThan(0.72)
+    test('the top of the capsule is the head: the chin up, not the shoulders', () => {
+        expect(rayCapsule(new Vector3(0, 0.37, -2), new Vector3(0, 0, 1), AT_ORIGIN)!.along).toBeGreaterThan(HEAD_FROM)
+        // The shoulders (client/figure.ts: 32 cm up) are body.
+        expect(rayCapsule(new Vector3(0, 0.32, -2), new Vector3(0, 0, 1), AT_ORIGIN)!.along).toBeLessThan(HEAD_FROM)
         // Straight down onto the cap.
         const fromAbove = rayCapsule(new Vector3(0, 2, 0), new Vector3(0, -1, 0), AT_ORIGIN)
         expect(fromAbove!.distance).toBeCloseTo(2 - PLAYER.height, 5)

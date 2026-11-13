@@ -232,7 +232,11 @@ for (const [color, clip] of [
     part.position.y = PLAYER.height / 2
     target.add(part)
 }
-const core = new Mesh(new CapsuleGeometry(PLAYER.radius, PLAYER.height - 2 * PLAYER.radius, 8, 24), surface(0x2f3640))
+// The body inside it (the drawn office worker is about this wide).
+const core = new Mesh(
+    new CapsuleGeometry(HIT_RADIUS * 0.85, PLAYER.height - 2 * HIT_RADIUS * 0.85, 8, 24),
+    surface(0x2f3640)
+)
 core.position.y = PLAYER.height / 2
 target.add(core)
 /** A 2 m board of 10 cm squares across the target's middle, centred on the crosshair. */

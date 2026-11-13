@@ -85,10 +85,11 @@ describe('inputs are used as they arrive, never queued', () => {
     })
 
     test('a shot says what it did: nothing on a spawn shield, then the damage once it is down', () => {
-        // Two spawns 4 m apart on the Z axis: whoever is at one can shoot the other.
+        // Two spawns 1.5 m apart on the Z axis: whoever is at one can shoot the other (close enough
+        // that the hip's cone stays on a body).
         const pair = testWorld([
-            { name: 'north', position: [0, 0, -2], yaw: Math.PI },
-            { name: 'south', position: [0, 0, 2], yaw: 0 },
+            { name: 'north', position: [0, 0, -0.75], yaw: Math.PI },
+            { name: 'south', position: [0, 0, 0.75], yaw: 0 },
         ])
         const a = new Arena(pair, createRng(1))
         a.add('a')

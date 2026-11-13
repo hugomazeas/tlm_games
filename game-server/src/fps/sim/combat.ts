@@ -196,8 +196,8 @@ export function powersOf(buffs: readonly BuffKind[]): Powers {
     }
 }
 
-/** Hits on the capsule's top part (from here up, as a share of its height) are headshots. */
-export const HEAD_FROM = 0.72
+/** Hits on the capsule's top part (from here up, as a share of its height) are headshots: the chin up. */
+export const HEAD_FROM = 0.85
 
 /** Where a player's eyes are, from their feet (higher on a Promotion, lower as an Intern, low prone). */
 export function eyeOf(feet: {
@@ -311,11 +311,12 @@ export function fireShot(
 }
 
 /**
- * Shots take a player as this much wider than they collide (as tall): a 24 cm mini on the move is
- * a small target, and a slightly generous hitbox doesn't show.
+ * Shots take a player as the body that's drawn (client/figure.ts), not the 24 cm capsule they
+ * collide with: their torso with the arms at their sides, 14 cm across, their full height; lying
+ * prone, 8 cm thick. A round that visibly passes beside them misses.
  */
-export const HITBOX_SCALE = 1.25
-export const HIT_RADIUS = PLAYER.radius * HITBOX_SCALE
+export const HIT = { radius: 0.07, proneRadius: 0.04 } as const
+export const HIT_RADIUS = HIT.radius
 
 /**
  * Where a ray meets a player's hit capsule (`HIT_RADIUS` wide, their height, both times their
@@ -330,7 +331,7 @@ export function rayCapsule(
 ): { distance: number; along: number } | null {
     const scale = feet.scale ?? 1
     const size = sizeAt(scale, feet.prone)
-    const r = size.radius * HITBOX_SCALE
+    const r = (feet.prone ? HIT.proneRadius : HIT.radius) * scale
     let a: Vector3
     let axis: Vector3
     let axisLength: number
