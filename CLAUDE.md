@@ -335,6 +335,13 @@ Playable at `/games/office-fps`.
   where the gloved hands go (`HandPoses`, keyframed with `keyed` on the reload's 0–1 progress; the
   sleeves run from fixed elbows); static parts are merged per material. Spent cases fly from
   `eject`; reloads swing the gun up and round (`reloadPose`) so the hands' work shows.
+- **Finishes** (`client/finish.ts`, `applyFinish`): what the guns, gloves and troopers are made
+  of, made in the shader from each part's own coordinates (no textures): brushed `metal`,
+  `parkerized` mottle, stippled `polymer` and `rubber`, `cloth`, chipped `paint`, smudged
+  `polished`; worn edges come from each face's UVs (round parts' UVs are flattened in `placed`,
+  so a barrel's seam doesn't show as wear), and detail finer than a pixel fades out. A kit's
+  materials get theirs in `kitFor` (`FINISHES`). The troopers' visors reflect the office glass's
+  map (`AvatarsOptions.reflections`).
 - **Others' troopers** (`client/avatars.ts`): they hold the same gun models (`buildGuns`, at
   `GUN_SCALE`), animated by the same `animate`, the arms stretched to where it puts the hands, so a
   reload plays as in yours: `PlayerState.reload` (0–1) and `aiming` come from the server, the reload

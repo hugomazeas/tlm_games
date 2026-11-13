@@ -16,6 +16,7 @@ import {
     PlaneGeometry,
     Quaternion,
     type Scene,
+    type Texture,
     SphereGeometry,
     TorusGeometry,
     Vector3,
@@ -25,6 +26,7 @@ import { type BuffKind, type Gun, type PlayerInfo, TEAM_COLORS, type Weapon } fr
 import { powersOf, reloadMsOf, SWITCH_MS } from '../sim/combat.ts'
 import { PLAYER, scaleOf } from '../sim/movement.ts'
 import { rocketLook } from './effects.ts'
+import { applyFinish } from './finish.ts'
 import { buildCase, buildFlash, buildGuns, type Ejection, ease, type GunModel, type Kit, kitFor } from './guns.ts'
 import { BUFF_COLORS } from './hud.ts'
 import type { Pose } from './timeline.ts'
@@ -106,7 +108,12 @@ const shape = {
 }
 const metal = new MeshStandardMaterial({ color: 0x3b4048, roughness: 0.35, metalness: 0.75 })
 const dark = new MeshStandardMaterial({ color: 0x1d2026, roughness: 0.55, metalness: 0.2 })
-const white = new MeshStandardMaterial({ color: 0xeeeeea, roughness: 0.45 })
+/** The helmet: glossy moulded plastic (smudged, finish.ts). */
+const white = new MeshStandardMaterial({ color: 0xe6e6e2, roughness: 0.3 })
+// What they're made of up close (finish.ts): the troopers are modelled at their size (×1).
+applyFinish(metal, 'metal')
+applyFinish(dark, 'rubber')
+applyFinish(white, 'polished')
 const visorMaterial = new MeshStandardMaterial({
     color: 0x0d1a26,
     roughness: 0.05,
@@ -231,6 +238,8 @@ export interface AvatarsOptions {
     groundBelow?: (x: number, y: number, z: number) => number | null
     /** Called with each new trooper (to light it like the office). */
     dress?: (root: Object3D) => void
+    /** What their visors reflect (the scene has no environment: only the visors pay for it). */
+    reflections?: Texture | null
 }
 
 /** The contact shadow: its width at their feet (m), how dark, and how high above the ground it's gone. */
@@ -272,6 +281,10 @@ export class Avatars {
         private readonly onReload?: (id: string, gun: Gun, msLeft: number) => void,
         private readonly options: AvatarsOptions = {}
     ) {
+        if (options.reflections) {
+            visorMaterial.envMap = options.reflections
+            visorMaterial.needsUpdate = true
+        }
         this.avatarFor(STAND_IN, '', '#cccccc').root.visible = false
     }
 
@@ -665,8 +678,10 @@ export class Avatars {
         if (existing && existing.name === name && existing.color === color) return existing
         if (existing) this.remove(id, existing)
 
-        const suit = new MeshStandardMaterial({ color: new Color(color), roughness: 0.5, metalness: 0.05 })
-        const trim = new MeshStandardMaterial({ color: new Color(color).multiplyScalar(0.55), roughness: 0.6 })
+        const suit = new MeshStandardMaterial({ color: new Color(color), roughness: 0.7, metalness: 0 })
+        const trim = new MeshStandardMaterial({ color: new Color(color).multiplyScalar(0.55), roughness: 0.75 })
+        applyFinish(suit, 'cloth')
+        applyFinish(trim, 'cloth')
         const glow = new MeshBasicMaterial({ color: new Color(color).lerp(new Color(0xffffff), 0.35) })
         type Look = MeshStandardMaterial | MeshBasicMaterial
         const part = (geometry: (typeof shape)[keyof typeof shape], material: Look, x = 0, y = 0, z = 0) => {

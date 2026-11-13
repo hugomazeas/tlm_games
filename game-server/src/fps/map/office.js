@@ -126,7 +126,7 @@ export function createOfficeMaterials(renderer) {
   // Carpet tiles, 50 cm, quarter-turned stripes like the scan's office carpet: 2 m a repeat, each of
   // its 16 tiles its own dye lot and pile direction, a broad wear (paths darker, corners fresher).
   const carpetT = (() => {
-    const n1 = noise(1, 256), n2 = noise(2, 32), wear = noise(4, 3), tone = rng(3);
+    const n1 = noise(1, 256), n2 = noise(2, 32), wear = noise(4, 3), pile = noise(5, 512), tone = rng(3);
     const tones = Array.from({ length: 16 }, () => (tone() - .5) * 14);
     return paint(1024, 2, (u, v, o) => {
       const tx = Math.floor(u * 4), ty = Math.floor(v * 4), lu = (u * 4) % 1, lv = (v * 4) % 1;
@@ -135,10 +135,12 @@ export function createOfficeMaterials(renderer) {
       const fine = n1(u, v);
       const seam = (lu < .008 || lv < .008) ? -18 : 0;
       const worn = (wear(u, v) - .5) * 12;
-      const base = 58 + tones[tx + ty * 4] + stripe * 9 + fine * 14 + seam + worn;
+      // The stripe faint (strong, it shimmered at a distance), the loop pile doing the work.
+      const loops = pile(u, v);
+      const base = 58 + tones[tx + ty * 4] + stripe * 4 + fine * 10 + loops * 8 + seam + worn;
       o[0] = clamp255(base + 4); o[1] = clamp255(base + 2); o[2] = clamp255(base + 2);
-      o[3] = stripe * .5 + fine * .4 + (seam ? -.4 : 0);
-    }, 3);
+      o[3] = stripe * .15 + loops * .45 + fine * .2 + (seam ? -.4 : 0);
+    }, 2);
   })();
   // Wear on painted and laminate tops: a faint mottle in the colour, and smudges where hands rest
   // (the gloss comes and goes) in the roughness. Stretched over each face (desks have no world UVs).
@@ -210,6 +212,41 @@ export function createOfficeMaterials(renderer) {
       const k = 236 + (n(u, v) - .5) * 6 + (m(u, v) - .5) * 8;
       o[0] = clamp255(k); o[1] = clamp255(k - 1); o[2] = clamp255(k - 4); o[3] = n(u, v) * .25;
     }, 1);
+  })();
+  // Door veneer: one sheet, the grain running up it in long waves (a door's UVs cover its face once).
+  const veneerT = (() => {
+    const w = noise(15, 8), g = noise(16, 64), fleck = noise(17, 256);
+    return paint(512, 1, (u, v, o) => {
+      const flow = u * 26 + w(u, v * .25) * 3 + g(u, v) * .4;
+      const grain = Math.sin(flow * Math.PI * 2) * .5 + .5;
+      const k = 172 + grain * 22 - fleck(u, v) * 10 + (w(u * 2, v) - .5) * 14;
+      o[0] = clamp255(k); o[1] = clamp255(k * .74); o[2] = clamp255(k * .5); o[3] = grain * .4;
+    }, 1.5, (u, v) => .5 + g(u, v) * .15);
+  })();
+  // The foot of a wall (pieces standing on the floor), 2 m x 3 m from the floor up: the plaster's
+  // mottle, grime fading up from the floor, soft shoe scuffs.
+  const wallBaseT = (() => {
+    const t = canvasTexture(256, 384, (g, w, h) => {
+      const r = rng(47), n = noise(43, 32);
+      const img = g.createImageData(w, h);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const k = 236 + (n(x / w, (y % 256) / 256) - .5) * 8, i = (y * w + x) * 4;
+        img.data[i] = k; img.data[i + 1] = k - 1; img.data[i + 2] = k - 4; img.data[i + 3] = 255;
+      }
+      g.putImageData(img, 0, 0);
+      const grime = g.createLinearGradient(0, h - 34, 0, h);
+      grime.addColorStop(0, 'rgba(90,80,70,0)'); grime.addColorStop(1, 'rgba(90,80,70,.14)');
+      g.fillStyle = grime; g.fillRect(0, h - 34, w, 34);
+      // Shoe scuffs: soft, short, low (sharp lines read as dashes drawn on the wall).
+      g.filter = 'blur(1.5px)';
+      for (let i = 0; i < 12; i++) {
+        g.fillStyle = `rgba(45,40,36,${.05 + r() * .09})`;
+        g.beginPath(); g.ellipse(r() * w, h - 4 - r() * 14, 3 + r() * 7, 1 + r() * 1.5, (r() - .5) * .4, 0, Math.PI * 2); g.fill();
+      }
+      g.filter = 'none';
+    });
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1 / 2, 1 / 3);
+    return t;
   })();
   // Woven fabric detail (tinted by material colour), 0.15 m.
   // Upholstery: a soft mottle, no weave (a weave fine enough to be fabric only shimmered), 0.5 m.
@@ -314,6 +351,7 @@ export function createOfficeMaterials(renderer) {
   const M = {
     // Painted walls reflect ~70% (a pure white would clip under the lights).
     wall: std({ color: 0xd3cfc8, ...plasterT, roughness: .92, normalScale: new THREE.Vector2(.3, .3) }),
+    wallBase: std({ color: 0xd3cfc8, map: wallBaseT, normalMap: plasterT.normalMap, roughness: .92, normalScale: new THREE.Vector2(.3, .3) }),
     baseboard: std({ color: 0x2b2d31, roughness: .55 }),
     frame: std({ color: 0x24272c, metalness: .75, roughness: .32 }),
     glass: new THREE.MeshPhysicalMaterial({ color: 0xdff1f8, metalness: 0, roughness: .03, transparent: true, opacity: .14, depthWrite: false, side: THREE.DoubleSide }),
@@ -351,7 +389,7 @@ export function createOfficeMaterials(renderer) {
     concrete: std({ ...concreteT, roughness: .92 }),
     grass: std({ ...grassT, roughness: 1 }),
     bark: std({ color: 0x4b3a2c, roughness: 1 }),
-    door: std({ map: woodT.map, color: 0xd8c3a5, roughness: .55 }),
+    door: std({ map: veneerT.map, roughnessMap: veneerT.roughnessMap, normalMap: veneerT.normalMap, normalScale: new THREE.Vector2(.25, .25), roughness: 1 }),
     blind: std({ color: 0xd8dadb, roughness: .7, side: THREE.DoubleSide }),
     heater: std({ color: 0xf0efeb, roughness: .5 }),
     bamboo: std({ color: 0xd8bf96, roughness: .42 }),
@@ -577,7 +615,8 @@ export function buildOfficeGeometry(opts = {}) {
     const piece = (s, e, y0, y1, base = false) => {
       if (e - s < .005 || y1 - y0 < .005) return;
       const w = e - s, h = y1 - y0;
-      const pm = mesh(worldUV(new THREE.BoxGeometry(w, h, t), w, h, t), mat, g); pm.position.set((s + e) / 2, (y0 + y1) / 2, 0);
+      // On the floor, plain walls wear at the foot (wallBase).
+      const pm = mesh(worldUV(new THREE.BoxGeometry(w, h, t), w, h, t), base && y0 < .01 && mat === M.wall ? M.wallBase : mat, g); pm.position.set((s + e) / 2, (y0 + y1) / 2, 0);
       if (base) { const bb = mesh(new THREE.BoxGeometry(w, .09, t + .025), M.baseboard, g); bb.position.set((s + e) / 2, .045, 0); }
       col(s, e, y0, y1, 'wall');
     };
@@ -1241,13 +1280,35 @@ export function buildOfficeGeometry(opts = {}) {
     }
 
     // Neighbourhood across the streets: red-brick apartment blocks with balconies, beige low-rises and
-    // glass office buildings with green awnings. One texture tile = 3 m bay x 3 m floor.
-    const facade = (draw) => tiled(canvasTexture(128, 128, (c, w, h) => { c.scale(.5, .5); draw(c, 256, 256); }), 1 / 3);
-    function window_(c, x, y, w, h) {
-      c.fillStyle = '#f2efe8'; c.fillRect(x - 7, y - 7, w + 14, h + 14);
-      const g = c.createLinearGradient(x, y, x + w, y + h); g.addColorStop(0, '#9fb4c2'); g.addColorStop(.5, '#4b6170'); g.addColorStop(1, '#2a3640');
+    // glass office buildings with green awnings. One texture tile = 2 bays x 2 floors (6 m x 6 m), each
+    // 256 px bay its own window (blinds, curtains, a lit room), so the street doesn't read as wallpaper.
+    // Drawn with its own random numbers (never R(): the geometry's must not shift).
+    const facade = (wall, bay) => tiled(canvasTexture(512, 512, (c, w, h) => {
+      wall(c, w, h);
+      for (let by = 0; by < 2; by++) for (let bx = 0; bx < 2; bx++) {
+        c.save(); c.translate(bx * 256, by * 256); bay(c, rng(bx * 7 + by * 13 + 3)); c.restore();
+      }
+    }), 1 / 6);
+    function window_(c, x, y, w, h, r) {
+      // The opening's reveal: a frame, the inner edge shadowed.
+      c.fillStyle = '#ebe7df'; c.fillRect(x - 8, y - 8, w + 16, h + 16);
+      c.fillStyle = 'rgba(0,0,0,.28)'; c.fillRect(x - 2, y - 2, w + 4, 6); c.fillRect(x - 2, y - 2, 6, h + 4);
+      // The room behind: dark, sometimes a lit ceiling, a wall, curtains.
+      const lit = r() < .35;
+      c.fillStyle = lit ? '#5d5446' : '#262b30'; c.fillRect(x, y, w, h);
+      if (lit) { c.fillStyle = 'rgba(255,236,190,.55)'; c.fillRect(x + w * .2, y + 6, w * .6, 8); c.fillStyle = 'rgba(255,230,180,.18)'; c.fillRect(x, y, w, h * .6); }
+      if (r() < .4) { const k = r() < .5 ? '#a6463c' : '#cfc3a6'; c.fillStyle = k; c.fillRect(x, y, w * .18, h); c.fillRect(x + w * .82, y, w * .18, h); }
+      // Blinds down to somewhere.
+      const blinds = r() < .55 ? h * (.15 + r() * .7) : 0;
+      for (let s = 0; s < blinds; s += 5) { c.fillStyle = s % 10 ? '#d9d4c8' : '#bdb7aa'; c.fillRect(x, y + s, w, 4); }
+      // The sky in the glass, brighter up top.
+      const g = c.createLinearGradient(x, y, x, y + h); g.addColorStop(0, 'rgba(200,220,235,.55)'); g.addColorStop(.6, 'rgba(150,175,195,.18)'); g.addColorStop(1, 'rgba(120,140,160,.08)');
       c.fillStyle = g; c.fillRect(x, y, w, h);
-      c.fillStyle = '#f2efe8'; c.fillRect(x + w / 2 - 3, y, 6, h); c.fillRect(x, y + h * .35, w, 5);
+      c.fillStyle = 'rgba(255,255,255,.12)'; c.beginPath(); c.moveTo(x + w * .55, y); c.lineTo(x + w * .8, y); c.lineTo(x + w * .35, y + h); c.lineTo(x + w * .1, y + h); c.fill();
+      // Mullion, transom, the sill and its drip shadow.
+      c.fillStyle = '#ebe7df'; c.fillRect(x + w / 2 - 3, y, 6, h); c.fillRect(x, y + h * .35, w, 5);
+      c.fillStyle = '#d8d3ca'; c.fillRect(x - 12, y + h + 8, w + 24, 8);
+      c.fillStyle = 'rgba(0,0,0,.18)'; c.fillRect(x - 12, y + h + 16, w + 24, 5);
     }
     const brick = (base) => (c, w, h) => {
       const r = rng(base.length);
@@ -1255,16 +1316,21 @@ export function buildOfficeGeometry(opts = {}) {
       for (let y = 0; y < h; y += 8) for (let x = -(y / 8 % 2) * 12; x < w; x += 24) {
         const k = (r() - .5) * 30; c.fillStyle = `rgb(${base[0] + k},${base[1] + k * .6},${base[2] + k * .5})`; c.fillRect(x + 1, y + 1, 22, 6);
       }
-      window_(c, 52, 48, 152, 150);
+      // Weathering: darker under each sill, a lighter band at the floor slabs.
+      for (let by = 0; by < 2; by++) { c.fillStyle = 'rgba(40,30,25,.12)'; c.fillRect(0, by * 256 + 220, w, 36); }
     };
+    const beigeWall = (c, w, h) => { c.fillStyle = '#d9ccb4'; c.fillRect(0, 0, w, h); const r = rng(5); for (let i = 0; i < 3600; i++) { c.fillStyle = `rgba(90,70,40,${r() * .06})`; c.fillRect(r() * w, r() * h, 3, 3); } };
     const STYLES = {
-      brick: { mat: std({ map: facade(brick([128, 62, 44])), roughness: .9 }), balconies: true },
-      brick2: { mat: std({ map: facade(brick([150, 82, 58])), roughness: .9 }), balconies: true },
-      beige: { mat: std({ map: facade((c, w, h) => { c.fillStyle = '#d9ccb4'; c.fillRect(0, 0, w, h); const r = rng(5); for (let i = 0; i < 900; i++) { c.fillStyle = `rgba(90,70,40,${r() * .06})`; c.fillRect(r() * w, r() * h, 3, 3); } window_(c, 40, 60, 176, 130); }), roughness: .95 }) },
-      office: { mat: std({ map: facade((c, w, h) => {
-        const g = c.createLinearGradient(0, 0, w, h); g.addColorStop(0, '#8fa3ae'); g.addColorStop(1, '#3b4a53');
-        c.fillStyle = g; c.fillRect(0, 0, w, h); c.fillStyle = '#5f676c'; c.fillRect(0, 0, w, 56);
-        c.fillStyle = '#2b3034'; for (let x = 0; x < w; x += 64) c.fillRect(x, 0, 6, h);
+      brick: { mat: std({ map: facade(brick([128, 62, 44]), (c, r) => window_(c, 52, 48, 152, 150, r)), roughness: .9 }), balconies: true },
+      brick2: { mat: std({ map: facade(brick([150, 82, 58]), (c, r) => window_(c, 52, 48, 152, 150, r)), roughness: .9 }), balconies: true },
+      beige: { mat: std({ map: facade(beigeWall, (c, r) => window_(c, 40, 60, 176, 130, r)), roughness: .95 }) },
+      office: { mat: std({ map: facade((c, w, h) => { c.fillStyle = '#3b4a53'; c.fillRect(0, 0, w, h); }, (c, r) => {
+        // Curtain wall: sky in the glass, a room behind some panes, the floor's spandrel, mullions.
+        const g = c.createLinearGradient(0, 56, 0, 256); g.addColorStop(0, '#9db1bc'); g.addColorStop(1, '#3f4f58');
+        c.fillStyle = g; c.fillRect(0, 56, 256, 200);
+        for (let x = 0; x < 256; x += 64) if (r() < .4) { c.fillStyle = r() < .5 ? 'rgba(255,240,205,.25)' : 'rgba(20,25,30,.35)'; c.fillRect(x, 56, 64, 200); }
+        c.fillStyle = '#5f676c'; c.fillRect(0, 0, 256, 56); c.fillStyle = 'rgba(0,0,0,.25)'; c.fillRect(0, 52, 256, 4);
+        c.fillStyle = '#2b3034'; for (let x = 0; x < 256; x += 64) c.fillRect(x, 0, 6, 256);
       }), roughness: .35, metalness: .3 }), awnings: true },
     };
     const roofMat = std({ color: 0x55585c, roughness: .9 }), railMat = std({ color: 0x2c2f33, roughness: .5, metalness: .5 });

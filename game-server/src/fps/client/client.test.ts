@@ -14,6 +14,8 @@ import { announce, streakCallout, taunt } from './callouts.ts'
 import type { GameEvent } from '../protocol.ts'
 import { Mesh, type MeshBasicMaterial, PerspectiveCamera, Scene } from 'three'
 import { Avatars, fallAngle, hitRock, reloadStart } from './avatars.ts'
+import { finishOf } from './finish.ts'
+import { kitFor } from './guns.ts'
 import { Vector3 } from 'three'
 import { aimDirection, fireShot, reloadMsOf } from '../sim/combat.ts'
 import { BLOOD, bloodCells, deathRecap } from './hud.ts'
@@ -622,6 +624,24 @@ describe('drawing the others', () => {
             // The stapler has no muzzle.
             avatars.update(posed({ weapon: 'stapler' }), roster, null, 1700)
             expect(avatars.muzzleOf('a')).toBeNull()
+        })
+
+        test('guns and troopers are made of something: metal, phosphate, polymer, cloth', () => {
+            const kit = kitFor('#e4572e')
+            expect(finishOf(kit.metal)).toBe('metal')
+            expect(finishOf(kit.dark)).toBe('parkerized')
+            expect(finishOf(kit.polymer)).toBe('polymer')
+            expect(finishOf(kit.glove)).toBe('cloth')
+            expect(finishOf(kit.dot)).toBeNull()
+
+            const world = scene()
+            new Avatars(world).update(posed({}), roster, null, 1000)
+            const finishes = new Set<string | null>()
+            world.traverse(o => {
+                if (o instanceof Mesh) for (const m of [o.material].flat()) finishes.add(finishOf(m))
+            })
+            expect(finishes).toContain('cloth')
+            expect(finishes).toContain('rubber')
         })
 
         test('their contact shadow lies on what is under them, fainter the higher they are', () => {
