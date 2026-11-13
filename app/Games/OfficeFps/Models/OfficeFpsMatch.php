@@ -20,11 +20,12 @@ class OfficeFpsMatch extends Model
     ];
 
     /** The maps (the game server's `MAPS`): everyone warms up in the office; the host picks a match's. */
-    public const MAPS = ['office'];
+    public const MAPS = ['office', 'erables'];
 
     /** How the pages name each map. */
     public const MAP_LABELS = [
         'office' => 'The office',
+        'erables' => 'Rue des Érables',
     ];
 
     protected $table = 'office_fps_matches';

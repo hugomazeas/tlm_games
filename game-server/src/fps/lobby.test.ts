@@ -18,6 +18,8 @@ import { GUNS } from './sim/combat.ts'
 import { PLAYER, STEP_MS } from './sim/movement.ts'
 import { testWorld } from './sim/testing.ts'
 import { inSpot, SIEGE_SPOTS, ZONE_MS, ZONES } from './sim/places.ts'
+import { erablesWorld } from './sim/world.ts'
+import { ERABLES_SIEGE_SPOTS, ERABLES_SPAWNS } from './map/erables.ts'
 
 /** Two spawn points 4 m apart in an open room: whoever is at one can shoot whoever is at the other. */
 const world = testWorld([
@@ -802,6 +804,58 @@ describe('building', () => {
         // Built in the lobby's game, not in the world it was given.
         expect(world.walls.count).toBe(0)
         expect(a.inbox.flatMap(m => (m.type === 'snap' ? m.events : [])).some(e => e.type === 'built')).toBe(true)
+    })
+})
+
+describe('a match on Rue des Érables', () => {
+    beforeEach(() => {
+        lobby = new FpsLobby(
+            world,
+            { now: () => now, random: createRng(1), onResults: r => results.push(r) },
+            { erables: erablesWorld() }
+        )
+    })
+
+    test('loads in every browser, plays on the street at a person’s pace (no jetpack), then back to the office', () => {
+        const [a, b] = [client('a1'), client('b2')]
+        lobby.join(a, { playerId: 1, name: 'a1' })
+        lobby.join(b, { playerId: 2, name: 'b2' })
+        lobby.start(a.id, { map: 'erables', mode: 'ffa', fragLimit: 5, minutes: 3 })
+        expect(b.last('match')!.match).toMatchObject({ phase: 'loading', loading: { ready: 0, of: 2 } })
+        lobby.ready(a.id, 'erables')
+        lobby.ready(b.id, 'erables')
+        expect(b.last('match')!.match).toMatchObject({ phase: 'countdown', map: 'erables' })
+
+        // Everyone on one of the street's spawn points.
+        const spawns = ERABLES_SPAWNS.map(s => `${s.position[0].toFixed(3)},${s.position[2].toFixed(3)}`)
+        play(STEP_MS * 2)
+        for (const id of ['a1', 'b2']) {
+            const p = where(a, id)
+            expect(spawns).toContain(`${p.x.toFixed(3)},${p.z.toFixed(3)}`)
+        }
+
+        // Space held: a jump, never the jetpack.
+        play(1000, () => [[a, { forward: 0, strafe: 0, yaw: 0, pitch: 0, buttons: BUTTON.jet, view: 0 }]])
+        expect(a.last('snap')!.you!.body.fuel).toBe(1)
+
+        play(COUNTDOWN_MS + 3 * 60_000 + INTERMISSION_MS + 1000)
+        expect(results[0]!.rules.map).toBe('erables')
+        expect(a.last('match')!.match).toMatchObject({ phase: 'warmup', map: 'office' })
+    })
+
+    test("Siege plays one of the street's own spots: its dome at the road works, the defenders round the spot", () => {
+        const [a, b] = [client('a1'), client('b2')]
+        for (const c of [a, b]) lobby.join(c, { playerId: Number(c.id.slice(1)), name: c.id })
+        lobby.start(a.id, { map: 'erables', mode: 'siege', fragLimit: 5, minutes: 5 })
+        for (const c of [a, b]) lobby.ready(c.id, 'erables')
+        play(COUNTDOWN_MS + 200)
+        const siege = a.last('match')!.match.siege!
+        expect(siege.dome).toMatchObject(ERABLES_SIEGE_SPOTS[siege.spot]!.dome)
+        // The defenders come back round the spot, on its floor.
+        const spot = ERABLES_SIEGE_SPOTS[siege.spot]!
+        const defender = a.last('snap')!.players.find(p => p.team !== siege.attackers)!
+        expect(Math.abs(defender.x - spot.x)).toBeLessThanOrEqual(spot.half)
+        expect(Math.abs(defender.z - spot.z)).toBeLessThanOrEqual(spot.half)
     })
 })
 

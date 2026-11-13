@@ -81,9 +81,9 @@ export const MODE_NAMES: Record<Mode, string> = {
 
 /**
  * The maps. Everyone warms up in the office (`LOBBY_MAP`); the host picks the map a match is
- * played on, and the modes it allows (Siege's spots and the meeting rooms are the office's).
+ * played on, and the modes it allows (each map has its own zones and Siege spots).
  */
-export const MAPS = ['office'] as const
+export const MAPS = ['office', 'erables'] as const
 export type MapId = (typeof MAPS)[number]
 export const LOBBY_MAP: MapId = 'office'
 export interface MapInfo {
@@ -99,6 +99,12 @@ export const MAP_INFO: Record<MapId, MapInfo> = {
         name: 'The office',
         blurb: 'The 3rd floor: desks, glass, the kitchen and the meeting rooms.',
         players: '2–12',
+        modes: ['ffa', 'tdm', 'koth', 'siege'],
+    },
+    erables: {
+        name: 'Rue des Érables',
+        blurb: 'A Québec street in October, at full size: two houses, the yards behind, the road closed at both ends.',
+        players: '4–12',
         modes: ['ffa', 'tdm', 'koth', 'siege'],
     },
 }

@@ -7,6 +7,7 @@ import {
     DoubleSide,
     Group,
     Mesh,
+    type Object3D,
     MeshBasicMaterial,
     MeshStandardMaterial,
     RingGeometry,
@@ -22,6 +23,7 @@ import {
     type Pad,
     PICKUP_SPOTS,
     type PickupKind,
+    type PickupSpot,
     PICKUPS,
     type Portal,
     PORTAL,
@@ -64,18 +66,24 @@ interface SpotView {
     items: Map<PickupKind, Group>
     showing: PickupKind | null | undefined
     x: number
+    y: number
     z: number
 }
 
 export class PickupViews {
     private readonly spots: SpotView[] = []
 
-    constructor(private readonly scene: Scene) {
-        for (const spot of PICKUP_SPOTS) {
+    /** A map's pickup spots (the office's by default), drawn into `scene` (a map's group). */
+    constructor(
+        private readonly scene: Object3D,
+        spots: readonly PickupSpot[] = PICKUP_SPOTS
+    ) {
+        for (const spot of spots) {
+            const floor = spot.y ?? 0
             const padMaterial = new MeshBasicMaterial({ transparent: true, opacity: 0.8, side: DoubleSide })
             const pad = new Mesh(new RingGeometry(0.16, 0.24, 32), padMaterial)
             pad.rotation.x = -Math.PI / 2
-            pad.position.set(spot.x, 0.006, spot.z)
+            pad.position.set(spot.x, floor + 0.006, spot.z)
             const glow = new Mesh(
                 new CylinderGeometry(0.22, 0.22, 0.5, 24, 1, true),
                 new MeshBasicMaterial({
@@ -86,9 +94,17 @@ export class PickupViews {
                     side: DoubleSide,
                 })
             )
-            glow.position.set(spot.x, 0.25, spot.z)
+            glow.position.set(spot.x, floor + 0.25, spot.z)
             scene.add(pad, glow)
-            this.spots.push({ pad: padMaterial, glow, items: new Map(), showing: undefined, x: spot.x, z: spot.z })
+            this.spots.push({
+                pad: padMaterial,
+                glow,
+                items: new Map(),
+                showing: undefined,
+                x: spot.x,
+                y: floor,
+                z: spot.z,
+            })
         }
         // One of each kind, hidden for good: their shaders compile at load (the spots' own models
         // come when first rolled).
@@ -106,7 +122,7 @@ export class PickupViews {
             const item = kind ? spot.items.get(kind) : undefined
             if (!item) return
             item.rotation.y = now * 0.0015 + i
-            item.position.y = 0.22 + Math.sin(now * 0.003 + i) * 0.03
+            item.position.y = spot.y + 0.22 + Math.sin(now * 0.003 + i) * 0.03
         })
     }
 
@@ -120,7 +136,7 @@ export class PickupViews {
         for (const [k, item] of spot.items) item.visible = k === kind
         if (kind && !spot.items.has(kind)) {
             const item = model(kind)
-            item.position.set(spot.x, 0.22, spot.z)
+            item.position.set(spot.x, spot.y + 0.22, spot.z)
             this.scene.add(item)
             spot.items.set(kind, item)
         }
@@ -238,7 +254,7 @@ function model(kind: PickupKind): Group {
 export class PadViews {
     private readonly rings: Array<{ ring: Mesh; material: MeshBasicMaterial }> = []
 
-    constructor(scene: Scene, pads: readonly Pad[]) {
+    constructor(scene: Object3D, pads: readonly Pad[]) {
         for (const pad of pads) {
             const base = new Mesh(
                 new CylinderGeometry(PAD.radius + 0.04, PAD.radius + 0.06, 0.02, 32),
@@ -293,7 +309,7 @@ export class PadViews {
 export class PortalViews {
     private readonly swirls: Mesh[] = []
 
-    constructor(scene: Scene, portals: readonly Portal[]) {
+    constructor(scene: Object3D, portals: readonly Portal[]) {
         const PAIR_COLORS = [0xff9a3c, 0x3ca8ff]
         for (const [i, portal] of portals.entries()) {
             const color = PAIR_COLORS[Math.floor(i / 2) % PAIR_COLORS.length]!
@@ -346,8 +362,11 @@ export class ZoneView {
         ringMaterial: MeshBasicMaterial
     }>
 
-    /** Round zones (king of the meeting room), or squares squared to the office (siege's spots: `half` a side). */
-    constructor(scene: Scene, zones: readonly (Zone | SiegeSpot)[] = ZONES) {
+    /**
+     * Round zones (king of the meeting room), or squares squared to the office (siege's spots: `half`
+     * a side, on their floor); a zone's column `height` tall (the office's ceiling by default).
+     */
+    constructor(scene: Object3D, zones: readonly (Zone | SiegeSpot)[] = ZONES, zoneHeight = H) {
         this.columns = zones.map(place => {
             // A square is a four-sided cylinder through its corners, turned an eighth.
             const square = 'half' in place
@@ -363,12 +382,13 @@ export class ZoneView {
                 side: DoubleSide,
             })
             // A square (siege's spot) goes two walls up; a zone to the ceiling.
-            const height = square ? SPOT_HEIGHT : H
+            const height = square ? SPOT_HEIGHT : zoneHeight
+            const floor = 'y' in place ? (place.y ?? 0) : 0
             const column = new Mesh(
                 new CylinderGeometry(zone.radius, zone.radius, height, sides, 1, true),
                 columnMaterial
             )
-            column.position.set(zone.x, height / 2, zone.z)
+            column.position.set(zone.x, floor + height / 2, zone.z)
             column.rotation.y = turn
             const ringMaterial = new MeshBasicMaterial({
                 color: 0xffffff,
@@ -379,7 +399,7 @@ export class ZoneView {
             const width = square ? 0.05 * Math.SQRT2 : 0.05
             const outline = new RingGeometry(zone.radius - width, zone.radius, square ? 4 : 64, 1, turn)
             const ring = new Group()
-            for (const y of square ? [0.008, height] : [0.008]) {
+            for (const y of square ? [floor + 0.008, floor + height] : [floor + 0.008]) {
                 const edge = new Mesh(outline, ringMaterial)
                 edge.rotation.x = -Math.PI / 2
                 edge.position.set(zone.x, y, zone.z)

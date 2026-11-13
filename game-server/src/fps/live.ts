@@ -1,7 +1,7 @@
 import type { LaravelClient } from '../laravel.ts'
 import { type Connection, FpsLobby, type Joiner, type MatchResult } from './lobby.ts'
 import type { ErrorCode, Loadout } from './protocol.ts'
-import { officeWorld } from './sim/world.ts'
+import { erablesWorld, officeWorld } from './sim/world.ts'
 
 /**
  * The office FPS as the game server runs it: the one FpsLobby, fed by the WebSocket at
@@ -15,8 +15,12 @@ export interface FpsLive {
 }
 
 export function createFpsLive(laravel: LaravelClient, onResults: (result: MatchResult) => void): FpsLive {
-    // About a second: the office's exact collision, shared by every match.
-    const lobby = new FpsLobby(officeWorld(), { now: () => Date.now(), random: Math.random, onResults })
+    // About a second each: the office's and Rue des Érables' exact collision, shared by every match.
+    const lobby = new FpsLobby(
+        officeWorld(),
+        { now: () => Date.now(), random: Math.random, onResults },
+        { erables: erablesWorld() }
+    )
     let guests = 0
     const refuse = (conn: Connection, code: ErrorCode) => conn.send({ type: 'error', code })
 

@@ -29,7 +29,8 @@ import {
     ZONE_SECONDS_PER_POINT,
 } from '../protocol.ts'
 import { magazineOf, MAX_HEALTH, maxHealthOf, powersOf } from '../sim/combat.ts'
-import { SIEGE_SPOTS, siegeWinner } from '../sim/places.ts'
+import { siegeWinner } from '../sim/places.ts'
+import { placesOf } from '../sim/world.ts'
 import { DEFAULT_SETTINGS, LIMITS, type Settings } from './settings.ts'
 
 /**
@@ -203,6 +204,8 @@ export class Hud {
     private lastHealth = MAX_HEALTH
     private lastFull = MAX_HEALTH
     private boardForced = false
+    /** The map you're on has a jetpack (its fuel gauge shows). */
+    jetpack = true
 
     private cardState = 'connecting'
     private host: { isHost: boolean; name: string | null; seated: number } = { isHost: false, name: null, seated: 0 }
@@ -550,7 +553,8 @@ export class Hud {
     /** Your state from the latest snapshot (null: watching). */
     setSelf(self: SelfState | null): void {
         const hide = self === null
-        for (const name of ['health', 'ammo', 'fuelBar', 'cross']) this.el[name]!.classList.toggle('hidden', hide)
+        for (const name of ['health', 'ammo', 'cross']) this.el[name]!.classList.toggle('hidden', hide)
+        this.el.fuelBar!.classList.toggle('hidden', hide || !this.jetpack)
         this.lowHealth(self && self.alive ? self.health : null)
         if (!self) return
         // Out of the usual (a Promotion, Overtime, an Intern): what full is now. The firewall: on top, in its colour.
@@ -869,7 +873,7 @@ export class Hud {
             const mine = match.scores.find(s => s.id === me)?.team
             const side = (team: Team) =>
                 `<b style="color:${TEAM_COLORS[team]}${mine === team ? ';text-decoration:underline' : ''}">${team.toUpperCase()} ${siege.points[team]}</b>`
-            const spot = SIEGE_SPOTS[siege.spot]!.name
+            const spot = placesOf(match.map).siegeSpots[siege.spot]?.name ?? 'spot'
             return `${side('red')} – ${side('blue')} · half ${siege.half} · ${siege.attackers} attack the ${escape(spot)} · first to ${match.fragLimit}`
         }
         if (match.mode === 'tdm' && match.teams) {
@@ -975,6 +979,9 @@ type CardState = 'connecting' | 'paused' | 'playing' | 'setup' | 'replaced' | 'u
 /** Each map's picture on its card (CSS, no image to load). */
 const MAP_ART: Record<MapId, string> = {
     office: 'linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,.35)), repeating-linear-gradient(90deg, #c9a26b 0 34px, #b48c57 34px 36px), linear-gradient(#9fc4d8, #9fc4d8)',
+    // An October sky, a maple's reds over a lawn, the street.
+    erables:
+        'radial-gradient(circle at 28% 42%, #c8452a 0 18%, rgba(0,0,0,0) 19%), radial-gradient(circle at 74% 38%, #e08a2c 0 15%, rgba(0,0,0,0) 16%), linear-gradient(180deg, #9cc3e0 0 48%, #6f8f4a 48% 70%, #4a4d52 70% 100%)',
 }
 
 /** What the limit counts in a mode: kills, team kills, seconds in the zone, points a half. */
@@ -1029,6 +1036,8 @@ export interface DeathCause {
     headshot: boolean
     backstab: boolean
     recap?: KillRecap
+    /** Real metres per metre of the map it happened on (Rue des Érables is built for people, shrunk). */
+    unit?: number
 }
 
 /**
@@ -1041,7 +1050,7 @@ export function deathRecap(cause: DeathCause): string {
         WEAPON_NAMES[cause.weapon],
         ...(cause.headshot ? ['<b class="hs">headshot</b>'] : []),
         ...(cause.backstab ? ['<b class="hs">from behind</b>'] : []),
-        ...(r ? [`${r.distance.toFixed(1)} m away`] : []),
+        ...(r ? [`${(r.distance * (cause.unit ?? 1)).toFixed(1)} m away`] : []),
     ].join(' · ')
     if (!r) return `<div class="recap"><div class="recap-head">${head}</div></div>`
 

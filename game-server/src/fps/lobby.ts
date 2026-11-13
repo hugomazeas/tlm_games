@@ -31,17 +31,7 @@ import {
 } from './protocol.ts'
 import { Arena, type ArenaEvent } from './sim/arena.ts'
 import { STEP_MS } from './sim/movement.ts'
-import {
-    domeSpawns,
-    inSpot,
-    inZone,
-    SIEGE_SPOTS,
-    siegeForbidsBuild,
-    siegeWinner,
-    spotSpawns,
-    ZONE_MS,
-    ZONES,
-} from './sim/places.ts'
+import { domeSpawns, inSpot, inZone, siegeForbidsBuild, siegeWinner, spotSpawns, ZONE_MS } from './sim/places.ts'
 import { Walls } from './sim/walls.ts'
 import type { FpsWorld } from './sim/world.ts'
 
@@ -346,7 +336,8 @@ export class FpsLobby {
         const member = this.members.get(connId)
         if (!member || member.info.watching || this.phase === 'intermission') return
         const siege = this.phase === 'playing' ? this.siege : null
-        if (siege && siegeForbidsBuild(siege, this.arena.teamOf(connId), wall.x, wall.z)) return
+        const spots = this.world.siegeSpots
+        if (siege && siegeForbidsBuild(siege, this.arena.teamOf(connId), wall.x, wall.z, spots)) return
         this.arena.build(connId, wall)
     }
 
@@ -544,12 +535,12 @@ export class FpsLobby {
             this.arena.setTeam(member.conn.id, isTeamMode(this.rules.mode) ? TEAMS[i % 2]! : null)
         })
         for (const member of this.seatedMembers()) this.tallies.set(member.key, this.newTally(member))
-        this.zoneOrder = this.shuffled(ZONES.map((_, i) => i))
+        this.zoneOrder = this.shuffled(this.world.zones.map((_, i) => i))
         this.zone = null
         this.matchStartedAt = this.hooks.now()
         if (this.rules.mode === 'siege') {
             this.siege = {
-                spot: Math.floor(this.hooks.random() * SIEGE_SPOTS.length),
+                spot: Math.floor(this.hooks.random() * this.world.siegeSpots.length),
                 half: 1,
                 attackers: TEAMS[Math.floor(this.hooks.random() * TEAMS.length)]!,
                 opensAt: 0,
@@ -572,7 +563,7 @@ export class FpsLobby {
      */
     private beginHalf(): void {
         const siege = this.siege!
-        const spot = SIEGE_SPOTS[siege.spot]!
+        const spot = this.world.siegeSpots[siege.spot]!
         const now = this.hooks.now()
         siege.opensAt = now + SIEGE.headStartMs
         siege.endsAt = siege.opensAt + SIEGE.halfMs
@@ -617,7 +608,7 @@ export class FpsLobby {
     private holdSpot(): void {
         const siege = this.siege!
         if (this.world.dome) return
-        const spot = SIEGE_SPOTS[siege.spot]!
+        const spot = this.world.siegeSpots[siege.spot]!
         const inside = new Set(
             this.arena
                 .states()
@@ -677,7 +668,7 @@ export class FpsLobby {
     private holdZone(): void {
         const elapsed = this.hooks.now() - this.matchStartedAt
         const index = this.zoneOrder[Math.floor(elapsed / ZONE_MS) % this.zoneOrder.length]!
-        const zone = ZONES[index]!
+        const zone = this.world.zones[index]!
         const inside = this.arena.states().filter(s => s.alive && inZone(zone, s.x, s.z))
         const holder = inside.length === 1 ? inside[0]!.id : null
         if (holder) {

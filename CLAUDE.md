@@ -481,6 +481,40 @@ Playable at `/games/office-fps`.
   `buildOffice(scene, renderer)` adds the browser's canvas textures, sky, sun and baking on top.
   Both place everything from the same seeded random numbers: keep anything that calls `R()` in
   the geometry, never in the materials, or the server's collision drifts from what's drawn.
+- **Rue des Érables** (map `erables`, `fps/map/erables.ts` + `erables-kit.ts`, drawn by
+  `client/erables.ts`): an original Québec street in October for people at full size: a brick
+  bungalow (detached garage, Tempo over the driveway, deck, closed pool) facing a split-level (den,
+  bedrooms upstairs whose front window looks over the street, a carport whose roof is a terrace),
+  three lanes (north yards, the street, south yards), the road closed for works at both ends (the
+  spawns, Siege's domes). It is **built in real metres and shrunk as a whole** (`ERABLES_SCALE`, a
+  1.8 m person to a 40 cm mini), so nothing sized in the game changes; its `Movement` (a map's
+  walk, jump, gravity, pad throw, rocket shove, jetpack/dodge off) is scaled the same way so a
+  fall takes real time. Every map's places and movement travel in its `FpsWorld` (`MapPlaces`:
+  pickups with their floor `y`, weights (no jetpack extender here), pads (here the two
+  trampolines, onto the carport and garage roofs), portals, zones, Siege spots with their floor,
+  `move`, `unit` for metres shown); `placesOf(map)` names them by index. Collision is the drawn
+  meshes minus `noCollide` (glass, leaves, wires, small things: you see and shoot through
+  windows) plus `solidOnly` (ramps under every stair, invisible bounds and a lid). The browser
+  paints every material on canvases, merges per material with world-aligned UVs (`WORLD_UV`), adds
+  crowns of leaf cards, fallen and falling leaves, the neighbourhood, a treeline and clouds, and
+  retunes the office's own lights (`erablesLooks`: no new light, no recompile). `map/erables.test.ts`
+  walks doors, stairs and the trampoline, checks every place and keeps everyone inside.
+- **Assets** (`fps/assets/`): **every new component for the FPS (a car, a tree, a house, a
+  bench, a sign…) is an asset in the library, never drawn straight into a map.** An asset is a
+  whole parametric object (`defineAsset` in `catalog/<category>.ts`, listed in `library.ts`):
+  defaults, params, variants, a rough `size`, and versions: `current` (what the maps build) and
+  at most one `draft` (newer, shown only in the lab). Maps and other assets put one down with
+  `place(b, ASSET, params, { x, y, z, ry })` (`place.ts`: its own frame, seeded by id and spot,
+  so the server and browser build the same), so changing an asset changes it everywhere it
+  stands. Only ground surfaces, wires and invisible bounds stay as raw `Builder` calls in a map.
+  **The lab** (`bun run fps:assets`, http://localhost:8098, `FPS_ASSETS_PORT`): the list with each
+  asset's status, current and draft side by side, its params live, Approve / Request changes
+  (verdicts in `assets/reviews.json`). The workflow: a change is a new `draft`, at most three
+  rounds per asset; once the user approves it, it becomes `current` and the old version's code
+  goes. Approved means the user clicked Approve without asking for anything: a note with it is a
+  change request. `library.test.ts` builds every version and variant without a DOM, checks sizes,
+  that what you'd bump into collides (a short decorative list doesn't), and that placement is
+  deterministic.
 - **Sim** (`fps/sim/`, pure): `movement.ts` steps a body at 60 Hz (collision sub-steps by speed,
   `SUBSTEP_REACH` of the radius each: one walking, up to 8 falling; collision is most of the
   server's time, so keep `collideCapsule` allocation-free; walk/run/jetpack tuning at the top),

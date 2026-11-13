@@ -266,8 +266,19 @@ class OfficeFpsStatsTest extends TestCase
     public function test_a_match_keeps_the_map_it_was_played_on(): void
     {
         $this->postJson('/internal/office-fps/results', $this->match(['map' => 'office']), $this->secret())->assertCreated();
+        $this->postJson('/internal/office-fps/results', $this->match(['map' => 'erables']), $this->secret())->assertCreated();
 
-        $this->assertSame('office', OfficeFpsMatch::sole()->map);
+        $this->assertSame(['office', 'erables'], OfficeFpsMatch::orderBy('id')->pluck('map')->all());
+    }
+
+    public function test_the_hub_knows_the_game_servers_maps(): void
+    {
+        $source = file_get_contents(base_path('game-server/src/fps/protocol.ts'));
+        preg_match("/export const MAPS = \[(.*?)\] as const/", $source, $found);
+        preg_match_all("/'([a-z-]+)'/", $found[1], $maps);
+
+        $this->assertSame($maps[1], OfficeFpsMatch::MAPS);
+        $this->assertSame(OfficeFpsMatch::MAPS, array_keys(OfficeFpsMatch::MAP_LABELS));
     }
 
     public function test_unknown_modes_maps_and_teams_are_refused(): void

@@ -227,7 +227,9 @@ export class Arena {
     /** A fresh roll on every spot (a new arena, a new match). */
     private rollPickups(): void {
         this.pickupKind.length = 0
-        for (const spot of this.world.pickups) this.pickupKind.push(rollPickup(this.random, spot, this.pickupKind))
+        for (const spot of this.world.pickups) {
+            this.pickupKind.push(rollPickup(this.random, spot, this.pickupKind, this.world.pickupWeights))
+        }
     }
 
     has(id: string): boolean {
@@ -612,7 +614,7 @@ export class Arena {
         this.world.pickups.forEach((spot, index) => {
             if (this.step < this.pickupAt[index]!) return
             const near = Math.hypot(f.body.x - spot.x, f.body.z - spot.z) <= PICKUP_REACH
-            if (!near || f.body.y > PICKUP_HEIGHT) return
+            if (!near || f.body.y - (spot.y ?? 0) > PICKUP_HEIGHT) return
             const kind = this.pickupKind[index]!
             if (kind === 'health' && f.health >= maxHealthOf(f.body)) return
 
@@ -670,7 +672,7 @@ export class Arena {
             this.pickupAt[index] = this.step + steps(info.respawnMs)
             // What comes back here is rolled now (snapshots only show it once it's back), not
             // a power already lying elsewhere.
-            this.pickupKind[index] = rollPickup(this.random, spot, this.pickups())
+            this.pickupKind[index] = rollPickup(this.random, spot, this.pickups(), this.world.pickupWeights)
             events.push({ type: 'pickup', by: f.id, spot: index, kind })
         })
     }
@@ -687,7 +689,7 @@ export class Arena {
         fighter.yaw = frame.yaw
         fighter.pitch = frame.pitch
         const input = moveOf(frame)
-        fighter.jetting = isJetting(fighter.body, input)
+        fighter.jetting = isJetting(fighter.body, input, this.world.move)
         fighter.body = stepBody(this.world, fighter.body, input)
         if (fighter.body.y < LOST_BELOW) {
             events.push(this.spawn(fighter))
@@ -755,7 +757,7 @@ export class Arena {
         const spec = GUNS[gun]
         const origin = eyeOf(fighter.body)
         const aim = aimDirection(frame.yaw, frame.pitch)
-        const cone = spreadOf(spec, Boolean(frame.buttons & BUTTON.aim), fighter.body)
+        const cone = spreadOf(spec, Boolean(frame.buttons & BUTTON.aim), fighter.body, this.world.move.moving)
         const targets = this.targetsAt(frame.view, fighter.id)
         const dealt = new Map<string, { amount: number; headshot: boolean }>()
         const ends: Array<[number, number, number]> = []
@@ -883,7 +885,7 @@ export class Arena {
             const push = to.lengthSq() > 1e-6 ? to.clone().normalize() : new Vector3(0, 1, 0)
             // A little lift, so a blast at your feet throws you up rather than into the floor.
             push.y = Math.max(push.y, 0.35)
-            push.normalize().multiplyScalar(LAUNCHER.knockback * share)
+            push.normalize().multiplyScalar(LAUNCHER.knockback * this.world.move.knockback * share)
             f.body = {
                 ...f.body,
                 vx: f.body.vx + push.x,
@@ -1091,12 +1093,14 @@ export class Arena {
     private spawn(fighter: Fighter): ArenaEvent {
         // A side's own spawns (siege): a random one where a mini fits (furniture), else any of them.
         const fixed = this.spawnsOf?.(fighter.team)
-        const open = fixed?.filter(p => this.fits(p.x, p.z))
+        const open = fixed?.filter(p => this.fits(p.x, p.z, p.y ?? 0))
         const choice = open?.length ? open : fixed
         const point = choice?.length
             ? choice[Math.floor(this.random() * choice.length)]!
-            : (({ position, yaw }) => ({ x: position[0], z: position[2], yaw }))(this.spawnPoint(fighter.id))
-        fighter.body = bodyAt(point.x, 0.02, point.z)
+            : (({ position, yaw }) => ({ x: position[0], y: position[1], z: position[2], yaw }))(
+                  this.spawnPoint(fighter.id)
+              )
+        fighter.body = bodyAt(point.x, (point.y ?? 0) + 0.02, point.z)
         fighter.yaw = point.yaw
         fighter.pitch = 0
         fighter.jetting = false
@@ -1113,11 +1117,11 @@ export class Arena {
         return { type: 'spawn', id: fighter.id }
     }
 
-    /** Does a standing mini fit on the floor at x, z (nothing of the office or a built wall in the way)? */
-    private fits(x: number, z: number): boolean {
+    /** Does a standing mini fit on the floor at x, z (its height `y`; nothing of the map or a built wall in the way)? */
+    private fits(x: number, z: number, y = 0): boolean {
         const { radius, height } = sizeAt(1)
-        fitSeg.start.set(x, 0.02 + radius, z)
-        fitSeg.end.set(x, 0.02 + height - radius, z)
+        fitSeg.start.set(x, y + 0.02 + radius, z)
+        fitSeg.end.set(x, y + 0.02 + height - radius, z)
         return !collideCapsule(this.world, fitSeg, radius)
     }
 
