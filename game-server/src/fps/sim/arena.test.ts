@@ -236,7 +236,8 @@ function duel(
      * gun needs the trigger let go between shots: `release` sends a frame without it first.
      */
     const shoot = (head = false, slot: Slot = 'primary', release = false) => {
-        const aim = { yaw: Math.PI, pitch: Math.atan2((head ? 0.36 : 0.2) - 0.34, 4), slot }
+        // The middle of the head, or the chest (as drawn: HIT_PARTS).
+        const aim = { yaw: Math.PI, pitch: Math.atan2((head ? 0.374 : 0.27) - 0.34, 4), slot }
         if (release) step({ [north]: { ...aim, buttons: BUTTON.aim } })
         return step({ [north]: { ...aim, buttons: BUTTON.fire | BUTTON.aim } })
     }
@@ -640,7 +641,8 @@ describe('the guns', () => {
                     forward: 0,
                     strafe: 0,
                     yaw: Math.PI,
-                    pitch: Math.atan2(0.2 - 0.34, gap),
+                    // At the chest.
+                    pitch: Math.atan2(0.27 - 0.34, gap),
                     buttons: BUTTON.fire,
                     view: a.step,
                 },
@@ -651,7 +653,8 @@ describe('the guns', () => {
         const far = pellets(5)
         expect(close.type === 'shot' && close.to).toHaveLength(GUNS.shotgun.pellets)
         expect(close.type === 'shot' && new Set(close.to.map(t => t.join())).size).toBeGreaterThan(1)
-        expect(close.damage).toBeGreaterThan(60)
+        // From the hip at a metre about half the pellets land on a body (11 cm across).
+        expect(close.damage).toBeGreaterThan(40)
         expect(far.damage).toBeLessThan(close.damage / 3)
     })
 

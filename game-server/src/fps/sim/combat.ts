@@ -196,7 +196,7 @@ export function powersOf(buffs: readonly BuffKind[]): Powers {
     }
 }
 
-/** Hits on the capsule's top part (from here up, as a share of its height) are headshots: the chin up. */
+/** `rayBody`'s `along` for a hit on the head (from here up, as a share of their height): the chin up. */
 export const HEAD_FROM = 0.85
 
 /** Where a player's eyes are, from their feet (higher on a Promotion, lower as an Intern, low prone). */
@@ -301,77 +301,157 @@ export function fireShot(
     let nearest = stop.distance
     let hit: ShotResult['hit'] = null
     for (const target of targets) {
-        const met = rayCapsule(origin, direction, target)
+        const met = rayBody(origin, direction, target)
         if (!met || met.distance >= nearest) continue
         nearest = met.distance
-        hit = { id: target.id, headshot: met.along >= HEAD_FROM }
+        hit = { id: target.id, headshot: met.head }
     }
 
     return { end: origin.clone().addScaledVector(direction, nearest), hit, wall: hit ? null : stop.wall }
 }
 
 /**
- * Shots take a player as the body that's drawn (client/figure.ts), not the 24 cm capsule they
- * collide with: their torso with the arms at their sides, 14 cm across, their full height; lying
- * prone, 8 cm thick. A round that visibly passes beside them misses.
+ * One of a body's hit volumes, standing, facing -Z, feet at 0 (m): a capsule from `a` to `b` (a
+ * blob when they're the same) whose section is `rx` across, `rz` front to back and whose ends
+ * round off over `ry`; turned `turn` about their up (the chest, bladed behind a gun).
  */
-export const HIT = { radius: 0.07, proneRadius: 0.04 } as const
-export const HIT_RADIUS = HIT.radius
+export interface HitPart {
+    a: readonly [number, number, number]
+    b: readonly [number, number, number]
+    rx: number
+    ry: number
+    rz: number
+    turn: number
+    head: boolean
+}
 
 /**
- * Where a ray meets a player's hit capsule (`HIT_RADIUS` wide, their height, both times their
- * `scale`; prone, lying along where they face, their length, thinner): its distance along the ray,
- * and how far up it (0 their feet … 1 their head, where headshots are). Null when it passes by or
- * is behind the ray.
+ * Shots take a player as the body that's drawn (client/figure.ts), not the 24 cm capsule they
+ * collide with: the head (the only headshot), the torso from the hips to the shoulders (11 cm
+ * across, 6 cm deep, turned as they stand behind a gun) and each leg, with nothing between them.
+ * A round that visibly passes beside them, over a shoulder or between the legs misses. The arms
+ * (out holding the gun) don't count. Prone it's the same body lying face down.
  */
-export function rayCapsule(
+export const HIT_PARTS: readonly HitPart[] = [
+    { a: [0, 0.374, 0], b: [0, 0.374, 0], rx: 0.025, ry: 0.028, rz: 0.027, turn: 0, head: true },
+    { a: [0, 0.212, 0.002], b: [0, 0.316, 0.002], rx: 0.055, ry: 0.031, rz: 0.031, turn: -0.45, head: false },
+    { a: [0.028, 0.19, 0], b: [0.03, 0.03, -0.002], rx: 0.02, ry: 0.02, rz: 0.02, turn: 0, head: false },
+    { a: [-0.028, 0.19, 0], b: [-0.03, 0.03, -0.002], rx: 0.02, ry: 0.02, rz: 0.02, turn: 0, head: false },
+]
+/** The widest the body is from its middle (the shoulders): the Org chart's outline. */
+export const HIT_RADIUS = 0.055
+/** Lying prone the body rests this high (its chest's depth), and its middle is over their feet. */
+const PRONE_REST = { lift: 0.026, back: PLAYER.height / 2 }
+
+// Scratch for rayBody.
+const rayO = new Vector3()
+const rayD = new Vector3()
+const partO = new Vector3()
+const partD = new Vector3()
+const partA = new Vector3()
+const partB = new Vector3()
+
+/**
+ * Where a ray meets a player's body (`HIT_PARTS`, at their facing and `scale`; prone, lying face
+ * down along where they face): its distance along the ray, whether it's the head, and how far up
+ * the body (0 their feet … 1 their head; headshots are at or past HEAD_FROM). Null when it passes
+ * by or the body is behind the ray.
+ */
+export function rayBody(
     origin: Vector3,
     direction: Vector3,
     feet: { x: number; y: number; z: number; scale?: number; prone?: boolean; yaw?: number }
-): { distance: number; along: number } | null {
+): { distance: number; along: number; head: boolean } | null {
     const scale = feet.scale ?? 1
-    const size = sizeAt(scale, feet.prone)
-    const r = (feet.prone ? HIT.proneRadius : HIT.radius) * scale
-    let a: Vector3
-    let axis: Vector3
-    let axisLength: number
+    const yaw = feet.yaw ?? 0
+    // Into their own frame: feet at 0, facing -Z, at the size of the standing parts. The world's
+    // distance along the ray stays the ray's parameter (the direction just isn't unit length here).
+    const cos = Math.cos(-yaw)
+    const sin = Math.sin(-yaw)
+    const ox = (origin.x - feet.x) / scale
+    const oy = (origin.y - feet.y) / scale
+    const oz = (origin.z - feet.z) / scale
+    rayO.set(ox * cos + oz * sin, oy, -ox * sin + oz * cos)
+    rayD.set(
+        (direction.x * cos + direction.z * sin) / scale,
+        direction.y / scale,
+        (-direction.x * sin + direction.z * cos) / scale
+    )
     if (feet.prone) {
-        // Face down, head toward where they look, the middle over their feet.
-        const yaw = feet.yaw ?? 0
-        axis = new Vector3(-Math.sin(yaw), 0, -Math.cos(yaw))
-        axisLength = PLAYER.height * scale - 2 * r
-        a = new Vector3(feet.x, feet.y + r, feet.z).addScaledVector(axis, -axisLength / 2)
-    } else {
-        axis = new Vector3(0, 1, 0)
-        axisLength = size.height - 2 * r
-        a = new Vector3(feet.x, feet.y + r, feet.z)
+        // Lying face down, head forward: back to how the same point sits on them standing.
+        rayO.set(rayO.x, PRONE_REST.back - rayO.z, rayO.y - PRONE_REST.lift)
+        rayD.set(rayD.x, -rayD.z, rayD.y)
     }
 
-    // The closest points between the ray and the capsule's axis segment.
-    const w = origin.clone().sub(a)
-    const b = direction.dot(axis)
-    const d = direction.dot(w)
-    const e = axis.dot(w)
-    const denominator = 1 - b * b
-    let s = denominator > 1e-9 ? (b * e - d) / denominator : 0
-    let t = denominator > 1e-9 ? (e - b * d) / denominator : e
-    if (t < 0 || t > axisLength) {
-        // Past an end of the axis: the end cap's sphere.
-        t = Math.max(0, Math.min(axisLength, t))
-        const centre = a.clone().addScaledVector(axis, t)
-        s = centre.clone().sub(origin).dot(direction)
+    let best: { distance: number; along: number; head: boolean } | null = null
+    for (const part of HIT_PARTS) {
+        // Turned and squashed so the part is a capsule of radius 1.
+        const c = Math.cos(-part.turn)
+        const s = Math.sin(-part.turn)
+        const squash = (v: Vector3, x: number, y: number, z: number) =>
+            v.set((x * c + z * s) / part.rx, y / part.ry, (-x * s + z * c) / part.rz)
+        squash(partO, rayO.x, rayO.y, rayO.z)
+        squash(partD, rayD.x, rayD.y, rayD.z)
+        squash(partA, part.a[0], part.a[1], part.a[2])
+        squash(partB, part.b[0], part.b[1], part.b[2])
+        const speed = partD.length()
+        partD.divideScalar(speed)
+        const t = capsuleHit(partO, partD, partA, partB)
+        if (t === null) continue
+        const distance = t / speed
+        if (best && distance >= best.distance) continue
+        const standingY = rayO.y + rayD.y * distance
+        best = {
+            distance,
+            head: part.head,
+            along: part.head ? 1 : Math.max(0, Math.min(HEAD_FROM - 0.001, standingY / PLAYER.height)),
+        }
     }
-    const onRay = origin.clone().addScaledVector(direction, s)
-    const onAxis = a.clone().addScaledVector(axis, Math.max(0, Math.min(axisLength, t)))
-    const gap = onRay.distanceTo(onAxis)
-    if (gap > r) return null
 
-    const distance = s - Math.sqrt(r * r - gap * gap)
-    if (distance < 0) return null
-    // Prone: how far along the body, feet to head.
-    if (feet.prone) return { distance, along: Math.max(0, Math.min(1, t / axisLength)) }
+    return best
+}
 
-    const hitY = origin.y + direction.y * distance
+/** Where a unit ray first meets a capsule of radius 1 from `a` to `b` (≥ 0), or null. */
+function capsuleHit(o: Vector3, d: Vector3, a: Vector3, b: Vector3): number | null {
+    const bax = b.x - a.x
+    const bay = b.y - a.y
+    const baz = b.z - a.z
+    const oax = o.x - a.x
+    const oay = o.y - a.y
+    const oaz = o.z - a.z
+    const baba = bax * bax + bay * bay + baz * baz
+    const bard = bax * d.x + bay * d.y + baz * d.z
+    const baoa = bax * oax + bay * oay + baz * oaz
+    const rdoa = d.x * oax + d.y * oay + d.z * oaz
+    const oaoa = oax * oax + oay * oay + oaz * oaz
+    if (baba > 1e-12) {
+        // The side, between the ends.
+        const qa = baba - bard * bard
+        const qb = baba * rdoa - baoa * bard
+        const qc = baba * oaoa - baoa * baoa - baba
+        const h = qb * qb - qa * qc
+        if (qa > 1e-12) {
+            if (h < 0) return null
+            const t = (-qb - Math.sqrt(h)) / qa
+            const y = baoa + t * bard
+            if (y > 0 && y < baba) return t >= 0 ? t : null
+        }
+    }
+    // Past an end (or along the axis): the nearer round cap it meets.
+    const capA = sphereHit(o, d, a)
+    const capB = sphereHit(o, d, b)
+    if (capA === null) return capB
+    return capB === null ? capA : Math.min(capA, capB)
+}
 
-    return { distance, along: Math.max(0, Math.min(1, (hitY - feet.y) / size.height)) }
+/** Where a unit ray first meets a sphere of radius 1 round `c` (≥ 0), or null. */
+function sphereHit(o: Vector3, d: Vector3, c: Vector3): number | null {
+    const cx = o.x - c.x
+    const cy = o.y - c.y
+    const cz = o.z - c.z
+    const qb = d.x * cx + d.y * cy + d.z * cz
+    const h = qb * qb - (cx * cx + cy * cy + cz * cz - 1)
+    if (h < 0) return null
+    const t = -qb - Math.sqrt(h)
+    return t >= 0 ? t : null
 }

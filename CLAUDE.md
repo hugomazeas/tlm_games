@@ -514,9 +514,10 @@ Playable at `/games/office-fps`.
   server's time, so keep `collideCapsule` allocation-free; walk/run/jetpack tuning at the top),
   shared with the browser for prediction; `combat.ts` has
   the guns and hitscan (walls and glass stop shots). Shots take a player as the drawn body, not
-  the 24 cm capsule they collide with: `HIT` (7 cm radius, their height; 4 cm prone), headshots
-  from the chin up (`HEAD_FROM` 0.85). Change the figure's width or height (`client/figure.ts`):
-  keep `HIT` round it;
+  the 24 cm capsule they collide with (`rayBody` over `HIT_PARTS`: oval capsules for the head,
+  the only headshot; the torso, turned as bladed behind a gun; each leg; no arms), in their own
+  frame (facing, size; prone, the same parts mapped to lying face down). Change the figure's
+  shape (`client/figure.ts`): move `HIT_PARTS` with it (the gun lab's debug mode draws them);
   `arena.ts` runs everyone: one input frame per step (the last one repeated, without firing,
   when none came), shots judged where the shooter saw the target (up to 200 ms back), respawns
   at the spawn point furthest from everyone with a short shield.

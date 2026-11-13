@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { Vector3 } from 'three'
-import { aimDirection, GUNS, rayCapsule, spreadDirection } from '../sim/combat.ts'
+import { aimDirection, GUNS, rayBody, spreadDirection } from '../sim/combat.ts'
 import { PLAYER } from '../sim/movement.ts'
 import {
     aimPitch,
@@ -33,7 +33,7 @@ describe("the gun lab's debug numbers", () => {
         for (const [pellet, round] of rounds.entries()) {
             const direction = spreadDirection(aim, coneOf('shotgun', situation).total, 17, pellet)
             expect(round.direction.equals(direction)).toBe(true)
-            const met = rayCapsule(new Vector3(0, PLAYER.eye, 0), direction, { x: 0, y: 0, z: -6 })
+            const met = rayBody(new Vector3(0, PLAYER.eye, 0), direction, { x: 0, y: 0, z: -6 })
             expect(round.hit !== null).toBe(met !== null && met.distance <= GUNS.shotgun.range)
         }
     })

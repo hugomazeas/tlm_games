@@ -5,12 +5,12 @@ import {
     damageAt,
     GUNS,
     type GunSpec,
-    HEAD_FROM,
+    HIT_PARTS,
     HIT_RADIUS,
     LAUNCHER,
     MAX_HEALTH,
     magazineOf,
-    rayCapsule,
+    rayBody,
     reloadMsOf,
     spreadDirection,
     STAPLER,
@@ -36,7 +36,8 @@ export interface Situation {
 
 /** Where the crosshair sits on the target, above their feet (m). */
 export function aimHeight(aimAt: Situation['aimAt']): number {
-    return aimAt === 'head' ? PLAYER.eye : PLAYER.height * 0.45
+    // The middle of the head, or the chest (HIT_PARTS: the body as drawn).
+    return aimAt === 'head' ? HIT_PARTS[0]!.a[1] : 0.27
 }
 
 /** The pitch that puts the crosshair there, from a standing mini's eyes. */
@@ -84,10 +85,10 @@ export function roundsOf(gun: Gun, situation: Situation, seq: number): Round[] {
     const rounds: Round[] = []
     for (let pellet = 0; pellet < pellets; pellet++) {
         const direction = gun === 'launcher' ? aim.clone() : spreadDirection(aim, cone, seq, pellet)
-        const met = rayCapsule(EYE, direction, feet)
+        const met = rayBody(EYE, direction, feet)
         const range = gun === 'launcher' ? Infinity : GUNS[gun].range
         if (met && met.distance <= range) {
-            rounds.push({ direction, hit: met.along >= HEAD_FROM ? 'head' : 'body', distance: met.distance })
+            rounds.push({ direction, hit: met.head ? 'head' : 'body', distance: met.distance })
         } else {
             // On to the target's plane (or a long way, shooting up or down past it).
             const toPlane = direction.z < -1e-6 ? situation.distance / -direction.z : situation.distance
@@ -168,7 +169,7 @@ export function gunMetrics(gun: Gun, situation: Situation): Metric[] {
         { label: '  + moving', value: deg(cone.moving) },
         { label: '  + in the air', value: deg(cone.air) },
         { label: `Circle at ${d} m`, value: `${(2 * d * Math.tan(cone.total) * 100).toFixed(1)} cm wide` },
-        { label: 'Hitbox', value: `${(HIT_RADIUS * 200).toFixed(0)} × ${PLAYER.height * 100} cm` },
+        { label: 'Hitbox', value: `the body: ${(HIT_RADIUS * 200).toFixed(0)} × ${PLAYER.height * 100} cm at most` },
         { label: 'Rounds landing', value: `${pct(chance.head)} head · ${pct(chance.body)} body` },
         { label: '  missing', value: pct(chance.miss) },
         { label: 'Damage', value: '', group: true },
