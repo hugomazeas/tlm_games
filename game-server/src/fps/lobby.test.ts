@@ -732,11 +732,16 @@ describe('shots are judged where the shooter saw the target', () => {
         startMatch(a, b)
         play(STEP_MS * 3)
         const step = Math.floor(now / STEP_MS)
-        const aim = shootAt(a, b, step)
+        // Aimed down the sights (from the hip, 4 m is too far to count on hitting a body).
+        const aim = { ...shootAt(a, b, step), buttons: BUTTON.fire | BUTTON.aim }
         const seenAt = a.last('snap')!.step
 
-        // 200 ms: out of the line of fire (past the capsule's 12 cm), still within the rewind.
-        play(200, () => [[b, { forward: 0, strafe: 1, yaw: 0, pitch: 0, buttons: 0, view: 0 }]])
+        // 200 ms: out of the line of fire (well past their 7 cm body), still within the rewind; a
+        // keeps aiming meanwhile.
+        play(200, () => [
+            [b, { forward: 0, strafe: 1, yaw: 0, pitch: 0, buttons: 0, view: 0 }],
+            [a, { ...aim, buttons: BUTTON.aim, view: seenAt }],
+        ])
         expect(Math.abs(where(a, b.id).x)).toBeGreaterThan(0.2)
 
         const shotsAfter = (from: number) =>

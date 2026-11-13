@@ -1,7 +1,7 @@
 import {
-    ACESFilmicToneMapping,
     Group,
     type Material,
+    NeutralToneMapping,
     type Object3D,
     PCFShadowMap,
     PerspectiveCamera,
@@ -61,6 +61,7 @@ import { WallViews } from './building.ts'
 import { buildErables, erablesLooks } from './erables.ts'
 import { Impacts } from './impacts.ts'
 import { Avatars } from './avatars.ts'
+import { loadOfficeLight, OfficeLighting } from './office-light.ts'
 import { announce, taunt } from './callouts.ts'
 import { Controls } from './controls.ts'
 import { Effects } from './effects.ts'
@@ -117,7 +118,13 @@ renderer.shadowMap.enabled = true
 renderer.shadowMap.type = PCFShadowMap
 // The office never moves: its shadows are drawn once (setTime asks for it).
 renderer.shadowMap.autoUpdate = false
-renderer.toneMapping = ACESFilmicToneMapping
+// Neutral keeps the office's colours and whites as they are (ACES pushed the white walls into one
+// glare); a touch under 1 so the sunlit desks don't clip.
+renderer.toneMapping = NeutralToneMapping
+/** Exposure per map (`showMap`): the street's lights were tuned under ACES; this matches them under Neutral. */
+const OFFICE_EXPOSURE = 0.9
+const ERABLES_EXPOSURE = 1.05
+renderer.toneMappingExposure = OFFICE_EXPOSURE
 Object.assign(renderer.domElement.style, { position: 'fixed', inset: '0', zIndex: '10', cursor: 'crosshair' })
 document.body.append(renderer.domElement)
 
@@ -125,7 +132,9 @@ const scene = new Scene()
 const camera = new PerspectiveCamera(78, innerWidth / innerHeight, 0.01, 900)
 camera.rotation.order = 'YXZ'
 scene.add(camera)
-const office = buildOffice(scene, renderer)
+// The office's baked light (map/light.ts): corners, under the desks, the panels and the windows.
+const lighting = new OfficeLighting(await loadOfficeLight())
+const office = buildOffice(scene, renderer, { lighting })
 // Rue des Érables, built now (a second or so of painting) and hidden: the shader warm-up meets it,
 // and a match there never waits for this browser.
 const erables = buildErables(office)
@@ -162,7 +171,17 @@ const maps = Object.fromEntries(
         spots: ZoneView
     }
 >
-const showMap = erablesLooks(scene, office, erables, [maps.office.parent], [maps.erables.parent], renderer)
+const showLooks = erablesLooks(scene, office, erables, [maps.office.parent], [maps.erables.parent], renderer)
+/**
+ * A map's looks: the office's baked light is the office's (the street, built near the same spot,
+ * keeps its own light), and each its exposure (a uniform: the tone mapping itself stays, since
+ * changing it would recompile every shader at the switch).
+ */
+const showMap = (map: MapId) => {
+    showLooks(map)
+    lighting.enabled = map === 'office'
+    renderer.toneMappingExposure = map === 'office' ? OFFICE_EXPOSURE : ERABLES_EXPOSURE
+}
 showMap(LOBBY_MAP)
 /** The map you're on, and its world. */
 let mapNow: MapId = LOBBY_MAP
@@ -218,10 +237,23 @@ const controls = new Controls(renderer.domElement, locked => {
 controls.invertY = settings.invertY
 sounds.setVolume(settings.volume)
 // Others' reloads are heard where they are (yours already is, from your own state).
-const avatars = new Avatars(scene, (id, _gun, msLeft) => {
-    const at = id === me ? null : avatars.centerOf(id)
-    if (at) sounds.reload(msLeft, spatial(listener(), at))
-})
+const below = new Vector3()
+const avatars = new Avatars(
+    scene,
+    (id, _gun, msLeft) => {
+        const at = id === me ? null : avatars.centerOf(id)
+        if (at) sounds.reload(msLeft, spatial(listener(), at))
+    },
+    {
+        // Their contact shadow lands on the floor, a desk, a built wall: whatever is under them.
+        groundBelow: (x, y, z) => {
+            const reach = 2
+            const distance = rayDistance(world, below.set(x, y, z), DOWN, reach)
+            return distance < reach ? y - distance : null
+        },
+        dress: root => lighting.patchAll(root),
+    }
+)
 const effects = new Effects(scene)
 const impacts = new Impacts(scene)
 
@@ -946,6 +978,8 @@ async function warmShaders(): Promise<void> {
     impacts.hit(below, new Vector3(0, 1, 0), new Vector3(0, -1, 0), 'metal', now)
     impacts.hit(below, new Vector3(0, 1, 0), new Vector3(0, -1, 0), 'glass', now)
     impacts.blast(below, new Vector3(0, 1, 0), new Vector3(0, -1, 0), 'desk', now)
+    // Everything lit in the scene by now (built walls, pickups, effects) is lit like the office.
+    lighting.patchAll(scene)
     const shown: Object3D[] = []
     scene.traverse(o => {
         if (!o.visible) {
@@ -1286,6 +1320,7 @@ function draw(now: number): void {
         viewmodel.loaded = held === 'launcher' && Boolean(self && self.ammo > 0 && !self.reloading)
         const moving = Boolean(body && body.onGround && Math.hypot(body.vx, body.vz) > 0.5)
         viewmodel.update(now, moving, aimBlend, reload)
+        viewmodel.shade(lighting.at(camera.position.x, camera.position.y, camera.position.z), dt)
     }
 
     // The countdown's last three seconds tick.

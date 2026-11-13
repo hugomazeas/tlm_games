@@ -1,5 +1,4 @@
 import {
-    ACESFilmicToneMapping,
     BoxGeometry,
     BufferGeometry,
     CapsuleGeometry,
@@ -15,9 +14,9 @@ import {
     Mesh,
     MeshBasicMaterial,
     MeshStandardMaterial,
+    NeutralToneMapping,
     Object3D,
     PerspectiveCamera,
-    Plane,
     PlaneGeometry,
     PMREMGenerator,
     Scene,
@@ -31,8 +30,7 @@ import {
     aimDirection,
     damageAt,
     GUNS,
-    HEAD_FROM,
-    HIT_RADIUS,
+    HIT_PARTS,
     LAUNCHER,
     MAX_HEALTH,
     magazineOf,
@@ -166,7 +164,9 @@ let state = readHash()
 const renderer = new WebGLRenderer({ antialias: true })
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
 renderer.setSize(innerWidth, innerHeight)
-renderer.toneMapping = ACESFilmicToneMapping
+// As in the game (main.ts), so the gun looks here as it will there.
+renderer.toneMapping = NeutralToneMapping
+renderer.toneMappingExposure = 0.9
 // Reset once a frame (frame()), so the stats count the world and the gun's own pass.
 renderer.info.autoReset = false
 document.body.append(renderer.domElement)
@@ -215,24 +215,33 @@ const sounds = new Sounds()
 renderer.localClippingEnabled = true
 const debugGroup = new Group()
 scene.add(debugGroup)
-/** The target: its hit capsule (what shots take) split at the head line, the mini's own body inside. */
+/** The target: what shots take (HIT_PARTS: the head in gold, the torso and legs in blue). */
 const target = new Group()
 debugGroup.add(target)
-const headY = PLAYER.height * HEAD_FROM
-const hitShape = new CapsuleGeometry(HIT_RADIUS, PLAYER.height - 2 * HIT_RADIUS, 8, 24)
-const see = (color: number, clip: Plane) =>
-    new MeshBasicMaterial({ color, transparent: true, opacity: 0.4, depthWrite: false, clippingPlanes: [clip] })
-for (const [color, clip] of [
-    [0x4aa3ff, new Plane(new Vector3(0, -1, 0), headY)],
-    [0xffc940, new Plane(new Vector3(0, 1, 0), -headY)],
-] as const) {
-    const part = new Mesh(hitShape, see(color, clip))
-    part.position.y = PLAYER.height / 2
-    target.add(part)
+for (const part of HIT_PARTS) {
+    // Each part is a radius-1 capsule in a squashed space: drawn so, then stretched back.
+    const a = new Vector3(part.a[0] / part.rx, part.a[1] / part.ry, part.a[2] / part.rz)
+    const b = new Vector3(part.b[0] / part.rx, part.b[1] / part.ry, part.b[2] / part.rz)
+    const along = b.clone().sub(a)
+    const capsule = new Mesh(
+        new CapsuleGeometry(1, along.length(), 8, 24),
+        new MeshBasicMaterial({
+            color: part.head ? 0xffc940 : 0x4aa3ff,
+            transparent: true,
+            opacity: 0.45,
+            depthWrite: false,
+        })
+    )
+    capsule.position.copy(a).add(b).multiplyScalar(0.5)
+    if (along.lengthSq() > 1e-12) capsule.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), along.normalize())
+    const squashed = new Group()
+    squashed.scale.set(part.rx, part.ry, part.rz)
+    squashed.add(capsule)
+    const turned = new Group()
+    turned.rotation.y = part.turn
+    turned.add(squashed)
+    target.add(turned)
 }
-const core = new Mesh(new CapsuleGeometry(PLAYER.radius, PLAYER.height - 2 * PLAYER.radius, 8, 24), surface(0x2f3640))
-core.position.y = PLAYER.height / 2
-target.add(core)
 /** A 2 m board of 10 cm squares across the target's middle, centred on the crosshair. */
 const board = new GridHelper(2, 20, 0xffffff, 0xffffff)
 board.rotation.x = Math.PI / 2

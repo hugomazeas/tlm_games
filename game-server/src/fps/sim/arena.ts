@@ -42,7 +42,7 @@ import {
     magazineOf,
     MAX_HEALTH,
     maxHealthOf,
-    rayCapsule,
+    rayBody,
     REGEN,
     reloadMsOf,
     spreadDirection,
@@ -840,7 +840,7 @@ export class Arena {
                 if (f.id === rocket.by && this.step - rocket.born < ROCKET_ARMED_STEPS) continue
                 if (rocket.team !== null && f.team === rocket.team && f.id !== rocket.by) continue
                 if (this.apart(rocket.position, middleOf(f.body))) continue
-                const met = rayCapsule(rocket.position, direction, this.targetOf(f))
+                const met = rayBody(rocket.position, direction, this.targetOf(f))
                 if (met && met.distance < nearest) {
                     nearest = met.distance
                     hitPlayer = true

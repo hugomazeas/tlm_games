@@ -18,6 +18,7 @@ import {
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import type { Gun } from '../protocol.ts'
+import { applyFinish, type Finish } from './finish.ts'
 
 /**
  * The guns in your hands, in the camera's frame (x right, y up, -z ahead; metres), with the gloved
@@ -95,7 +96,31 @@ export interface Kit {
     dot: MeshBasicMaterial
 }
 
+/** What each of a kit's materials is made of (finish.ts): what makes them read as real up close. */
+const FINISHES: Partial<Record<keyof Kit, Finish>> = {
+    metal: 'metal',
+    dark: 'parkerized',
+    polymer: 'polymer',
+    trim: 'paint',
+    chrome: 'polished',
+    brass: 'polished',
+    rubber: 'rubber',
+    olive: 'paint',
+    red: 'paint',
+    glove: 'cloth',
+    sleeve: 'cloth',
+}
+
 export function kitFor(color: string): Kit {
+    const kit = bareKit(color)
+    for (const [name, finish] of Object.entries(FINISHES) as Array<[keyof Kit, Finish]>) {
+        applyFinish(kit[name] as MeshStandardMaterial, finish)
+    }
+
+    return kit
+}
+
+function bareKit(color: string): Kit {
     return {
         metal: new MeshStandardMaterial({ color: 0x343841, roughness: 0.32, metalness: 0.85 }),
         dark: new MeshStandardMaterial({ color: 0x17191d, roughness: 0.55, metalness: 0.55 }),
@@ -129,6 +154,13 @@ export function kitFor(color: string): Kit {
 // --- Shapes -----------------------------------------------------------------------------------
 
 function placed(mesh: Mesh, at: Triple, rot?: Triple): Mesh {
+    // Worn edges (finish.ts) are read off each face's UVs: a round part's UVs wrap round it, and
+    // their seam would read as a worn line down a barrel. Only its ends (along v) count as edges.
+    const type = mesh.geometry.type
+    if (type === 'CylinderGeometry' || type === 'TorusGeometry' || type === 'SphereGeometry') {
+        const uv = mesh.geometry.attributes.uv
+        if (uv) for (let i = 0; i < uv.count; i++) uv.setXY(i, 0.5, type === 'CylinderGeometry' ? uv.getY(i) : 0.5)
+    }
     mesh.position.set(...at)
     if (rot) mesh.rotation.set(...rot)
 
@@ -186,6 +218,11 @@ function rail(kit: Kit, x: number, y: number, z0: number, z1: number, width = 0.
  * The static parts as one mesh per material (a gun has dozens of parts: a draw call each would
  * add up). Moving parts stay their own groups.
  */
+/** Meshes merged into one per material (their own placement baked in): one draw each. */
+export function mergeByMaterial(meshes: Mesh[]): Mesh[] {
+    return merged(meshes)
+}
+
 function merged(meshes: Mesh[]): Mesh[] {
     const byMaterial = new Map<Material, BufferGeometry[]>()
     for (const mesh of meshes) {

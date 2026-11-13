@@ -341,13 +341,32 @@ Playable at `/games/office-fps`.
   where the gloved hands go (`HandPoses`, keyframed with `keyed` on the reload's 0–1 progress; the
   sleeves run from fixed elbows); static parts are merged per material. Spent cases fly from
   `eject`; reloads swing the gun up and round (`reloadPose`) so the hands' work shows.
-- **Others' troopers** (`client/avatars.ts`): they hold the same gun models (`buildGuns`, at
-  `GUN_SCALE`), animated by the same `animate`, the arms stretched to where it puts the hands, so a
-  reload plays as in yours: `PlayerState.reload` (0–1) and `aiming` come from the server, the reload
+- **Finishes** (`client/finish.ts`, `applyFinish`): what the guns, gloves and troopers are made
+  of, made in the shader from each part's own coordinates (no textures): brushed `metal`,
+  `parkerized` mottle, stippled `polymer` and `rubber`, `cloth`, chipped `paint`, smudged
+  `polished`; worn edges come from each face's UVs (round parts' UVs are flattened in `placed`,
+  so a barrel's seam doesn't show as wear), and detail finer than a pixel fades out. A kit's
+  materials get theirs in `kitFor` (`FINISHES`).
+- **Others' troopers** (`client/avatars.ts`, the body in `client/figure.ts`): office workers with an
+  adult's proportions in the 40 cm capsule (`BODY`: the crown at PLAYER.height, the head an eighth
+  of it), dressed from their id (`lookFor`: skin, hair, shirt and tie or a hoodie, trousers,
+  sneakers, a lanyard badge; tie, hoodie and badge in their or their team's colour). Rigid parts on
+  joints, no skinning: torso and head merged per material, the chest turning on the pelvis, each
+  limb two segments bent by two-bone IK (`twoBone`, `orient`). The feet step the way they move,
+  strafing and backing up too (`stepAnkle`), tucked in the air (`groundBelow` says how high they
+  are), straight and crawling prone, buckling then slack in a death. They hold the same gun models
+  (`buildGuns`) at true size (`GUN_SCALE` 0.6: a rifle half their height), bladed (`BLADE`) with
+  the gun's back end in the shoulder (the models start at the sight: in your hands the camera is
+  the stock), each fist (yours, `buildHand`, in their skin) where `animate` puts your hand, the
+  arm bending at the elbow to the wrist (stretching up to `MAX_STRETCH`). So a reload plays as in
+  yours: `PlayerState.reload` (0–1) and `aiming` come from the server, the reload
   run smoothly on this browser's clock (`reloadStart`). The gun sits at the chest, comes to the eye
   aiming, dips on a switch, drops in a dodge; shots and launches kick it, flash and throw cases
-  (`fire`). Hits rock them away from the shooter, the head back on a headshot (`hit`); killed, they
-  fall that way, drop their gun and sink away before the respawn.
+  (`fire`). Hits rock them away from the shooter, the head back on a headshot, their clothes flash
+  white (`hit`); killed, they fall that way, drop their gun and sink away before the respawn. The
+  jetpack is a backpack (its flames under two nozzles). Each has a soft contact shadow
+  (a blob, `BLOB`) on whatever is under them (`AvatarsOptions.groundBelow`: a ray down in `main.ts`),
+  fainter the higher they are: the office's shadow map is drawn once, so players cast none.
 - **Gun lab** (`bun run fps:guns`, http://localhost:8097, `FPS_LAB_PORT`): the viewmodel alone on a
   page (`client/gun-lab.ts`, served by `fps/gun-lab.ts`): pick a weapon, fire, reload, aim, scrub a
   reload frame by frame, slow time, turn the gun round (inspect). It rebuilds and reloads itself
@@ -380,8 +399,26 @@ Playable at `/games/office-fps`.
   The overlay judges the CPU on the game's code only: `render` includes waiting for the GPU.
 - **GPU budget:** the cost is lighting each pixel, not triangles or textures. The office has no
   `scene.environment` (room reflections were ~half the GPU's work at 5.5 MP): an AmbientLight
-  (`AMBIENT_FOR_REFLECTIONS`, tuned to the same brightness) stands in, and only the glass keeps a
-  reflection map. Don't give the scene an environment back. **Anti-aliasing** (MSAA, ~a third of
+  stands in, and only the glass keeps a reflection map. Don't give the scene an environment back.
+- **Baked light** (`map/light.ts`, `map/office-light.b64`, browser side `client/office-light.ts`):
+  what makes the office look real, for one 3D texture read a pixel (no difference measurable in
+  software GL; not yet checked on a real GPU with the overlay). A grid of 12.5 cm cells over the office holds
+  the ambient light reaching each point and from where (`a + b·n` for a surface facing `n`): the
+  ceiling panels with their shadows, the sky through the windows, one bounce off what's around (by
+  `ALBEDO` per surface). The lit materials' ambient and sky light is multiplied by it (`patch`: one
+  3D texture read a pixel), so corners, under desks, behind sofas and round chair feet come out
+  darker; the troopers (`AvatarsOptions.dress`), built walls and pickups too; the gun in your hands
+  dims with the light at your eye (`Viewmodel.shade`). The sun stays a real light (`BAKED` levels in
+  office.js; without `opts.lighting` buildOffice keeps the old flat light). It's the office's
+  only: on Rue des Érables `showMap` turns it off (`lighting.enabled`, a uniform) and sets that
+  map's exposure (`ERABLES_EXPOSURE`; tone mapping stays Neutral: changing it would recompile
+  every shader at the switch). **Change the office's
+  shapes → `bun run fps:light`** (~2.5 min on every core) and commit `office-light.b64`:
+  `light.test.ts` fails on a stale bake (a fingerprint of the collision triangles). `--reuse`
+  re-finishes the last bake's rays (kept in the temp folder) to tune `RADIANCE`, the blur or the
+  scale in seconds. It's base64 of gzipped, delta-coded bytes (~540 KB), inlined in `play.js`.
+  Tone mapping is **Neutral** at exposure 0.9 (game and gun lab): ACES clipped the white walls into
+  one glare; whites are real paint (~70%), so textures' own noise now shows (keep it faint). **Anti-aliasing** (MSAA, ~a third of
   the rest) is a setting, applied on the next load. The sky has `renderOrder` 1 (drawn after the
   office, shaded only where it shows).
 - **Shader warm-up** (`warmShaders` in `main.ts`, `Viewmodel.prepare`): at load, effects go off
@@ -519,8 +556,11 @@ Playable at `/games/office-fps`.
   `SUBSTEP_REACH` of the radius each: one walking, up to 8 falling; collision is most of the
   server's time, so keep `collideCapsule` allocation-free; walk/run/jetpack tuning at the top),
   shared with the browser for prediction; `combat.ts` has
-  the guns and hitscan (walls and glass stop shots, headshots on the top of the capsule, which
-  shots take `HITBOX_SCALE` 1.25× wider than it collides);
+  the guns and hitscan (walls and glass stop shots). Shots take a player as the drawn body, not
+  the 24 cm capsule they collide with (`rayBody` over `HIT_PARTS`: oval capsules for the head,
+  the only headshot; the torso, turned as bladed behind a gun; each leg; no arms), in their own
+  frame (facing, size; prone, the same parts mapped to lying face down). Change the figure's
+  shape (`client/figure.ts`): move `HIT_PARTS` with it (the gun lab's debug mode draws them);
   `arena.ts` runs everyone: one input frame per step (the last one repeated, without firing,
   when none came), shots judged where the shooter saw the target (up to 200 ms back), respawns
   at the spawn point furthest from everyone with a short shield.
