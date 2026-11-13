@@ -13,7 +13,8 @@ import { reloadProgress, spatial } from './sounds.ts'
 import { announce, streakCallout, taunt } from './callouts.ts'
 import type { GameEvent } from '../protocol.ts'
 import { Mesh, type MeshBasicMaterial, PerspectiveCamera, Scene } from 'three'
-import { Avatars, fallAngle, hitRock, reloadStart } from './avatars.ts'
+import { Avatars, fallAngle, hitRock, reloadStart, stepAnkle } from './avatars.ts'
+import { BODY, lookFor, twoBone } from './figure.ts'
 import { finishOf } from './finish.ts'
 import { kitFor } from './guns.ts'
 import { Vector3 } from 'three'
@@ -613,8 +614,9 @@ describe('drawing the others', () => {
             const avatars = new Avatars(scene())
             avatars.update(posed({}), roster, null, 1000)
             const muzzle = avatars.muzzleOf('a')!
-            // They face -Z: the muzzle is out in front, between the belt and the eyes.
-            expect(muzzle.z).toBeLessThan(-0.2)
+            // They face -Z: the muzzle is out in front (a rifle about half their height, stock at the
+            // shoulder), between the belt and the eyes.
+            expect(muzzle.z).toBeLessThan(-0.15)
             expect(muzzle.y).toBeGreaterThan(0.15)
             expect(muzzle.y).toBeLessThan(0.34)
 
@@ -624,6 +626,48 @@ describe('drawing the others', () => {
             // The stapler has no muzzle.
             avatars.update(posed({ weapon: 'stapler' }), roster, null, 1700)
             expect(avatars.muzzleOf('a')).toBeNull()
+        })
+
+        test('a limb bends at its middle joint to reach, toward its pole; out of reach it goes straight', () => {
+            const root = new Vector3(0, 0.3, 0)
+            const mid = new Vector3()
+            const end = new Vector3()
+            const forward = new Vector3(0, 0, -1)
+            twoBone(root, new Vector3(0, 0.15, 0), 0.1, 0.1, forward, mid, end)
+            expect(end.distanceTo(new Vector3(0, 0.15, 0))).toBeLessThan(1e-6)
+            expect(mid.distanceTo(root)).toBeCloseTo(0.1, 6)
+            expect(mid.distanceTo(end)).toBeCloseTo(0.1, 6)
+            // The knee goes forward, the way the pole says.
+            expect(mid.z).toBeLessThan(-0.05)
+
+            twoBone(root, new Vector3(0, -1, 0), 0.1, 0.1, forward, mid, end)
+            expect(end.distanceTo(root)).toBeCloseTo(0.2, 3)
+            // Straight but for the solver's slack (a hair short of full length, never a locked joint).
+            expect(Math.abs(mid.z)).toBeLessThan(0.005)
+        })
+
+        test('stepping: feet planted standing, one forward and lifted while the other pushes back', () => {
+            const a = new Vector3()
+            const b = new Vector3()
+            expect(stepAnkle(0, 1.3, { x: 0, z: -1 }, 0, a).y).toBeCloseTo(BODY.ankle, 6)
+            // A quarter through: the right foot swinging forward (lifted), the left planted behind.
+            stepAnkle(0, 0, { x: 0, z: -1 }, 1, a)
+            stepAnkle(1, 0, { x: 0, z: -1 }, 1, b)
+            expect(a.y).toBeGreaterThan(BODY.ankle + 0.02)
+            expect(b.y).toBeCloseTo(BODY.ankle, 6)
+            stepAnkle(0, Math.PI / 2, { x: 0, z: -1 }, 1, a)
+            stepAnkle(1, Math.PI / 2, { x: 0, z: -1 }, 1, b)
+            expect(a.z).toBeLessThan(b.z)
+            // Strafing right, the feet step sideways.
+            stepAnkle(0, Math.PI / 2, { x: 1, z: 0 }, 1, a)
+            expect(a.x).toBeGreaterThan(BODY.hipX * 1.1 + 0.05)
+        })
+
+        test('everyone has a look of their own, the same on every screen, in their colour', () => {
+            expect(lookFor('abc', '#ff0000')).toEqual(lookFor('abc', '#ff0000'))
+            expect(lookFor('abc', '#ff0000').accent).toBe('#ff0000')
+            const looks = new Set(Array.from({ length: 40 }, (_, i) => JSON.stringify(lookFor(`p${i}`, '#fff'))))
+            expect(looks.size).toBeGreaterThan(30)
         })
 
         test('guns and troopers are made of something: metal, phosphate, polymer, cloth', () => {

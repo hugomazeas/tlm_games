@@ -1,6 +1,5 @@
 import {
     type Material,
-    type MeshStandardMaterial,
     NeutralToneMapping,
     type Object3D,
     PCFShadowMap,
@@ -202,8 +201,6 @@ const avatars = new Avatars(
             return distance < reach ? y - distance : null
         },
         dress: root => lighting.patchAll(root),
-        // The visors reflect what the office's glass does.
-        reflections: (office.materials.glass as MeshStandardMaterial).envMap,
     }
 )
 const effects = new Effects(scene)

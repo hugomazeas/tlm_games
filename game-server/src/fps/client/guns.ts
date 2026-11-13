@@ -218,6 +218,11 @@ function rail(kit: Kit, x: number, y: number, z0: number, z1: number, width = 0.
  * The static parts as one mesh per material (a gun has dozens of parts: a draw call each would
  * add up). Moving parts stay their own groups.
  */
+/** Meshes merged into one per material (their own placement baked in): one draw each. */
+export function mergeByMaterial(meshes: Mesh[]): Mesh[] {
+    return merged(meshes)
+}
+
 function merged(meshes: Mesh[]): Mesh[] {
     const byMaterial = new Map<Material, BufferGeometry[]>()
     for (const mesh of meshes) {

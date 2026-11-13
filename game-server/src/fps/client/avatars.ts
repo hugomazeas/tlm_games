@@ -3,7 +3,6 @@ import {
     CapsuleGeometry,
     Color,
     ConeGeometry,
-    CylinderGeometry,
     DataTexture,
     GreaterDepth,
     Group,
@@ -16,110 +15,108 @@ import {
     PlaneGeometry,
     Quaternion,
     type Scene,
-    type Texture,
     SphereGeometry,
     TorusGeometry,
     Vector3,
 } from 'three'
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import { type BuffKind, type Gun, type PlayerInfo, TEAM_COLORS, type Weapon } from '../protocol.ts'
 import { powersOf, reloadMsOf, SWITCH_MS } from '../sim/combat.ts'
 import { PLAYER, scaleOf } from '../sim/movement.ts'
 import { rocketLook } from './effects.ts'
 import { applyFinish } from './finish.ts'
-import { buildCase, buildFlash, buildGuns, type Ejection, ease, type GunModel, type Kit, kitFor } from './guns.ts'
+import {
+    ARM_REACH,
+    BODY,
+    buildFigure,
+    type Figure,
+    lookFor,
+    orient,
+    SHARED_MATERIALS,
+    SHOULDERS,
+    twoBone,
+} from './figure.ts'
+import {
+    buildCase,
+    buildFlash,
+    buildGuns,
+    buildHand,
+    type Ejection,
+    ease,
+    type GunModel,
+    type Hand,
+    type Kit,
+    kitFor,
+} from './guns.ts'
 import { BUFF_COLORS } from './hud.ts'
 import type { Pose } from './timeline.ts'
 
 /**
- * The other minis: little jetpack troopers in their player's colour, drawn inside the 40 cm
- * capsule the server collides and hits (feet at 0, eyes at PLAYER.eye). Legs swing with their
- * speed and dangle in flight; they carry the same guns you hold (`guns.ts`, scaled to them), the
- * arms reaching where each gun's own animation puts the hands, so a reload is played as in your
- * hands: magazines out and in, pumps, bolts. The gun sits at the chest, comes up to the eye when
- * they aim, dips on a switch and drops to low ready in a dodge; it kicks, flashes and throws its
- * cases when they fire. A hit rocks them away from the shot (the head snaps back on a headshot)
- * and flashes them white; killed, they fall the way the shot pushed them and drop their gun.
- * The jetpack's two flames flicker while it burns; a spawn shield wraps them in a bubble.
+ * Everyone else, drawn as a little office worker (`figure.ts`: an adult's proportions, 40 cm,
+ * filling the capsule the server collides and hits: feet at 0, the crown at PLAYER.height) with
+ * elbows, knees and hands. The legs walk and run with their speed, the feet planted and stepping
+ * the way they move (strafing and backing up too), tucked in the air, dragging along prone. They
+ * carry the same guns you hold (`guns.ts`, at their true size), bladed behind them like a
+ * shooter, each hand where the gun's own animation puts yours, the arms bending to reach it: a
+ * reload plays as in your hands. The gun sits at the chest, comes up to the eye when they aim,
+ * dips on a switch and drops to low ready in a dodge; it kicks, flashes and throws its cases when
+ * they fire. A hit rocks them away from the shot (the head snaps back on a headshot) and flashes
+ * their clothes white; killed, their knees go, they fall the way the shot pushed them and drop
+ * their gun. The jetpack, worn as a backpack, flames while it burns; a spawn shield wraps them
+ * in a bubble.
  */
 
-// Heights (m) inside the 0.4 m capsule.
-const HIP = 0.13
-const SHOULDER = 0.245
-const HEAD = 0.32
-
-/** Their guns, at this fraction of the size of the ones in your hands. */
-const GUN_SCALE = 0.8
-/** Where the sight's point sits from the shoulders' middle (x right, y up, -z ahead): at the chest, and aimed (at the cheek, under the eye). */
-const HIP_HOLD = new Vector3(0.03, 0.005, -0.05)
-const AIM_HOLD = new Vector3(0.03, 0.07, -0.078)
-/** The arm, shoulder to glove, at rest; it stretches up to `MAX_REACH` to get a hand where the gun wants it. */
-const ARM = 0.11
-const MAX_REACH = 0.23
+/** Their guns, at this fraction of the size of the ones in your hands: a rifle about half their height. */
+const GUN_SCALE = 0.6
+/** Their hands, at the same (the fist you see round your own grip). */
+const HAND_SCALE = GUN_SCALE
+/**
+ * Where the sight's point sits from the shoulders' middle (x right, y up, -z ahead): the guns are
+ * modelled from the sight forward (in your hands the camera is the stock), so it's the gun's back
+ * end, in the shoulder's pocket at the chest, and aimed, up at the cheek under the eye.
+ */
+const HIP_HOLD = new Vector3(0.02, -0.02, -0.012)
+const AIM_HOLD = new Vector3(0.008, 0.05, -0.028)
+/** Holding a gun the chest turns this far (rad), the support shoulder forward; the head turns back. */
+const BLADE = 0.45
+/** An arm stretches this much (×) rather than leave a hand off its grip. */
+const MAX_STRETCH = 1.1
 /** Faster over the ground than this (m/s): a dodge, the gun down at low ready. */
 const DODGE_SPEED = 3.6
 /** A hit's rock: in for `in` ms, back over `out`. */
 const HIT = { in: 50, out: 160, tilt: 0.22, blast: 0.4, headshot: 0.75 } as const
 /** Prone: the body lifted off the floor by this (its depth face down), the head raised by this to look ahead. */
-const PRONE_LIFT = 0.05
+const PRONE_LIFT = 0.026
 const PRONE_LOOK = 1.2
+/** Stepping: half a stride (m) at most, how high a foot lifts, the hips' dip. */
+const STEP = { half: 0.085, lift: 0.032, dip: 0.007 } as const
+/** Off the ground by more than this (m), or on the jetpack: in the air (legs tucked). */
+const AIRBORNE = 0.04
 
 /** Killed: they fall over `fallMs`, lie there, sink away from `sinkAt` and are gone at `goneAt`. */
 const DEATH = { fallMs: 420, sinkAt: 1900, goneAt: 2600 } as const
 /** Spent cases flying from a trooper's gun at once (per kind), and for how long (ms). */
 const CASES = 2
 const CASE_MS = 520
-/** Their muzzle flash, bigger than the one in your hands (it has to read across a room), the biggest capped. */
-const FLASH_SCALE = 1.6
+/** Their muzzle flash, bigger than the gun would have it (it has to read across a room), the biggest capped. */
+const FLASH_SCALE = 2
 const FLASH_MAX = 1.4
 
 const UP = new Vector3(0, 1, 0)
-const DOWN = new Vector3(0, -1, 0)
+const SIDE = [1, -1] as const
 
 const shape = {
-    leg: new CapsuleGeometry(0.026, 0.07, 4, 10).translate(0, -0.06, 0),
-    boot: new RoundedBoxGeometry(0.06, 0.035, 0.085, 2, 0.012).translate(0, -0.12, -0.012),
-    torso: new RoundedBoxGeometry(0.15, 0.13, 0.1, 3, 0.035),
-    belt: new BoxGeometry(0.155, 0.022, 0.105),
-    buckle: new BoxGeometry(0.03, 0.02, 0.01),
-    chest: new RoundedBoxGeometry(0.08, 0.045, 0.012, 2, 0.006),
-    // Shoulder (0) to glove (-ARM): stretched along its length to reach.
-    arm: new CapsuleGeometry(0.019, ARM - 0.038, 4, 8).translate(0, -ARM / 2, 0),
-    glove: new SphereGeometry(0.022, 10, 8),
-    head: new SphereGeometry(0.072, 22, 16),
-    // A band of the helmet facing -Z (phi = -π/2 is the front in three.js's sphere).
-    visor: new SphereGeometry(0.074, 22, 12, -Math.PI * 0.92, Math.PI * 0.84, Math.PI * 0.3, Math.PI * 0.32),
-    earCap: new CylinderGeometry(0.022, 0.022, 0.016, 12).rotateZ(Math.PI / 2),
-    antenna: new CylinderGeometry(0.003, 0.003, 0.06, 6).translate(0, 0.03, 0),
-    antennaTip: new SphereGeometry(0.011, 10, 8),
-    pack: new RoundedBoxGeometry(0.12, 0.13, 0.06, 2, 0.018),
-    tank: new CylinderGeometry(0.022, 0.022, 0.11, 12),
-    nozzle: new CylinderGeometry(0.018, 0.026, 0.03, 12),
-    ring: new TorusGeometry(0.024, 0.004, 6, 16).rotateX(Math.PI / 2),
-    flame: new ConeGeometry(0.022, 0.12, 10).rotateX(Math.PI).translate(0, -0.06, 0),
-    core: new ConeGeometry(0.011, 0.07, 8).rotateX(Math.PI).translate(0, -0.035, 0),
-    staplerBase: new BoxGeometry(0.03, 0.012, 0.11),
-    staplerArm: new BoxGeometry(0.026, 0.018, 0.1),
+    flame: new ConeGeometry(0.011, 0.07, 10).rotateX(Math.PI).translate(0, -0.035, 0),
+    core: new ConeGeometry(0.0055, 0.04, 8).rotateX(Math.PI).translate(0, -0.02, 0),
+    staplerBase: new BoxGeometry(0.02, 0.008, 0.07),
+    staplerArm: new BoxGeometry(0.017, 0.012, 0.064),
     shield: new SphereGeometry(0.29, 24, 16),
     firewall: new SphereGeometry(0.27, 6, 4),
-    halo: new TorusGeometry(0.07, 0.008, 6, 28),
+    halo: new TorusGeometry(0.05, 0.007, 6, 28),
     // The Org chart's silhouette: the capsule shots take, seen through anything.
     xray: new CapsuleGeometry(PLAYER.radius, PLAYER.height - 2 * PLAYER.radius, 4, 12),
 }
-const metal = new MeshStandardMaterial({ color: 0x3b4048, roughness: 0.35, metalness: 0.75 })
 const dark = new MeshStandardMaterial({ color: 0x1d2026, roughness: 0.55, metalness: 0.2 })
-/** The helmet: glossy moulded plastic (smudged, finish.ts). */
-const white = new MeshStandardMaterial({ color: 0xe6e6e2, roughness: 0.3 })
-// What they're made of up close (finish.ts): the troopers are modelled at their size (×1).
-applyFinish(metal, 'metal')
 applyFinish(dark, 'rubber')
-applyFinish(white, 'polished')
-const visorMaterial = new MeshStandardMaterial({
-    color: 0x0d1a26,
-    roughness: 0.05,
-    metalness: 0.9,
-    envMapIntensity: 1.6,
-})
 const flameMaterial = new MeshBasicMaterial({ color: 0xff8a2a, transparent: true, opacity: 0.8, depthWrite: false })
 const coreMaterial = new MeshBasicMaterial({ color: 0xfff1b0, transparent: true, opacity: 0.95, depthWrite: false })
 const shieldMaterial = new MeshBasicMaterial({ color: 0x9fe3ff, transparent: true, opacity: 0.16, depthWrite: false })
@@ -168,6 +165,24 @@ export function fallAngle(since: number): number {
     return flat - 0.18 * Math.abs(Math.sin(after * 16)) * Math.exp(-after * 9)
 }
 
+/**
+ * Where a foot goes (its ankle, in their own frame: they face -Z), stepping: `phase` through the
+ * stride (rad), `along` the way they move (unit, flat, their frame), `amount` 0 standing … 1 at
+ * full stride. The foot swings forward lifted, and is planted moving back.
+ */
+export function stepAnkle(
+    side: 0 | 1,
+    phase: number,
+    along: { x: number; z: number },
+    amount: number,
+    out: Vector3
+): Vector3 {
+    const ph = phase + side * Math.PI
+    const swing = Math.sin(ph) * STEP.half * amount
+    const lift = Math.max(0, Math.cos(ph)) * STEP.lift * amount
+    return out.set(SIDE[side] * BODY.hipX * 1.1 + along.x * swing, BODY.ankle + lift, -0.004 + along.z * swing)
+}
+
 // --- The troopers ------------------------------------------------------------------------------
 
 interface Hold {
@@ -180,36 +195,41 @@ interface Hold {
     cases: Record<Ejection['kind'], Group[]>
 }
 
+/** Where a hand goes: a pose in some frame (`at` and, gripping, the hand's turn `q`); null hangs. */
+interface Grip {
+    frame: Object3D
+    at: Vector3
+    q: Quaternion | null
+}
+
 interface Avatar {
     id: string
     root: Group
-    /** Leans with their speed, rocks when hit, falls when killed. */
+    /** Leans with their speed, rocks when hit, falls when killed. The figure's frame. */
     body: Group
-    hips: [Group, Group]
-    /** Right, left: each turned toward its glove and stretched to it. */
-    shoulders: [Group, Group]
-    gloves: [Mesh, Mesh]
-    /** The gun and the arms holding it: pitched with their aim. */
+    figure: Figure
+    /** Right, left: the fist round each grip. */
+    hands: [Hand, Hand]
+    /** The gun and the stapler: at the shoulders, pitched with their aim (not turned with the chest). */
     aim: Group
     hold: Hold
     kit: Kit
     stapler: Group
     swingAt: number
-    head: Group
     flames: Group[]
     shield: Mesh
     firewall: Mesh
     halo: Mesh
     xray: Mesh
-    suit: MeshStandardMaterial
-    trim: MeshStandardMaterial
-    glow: MeshBasicMaterial
     name: string
     color: string
-    /** For the walk: where they were last frame, how fast they go, how far through a stride. */
+    /** For the walk: where they were last frame, how they move in their own frame (m/s), how far through a stride. */
     last: { x: number; z: number; at: number } | null
+    velocity: { x: number; z: number }
     speed: number
     stride: number
+    /** 0 on their feet … 1 in the air, eased. */
+    air: number
     flashUntil: number
     /** The weapon last drawn in their hands, and when it came out. */
     held: Weapon
@@ -234,16 +254,14 @@ interface Avatar {
 }
 
 export interface AvatarsOptions {
-    /** The height of whatever is under (x, y, z) within reach (null: nothing): their contact shadow goes there. */
+    /** The height of whatever is under (x, y, z) within reach (null: nothing): their contact shadow goes there, and their feet know they're off it. */
     groundBelow?: (x: number, y: number, z: number) => number | null
     /** Called with each new trooper (to light it like the office). */
     dress?: (root: Object3D) => void
-    /** What their visors reflect (the scene has no environment: only the visors pay for it). */
-    reflections?: Texture | null
 }
 
 /** The contact shadow: its width at their feet (m), how dark, and how high above the ground it's gone. */
-const BLOB = { size: 0.34, opacity: 0.75, fadeHeight: 1.4 } as const
+const BLOB = { size: 0.3, opacity: 0.75, fadeHeight: 1.4 } as const
 const blobPlane = new PlaneGeometry(1, 1).rotateX(-Math.PI / 2)
 let blobTexture: DataTexture | null = null
 
@@ -272,6 +290,19 @@ function blobMap(): DataTexture {
  */
 const STAND_IN = '\u0000stand-in'
 
+// Scratch, reused every frame.
+const toBody = new Matrix4()
+const frameQ = new Quaternion()
+const frameS = new Vector3()
+const shoulder = new Vector3()
+const hipJoint = new Vector3()
+const target = new Vector3()
+const mid = new Vector3()
+const end = new Vector3()
+const wrist = new Vector3()
+const pole = new Vector3()
+const hang = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -Math.PI / 2)
+
 export class Avatars {
     private readonly avatars = new Map<string, Avatar>()
 
@@ -281,10 +312,6 @@ export class Avatars {
         private readonly onReload?: (id: string, gun: Gun, msLeft: number) => void,
         private readonly options: AvatarsOptions = {}
     ) {
-        if (options.reflections) {
-            visorMaterial.envMap = options.reflections
-            visorMaterial.needsUpdate = true
-        }
         this.avatarFor(STAND_IN, '', '#cccccc').root.visible = false
     }
 
@@ -314,21 +341,21 @@ export class Avatars {
             if (!alive && avatar.alive === true) this.die(avatar, now)
             avatar.alive = alive
             avatar.xray.visible = alive && xray
-            if (alive) this.pose(avatar, pose, now)
+            const ground = this.options.groundBelow?.(pose.x, pose.y + 0.05, pose.z) ?? pose.y
+            if (alive) this.pose(avatar, pose, ground, now)
             else this.lie(avatar, pose, now)
-            this.shadow(avatar, now)
+            this.shadow(avatar, ground, now)
         }
     }
 
     /** Their contact shadow on what's under them: smaller and fainter the higher they are, gone as they sink away. */
-    private shadow(avatar: Avatar, now: number): void {
+    private shadow(avatar: Avatar, ground: number, now: number): void {
         const { blob, root } = avatar
         if (!root.visible) {
             blob.visible = false
             return
         }
         const { x, y, z } = root.position
-        const ground = this.options.groundBelow?.(x, y + 0.05, z) ?? y
         const height = Math.max(0, y - ground)
         const sinking = avatar.death
             ? Math.max(0, (now - avatar.death.at - DEATH.sinkAt) / (DEATH.goneAt - DEATH.sinkAt))
@@ -397,8 +424,8 @@ export class Avatars {
         return inner.localToWorld(guns[avatar.held].muzzle.clone())
     }
 
-    private pose(avatar: Avatar, pose: Pose, now: number): void {
-        const { root } = avatar
+    private pose(avatar: Avatar, pose: Pose, ground: number, now: number): void {
+        const { root, figure } = avatar
         const { state } = pose
         root.visible = true
         root.position.set(pose.x, pose.y, pose.z)
@@ -406,57 +433,93 @@ export class Avatars {
         // A Promotion or an Intern: drawn at their size (the capsule the server uses grows the same).
         root.scale.setScalar(scaleOf(powersOf(state.buffs)))
 
-        // Speed over the ground, from how far they moved since the last frame (smoothed); a jump of
-        // a metre or more (a portal) isn't running.
+        // How they move over the ground, in their own frame (smoothed); a jump of a metre or more (a
+        // portal) isn't running.
         if (avatar.last && Math.hypot(pose.x - avatar.last.x, pose.z - avatar.last.z) > 1) avatar.last = null
         const dt = avatar.last ? Math.max(1, now - avatar.last.at) / 1000 : 0
         if (avatar.last && dt > 0) {
-            const moved = Math.hypot(pose.x - avatar.last.x, pose.z - avatar.last.z) / dt
-            avatar.speed += (Math.min(moved, 6) - avatar.speed) * Math.min(1, dt * 10)
+            const moved = new Vector3(pose.x - avatar.last.x, 0, pose.z - avatar.last.z)
+                .divideScalar(dt)
+                .applyAxisAngle(UP, -pose.yaw)
+            const k = Math.min(1, dt * 10)
+            const capped = Math.min(1, 6 / Math.max(6, moved.length()))
+            avatar.velocity.x += (moved.x * capped - avatar.velocity.x) * k
+            avatar.velocity.z += (moved.z * capped - avatar.velocity.z) * k
+            avatar.speed = Math.hypot(avatar.velocity.x, avatar.velocity.z)
         }
         avatar.last = { x: pose.x, z: pose.z, at: now }
-        const airborne = pose.y > 0.02 && state.jet
-        avatar.stride += avatar.speed * dt * 9
-
-        // Prone: lying face down, eased; the legs still, the head and the gun up to look forward.
-        avatar.down += ((state.prone ? 1 : 0) - avatar.down) * Math.min(1, dt * 10)
+        const ease10 = Math.min(1, dt * 10)
+        avatar.air += ((state.jet || pose.y - ground > AIRBORNE ? 1 : 0) - avatar.air) * Math.min(1, dt * 8)
+        avatar.down += ((state.prone ? 1 : 0) - avatar.down) * ease10
         const down = avatar.down
         const stand = 1 - down
+        const air = avatar.air * stand
 
-        // Legs: a stride on the ground, dangling back in the air.
-        const swing = airborne ? 0 : Math.sin(avatar.stride) * Math.min(1, avatar.speed / 2) * 0.7 * stand
-        const dangle = airborne ? 0.35 : 0
-        avatar.hips[0].rotation.x = swing + dangle
-        avatar.hips[1].rotation.x = -swing + dangle * 0.7
+        // A stride: one cycle is two steps, each half a stride's length.
+        const half = Math.min(STEP.half, 0.025 + avatar.speed * 0.03)
+        if (avatar.speed > 0.05) avatar.stride += (avatar.speed * dt * Math.PI) / (2 * half)
+        const moving = Math.min(1, avatar.speed / 0.6) * (1 - avatar.air)
 
         // A hit rocks them away from it: the top of the body goes the way the shot pushed.
         const rock = avatar.hit ? hitRock(now - avatar.hit.at) : 0
         const push = avatar.hit && rock > 0 ? this.local(avatar, avatar.hit.push) : null
         const tilt = push ? rock * (avatar.hit!.blast ? HIT.blast : HIT.tilt) : 0
-        // The body bobs with each step and leans into the run.
-        const bob = Math.abs(Math.cos(avatar.stride)) * Math.min(1, avatar.speed / 2) * 0.008
         // Lying: turned face down about the feet, slid back half a body so it lies over where they
-        // are (the server's prone hit capsule), raised by the torso's depth.
-        avatar.body.position.set(0, (airborne ? 0 : bob) * stand + PRONE_LIFT * down, (PLAYER.height / 2) * down)
+        // are (the server's prone hit capsule), raised by the chest's depth. Running leans them in.
+        const lean = Math.min(0.15, Math.max(-0.1, -avatar.velocity.z * 0.035))
+        avatar.body.position.set(0, PRONE_LIFT * down, (PLAYER.height / 2) * down)
         avatar.body.rotation.set(
-            (-Math.min(0.18, avatar.speed * 0.04) + (push ? push.z * tilt : 0)) * stand - (Math.PI / 2) * down,
+            (lean + (push ? push.z * tilt : 0)) * stand - (Math.PI / 2) * down,
             0,
             push ? -push.x * tilt : 0
         )
+        // The hips dip as the legs pass, and sink a little with knees bent in the air.
+        const dip = Math.abs(Math.sin(avatar.stride)) * STEP.dip * moving
+        figure.torso.position.y = BODY.hipY - dip - air * 0.02
+
+        // Holding a gun: bladed, the head turned back to look ahead, nodding with their aim.
+        const holding = state.weapon !== 'stapler' ? 1 : 0.3
+        figure.chest.rotation.set(0, -BLADE * holding * stand, 0)
         const snap = avatar.hit?.headshot ? rock * HIT.headshot : 0
-        avatar.head.rotation.set(pose.pitch * 0.5 + snap + PRONE_LOOK * down, 0, 0)
+        figure.head.rotation.set(pose.pitch * 0.5 + snap + PRONE_LOOK * down, BLADE * holding * stand, 0)
 
         // The gun: up to the eye while aiming, down at low ready in a dodge; a new one comes up from below.
-        const ease10 = Math.min(1, dt * 10)
         avatar.aimed += ((state.aiming ? 1 : 0) - avatar.aimed) * ease10
         avatar.lowered += ((avatar.speed > DODGE_SPEED && !state.aiming ? 1 : 0) - avatar.lowered) * ease10
         if (state.weapon !== avatar.held) {
             avatar.held = state.weapon
             avatar.switchAt = now
         }
+        avatar.aim.position.set(0, BODY.shoulderY - dip - air * 0.02, 0)
         avatar.aim.rotation.x = pose.pitch + (Math.PI / 2) * down
-        if (state.weapon === 'stapler') this.holdStapler(avatar, now)
-        else this.holdGun(avatar, state.weapon, state.reload, now)
+        const grips =
+            state.weapon === 'stapler'
+                ? this.holdStapler(avatar, now)
+                : this.holdGun(avatar, state.weapon, state.reload, now)
+
+        root.updateMatrixWorld(true)
+        this.arm(avatar, 0, grips[0])
+        this.arm(avatar, 1, grips[1])
+
+        // Legs: stepping on the ground (crawling, prone), tucked in the air.
+        for (const side of [0, 1] as const) {
+            const sx = SIDE[side]
+            const along =
+                avatar.speed > 0.05
+                    ? { x: avatar.velocity.x / avatar.speed, z: avatar.velocity.z / avatar.speed }
+                    : { x: 0, z: -1 }
+            stepAnkle(side, avatar.stride, along, moving * stand, target)
+            // In the air: knees up, one higher, the feet back under them.
+            target.x += (sx * BODY.hipX * 1.1 - target.x) * air
+            target.y += ((side === 0 ? 0.075 : 0.045) - target.y) * air
+            target.z += ((side === 0 ? -0.01 : 0.03) - target.z) * air
+            // Prone: the legs out straight, a knee drawn up and out in turn as they crawl.
+            const crawl = Math.max(0, Math.sin(avatar.stride + side * Math.PI)) * Math.min(1, avatar.speed / 0.3) * down
+            target.x += sx * crawl * 0.03
+            target.y += crawl * 0.05
+            pole.set(sx * (0.15 + crawl * 2), 0, -1)
+            this.leg(avatar, side, target, pole, (1 - air) * stand)
+        }
 
         for (const [i, flame] of avatar.flames.entries()) {
             flame.visible = state.jet
@@ -472,17 +535,23 @@ export class Avatars {
         if (buff) {
             ;(avatar.halo.material as MeshBasicMaterial).color.set(BUFF_COLORS[buff])
             avatar.halo.rotation.z = now * 0.004
-            avatar.halo.position.y = PLAYER.height + 0.05 + Math.sin(now * 0.005) * 0.01
+            avatar.halo.position.y = PLAYER.height + 0.04 + Math.sin(now * 0.005) * 0.01
         }
         if (state.shielded) avatar.shield.rotation.y = now * 0.002
 
-        const hit = now < avatar.flashUntil
-        avatar.suit.emissive.set(hit ? 0xffffff : 0x000000)
-        avatar.suit.emissiveIntensity = hit ? 0.9 : 0
+        this.flash(avatar, now < avatar.flashUntil)
     }
 
-    /** A gun in their hands: posed and animated as in yours, the arms reaching to where it puts the hands. */
-    private holdGun(avatar: Avatar, gunName: Gun, reported: number | null, now: number): void {
+    /** Hit: their clothes flash white. */
+    private flash(avatar: Avatar, on: boolean): void {
+        for (const cloth of avatar.figure.cloth) {
+            cloth.emissive.set(on ? 0xffffff : 0x000000)
+            cloth.emissiveIntensity = on ? 0.9 : 0
+        }
+    }
+
+    /** A gun in their hands: posed and animated as in yours; the hands go where it puts yours. */
+    private holdGun(avatar: Avatar, gunName: Gun, reported: number | null, now: number): [Grip | null, Grip | null] {
         const { group, inner, guns, flash } = avatar.hold
         const gun = guns[gunName]
         const reloadMs = reloadMsOf(gunName)
@@ -515,8 +584,8 @@ export class Avatars {
         const down = Math.max(dip, avatar.lowered * 0.8)
         const turn = gun.reloadPose
         group.position.set(
-            at.x - tip * 0.012,
-            at.y + tip * 0.02 - down * 0.03,
+            at.x - tip * 0.008,
+            at.y + tip * 0.014 - down * 0.022,
             at.z + kick * gun.kick.back * GUN_SCALE * 1.5 - tip * turn.push * GUN_SCALE
         )
         group.rotation.set(
@@ -534,16 +603,15 @@ export class Avatars {
         }
         this.throwCases(avatar, gunName, now)
 
-        // The hands where the gun wants them, in the aim's frame; a hand it doesn't want hangs.
-        group.updateMatrix()
-        inner.updateMatrix()
-        const toAim = new Matrix4().multiplyMatrices(group.matrix, inner.matrix)
-        this.reach(avatar, 0, hands.right ? hands.right.at.clone().applyMatrix4(toAim) : null)
-        this.reach(avatar, 1, hands.left ? hands.left.at.clone().applyMatrix4(toAim) : null)
+        // The hands where the gun wants them, in its own frame; a hand it doesn't want hangs.
+        return [
+            hands.right ? { frame: inner, at: hands.right.at, q: hands.right.q } : null,
+            hands.left ? { frame: inner, at: hands.left.at, q: hands.left.q } : null,
+        ]
     }
 
     /** The stapler in the right hand, chopping when they swing; the left hangs. */
-    private holdStapler(avatar: Avatar, now: number): void {
+    private holdStapler(avatar: Avatar, now: number): [Grip | null, Grip | null] {
         avatar.hold.group.visible = false
         avatar.reloadFrom = null
         const { stapler } = avatar
@@ -551,26 +619,70 @@ export class Avatars {
         const swung = (now - avatar.swingAt) / 300
         stapler.rotation.x = swung < 1 ? -Math.sin(swung * Math.PI) * 1.1 : 0
         // Comes up from below after a switch.
-        stapler.position.y = -0.03 - (1 - ease(Math.min(1, (now - avatar.switchAt) / SWITCH_MS))) * 0.04
-        stapler.updateMatrix()
-        this.reach(avatar, 0, new Vector3(0, 0, -0.005).applyMatrix4(stapler.matrix))
-        this.reach(avatar, 1, null)
+        stapler.position.y = -0.03 - (1 - ease(Math.min(1, (now - avatar.switchAt) / SWITCH_MS))) * 0.03
+        // The fist round its back end.
+        return [{ frame: stapler, at: new Vector3(0, 0.004, -0.012), q: new Quaternion() }, null]
     }
 
-    /** One arm (0 right, 1 left) from its shoulder to `target` (the aim's frame), as far as it reaches; null: hanging. */
-    private reach(avatar: Avatar, side: 0 | 1, target: Vector3 | null): void {
-        const shoulder = avatar.shoulders[side]
-        const glove = avatar.gloves[side]
-        // Hanging: straight down in the world, whatever the aim's pitch, a little out and forward.
-        const hanging = new Vector3(side === 0 ? 0.02 : -0.02, -ARM, -0.012)
-        const to = target
-            ? target.clone().sub(shoulder.position)
-            : hanging.applyAxisAngle(new Vector3(1, 0, 0), -avatar.aim.rotation.x)
-        const length = Math.min(MAX_REACH, Math.max(0.05, to.length()))
-        to.setLength(length)
-        shoulder.quaternion.setFromUnitVectors(DOWN, to.clone().normalize())
-        shoulder.scale.set(1, length / ARM, 1)
-        glove.position.copy(shoulder.position).add(to)
+    /**
+     * One arm (0 right, 1 left): its hand on `grip` (as the gun or stapler has it, the wrist where
+     * the fist's is), the arm bending at the elbow from the shoulder to reach it, stretching a
+     * little at most; null: hanging at their side. Needs the world matrices up to date.
+     */
+    private arm(avatar: Avatar, side: 0 | 1, grip: Grip | null): void {
+        const { body, figure } = avatar
+        const hand = avatar.hands[side]
+        const limb = figure.arms[side]
+        // The shoulder, on the chest, in the body's frame.
+        toBody.copy(body.matrixWorld).invert()
+        shoulder.copy(SHOULDERS[side]).applyMatrix4(figure.chest.matrixWorld).applyMatrix4(toBody)
+        // Elbows down, out and back.
+        pole.set(SIDE[side] * 0.7, -1, 0.5)
+
+        if (grip) {
+            // The fist where the grip has it, in the body's frame; the wrist follows from it.
+            toBody.multiply(grip.frame.matrixWorld)
+            toBody.decompose(target, frameQ, frameS)
+            hand.group.position.copy(grip.at).applyMatrix4(toBody)
+            hand.group.quaternion.copy(frameQ).multiply(grip.q ?? hang)
+            wrist
+                .copy(hand.wrist)
+                .multiplyScalar(HAND_SCALE)
+                .applyQuaternion(hand.group.quaternion)
+                .add(hand.group.position)
+            const stretch = Math.min(MAX_STRETCH, Math.max(1, wrist.distanceTo(shoulder) / ARM_REACH))
+            twoBone(shoulder, wrist, BODY.upperArm * stretch, BODY.forearm * stretch, pole, mid, end)
+            orient(limb.upper, shoulder, mid, pole)
+            orient(limb.lower, mid, end, pole)
+            limb.upper.scale.set(1, stretch, 1)
+            limb.lower.scale.set(1, stretch, 1)
+            // Still short of it (a reload's reach): the fist stays on the gun.
+            return
+        }
+        // Hanging: straight down at their side, a little forward, the fist following the forearm.
+        target.copy(shoulder).add(wrist.set(SIDE[side] * 0.012, -ARM_REACH * 0.97, -0.008))
+        twoBone(shoulder, target, BODY.upperArm, BODY.forearm, pole.set(SIDE[side] * 0.3, 0, 1), mid, end)
+        orient(limb.upper, shoulder, mid, pole)
+        orient(limb.lower, mid, end, pole)
+        limb.upper.scale.set(1, 1, 1)
+        limb.lower.scale.set(1, 1, 1)
+        hand.group.quaternion.copy(limb.lower.quaternion).multiply(hang)
+        hand.group.position.copy(hand.wrist).multiplyScalar(-HAND_SCALE).applyQuaternion(hand.group.quaternion).add(end)
+    }
+
+    /** One leg (0 right, 1 left) from its hip to its ankle at `ankle` (the body's frame), the knee toward `kneeToward`. */
+    private leg(avatar: Avatar, side: 0 | 1, ankle: Vector3, kneeToward: Vector3, planted: number): void {
+        const { figure } = avatar
+        const limb = figure.legs[side]
+        hipJoint.set(SIDE[side] * BODY.hipX, figure.torso.position.y, 0)
+        twoBone(hipJoint, ankle, BODY.thigh, BODY.shin, kneeToward, mid, end)
+        orient(limb.upper, hipJoint, mid, kneeToward)
+        orient(limb.lower, mid, end, kneeToward)
+        // The foot: flat when planted, toes up as it swings through, pointed in the air.
+        const foot = figure.feet[side]
+        foot.position.copy(end)
+        const lifted = (end.y - BODY.ankle) / STEP.lift
+        foot.rotation.set(Math.min(0.4, lifted * 0.3) * planted - (1 - planted) * 0.5, 0, 0)
     }
 
     /** Spent cases out of the port, in the gun's frame, spinning, falling away. */
@@ -612,7 +724,7 @@ export class Avatars {
         avatar.stapler.visible = false
     }
 
-    /** Down: the fall, lying there, sinking away; gone until they're back. */
+    /** Down: the knees go, the fall, lying there, sinking away; gone until they're back. */
     private lie(avatar: Avatar, pose: Pose, now: number): void {
         const death = avatar.death
         avatar.last = null
@@ -620,27 +732,42 @@ export class Avatars {
         avatar.root.visible = since < DEATH.goneAt
         if (!death || !avatar.root.visible) return
         avatar.root.position.set(pose.x, pose.y, pose.z)
+        const { figure, body } = avatar
 
         const angle = fallAngle(since)
         const over = angle / (Math.PI / 2)
-        avatar.body.quaternion.setFromAxisAngle(death.axis, angle)
+        body.quaternion.setFromAxisAngle(death.axis, angle)
         // Lying, the back (not the middle of the body) rests on the floor; then they sink through it.
         const sink = Math.max(0, (since - DEATH.sinkAt) / (DEATH.goneAt - DEATH.sinkAt))
-        avatar.body.position.set(0, 0.05 * Math.sin(angle) - sink * 0.12, 0)
-        avatar.hips[0].rotation.x = 0.5 * over
-        avatar.hips[1].rotation.x = 0.2 * over
-        avatar.head.rotation.set(0.35 * over, 0, 0)
+        // The knees buckle first: the hips drop as they go over.
+        const buckle = Math.min(1, since / 250)
+        body.position.set(0, 0.026 * Math.sin(angle) - sink * 0.12, 0)
+        figure.torso.position.y = BODY.hipY - buckle * 0.05 * (1 - over * 0.6)
+        figure.chest.rotation.set(-0.15 * over, 0, 0)
+        figure.head.rotation.set(0.35 * over, 0, 0)
+        avatar.aim.position.set(0, figure.torso.position.y + BODY.shoulderY - BODY.hipY, 0)
         avatar.aim.rotation.x = -0.4 * over
+        body.updateMatrixWorld(true)
+        avatar.root.updateMatrixWorld(true)
         // The arms go limp, out to the sides.
-        this.reach(avatar, 0, new Vector3(0.09 + 0.05 * over, -0.07, 0.02 * over))
-        this.reach(avatar, 1, new Vector3(-0.09 - 0.05 * over, -0.07, 0.02 * over))
-        avatar.suit.emissiveIntensity = 0
+        for (const side of [0, 1] as const) {
+            this.arm(avatar, side, {
+                frame: avatar.aim,
+                at: new Vector3(SIDE[side] * (0.08 + 0.04 * over), -0.11, 0.02 * over),
+                q: null,
+            })
+            // The knees buckle, then the legs go slack and straight as they hit the floor.
+            const bent = buckle * (1 - over)
+            target.set(SIDE[side] * BODY.hipX * (1.2 + over * 0.6), BODY.ankle + bent * 0.03, 0.01 + bent * 0.02)
+            this.leg(avatar, side, target, pole.set(SIDE[side] * 0.4, 0, -1), 1)
+        }
+        this.flash(avatar, false)
 
         // The gun falls to the floor, tumbling, and lies on its side.
         const { group } = avatar.hold
         if (group.parent === avatar.root) {
             const dt = Math.min(0.05, (now - death.lastAt) / 1000)
-            const floor = 0.012 - sink * 0.12
+            const floor = 0.008 - sink * 0.12
             if (group.position.y > floor) {
                 death.gunVelocity.y -= 9.8 * dt
                 group.position.addScaledVector(death.gunVelocity, dt)
@@ -678,63 +805,26 @@ export class Avatars {
         if (existing && existing.name === name && existing.color === color) return existing
         if (existing) this.remove(id, existing)
 
-        const suit = new MeshStandardMaterial({ color: new Color(color), roughness: 0.7, metalness: 0 })
-        const trim = new MeshStandardMaterial({ color: new Color(color).multiplyScalar(0.55), roughness: 0.75 })
-        applyFinish(suit, 'cloth')
-        applyFinish(trim, 'cloth')
-        const glow = new MeshBasicMaterial({ color: new Color(color).lerp(new Color(0xffffff), 0.35) })
-        type Look = MeshStandardMaterial | MeshBasicMaterial
-        const part = (geometry: (typeof shape)[keyof typeof shape], material: Look, x = 0, y = 0, z = 0) => {
-            const mesh = new Mesh(geometry, material)
-            mesh.position.set(x, y, z)
-            mesh.castShadow = true
-            return mesh
-        }
-
+        const figure = buildFigure(lookFor(id, color))
         const root = new Group()
         const body = new Group()
         root.add(body)
+        body.add(figure.torso)
+        for (const limb of [...figure.arms, ...figure.legs]) body.add(limb.upper, limb.lower)
+        body.add(...figure.feet)
 
-        // Legs, pivoting at the hips.
-        const hips: [Group, Group] = [new Group(), new Group()]
-        for (const [i, side] of [-1, 1].entries()) {
-            const hip = hips[i]!
-            hip.position.set(side * 0.04, HIP, 0)
-            hip.add(part(shape.leg, trim), part(shape.boot, dark))
-            body.add(hip)
-        }
-
-        // Torso: suit, belt with a buckle, a chest plate.
-        body.add(part(shape.torso, suit, 0, 0.19, 0))
-        body.add(part(shape.belt, dark, 0, 0.135, 0))
-        body.add(part(shape.buckle, metal, 0, 0.135, -0.054))
-        body.add(part(shape.chest, white, 0, 0.215, -0.051))
-
-        // Head: helmet, visor facing forward (-Z), ear caps, an antenna with a light in their colour.
-        const head = new Group()
-        head.position.set(0, HEAD, 0)
-        head.add(part(shape.head, white))
-        head.add(part(shape.visor, visorMaterial))
-        for (const side of [-1, 1]) head.add(part(shape.earCap, suit, side * 0.07, 0, 0))
-        const antenna = part(shape.antenna, metal, 0.035, 0.055, 0.02)
-        antenna.rotation.z = -0.25
-        head.add(antenna, part(shape.antennaTip, glow, 0.05, 0.11, 0.02))
-        body.add(head)
-
-        // Arms and gun, pivoting at the shoulders with the aim: right (0), left (1).
-        const aim = new Group()
-        aim.position.set(0, SHOULDER, 0)
-        const shoulders: [Group, Group] = [new Group(), new Group()]
-        const gloves: [Mesh, Mesh] = [part(shape.glove, dark), part(shape.glove, dark)]
-        for (const [i, side] of [1, -1].entries()) {
-            const shoulder = shoulders[i]!
-            shoulder.position.set(side * 0.085, 0, 0)
-            shoulder.add(part(shape.arm, suit))
-            aim.add(shoulder, gloves[i]!)
-        }
-
-        // The guns you hold, scaled down to them; only the one in hand shows.
+        // Their fists: yours, in their skin, at their size.
         const kit = kitFor(color)
+        const bare = { ...kit, glove: figure.skin, dark: figure.skin }
+        const hands: [Hand, Hand] = [buildHand(bare, 'right'), buildHand(bare, 'left')]
+        for (const hand of hands) {
+            hand.group.scale.setScalar(HAND_SCALE)
+            body.add(hand.group)
+        }
+
+        // The gun and the stapler, pivoting at the shoulders' height with the aim.
+        const aim = new Group()
+        aim.position.set(0, BODY.shoulderY, 0)
         const guns = buildGuns(kit, rocketLook)
         const inner = new Group()
         inner.scale.setScalar(GUN_SCALE)
@@ -747,8 +837,7 @@ export class Avatars {
         }
         for (const gun of Object.values(guns)) {
             gun.group.visible = false
-            // The sight's glowing dot is for your own eye. The gun casts no shadow: a few pixels
-            // of it on the floor would cost a draw of each of its parts in the shadow map.
+            // The sight's glowing dot is for your own eye.
             gun.tip.visible = false
             inner.add(gun.group)
         }
@@ -758,29 +847,26 @@ export class Avatars {
 
         // The stapler, held the same way, pivoting at its back for the chop.
         const stapler = new Group()
-        stapler.position.set(0.03, -0.03, -0.06)
-        stapler.add(part(shape.staplerBase, dark, 0, -0.008, -0.05), part(shape.staplerArm, suit, 0, 0.008, -0.048))
+        stapler.position.set(0.02, -0.03, -0.045)
+        const base = new Mesh(shape.staplerBase, dark)
+        base.position.set(0, -0.005, -0.033)
+        const top = new Mesh(shape.staplerArm, figure.accent)
+        top.position.set(0, 0.005, -0.032)
+        stapler.add(base, top)
         stapler.visible = false
         aim.add(group, stapler)
         body.add(aim)
 
-        // Jetpack on the back (+Z): two tanks, nozzles with rings, a flame under each.
-        const pack = new Group()
-        pack.position.set(0, 0.2, 0.08)
-        pack.add(part(shape.pack, metal))
+        // The jetpack's flames, under its two nozzles.
         const flames: Group[] = []
         for (const side of [-1, 1]) {
-            pack.add(part(shape.tank, suit, side * 0.035, 0.005, 0.035))
-            pack.add(part(shape.nozzle, dark, side * 0.035, -0.07, 0.035))
-            pack.add(part(shape.ring, glow, side * 0.035, -0.06, 0.035))
             const flame = new Group()
-            flame.position.set(side * 0.035, -0.085, 0.035)
+            flame.position.set(side * 0.018, -0.05, 0.002)
             flame.add(new Mesh(shape.flame, flameMaterial), new Mesh(shape.core, coreMaterial))
             flame.visible = false
-            pack.add(flame)
+            figure.pack.add(flame)
             flames.push(flame)
         }
-        body.add(pack)
 
         const halo = new Mesh(
             shape.halo,
@@ -835,28 +921,25 @@ export class Avatars {
             id,
             root,
             body,
-            hips,
-            shoulders,
-            gloves,
+            figure,
+            hands,
             aim,
             hold: { group, inner, guns, flash, cases },
             kit,
             stapler,
             swingAt: -1e9,
-            head,
             flames,
             shield,
             firewall,
             halo,
             xray,
-            suit,
-            trim,
-            glow,
             name,
             color,
             last: null,
+            velocity: { x: 0, z: 0 },
             speed: 0,
             stride: 0,
+            air: 0,
             flashUntil: 0,
             held: 'rifle',
             switchAt: -1e9,
@@ -877,18 +960,25 @@ export class Avatars {
     private remove(id: string, avatar: Avatar): void {
         this.scene.remove(avatar.root, avatar.blob)
         avatar.blob.material.dispose()
-        // The guns are theirs alone (geometry and materials): the troopers' shared shapes aren't in there.
-        const shared = new Set<Material>(Object.values(rocketLook))
-        avatar.hold.group.traverse((o: Object3D) => {
+        // Their body, hands and guns are theirs alone (geometry and materials); the shapes and
+        // materials every trooper shares (flames, shields, the rockets' look, the stapler's) aren't.
+        const shared = new Set<Material>([
+            ...Object.values(rocketLook),
+            dark,
+            flameMaterial,
+            coreMaterial,
+            shieldMaterial,
+            firewallMaterial,
+            ...SHARED_MATERIALS,
+        ])
+        const sharedShapes = new Set<unknown>([...Object.values(shape), blobPlane])
+        avatar.root.traverse((o: Object3D) => {
             if (!(o instanceof Mesh)) return
-            o.geometry.dispose()
+            if (!sharedShapes.has(o.geometry)) o.geometry.dispose()
             for (const material of [o.material].flat() as Material[]) {
                 if (!shared.has(material)) material.dispose()
             }
         })
-        for (const material of [avatar.suit, avatar.trim, avatar.glow, avatar.xray.material as Material]) {
-            material.dispose()
-        }
         this.avatars.delete(id)
     }
 }

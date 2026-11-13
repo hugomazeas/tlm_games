@@ -340,15 +340,25 @@ Playable at `/games/office-fps`.
   `parkerized` mottle, stippled `polymer` and `rubber`, `cloth`, chipped `paint`, smudged
   `polished`; worn edges come from each face's UVs (round parts' UVs are flattened in `placed`,
   so a barrel's seam doesn't show as wear), and detail finer than a pixel fades out. A kit's
-  materials get theirs in `kitFor` (`FINISHES`). The troopers' visors reflect the office glass's
-  map (`AvatarsOptions.reflections`).
-- **Others' troopers** (`client/avatars.ts`): they hold the same gun models (`buildGuns`, at
-  `GUN_SCALE`), animated by the same `animate`, the arms stretched to where it puts the hands, so a
-  reload plays as in yours: `PlayerState.reload` (0–1) and `aiming` come from the server, the reload
+  materials get theirs in `kitFor` (`FINISHES`).
+- **Others' troopers** (`client/avatars.ts`, the body in `client/figure.ts`): office workers with an
+  adult's proportions in the 40 cm capsule (`BODY`: the crown at PLAYER.height, the head an eighth
+  of it), dressed from their id (`lookFor`: skin, hair, shirt and tie or a hoodie, trousers,
+  sneakers, a lanyard badge; tie, hoodie and badge in their or their team's colour). Rigid parts on
+  joints, no skinning: torso and head merged per material, the chest turning on the pelvis, each
+  limb two segments bent by two-bone IK (`twoBone`, `orient`). The feet step the way they move,
+  strafing and backing up too (`stepAnkle`), tucked in the air (`groundBelow` says how high they
+  are), straight and crawling prone, buckling then slack in a death. They hold the same gun models
+  (`buildGuns`) at true size (`GUN_SCALE` 0.6: a rifle half their height), bladed (`BLADE`) with
+  the gun's back end in the shoulder (the models start at the sight: in your hands the camera is
+  the stock), each fist (yours, `buildHand`, in their skin) where `animate` puts your hand, the
+  arm bending at the elbow to the wrist (stretching up to `MAX_STRETCH`). So a reload plays as in
+  yours: `PlayerState.reload` (0–1) and `aiming` come from the server, the reload
   run smoothly on this browser's clock (`reloadStart`). The gun sits at the chest, comes to the eye
   aiming, dips on a switch, drops in a dodge; shots and launches kick it, flash and throw cases
-  (`fire`). Hits rock them away from the shooter, the head back on a headshot (`hit`); killed, they
-  fall that way, drop their gun and sink away before the respawn. Each has a soft contact shadow
+  (`fire`). Hits rock them away from the shooter, the head back on a headshot, their clothes flash
+  white (`hit`); killed, they fall that way, drop their gun and sink away before the respawn. The
+  jetpack is a backpack (its flames under two nozzles). Each has a soft contact shadow
   (a blob, `BLOB`) on whatever is under them (`AvatarsOptions.groundBelow`: a ray down in `main.ts`),
   fainter the higher they are: the office's shadow map is drawn once, so players cast none.
 - **Gun lab** (`bun run fps:guns`, http://localhost:8097, `FPS_LAB_PORT`): the viewmodel alone on a
