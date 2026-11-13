@@ -1,0 +1,68 @@
+{
+    "rv": {
+        "version": 2,
+        "verdict": "approved",
+        "note": "",
+        "at": "2026-11-13T15:30:30.220Z"
+    },
+    "excavator": {
+        "version": 2,
+        "verdict": "approved",
+        "note": "",
+        "at": "2026-11-13T15:30:35.613Z"
+    },
+    "car": {
+        "version": 2,
+        "verdict": "approved",
+        "note": "",
+        "at": "2026-11-13T15:30:43.742Z"
+    },
+    "boat-trailer": {
+        "version": 2,
+        "verdict": "approved",
+        "note": "",
+        "at": "2026-11-13T15:30:47.762Z"
+    },
+    "tree": {
+        "version": 2,
+        "verdict": "approved",
+        "note": "",
+        "at": "2026-11-13T15:32:15.318Z"
+    },
+    "shrub": {
+        "version": 2,
+        "verdict": "approved",
+        "note": "",
+        "at": "2026-11-13T15:32:22.081Z"
+    },
+    "leaf-pile": {
+        "version": 2,
+        "verdict": "approved",
+        "note": "",
+        "at": "2026-11-13T15:32:25.419Z"
+    },
+    "hedge": {
+        "version": 2,
+        "verdict": "approved",
+        "note": "",
+        "at": "2026-11-13T15:32:29.017Z"
+    },
+    "split-level": {
+        "version": 1,
+        "verdict": "approved",
+        "note": "Clipping roofs against the walls (Walls are sticking out of the roof)",
+        "at": "2026-11-13T15:33:47.029Z"
+    },
+    "shed": {
+        "version": 1,
+        "verdict": "approved",
+        "note": "Clipping against roofs and walls",
+        "at": "2026-11-13T15:34:01.737Z"
+    },
+    "bungalow": {
+        "version": 1,
+        "verdict": "approved",
+        "note": "Clipping against roof and walls",
+        "at": "2026-11-13T15:34:57.524Z"
+    }
+}

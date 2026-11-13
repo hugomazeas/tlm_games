@@ -27,6 +27,7 @@ class OfficeFpsInternalController extends Controller
             'minutes' => 'required|integer|min:1|max:120',
             'player_count' => 'required|integer|min:1|max:12',
             'mode' => ['sometimes', 'string', Rule::in(OfficeFpsMatch::MODES)],
+            'map' => ['sometimes', 'string', Rule::in(OfficeFpsMatch::MAPS)],
             'players' => 'required|array|min:1|max:12',
             'players.*.player_id' => 'required|integer|distinct|exists:players,id',
             'players.*.place' => 'required|integer|min:1|max:12',
@@ -62,6 +63,8 @@ class OfficeFpsInternalController extends Controller
                 'minutes' => $validated['minutes'],
                 'player_count' => $validated['player_count'],
                 'mode' => $validated['mode'] ?? 'ffa',
+                // Posts from before maps: the office.
+                'map' => $validated['map'] ?? 'office',
             ]);
             foreach ($validated['players'] as $row) {
                 // Posts from before modes: no team, the winner is whoever placed first.

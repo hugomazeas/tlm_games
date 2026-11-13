@@ -44,6 +44,7 @@ uniform vec3 officeLightOrigin;
 uniform vec3 officeLightSize;
 uniform vec3 officeLightCell;
 uniform float officeLightMax;
+uniform float officeLightOn;
 varying vec3 vOfficeWorld;
 
 /** The baked light on a surface at p facing n (world space): a + b·n, read half a cell out. */
@@ -54,7 +55,7 @@ float officeIrradiance( vec3 p, vec3 n ) {
     vec4 t = texture( officeLightMap, uvw );
     float a = t.r * t.r * officeLightMax;
     vec3 b = ( t.gba * 2.0 - 1.0 ) * 2.0 * a;
-    return mix( 1.0, max( a + dot( b, n ), a * 0.15 ), inside );
+    return mix( 1.0, max( a + dot( b, n ), a * 0.15 ), inside * officeLightOn );
 }
 `
 
@@ -81,7 +82,17 @@ export class OfficeLighting {
             officeLightSize: { value: new Vector3(nx * light.cell[0], ny * light.cell[1], nz * light.cell[2]) },
             officeLightCell: { value: new Vector3(...light.cell) },
             officeLightMax: { value: light.max },
+            officeLightOn: { value: 1 },
         }
+    }
+
+    /** Off on another map (it says nothing about the street): everything lit as without it. */
+    set enabled(on: boolean) {
+        this.uniforms.officeLightOn.value = on ? 1 : 0
+    }
+
+    get enabled(): boolean {
+        return this.uniforms.officeLightOn.value === 1
     }
 
     /** Lights `material` by the bake (lit materials only; once each). */
@@ -115,6 +126,6 @@ export class OfficeLighting {
 
     /** The light at a point (facing up by default), as the shader reads it: 1 is a lit open floor. */
     at(x: number, y: number, z: number, nx = 0, ny = 1, nz = 0): number {
-        return irradianceAt(this.light, x, y, z, nx, ny, nz)
+        return this.enabled ? irradianceAt(this.light, x, y, z, nx, ny, nz) : 1
     }
 }

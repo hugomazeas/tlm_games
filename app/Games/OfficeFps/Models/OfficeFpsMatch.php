@@ -19,9 +19,18 @@ class OfficeFpsMatch extends Model
         'siege' => 'Siege',
     ];
 
+    /** The maps (the game server's `MAPS`): everyone warms up in the office; the host picks a match's. */
+    public const MAPS = ['office', 'erables'];
+
+    /** How the pages name each map. */
+    public const MAP_LABELS = [
+        'office' => 'The office',
+        'erables' => 'Rue des Érables',
+    ];
+
     protected $table = 'office_fps_matches';
 
-    protected $fillable = ['started_at', 'ended_at', 'frag_limit', 'minutes', 'player_count', 'mode'];
+    protected $fillable = ['started_at', 'ended_at', 'frag_limit', 'minutes', 'player_count', 'mode', 'map'];
 
     protected function casts(): array
     {

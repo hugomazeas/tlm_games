@@ -253,10 +253,16 @@ Playable at `/games/office-fps`.
   profile's line) and each player's page `/games/office-fps/players/{player}` (totals and rates,
   records, per weapon, per mode, nemesis and favourite target, recent matches). The `game_types` and
   `game_modes` rows come from migrations (deploys don't seed).
-- **Host and rules:** no match starts by itself. Everyone warms up until the host (the longest
-  seated; it passes on when they leave) picks a mode, a limit and a length (`Rules`: `MODES`,
-  `FRAG_LIMITS`, `MATCH_MINUTES`) on their Esc menu and sends `start`; after the scoreboard
-  (12 s, with awards) it's warmup again.
+- **Host and rules:** no match starts by itself. Everyone warms up **in the office** until the host
+  (the longest seated; it passes on when they leave) opens their **Next match** panel (N, or the
+  Esc menu's button; `hud.renderSetup`) and picks a map, a mode that map allows and a limit and a
+  length (`Rules`: `MAPS` / `MAP_INFO` / `playableOn`, `MODES`, `FRAG_LIMITS`, `MATCH_MINUTES`). Each
+  change goes out as `plan` (`MatchView.next`: everyone's warmup line shows it, browsers build its
+  map); Start sends `start`. Then `loading` (each browser says `ready` once it has the map; the
+  office counts as built at join; at most `LOADING_MS`, 15 s), the countdown and the match on that
+  map (the lobby keeps a world per map, `Arena.setWorld` moves everyone over, `MatchView.map`), the
+  scoreboard (12 s, with awards) there, then warmup back in the office. The panel opens on the last
+  match's rules (Rematch). Laravel stores each match's `map`.
 - **Modes** (`lobby.ts`): `ffa` free-for-all; `tdm` red vs blue (shuffled at the start, a
   latecomer joins the smaller side, no friendly fire, spawns away from enemies only, first team
   to the limit); `koth` King of the meeting room: one of four `ZONES` (`sim/places.ts`) is live,
@@ -403,7 +409,10 @@ Playable at `/games/office-fps`.
   3D texture read a pixel), so corners, under desks, behind sofas and round chair feet come out
   darker; the troopers (`AvatarsOptions.dress`), built walls and pickups too; the gun in your hands
   dims with the light at your eye (`Viewmodel.shade`). The sun stays a real light (`BAKED` levels in
-  office.js; without `opts.lighting` buildOffice keeps the old flat light). **Change the office's
+  office.js; without `opts.lighting` buildOffice keeps the old flat light). It's the office's
+  only: on Rue des Érables `showMap` turns it off (`lighting.enabled`, a uniform) and sets that
+  map's exposure (`ERABLES_EXPOSURE`; tone mapping stays Neutral: changing it would recompile
+  every shader at the switch). **Change the office's
   shapes → `bun run fps:light`** (~2.5 min on every core) and commit `office-light.b64`:
   `light.test.ts` fails on a stale bake (a fingerprint of the collision triangles). `--reuse`
   re-finishes the last bake's rays (kept in the temp folder) to tune `RADIANCE`, the blur or the
@@ -509,6 +518,40 @@ Playable at `/games/office-fps`.
   `buildOffice(scene, renderer)` adds the browser's canvas textures, sky, sun and baking on top.
   Both place everything from the same seeded random numbers: keep anything that calls `R()` in
   the geometry, never in the materials, or the server's collision drifts from what's drawn.
+- **Rue des Érables** (map `erables`, `fps/map/erables.ts` + `erables-kit.ts`, drawn by
+  `client/erables.ts`): an original Québec street in October for people at full size: a brick
+  bungalow (detached garage, Tempo over the driveway, deck, closed pool) facing a split-level (den,
+  bedrooms upstairs whose front window looks over the street, a carport whose roof is a terrace),
+  three lanes (north yards, the street, south yards), the road closed for works at both ends (the
+  spawns, Siege's domes). It is **built in real metres and shrunk as a whole** (`ERABLES_SCALE`, a
+  1.8 m person to a 40 cm mini), so nothing sized in the game changes; its `Movement` (a map's
+  walk, jump, gravity, pad throw, rocket shove, jetpack/dodge off) is scaled the same way so a
+  fall takes real time. Every map's places and movement travel in its `FpsWorld` (`MapPlaces`:
+  pickups with their floor `y`, weights (no jetpack extender here), pads (here the two
+  trampolines, onto the carport and garage roofs), portals, zones, Siege spots with their floor,
+  `move`, `unit` for metres shown); `placesOf(map)` names them by index. Collision is the drawn
+  meshes minus `noCollide` (glass, leaves, wires, small things: you see and shoot through
+  windows) plus `solidOnly` (ramps under every stair, invisible bounds and a lid). The browser
+  paints every material on canvases, merges per material with world-aligned UVs (`WORLD_UV`), adds
+  crowns of leaf cards, fallen and falling leaves, the neighbourhood, a treeline and clouds, and
+  retunes the office's own lights (`erablesLooks`: no new light, no recompile). `map/erables.test.ts`
+  walks doors, stairs and the trampoline, checks every place and keeps everyone inside.
+- **Assets** (`fps/assets/`): **every new component for the FPS (a car, a tree, a house, a
+  bench, a sign…) is an asset in the library, never drawn straight into a map.** An asset is a
+  whole parametric object (`defineAsset` in `catalog/<category>.ts`, listed in `library.ts`):
+  defaults, params, variants, a rough `size`, and versions: `current` (what the maps build) and
+  at most one `draft` (newer, shown only in the lab). Maps and other assets put one down with
+  `place(b, ASSET, params, { x, y, z, ry })` (`place.ts`: its own frame, seeded by id and spot,
+  so the server and browser build the same), so changing an asset changes it everywhere it
+  stands. Only ground surfaces, wires and invisible bounds stay as raw `Builder` calls in a map.
+  **The lab** (`bun run fps:assets`, http://localhost:8098, `FPS_ASSETS_PORT`): the list with each
+  asset's status, current and draft side by side, its params live, Approve / Request changes
+  (verdicts in `assets/reviews.json`). The workflow: a change is a new `draft`, at most three
+  rounds per asset; once the user approves it, it becomes `current` and the old version's code
+  goes. Approved means the user clicked Approve without asking for anything: a note with it is a
+  change request. `library.test.ts` builds every version and variant without a DOM, checks sizes,
+  that what you'd bump into collides (a short decorative list doesn't), and that placement is
+  deterministic.
 - **Sim** (`fps/sim/`, pure): `movement.ts` steps a body at 60 Hz (collision sub-steps by speed,
   `SUBSTEP_REACH` of the radius each: one walking, up to 8 falling; collision is most of the
   server's time, so keep `collideCapsule` allocation-free; walk/run/jetpack tuning at the top),
