@@ -1,5 +1,4 @@
 import {
-    ACESFilmicToneMapping,
     BoxGeometry,
     BufferGeometry,
     CapsuleGeometry,
@@ -15,6 +14,7 @@ import {
     Mesh,
     MeshBasicMaterial,
     MeshStandardMaterial,
+    NeutralToneMapping,
     Object3D,
     PerspectiveCamera,
     Plane,
@@ -166,7 +166,9 @@ let state = readHash()
 const renderer = new WebGLRenderer({ antialias: true })
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
 renderer.setSize(innerWidth, innerHeight)
-renderer.toneMapping = ACESFilmicToneMapping
+// As in the game (main.ts), so the gun looks here as it will there.
+renderer.toneMapping = NeutralToneMapping
+renderer.toneMappingExposure = 0.9
 // Reset once a frame (frame()), so the stats count the world and the gun's own pass.
 renderer.info.autoReset = false
 document.body.append(renderer.domElement)

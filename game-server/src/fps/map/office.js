@@ -123,21 +123,48 @@ export function createOfficeMaterials(renderer) {
   }
   const clamp255 = (v) => Math.max(0, Math.min(255, v));
 
-  // Carpet tiles, 50 cm, quarter-turned stripes like the scan's office carpet.
+  // Carpet tiles, 50 cm, quarter-turned stripes like the scan's office carpet: 2 m a repeat, each of
+  // its 16 tiles its own dye lot and pile direction, a broad wear (paths darker, corners fresher).
   const carpetT = (() => {
-    const n1 = noise(1, 64), n2 = noise(2, 8), tone = rng(3);
-    const tones = Array.from({ length: 4 }, () => (tone() - .5) * 10);
-    return paint(512, 1, (u, v, o) => {
-      const tx = u < .5 ? 0 : 1, ty = v < .5 ? 0 : 1, lu = (u * 2) % 1, lv = (v * 2) % 1;
+    const n1 = noise(1, 256), n2 = noise(2, 32), wear = noise(4, 3), tone = rng(3);
+    const tones = Array.from({ length: 16 }, () => (tone() - .5) * 14);
+    return paint(1024, 2, (u, v, o) => {
+      const tx = Math.floor(u * 4), ty = Math.floor(v * 4), lu = (u * 4) % 1, lv = (v * 4) % 1;
       const s = (tx + ty) % 2 === 0 ? lu : lv;
       const stripe = Math.sin((s * 40 + n2(u, v) * 2) * Math.PI * 2) * .5 + .5;
       const fine = n1(u, v);
       const seam = (lu < .008 || lv < .008) ? -18 : 0;
-      const base = 58 + tones[tx + ty * 2] + stripe * 9 + fine * 14 + seam;
+      const worn = (wear(u, v) - .5) * 12;
+      const base = 58 + tones[tx + ty * 4] + stripe * 9 + fine * 14 + seam + worn;
       o[0] = clamp255(base + 4); o[1] = clamp255(base + 2); o[2] = clamp255(base + 2);
       o[3] = stripe * .5 + fine * .4 + (seam ? -.4 : 0);
     }, 3);
   })();
+  // Wear on painted and laminate tops: a faint mottle in the colour, and smudges where hands rest
+  // (the gloss comes and goes) in the roughness. Stretched over each face (desks have no world UVs).
+  const wornT = (() => {
+    const n = noise(91, 32), m = noise(92, 6), smudge = noise(93, 12);
+    return paint(512, 1, (u, v, o) => {
+      const k = 246 + (n(u, v) - .5) * 6 + (m(u, v) - .5) * 8;
+      o[0] = clamp255(k); o[1] = clamp255(k); o[2] = clamp255(k - 1); o[3] = 0;
+    }, 0, (u, v) => .62 + Math.min(1, Math.max(0, (smudge(u, v) - .35) * 1.6)) * .38);
+  })();
+  // Leaves: lighter toward the tip, a pale midrib, side veins, darker edges (UVs across the leaf).
+  const leafT = canvasTexture(128, 256, (g, w, h) => {
+    const grad = g.createLinearGradient(0, h, 0, 0);
+    grad.addColorStop(0, '#9aa596'); grad.addColorStop(.6, '#e6ece2'); grad.addColorStop(1, '#f4f7ef');
+    g.fillStyle = grad; g.fillRect(0, 0, w, h);
+    const edge = g.createLinearGradient(0, 0, w, 0);
+    edge.addColorStop(0, 'rgba(40,60,30,.45)'); edge.addColorStop(.3, 'rgba(40,60,30,0)');
+    edge.addColorStop(.7, 'rgba(40,60,30,0)'); edge.addColorStop(1, 'rgba(40,60,30,.45)');
+    g.fillStyle = edge; g.fillRect(0, 0, w, h);
+    g.strokeStyle = 'rgba(255,255,235,.75)'; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(w / 2, h); g.lineTo(w / 2, 4); g.stroke();
+    g.lineWidth = 1.4; g.strokeStyle = 'rgba(255,255,230,.4)';
+    for (let y = h - 20; y > 20; y -= 18) {
+      for (const side of [-1, 1]) { g.beginPath(); g.moveTo(w / 2, y); g.quadraticCurveTo(w / 2 + side * 22, y - 10, w / 2 + side * 50, y - 30); g.stroke(); }
+    }
+  });
   // Oak planks, 2 m x 2 m.
   const woodT = (() => {
     const g = noise(11, 128), w = noise(12, 16), r = rng(13), rn = noise(14, 32);
@@ -158,7 +185,8 @@ export function createOfficeMaterials(renderer) {
     const n = noise(21, 64), m = noise(22, 8);
     return paint(512, 1.2, (u, v, o) => {
       const lu = (u * 2) % 1, lv = (v * 2) % 1, grout = (lu < .008 || lv < .008);
-      const k = grout ? 150 : 214 + n(u, v) * 14 - m(u, v) * 10;
+      // Porcelain is near-even: a faint cloud, no speckle (it shows now that whites don't clip).
+      const k = grout ? 150 : 216 + n(u, v) * 4 - m(u, v) * 7;
       o[0] = clamp255(k); o[1] = clamp255(k - 2); o[2] = clamp255(k - 6);
       o[3] = grout ? -1 : n(u, v) * .1;
     }, 3);
@@ -280,18 +308,22 @@ export function createOfficeMaterials(renderer) {
   // -------------------------------------------------------------------------
   const std = (o) => new THREE.MeshStandardMaterial(o);
   const fab = (color) => std({ color, map: fabricT.map, normalMap: fabricT.normalMap, roughness: .95 });
+  // The tile floor's gloss varies too (its UVs are in metres: a smudge every metre and a half).
+  const floorSmudge = wornT.roughnessMap.clone();
+  floorSmudge.repeat.set(1 / 1.5, 1 / 1.5); floorSmudge.needsUpdate = true;
   const M = {
-    wall: std({ color: 0xe2ded6, ...plasterT, roughness: .92, normalScale: new THREE.Vector2(.3, .3) }),
+    // Painted walls reflect ~70% (a pure white would clip under the lights).
+    wall: std({ color: 0xd3cfc8, ...plasterT, roughness: .92, normalScale: new THREE.Vector2(.3, .3) }),
     baseboard: std({ color: 0x2b2d31, roughness: .55 }),
     frame: std({ color: 0x24272c, metalness: .75, roughness: .32 }),
     glass: new THREE.MeshPhysicalMaterial({ color: 0xdff1f8, metalness: 0, roughness: .03, transparent: true, opacity: .14, depthWrite: false, side: THREE.DoubleSide }),
     carpet: std({ ...carpetT, roughness: 1, normalScale: new THREE.Vector2(.6, .6) }),
-    tile: std({ ...tileT, roughness: .22, normalScale: new THREE.Vector2(.6, .6) }),
+    tile: std({ ...tileT, roughnessMap: floorSmudge, roughness: .32, normalScale: new THREE.Vector2(.6, .6) }),
     closetTile: std({ ...tileT, color: 0xdde8e4, roughness: .3 }),
     ceiling: std({ ...ceilT, roughness: .95, normalScale: new THREE.Vector2(.5, .5), shadowSide: THREE.DoubleSide }),
     roof: std({ color: 0x3a3c40, roughness: .9 }),
-    deskTop: std({ color: 0xd9d6cf, roughness: .5 }),
-    deskWhite: std({ color: 0xe3e1dc, roughness: .55 }),
+    deskTop: std({ color: 0xd2cfc8, map: wornT.map, roughnessMap: wornT.roughnessMap, roughness: .62 }),
+    deskWhite: std({ color: 0xdcdad5, map: wornT.map, roughnessMap: wornT.roughnessMap, roughness: .66 }),
     pedestal: std({ color: 0x3b2a20, roughness: .5 }),
     oak: std({ map: woodT.map, roughnessMap: woodT.roughnessMap, roughness: 1, color: 0xffffff }),
     metalBlack: std({ color: 0x1b1d20, metalness: .7, roughness: .38 }),
@@ -304,12 +336,12 @@ export function createOfficeMaterials(renderer) {
     sofaGrey: fab(0x55595e), sofaGreyCushion: fab(0x5f6368), ottoman: fab(0x6a6d71), screenFabric: fab(0x8e9195),
     leather: std({ color: 0x8a4f2a, roughness: .42 }),
     pillowA: fab(0xd9a441), pillowB: fab(0xe9e4da),
-    counter: std({ color: 0xeeece8, roughness: .16 }),
+    counter: std({ color: 0xe6e4e0, map: wornT.map, roughnessMap: wornT.roughnessMap, roughness: .24 }),
     cabinet: std({ color: 0x2f4a43, roughness: .5 }),
-    cabinetWhite: std({ color: 0xf1f0ec, roughness: .45 }),
+    cabinetWhite: std({ color: 0xe8e7e3, map: wornT.map, roughness: .45 }),
     subway: std({ ...subwayT, roughness: .12, normalScale: new THREE.Vector2(.5, .5) }),
-    leaf: std({ color: 0x3e7a3a, roughness: .55, side: THREE.DoubleSide }),
-    leafDark: std({ color: 0x2c5e2e, roughness: .6, side: THREE.DoubleSide }),
+    leaf: std({ color: 0x4a8a44, map: leafT, roughness: .5, side: THREE.DoubleSide }),
+    leafDark: std({ color: 0x346a35, map: leafT, roughness: .55, side: THREE.DoubleSide }),
     pot: std({ color: 0xcfc9bf, roughness: .85 }),
     potDark: std({ color: 0x2e2f31, roughness: .7 }),
     soil: std({ color: 0x3a2a1f, roughness: 1 }),
@@ -325,7 +357,7 @@ export function createOfficeMaterials(renderer) {
     bamboo: std({ color: 0xd8bf96, roughness: .42 }),
     greenBin: std({ color: 0x1f8a4c, roughness: .5 }),
     bin: std({ color: 0x3a3c3f, roughness: .6, metalness: .4, transparent: true, opacity: .85 }),
-    pillar: std({ color: 0xeceae5, ...plasterT, roughness: .9, normalScale: new THREE.Vector2(.3, .3) }),
+    pillar: std({ color: 0xdcd9d3, ...plasterT, roughness: .9, normalScale: new THREE.Vector2(.3, .3) }),
   };
   const screenMats = screens.map((t) => std({ color: 0x000000, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 1.1, roughness: .15 }));
   const artMats = [1, 2, 3, 4, 5].map((s) => std({ map: artTexture(s), roughness: .7 }));
@@ -498,6 +530,9 @@ export function buildOfficeGeometry(opts = {}) {
     if (kind === 4) { leafShape.moveTo(0, 0); leafShape.bezierCurveTo(.1, .04, .08, .16, 0, .2); leafShape.bezierCurveTo(-.08, .16, -.1, .04, 0, 0); }
     else { leafShape.moveTo(0, 0); leafShape.quadraticCurveTo(.09, .14, 0, .34); leafShape.quadraticCurveTo(-.09, .14, 0, 0); }
     const base = new THREE.ShapeGeometry(leafShape, 6);
+    // UVs across the leaf (its shape is in metres: ±9 cm wide, 34 cm long, a pothos 20 cm), for its veins.
+    const length = kind === 4 ? .2 : .34, uvs = base.attributes.uv;
+    for (let i = 0; i < uvs.count; i++) uvs.setXY(i, uvs.getX(i) / .2 + .5, uvs.getY(i) / length);
     const geos = [], r = rng(seed);
     const count = { 2: 60, 3: 22, 4: 70 }[kind] ?? 34;
     for (let i = 0; i < count; i++) {
@@ -509,11 +544,14 @@ export function buildOfficeGeometry(opts = {}) {
       m4.compose(new THREE.Vector3(Math.cos(a) * rad, h, Math.sin(a) * rad), new THREE.Quaternion().setFromEuler(new THREE.Euler(tilt, a, 0, 'YXZ')), new THREE.Vector3(sc, sc, sc));
       gq.applyMatrix4(m4); geos.push(gq);
       if (i % 3 === 0 && kind !== 4) {
-        const st = new THREE.CylinderGeometry(.006, .008, h - .38 * s, 5); st.translate(0, .4 * s + (h - .38 * s) / 2, 0); geos.push(st);
+        const st = new THREE.CylinderGeometry(.006, .008, h - .38 * s, 5); st.translate(0, .4 * s + (h - .38 * s) / 2, 0);
+        // A stem takes the leaf's colour at its base, where the midrib starts.
+        for (let k = 0; k < st.attributes.uv.count; k++) st.attributes.uv.setXY(k, .5, .03);
+        geos.push(st);
       }
     }
     const leaves = geos.map((q) => q.index ? q.toNonIndexed() : q);
-    leaves.forEach((q) => { q.deleteAttribute('uv'); if (!q.attributes.normal) q.computeVertexNormals(); });
+    leaves.forEach((q) => { if (!q.attributes.normal) q.computeVertexNormals(); });
     // leaves are pass-through for collisions (hundreds of tiny triangles would snag a small player)
     mesh(mergeGeometries(leaves), kind === 1 ? M.leafDark : M.leaf, g).userData.noCollide = true;
     return g;
@@ -1335,6 +1373,8 @@ export function buildOfficeGeometry(opts = {}) {
  */
 /** The ambient light standing in for the room reflections (they used to light the office at 0.45). */
 const AMBIENT_FOR_REFLECTIONS = 4.5;
+/** With the baked light: the ambient and sky lights on the spawns' open floor (the bake's 1). */
+const BAKED = { ambient: 3.9, hemi: 1.8 };
 
 export function buildOffice(scene, renderer, opts = {}) {
   // No scene.environment: reflections sampled on every pixel of every frame were about half of the
@@ -1362,23 +1402,31 @@ export function buildOffice(scene, renderer, opts = {}) {
   Object.assign(sun.shadow.camera, { left: -15, right: 15, top: 15, bottom: -15, near: 1, far: 90 });
   sun.shadow.bias = -.0003; sun.shadow.normalBias = .03;
   root.add(sun, sun.target);
-  const hemi = new THREE.HemisphereLight(0xf2f4f7, 0x8b8378, 1); root.add(hemi);
-  // Cheap stand-in for the ceiling panels: soft top-down light, no shadows.
-  const ceilingFill = new THREE.DirectionalLight(0xfff4e8, .9); ceilingFill.position.set(.5, 10, .8); root.add(ceilingFill);
+  // With the baked light (`opts.lighting`, map/light.ts) the ambient and sky lights are scaled, per
+  // pixel, by how much light really gets there: panels, windows, corners, under the desks.
+  const lighting = opts.lighting ?? null;
+  const hemiScale = lighting ? BAKED.hemi : 1;
+  // The bake already knows what's below (grey carpet, white tile): a neutral ground, not brown.
+  const hemi = new THREE.HemisphereLight(0xf2f4f7, lighting ? 0xa8a8a6 : 0x8b8378, hemiScale); root.add(hemi);
+  // Without the bake, a cheap stand-in for the ceiling panels: soft top-down light, no shadows.
+  if (!lighting) {
+    const ceilingFill = new THREE.DirectionalLight(0xfff4e8, .9); ceilingFill.position.set(.5, 10, .8); root.add(ceilingFill);
+  }
   function setTime(i) {
     const t = TIMES[i];
     const dir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - t.elev), THREE.MathUtils.degToRad(t.azim));
     const u = sky.material.uniforms;
     u.turbidity.value = t.turb; u.rayleigh.value = t.ray; u.mieCoefficient.value = .005; u.mieDirectionalG.value = .82; u.sunPosition.value.copy(dir);
     sun.position.copy(dir).multiplyScalar(40); sun.target.position.set(0, 0, 0); sun.target.updateMatrixWorld();
-    sun.color.set(t.color); sun.intensity = t.sun; hemi.intensity = t.hemi;
+    sun.color.set(t.color); sun.intensity = t.sun; hemi.intensity = t.hemi * hemiScale;
     renderer.shadowMap.needsUpdate = true;
   }
 
   // What the reflections lit, as one flat light: the same average brightness from the spawns.
-  root.add(new THREE.AmbientLight(0xffffff, AMBIENT_FOR_REFLECTIONS));
+  root.add(lighting ? new THREE.AmbientLight(0xffffff, BAKED.ambient) : new THREE.AmbientLight(0xffffff, AMBIENT_FOR_REFLECTIONS));
   M.glass.envMap = reflections;
-  M.glass.envMapIntensity = 1.6;
+  M.glass.envMapIntensity = lighting ? 2.2 : 1.6;
+  if (lighting) lighting.patchAll(root);
 
   // -------------------------------------------------------------------------
   // Static geometry is merged per material (thousands of draw calls -> a few dozen); only large

@@ -4,6 +4,7 @@ import {
     Color,
     ConeGeometry,
     CylinderGeometry,
+    DataTexture,
     GreaterDepth,
     Group,
     type Material,
@@ -12,6 +13,7 @@ import {
     MeshBasicMaterial,
     MeshStandardMaterial,
     type Object3D,
+    PlaneGeometry,
     Quaternion,
     type Scene,
     SphereGeometry,
@@ -220,6 +222,38 @@ interface Avatar {
     alive: boolean | null
     /** Down: since when, falling which way (an axis in their own frame), and their gun on its way to the floor. */
     death: { at: number; axis: Vector3; gunVelocity: Vector3; spin: number; lastAt: number } | null
+    /** The soft dark patch on whatever is under them (in the scene, not on them: it stays down when they jump). */
+    blob: Mesh<PlaneGeometry, MeshBasicMaterial>
+}
+
+export interface AvatarsOptions {
+    /** The height of whatever is under (x, y, z) within reach (null: nothing): their contact shadow goes there. */
+    groundBelow?: (x: number, y: number, z: number) => number | null
+    /** Called with each new trooper (to light it like the office). */
+    dress?: (root: Object3D) => void
+}
+
+/** The contact shadow: its width at their feet (m), how dark, and how high above the ground it's gone. */
+const BLOB = { size: 0.34, opacity: 0.75, fadeHeight: 1.4 } as const
+const blobPlane = new PlaneGeometry(1, 1).rotateX(-Math.PI / 2)
+let blobTexture: DataTexture | null = null
+
+/** Dark in the middle, fading to nothing at the edge (made in code: tests run without a DOM). */
+function blobMap(): DataTexture {
+    if (blobTexture) return blobTexture
+    const n = 64
+    const data = new Uint8Array(n * n * 4)
+    for (let y = 0; y < n; y++) {
+        for (let x = 0; x < n; x++) {
+            const r = Math.hypot((x + 0.5) / n - 0.5, (y + 0.5) / n - 0.5) * 2
+            const falloff = Math.max(0, 1 - r * r)
+            // An alphaMap is read from green: grey all through.
+            data.fill(Math.round(falloff * falloff * 255), (y * n + x) * 4, (y * n + x) * 4 + 4)
+        }
+    }
+    blobTexture = new DataTexture(data, n, n)
+    blobTexture.needsUpdate = true
+    return blobTexture
 }
 
 /**
@@ -235,7 +269,8 @@ export class Avatars {
     /** `onReload`: someone started a reload (`msLeft` of it to go), to be heard where they are. */
     constructor(
         private readonly scene: Scene,
-        private readonly onReload?: (id: string, gun: Gun, msLeft: number) => void
+        private readonly onReload?: (id: string, gun: Gun, msLeft: number) => void,
+        private readonly options: AvatarsOptions = {}
     ) {
         this.avatarFor(STAND_IN, '', '#cccccc').root.visible = false
     }
@@ -268,7 +303,31 @@ export class Avatars {
             avatar.xray.visible = alive && xray
             if (alive) this.pose(avatar, pose, now)
             else this.lie(avatar, pose, now)
+            this.shadow(avatar, now)
         }
+    }
+
+    /** Their contact shadow on what's under them: smaller and fainter the higher they are, gone as they sink away. */
+    private shadow(avatar: Avatar, now: number): void {
+        const { blob, root } = avatar
+        if (!root.visible) {
+            blob.visible = false
+            return
+        }
+        const { x, y, z } = root.position
+        const ground = this.options.groundBelow?.(x, y + 0.05, z) ?? y
+        const height = Math.max(0, y - ground)
+        const sinking = avatar.death
+            ? Math.max(0, (now - avatar.death.at - DEATH.sinkAt) / (DEATH.goneAt - DEATH.sinkAt))
+            : 0
+        const fade = (1 - height / BLOB.fadeHeight) * (1 - sinking)
+        blob.visible = fade > 0.02
+        if (!blob.visible) return
+        // Lying down they cover more floor.
+        const size = BLOB.size * root.scale.x * (1 + height * 0.4) * (avatar.death ? 1.6 : 1 + avatar.down * 0.6)
+        blob.position.set(x, ground + 0.004, z)
+        blob.scale.set(size, 1, size)
+        blob.material.opacity = BLOB.opacity * fade
     }
 
     /** They swung their stapler. */
@@ -741,7 +800,23 @@ export class Avatars {
         root.add(xray)
 
         this.scene.add(root)
+        const blob = new Mesh(
+            blobPlane,
+            new MeshBasicMaterial({
+                color: 0x000000,
+                alphaMap: blobMap(),
+                transparent: true,
+                depthWrite: false,
+                polygonOffset: true,
+                polygonOffsetFactor: -2,
+                polygonOffsetUnits: -2,
+            })
+        )
+        blob.visible = false
+        this.scene.add(blob)
+        this.options.dress?.(root)
         const avatar: Avatar = {
+            blob,
             id,
             root,
             body,
@@ -785,7 +860,8 @@ export class Avatars {
     }
 
     private remove(id: string, avatar: Avatar): void {
-        this.scene.remove(avatar.root)
+        this.scene.remove(avatar.root, avatar.blob)
+        avatar.blob.material.dispose()
         // The guns are theirs alone (geometry and materials): the troopers' shared shapes aren't in there.
         const shared = new Set<Material>(Object.values(rocketLook))
         avatar.hold.group.traverse((o: Object3D) => {

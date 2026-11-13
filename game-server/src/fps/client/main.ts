@@ -1,6 +1,6 @@
 import {
-    ACESFilmicToneMapping,
     type Material,
+    NeutralToneMapping,
     type Object3D,
     PCFShadowMap,
     PerspectiveCamera,
@@ -65,6 +65,7 @@ import { rayDistance, rayHit, worldFrom } from '../sim/world.ts'
 import { WallViews } from './building.ts'
 import { Impacts } from './impacts.ts'
 import { Avatars } from './avatars.ts'
+import { loadOfficeLight, OfficeLighting } from './office-light.ts'
 import { announce, taunt } from './callouts.ts'
 import { Controls } from './controls.ts'
 import { Effects } from './effects.ts'
@@ -121,7 +122,10 @@ renderer.shadowMap.enabled = true
 renderer.shadowMap.type = PCFShadowMap
 // The office never moves: its shadows are drawn once (setTime asks for it).
 renderer.shadowMap.autoUpdate = false
-renderer.toneMapping = ACESFilmicToneMapping
+// Neutral keeps the office's colours and whites as they are (ACES pushed the white walls into one
+// glare); a touch under 1 so the sunlit desks don't clip.
+renderer.toneMapping = NeutralToneMapping
+renderer.toneMappingExposure = 0.9
 Object.assign(renderer.domElement.style, { position: 'fixed', inset: '0', zIndex: '10', cursor: 'crosshair' })
 document.body.append(renderer.domElement)
 
@@ -129,7 +133,9 @@ const scene = new Scene()
 const camera = new PerspectiveCamera(78, innerWidth / innerHeight, 0.01, 900)
 camera.rotation.order = 'YXZ'
 scene.add(camera)
-const office = buildOffice(scene, renderer)
+// The office's baked light (map/light.ts): corners, under the desks, the panels and the windows.
+const lighting = new OfficeLighting(await loadOfficeLight())
+const office = buildOffice(scene, renderer, { lighting })
 const world = worldFrom(office)
 const pickupViews = new PickupViews(scene)
 const padViews = new PadViews(scene, world.pads)
@@ -180,10 +186,23 @@ const controls = new Controls(renderer.domElement, locked => {
 controls.invertY = settings.invertY
 sounds.setVolume(settings.volume)
 // Others' reloads are heard where they are (yours already is, from your own state).
-const avatars = new Avatars(scene, (id, _gun, msLeft) => {
-    const at = id === me ? null : avatars.centerOf(id)
-    if (at) sounds.reload(msLeft, spatial(listener(), at))
-})
+const below = new Vector3()
+const avatars = new Avatars(
+    scene,
+    (id, _gun, msLeft) => {
+        const at = id === me ? null : avatars.centerOf(id)
+        if (at) sounds.reload(msLeft, spatial(listener(), at))
+    },
+    {
+        // Their contact shadow lands on the floor, a desk, a built wall: whatever is under them.
+        groundBelow: (x, y, z) => {
+            const reach = 2
+            const distance = rayDistance(world, below.set(x, y, z), DOWN, reach)
+            return distance < reach ? y - distance : null
+        },
+        dress: root => lighting.patchAll(root),
+    }
+)
 const effects = new Effects(scene)
 const impacts = new Impacts(scene)
 
@@ -874,6 +893,8 @@ async function warmShaders(): Promise<void> {
     impacts.hit(below, new Vector3(0, 1, 0), new Vector3(0, -1, 0), 'metal', now)
     impacts.hit(below, new Vector3(0, 1, 0), new Vector3(0, -1, 0), 'glass', now)
     impacts.blast(below, new Vector3(0, 1, 0), new Vector3(0, -1, 0), 'desk', now)
+    // Everything lit in the scene by now (built walls, pickups, effects) is lit like the office.
+    lighting.patchAll(scene)
     const shown: Object3D[] = []
     scene.traverse(o => {
         if (!o.visible) {
@@ -1211,6 +1232,7 @@ function draw(now: number): void {
         viewmodel.loaded = held === 'launcher' && Boolean(self && self.ammo > 0 && !self.reloading)
         const moving = Boolean(body && body.onGround && Math.hypot(body.vx, body.vz) > 0.5)
         viewmodel.update(now, moving, aimBlend, reload)
+        viewmodel.shade(lighting.at(camera.position.x, camera.position.y, camera.position.z), dt)
     }
 
     // The countdown's last three seconds tick.

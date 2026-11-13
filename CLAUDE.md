@@ -341,7 +341,9 @@ Playable at `/games/office-fps`.
   run smoothly on this browser's clock (`reloadStart`). The gun sits at the chest, comes to the eye
   aiming, dips on a switch, drops in a dodge; shots and launches kick it, flash and throw cases
   (`fire`). Hits rock them away from the shooter, the head back on a headshot (`hit`); killed, they
-  fall that way, drop their gun and sink away before the respawn.
+  fall that way, drop their gun and sink away before the respawn. Each has a soft contact shadow
+  (a blob, `BLOB`) on whatever is under them (`AvatarsOptions.groundBelow`: a ray down in `main.ts`),
+  fainter the higher they are: the office's shadow map is drawn once, so players cast none.
 - **Gun lab** (`bun run fps:guns`, http://localhost:8097, `FPS_LAB_PORT`): the viewmodel alone on a
   page (`client/gun-lab.ts`, served by `fps/gun-lab.ts`): pick a weapon, fire, reload, aim, scrub a
   reload frame by frame, slow time, turn the gun round (inspect). It rebuilds and reloads itself
@@ -374,8 +376,23 @@ Playable at `/games/office-fps`.
   The overlay judges the CPU on the game's code only: `render` includes waiting for the GPU.
 - **GPU budget:** the cost is lighting each pixel, not triangles or textures. The office has no
   `scene.environment` (room reflections were ~half the GPU's work at 5.5 MP): an AmbientLight
-  (`AMBIENT_FOR_REFLECTIONS`, tuned to the same brightness) stands in, and only the glass keeps a
-  reflection map. Don't give the scene an environment back. **Anti-aliasing** (MSAA, ~a third of
+  stands in, and only the glass keeps a reflection map. Don't give the scene an environment back.
+- **Baked light** (`map/light.ts`, `map/office-light.b64`, browser side `client/office-light.ts`):
+  what makes the office look real, for one 3D texture read a pixel (no difference measurable in
+  software GL; not yet checked on a real GPU with the overlay). A grid of 12.5 cm cells over the office holds
+  the ambient light reaching each point and from where (`a + b·n` for a surface facing `n`): the
+  ceiling panels with their shadows, the sky through the windows, one bounce off what's around (by
+  `ALBEDO` per surface). The lit materials' ambient and sky light is multiplied by it (`patch`: one
+  3D texture read a pixel), so corners, under desks, behind sofas and round chair feet come out
+  darker; the troopers (`AvatarsOptions.dress`), built walls and pickups too; the gun in your hands
+  dims with the light at your eye (`Viewmodel.shade`). The sun stays a real light (`BAKED` levels in
+  office.js; without `opts.lighting` buildOffice keeps the old flat light). **Change the office's
+  shapes → `bun run fps:light`** (~2.5 min on every core) and commit `office-light.b64`:
+  `light.test.ts` fails on a stale bake (a fingerprint of the collision triangles). `--reuse`
+  re-finishes the last bake's rays (kept in the temp folder) to tune `RADIANCE`, the blur or the
+  scale in seconds. It's base64 of gzipped, delta-coded bytes (~540 KB), inlined in `play.js`.
+  Tone mapping is **Neutral** at exposure 0.9 (game and gun lab): ACES clipped the white walls into
+  one glare; whites are real paint (~70%), so textures' own noise now shows (keep it faint). **Anti-aliasing** (MSAA, ~a third of
   the rest) is a setting, applied on the next load. The sky has `renderOrder` 1 (drawn after the
   office, shaded only where it shows).
 - **Shader warm-up** (`warmShaders` in `main.ts`, `Viewmodel.prepare`): at load, effects go off

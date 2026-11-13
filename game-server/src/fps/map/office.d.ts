@@ -96,9 +96,17 @@ export interface Office extends OfficeGeometry {
     setTime(i: number): void
     times: string[]
 }
+/** The baked light (client/office-light.ts): lights each lit material by it. */
+export interface OfficeLightingPatch {
+    patchAll(root: import('three').Object3D): void
+}
 export function buildOffice(
     scene: Scene,
     renderer: WebGLRenderer,
-    opts?: Omit<OfficeGeometryOptions, 'materials'> & { bake?: boolean }
+    opts?: Omit<OfficeGeometryOptions, 'materials'> & {
+        bake?: boolean
+        /** With it, the ambient light is the bake's (no flat ceiling fill); without, the old flat light. */
+        lighting?: OfficeLightingPatch
+    }
 ): Office
 export function makeColliderHelper(colliders: BoxCollider[]): import('three').LineSegments

@@ -12,7 +12,7 @@ import { aimFov, DEFAULT_SETTINGS, LIMITS, parseSettings } from './settings.ts'
 import { reloadProgress, spatial } from './sounds.ts'
 import { announce, streakCallout, taunt } from './callouts.ts'
 import type { GameEvent } from '../protocol.ts'
-import { PerspectiveCamera, Scene } from 'three'
+import { Mesh, type MeshBasicMaterial, PerspectiveCamera, Scene } from 'three'
 import { Avatars, fallAngle, hitRock, reloadStart } from './avatars.ts'
 import { Vector3 } from 'three'
 import { aimDirection, fireShot, reloadMsOf } from '../sim/combat.ts'
@@ -622,6 +622,32 @@ describe('drawing the others', () => {
             // The stapler has no muzzle.
             avatars.update(posed({ weapon: 'stapler' }), roster, null, 1700)
             expect(avatars.muzzleOf('a')).toBeNull()
+        })
+
+        test('their contact shadow lies on what is under them, fainter the higher they are', () => {
+            const world = scene()
+            // A desk top 75 cm up under them.
+            const avatars = new Avatars(world, undefined, { groundBelow: () => 0.75 })
+            const blobs = () => {
+                const found: Mesh[] = []
+                world.traverse(o => {
+                    if (o instanceof Mesh && (o.material as MeshBasicMaterial).alphaMap) found.push(o)
+                })
+                return found.filter(o => o.visible)
+            }
+            avatars.update(posed({ y: 0.75 }), roster, null, 1000)
+            const [onDesk] = blobs()
+            expect(onDesk!.position.y).toBeCloseTo(0.754, 3)
+            const close = (onDesk!.material as MeshBasicMaterial).opacity
+
+            avatars.update(posed({ y: 1.6 }), roster, null, 1016)
+            const [below] = blobs()
+            expect(below!.position.y).toBeCloseTo(0.754, 3)
+            expect((below!.material as MeshBasicMaterial).opacity).toBeLessThan(close / 2)
+
+            // Too high above it: none.
+            avatars.update(posed({ y: 2.4 }), roster, null, 1032)
+            expect(blobs()).toHaveLength(0)
         })
 
         test('killed, they stay to fall and lie a moment, then are gone until they are back', () => {

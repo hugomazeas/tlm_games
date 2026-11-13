@@ -3,6 +3,7 @@ import {
     DirectionalLight,
     Group,
     HemisphereLight,
+    type Light,
     type Mesh,
     type Object3D,
     PMREMGenerator,
@@ -78,6 +79,9 @@ export class Viewmodel {
     private shots: Array<{ at: number; gun: Gun }> = []
     private readonly cases: Record<Ejection['kind'], Group[]>
     private environmentReady = false
+    /** The gun's own lights at full strength, dimmed by `shade`. */
+    private readonly shadeLights: Array<{ light: Light; full: number }>
+    private shading = 1
 
     constructor(color: string) {
         const kit = kitFor(color)
@@ -117,8 +121,20 @@ export class Viewmodel {
         fill.position.set(0.8, -0.2, 0.3)
         key.target.position.set(0, 0, -0.2)
         fill.target.position.set(0, 0, -0.2)
-        this.holder.add(this.root, key, key.target, fill, fill.target, new HemisphereLight(0xe8eef5, 0x5a5048, 0.9))
+        const sky = new HemisphereLight(0xe8eef5, 0x5a5048, 0.9)
+        this.shadeLights = [key, fill, sky].map(light => ({ light, full: light.intensity }))
+        this.holder.add(this.root, key, key.target, fill, fill.target, sky)
         this.scene.add(this.holder)
+    }
+
+    /**
+     * How lit it is where you are (the office's baked light at the eye: 1 in the open), so the gun
+     * darkens under a desk with the rest; eased, so walking past a corner doesn't flicker it.
+     */
+    shade(level: number, dt: number): void {
+        const target = Math.min(Math.max(level, 0.3), 1.2)
+        this.shading += (target - this.shading) * Math.min(1, dt * 6)
+        for (const { light, full } of this.shadeLights) light.intensity = full * this.shading
     }
 
     /** Follow this (the camera): the gun is drawn in its frame. */
