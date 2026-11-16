@@ -171,8 +171,74 @@ export interface Rules {
     mode: Mode
     fragLimit: number
     minutes: number
+    /** The host's options (the panel's Options): only those they changed, the rest (all, when absent) the map's own. */
+    tuning?: Partial<Tuning>
 }
 export const DEFAULT_RULES: Rules = { map: LOBBY_MAP, mode: 'ffa', fragLimit: 15, minutes: 5 }
+
+/**
+ * How a match plays, picked by the host (the Next match panel's Options). Percentages are of the
+ * map's own (walk, jump height, gravity, the jetpack's climb) or of the game's usual (the hit boxes
+ * against the body as drawn, health, damage, the guns' headshot bonus); `jetpack` is seconds of
+ * flight on a full tank (0: none), `respawn` seconds down. An option the host left alone is the
+ * map's (`resolveTuning` in sim/tuning.ts): Rue des Érables has its own jetpack.
+ */
+export interface Tuning {
+    hitbox: number
+    walk: number
+    jump: number
+    gravity: number
+    dash: boolean
+    prone: boolean
+    jetpack: number
+    thrust: number
+    health: number
+    regen: boolean
+    damage: number
+    headshot: number
+    respawn: number
+    pickups: boolean
+    building: boolean
+}
+export type TuningKey = keyof Tuning
+
+/** What each option may be set to. */
+export const TUNING_CHOICES = {
+    hitbox: [100, 115, 130, 150],
+    walk: [75, 100, 125, 150],
+    jump: [50, 100, 150, 200],
+    gravity: [50, 75, 100, 125, 150],
+    dash: [true, false],
+    prone: [true, false],
+    jetpack: [0, 1, 2, 3, 5, 8],
+    thrust: [75, 100, 125, 150],
+    health: [75, 100, 150, 200],
+    regen: [true, false],
+    damage: [50, 75, 100, 150, 200],
+    headshot: [0, 100, 150, 200],
+    respawn: [1, 2, 3, 5],
+    pickups: [true, false],
+    building: [true, false],
+} as const satisfies { [K in TuningKey]: readonly Tuning[K][] }
+export const TUNING_KEYS = Object.keys(TUNING_CHOICES) as TuningKey[]
+
+/** The host's options from untrusted input: each one on its list, anything else left to the map. */
+export function parseTuning(value: unknown): Partial<Tuning> {
+    if (typeof value !== 'object' || value === null) return {}
+    const given = value as Record<string, unknown>
+    const tuning: Partial<Record<TuningKey, number | boolean>> = {}
+    for (const key of TUNING_KEYS) {
+        const choice = (TUNING_CHOICES[key] as readonly (number | boolean)[]).find(c => c === given[key])
+        if (choice !== undefined) tuning[key] = choice
+    }
+
+    return tuning as Partial<Tuning>
+}
+
+/** Do two sets of the host's options say the same? */
+export function sameTuning(a: Partial<Tuning> = {}, b: Partial<Tuning> = {}): boolean {
+    return TUNING_KEYS.every(key => a[key] === b[key])
+}
 /** King of the meeting room: seconds in the zone to win, per point of the limit. */
 export const ZONE_SECONDS_PER_POINT = 10
 
@@ -420,6 +486,8 @@ export interface MatchView {
     minutes: number
     /** What the host has lined up for the next match (warmup; null until they pick): browsers get its map ready. */
     next: Rules | null
+    /** How play goes now, in full: the match's options from its countdown to its scoreboard, the office's own in warmup. */
+    tuning: Tuning
     /** While loading: how many seated browsers have the map, of how many. */
     loading: { ready: number; of: number } | null
     /** Who starts the next match and picks its rules (a connection id): the longest seated. */
@@ -580,7 +648,7 @@ export function parseRules(value: unknown): Rules | null {
     if (fragLimit === undefined || minutes === undefined || mode === undefined || map === undefined) return null
     if (!playableOn(map, mode)) return null
 
-    return { map, mode, fragLimit, minutes }
+    return { map, mode, fragLimit, minutes, tuning: parseTuning(rules?.tuning) }
 }
 
 /**

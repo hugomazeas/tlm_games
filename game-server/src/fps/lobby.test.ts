@@ -812,6 +812,39 @@ describe('building', () => {
     })
 })
 
+describe("a match's options", () => {
+    test('a match in the office plays with the host’s options, and warmup goes back to the usual', () => {
+        const [a, b] = [client('a1'), client('b2')]
+        for (const c of [a, b]) lobby.join(c, { playerId: Number(c.id.slice(1)), name: c.id })
+        const tuning = { walk: 150, dash: false, prone: false, health: 150, hitbox: 130 } as const
+        // Warmup: the office's own, hit boxes at 115%.
+        expect(a.last('match')!.match.tuning).toMatchObject({ walk: 100, dash: true, health: 100, hitbox: 115 })
+        lobby.start(a.id, { ...DEFAULT_RULES, minutes: 3, tuning })
+        play(COUNTDOWN_MS + 100)
+        expect(a.last('match')!.match).toMatchObject({ phase: 'playing', map: 'office', tuning })
+        // Respawned at the start with the match's health.
+        expect(a.last('snap')!.you!.health).toBe(150)
+
+        // Half as fast again; no dodge, no lying down.
+        const walk = (buttons = 0) => {
+            const from = where(a, 'a1')
+            play(1000, () => [[a, { forward: 1, strafe: 0, yaw: 0, pitch: 0, buttons, view: 0 }]])
+            return from.z - where(a, 'a1').z
+        }
+        // 3 m/s, less the first quarter second getting up to speed (the usual 2 m/s covers about 1.8 m).
+        expect(walk()).toBeGreaterThan(2.4)
+        play(500)
+        walk(BUTTON.dash | BUTTON.prone)
+        expect(a.last('snap')!.you!.body).toMatchObject({ prone: false, dashLeft: 0 })
+        expect(a.last('snap')!.you!.body.fuel).toBe(1)
+
+        play(3 * 60_000 + INTERMISSION_MS + 1000)
+        expect(a.last('match')!.match).toMatchObject({ phase: 'warmup', map: 'office' })
+        expect(a.last('match')!.match.tuning).toMatchObject({ walk: 100, dash: true, prone: true, health: 100 })
+        expect(walk()).toBeLessThan(2.1)
+    })
+})
+
 describe('a match on Rue des Érables', () => {
     beforeEach(() => {
         lobby = new FpsLobby(
@@ -821,7 +854,7 @@ describe('a match on Rue des Érables', () => {
         )
     })
 
-    test('loads in every browser, plays on the street at a person’s pace (no jetpack), then back to the office', () => {
+    test('loads in every browser, plays on the street with its short jetpack, then back to the office', () => {
         const [a, b] = [client('a1'), client('b2')]
         lobby.join(a, { playerId: 1, name: 'a1' })
         lobby.join(b, { playerId: 2, name: 'b2' })
@@ -839,9 +872,10 @@ describe('a match on Rue des Érables', () => {
             expect(spawns).toContain(`${p.x.toFixed(3)},${p.z.toFixed(3)}`)
         }
 
-        // Space held: a jump, never the jetpack.
+        // Space held: a jump, then the street's jetpack, a second's worth (the office's lasts three).
+        expect(a.last('match')!.match.tuning.jetpack).toBe(1)
         play(1000, () => [[a, { forward: 0, strafe: 0, yaw: 0, pitch: 0, buttons: BUTTON.jet, view: 0 }]])
-        expect(a.last('snap')!.you!.body.fuel).toBe(1)
+        expect(a.last('snap')!.you!.body.fuel).toBeLessThan(0.5)
 
         play(COUNTDOWN_MS + 3 * 60_000 + INTERMISSION_MS + 1000)
         expect(results[0]!.rules.map).toBe('erables')
@@ -906,10 +940,22 @@ describe('messages', () => {
         const start = (rules: unknown) => parseClientMessage(JSON.stringify({ type: 'start', rules }))
 
         const rules = { map: 'office' as const, mode: 'koth' as const, fragLimit: 25, minutes: 10 }
-        expect(start(rules)).toEqual({ type: 'start', rules })
+        expect(start(rules)).toEqual({ type: 'start', rules: { ...rules, tuning: {} } })
+        // Options: each from its list; anything else is left to the map.
+        const tuning = { hitbox: 130, walk: 125, dash: false, jetpack: 0, pickups: false, respawn: 1 }
+        expect(start({ ...rules, tuning })).toEqual({ type: 'start', rules: { ...rules, tuning } })
+        const odd = { hitbox: 1000, walk: '125', dash: 'no', gravity: 100, flying: true }
+        expect(start({ ...rules, tuning: odd })).toEqual({
+            type: 'start',
+            rules: { ...rules, tuning: { gravity: 100 } },
+        })
+        expect(start({ ...rules, tuning: 'fast' })).toEqual({ type: 'start', rules: { ...rules, tuning: {} } })
         // No mode (an older tab): free for all, and no map: the office. A made-up one: refused.
-        expect(start({ fragLimit: 25, minutes: 10 })).toEqual({ type: 'start', rules: { ...rules, mode: 'ffa' } })
-        expect(start({ ...rules, map: undefined })).toEqual({ type: 'start', rules })
+        expect(start({ fragLimit: 25, minutes: 10 })).toEqual({
+            type: 'start',
+            rules: { ...rules, mode: 'ffa', tuning: {} },
+        })
+        expect(start({ ...rules, map: undefined })).toEqual({ type: 'start', rules: { ...rules, tuning: {} } })
         expect(start({ ...rules, mode: 'battle royale' })).toBeNull()
         expect(start({ ...rules, map: 'the moon' })).toBeNull()
         expect(start({ fragLimit: 7, minutes: 10 })).toBeNull()

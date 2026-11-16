@@ -30,6 +30,7 @@ import {
     aimDirection,
     damageAt,
     GUNS,
+    grownPart,
     HIT_PARTS,
     LAUNCHER,
     MAX_HEALTH,
@@ -38,6 +39,7 @@ import {
     STAPLER,
 } from '../sim/combat.ts'
 import { PLAYER } from '../sim/movement.ts'
+import { DEFAULT_HITBOX } from '../sim/tuning.ts'
 import { Effects } from './effects.ts'
 import {
     aimHeight,
@@ -215,10 +217,10 @@ const sounds = new Sounds()
 renderer.localClippingEnabled = true
 const debugGroup = new Group()
 scene.add(debugGroup)
-/** The target: what shots take (HIT_PARTS: the head in gold, the torso and legs in blue). */
+/** The target: what shots take (HIT_PARTS at the usual hit boxes: the head in gold, the torso and legs in blue). */
 const target = new Group()
 debugGroup.add(target)
-for (const part of HIT_PARTS) {
+for (const part of HIT_PARTS.map(p => grownPart(p, DEFAULT_HITBOX / 100))) {
     // Each part is a radius-1 capsule in a squashed space: drawn so, then stretched back.
     const a = new Vector3(part.a[0] / part.rx, part.a[1] / part.ry, part.a[2] / part.rz)
     const b = new Vector3(part.b[0] / part.rx, part.b[1] / part.ry, part.b[2] / part.rz)

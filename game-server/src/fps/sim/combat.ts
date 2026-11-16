@@ -181,10 +181,13 @@ export const MAX_HEALTH = 100
 /** Health comes back by itself: `delayMs` after it last went down, `perSecond`, up to `upTo` (never past full). */
 export const REGEN = { delayMs: 3000, perSecond: 10, upTo: 80 } as const
 
-/** Full health with these powers: a Promotion's or an Intern's instead of the usual, Overtime's on top. */
-export function maxHealthOf(powers: Powers): number {
+/**
+ * Full health with these powers: a Promotion's or an Intern's instead of the usual, Overtime's on
+ * top; all times the match's `factor` (its health option).
+ */
+export function maxHealthOf(powers: Powers, factor = 1): number {
     const base = powers.big > 0 ? PROMOTION.health : powers.small > 0 ? INTERN.health : MAX_HEALTH
-    return base + (powers.overtime > 0 ? OVERTIME.health : 0)
+    return Math.round((base + (powers.overtime > 0 ? OVERTIME.health : 0)) * factor)
 }
 
 /** The powers that size someone, from the buffs everyone sees them with. */
@@ -230,6 +233,8 @@ export interface Target {
     scale?: number
     /** Lying prone: a low, small target. */
     prone?: boolean
+    /** Its hit boxes against the body as drawn (1 when absent; `rayBody`). */
+    hitbox?: number
 }
 
 /**
@@ -338,6 +343,25 @@ export const HIT_PARTS: readonly HitPart[] = [
     { a: [0.028, 0.19, 0], b: [0.03, 0.03, -0.002], rx: 0.02, ry: 0.02, rz: 0.02, turn: 0, head: false },
     { a: [-0.028, 0.19, 0], b: [-0.03, 0.03, -0.002], rx: 0.02, ry: 0.02, rz: 0.02, turn: 0, head: false },
 ]
+/**
+ * A hit part grown `grow` times where it is: thicker, and longer about its middle (a head stays on
+ * the head, not lifted off it as `scale` from the feet would).
+ */
+export function grownPart(part: HitPart, grow: number): HitPart {
+    const out = (grow - 1) / 2
+    const [ax, ay, az] = part.a
+    const [bx, by, bz] = part.b
+
+    return {
+        ...part,
+        a: [ax + (ax - bx) * out, ay + (ay - by) * out, az + (az - bz) * out],
+        b: [bx + (bx - ax) * out, by + (by - ay) * out, bz + (bz - az) * out],
+        rx: part.rx * grow,
+        ry: part.ry * grow,
+        rz: part.rz * grow,
+    }
+}
+
 /** The widest the body is from its middle (the shoulders): the Org chart's outline. */
 export const HIT_RADIUS = 0.055
 /** Lying prone the body rests this high (its chest's depth), and its middle is over their feet. */
@@ -355,13 +379,15 @@ const partB = new Vector3()
  * Where a ray meets a player's body (`HIT_PARTS`, at their facing and `scale`; prone, lying face
  * down along where they face): its distance along the ray, whether it's the head, and how far up
  * the body (0 their feet … 1 their head; headshots are at or past HEAD_FROM). Null when it passes
- * by or the body is behind the ray.
+ * by or the body is behind the ray. `hitbox` grows each part where it is (its thickness and its
+ * length about its middle: the head stays on the head), 1 when absent: the body as drawn.
  */
 export function rayBody(
     origin: Vector3,
     direction: Vector3,
-    feet: { x: number; y: number; z: number; scale?: number; prone?: boolean; yaw?: number }
+    feet: { x: number; y: number; z: number; scale?: number; prone?: boolean; yaw?: number; hitbox?: number }
 ): { distance: number; along: number; head: boolean } | null {
+    const grow = feet.hitbox ?? 1
     const scale = feet.scale ?? 1
     const yaw = feet.yaw ?? 0
     // Into their own frame: feet at 0, facing -Z, at the size of the standing parts. The world's
@@ -384,8 +410,9 @@ export function rayBody(
     }
 
     let best: { distance: number; along: number; head: boolean } | null = null
-    for (const part of HIT_PARTS) {
+    for (const drawn of HIT_PARTS) {
         // Turned and squashed so the part is a capsule of radius 1.
+        const part = grow === 1 ? drawn : grownPart(drawn, grow)
         const c = Math.cos(-part.turn)
         const s = Math.sin(-part.turn)
         const squash = (v: Vector3, x: number, y: number, z: number) =>

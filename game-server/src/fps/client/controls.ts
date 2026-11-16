@@ -125,6 +125,8 @@ export class Controls {
      * lays it flat or stands it up, E takes back one of yours; 1, 2, 3 or Q back to the guns.
      */
     building = false
+    /** The match allows building (its options): B does nothing otherwise, and build mode closes. */
+    private buildable = true
     readonly stance = { flat: false, turned: false }
     onBuild: (() => void) | null = null
     onUnbuild: (() => void) | null = null
@@ -262,7 +264,13 @@ export class Controls {
         this.slot = slot
     }
 
+    set canBuild(allowed: boolean) {
+        this.buildable = allowed
+        if (!allowed) this.building = false
+    }
+
     toggleBuilding(): void {
+        if (!this.buildable && !this.building) return
         this.building = !this.building
         this.firing = false
         this.aiming = false

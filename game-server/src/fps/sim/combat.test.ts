@@ -88,6 +88,22 @@ describe('shots', () => {
         expect(rayBody(new Vector3(0.12, 0.8, -2), new Vector3(0, 0, 1), { ...AT_ORIGIN, scale: 3 })).not.toBeNull()
     })
 
+    test('hit boxes grow each part where it is: a graze misses the drawn body and meets 115%', () => {
+        const ahead = new Vector3(0, 0, 1)
+        // Just past the side of the head (2.5 cm wide), and just over its top (2.8 cm up from its middle).
+        const beside = new Vector3(0.027, 0.374, -2)
+        const over = new Vector3(0, 0.374 + 0.031, -2)
+        for (const from of [beside, over]) {
+            expect(rayBody(from, ahead, AT_ORIGIN)).toBeNull()
+            expect(rayBody(from, ahead, { ...AT_ORIGIN, hitbox: 1.15 })?.head).toBe(true)
+        }
+        // The head grows round its middle, not up from the feet: well above it still misses.
+        expect(rayBody(new Vector3(0, 0.42, -2), ahead, { ...AT_ORIGIN, hitbox: 1.15 })).toBeNull()
+        // At 100% it's the body as drawn, exactly.
+        const chest = new Vector3(0, 0.27, -2)
+        expect(rayBody(chest, ahead, { ...AT_ORIGIN, hitbox: 1 })).toEqual(rayBody(chest, ahead, AT_ORIGIN))
+    })
+
     test('misses: beside, over the head, behind the shooter', () => {
         expect(rayBody(new Vector3(0.2, 0.2, -2), new Vector3(0, 0, 1), AT_ORIGIN)).toBeNull()
         expect(rayBody(new Vector3(0, 0.45, -2), new Vector3(0, 0, 1), AT_ORIGIN)).toBeNull()

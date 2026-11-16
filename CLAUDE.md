@@ -263,6 +263,17 @@ Playable at `/games/office-fps`.
   map (the lobby keeps a world per map, `Arena.setWorld` moves everyone over, `MatchView.map`), the
   scoreboard (12 s, with awards) there, then warmup back in the office. The panel opens on the last
   match's rules (Rematch). Laravel stores each match's `map`.
+- **Match options** (the panel's Options, `Rules.tuning`: only what the host changed, each value
+  from `TUNING_CHOICES`, `parseTuning` drops the rest): hit boxes (% of the drawn body, 115 by
+  default), walk speed, jump height, gravity, dodge and prone on/off, jetpack fuel (seconds of
+  flight, 0 none) and climb, health, regen, damage, headshot bonus, respawn delay, pickups and
+  building on/off. Unset is the map's own (`resolveTuning` in `sim/tuning.ts`: the office's jetpack
+  lasts ~3 s, Rue des Érables' 1 s). They apply from the countdown to the scoreboard, warmup plays
+  the office's own (`FpsLobby.useTuning`, its own step: a match in the office never changes map),
+  and `MatchView.tuning` carries them in full. Movement ones change the world's `Movement`
+  (`tunedMovement`, the same on the server and in the browser, so prediction holds; enforced in
+  `stepBody`); the rest are the arena's (`Arena.setTuning`). Tuned matches count on the
+  leaderboard like any other.
 - **Modes** (`lobby.ts`): `ffa` free-for-all; `tdm` red vs blue (shuffled at the start, a
   latecomer joins the smaller side, no friendly fire, spawns away from enemies only, first team
   to the limit); `koth` King of the meeting room: one of four `ZONES` (`sim/places.ts`) is live,
@@ -533,8 +544,8 @@ Playable at `/games/office-fps`.
   three lanes (north yards, the street, south yards), the road closed for works at both ends (the
   spawns, Siege's domes). It is **built in real metres and shrunk as a whole** (`ERABLES_SCALE`, a
   1.8 m person to a 40 cm mini), so nothing sized in the game changes; its `Movement` (a map's
-  walk, jump, gravity, pad throw, rocket shove, jetpack/dodge off) is scaled the same way so a
-  fall takes real time. Every map's places and movement travel in its `FpsWorld` (`MapPlaces`:
+  walk, a jog at 5.75 m/s, jump, gravity, pad throw, rocket shove, a 1 s jetpack, a dodge 2.5×
+  the walk) is scaled the same way so a fall takes real time. Every map's places and movement travel in its `FpsWorld` (`MapPlaces`:
   pickups with their floor `y`, weights (no jetpack extender here), pads (here the two
   trampolines, onto the carport and garage roofs), portals, zones, Siege spots with their floor,
   `move`, `unit` for metres shown); `placesOf(map)` names them by index. Collision is the drawn
@@ -582,7 +593,8 @@ Playable at `/games/office-fps`.
   the guns and hitscan (walls and glass stop shots). Shots take a player as the drawn body, not
   the 24 cm capsule they collide with (`rayBody` over `HIT_PARTS`: oval capsules for the head,
   the only headshot; the torso, turned as bladed behind a gun; each leg; no arms), in their own
-  frame (facing, size; prone, the same parts mapped to lying face down). Change the figure's
+  frame (facing, size; prone, the same parts mapped to lying face down), each grown in place by
+  the match's hit boxes (`grownPart`, 115% by default: the drawn body was too hard to hit). Change the figure's
   shape (`client/figure.ts`): move `HIT_PARTS` with it (the gun lab's debug mode draws them);
   `arena.ts` runs everyone: one input frame per step (the last one repeated, without firing,
   when none came), shots judged where the shooter saw the target (up to 200 ms back), respawns

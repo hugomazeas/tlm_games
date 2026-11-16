@@ -1,5 +1,5 @@
 import { Line3, Vector3 } from 'three'
-import { BUTTON } from '../protocol.ts'
+import { BUTTON, type Tuning } from '../protocol.ts'
 import { ESPRESSO, INTERN, JETPACK_FACTOR, OVERTIME, PAD, PORTAL, partnerOf, PROMOTION } from './places.ts'
 import { collideCapsule, type FpsWorld } from './world.ts'
 
@@ -63,7 +63,8 @@ export const MOVE = {
 /**
  * How bodies move on a map. The office's is MOVE's (minis with jetpacks); a map built for people
  * and shrunk to the minis' size (Rue des Érables) slows everything by its scale, gravity included,
- * so a fall or a jump takes the time it would at full size, and turns the jetpack and the dodge off.
+ * so a fall or a jump takes the time it would at full size. A match's options change it
+ * (`tunedMovement`); server and browser derive it the same way, so prediction holds.
  */
 export interface Movement {
     /** Walking pace (m/s), and crawling prone. */
@@ -73,9 +74,16 @@ export interface Movement {
     jump: number
     /** m/s², negative. */
     gravity: number
-    /** Space in the air burns the jetpack; Shift + a direction dodges. */
-    jetpack: boolean
+    /** Seconds of flight on a full tank (0: no jetpack; the tank still feeds dodges). */
+    fuelSeconds: number
+    /** Upward acceleration while the jetpack burns (m/s²), against gravity. */
+    thrust: number
+    /** Shift + a direction dodges: this fast (m/s), lifted this much (m/s up). */
     dodge: boolean
+    dashSpeed: number
+    dashLift: number
+    /** C lies prone. */
+    prone: boolean
     /** A jump pad's throw (m/s up). */
     padLaunch: number
     /** A rocket's shove, times LAUNCHER.knockback. */
@@ -89,11 +97,43 @@ export const OFFICE_MOVEMENT: Movement = {
     crawl: PRONE.crawl,
     jump: MOVE.jump,
     gravity: MOVE.gravity,
-    jetpack: true,
+    fuelSeconds: 1 / MOVE.fuelUse,
+    thrust: MOVE.thrust,
     dodge: true,
+    dashSpeed: MOVE.dashSpeed,
+    dashLift: MOVE.dashLift,
+    prone: true,
     padLaunch: PAD.launch,
     knockback: 1,
     moving: 1.2,
+}
+
+/**
+ * A map's movement under a match's options. Walking (and crawling, and the dodge) by `walk`; gravity
+ * by `gravity`, with a jump `jump` times as high whatever the gravity, the pads throwing as high as
+ * ever; the jetpack's climb (its thrust past gravity) by `thrust` and the gravity's change, so heavy
+ * gravity can't ground it; a dodge's hop as high as ever. Everything at 100% gives the map's own.
+ */
+export function tunedMovement(base: Movement, tuning: Tuning): Movement {
+    const g = tuning.gravity / 100
+    const pace = tuning.walk / 100
+    const climb = tuning.thrust / 100
+
+    return {
+        ...base,
+        walk: base.walk * pace,
+        crawl: base.crawl * pace,
+        gravity: base.gravity * g,
+        jump: base.jump * Math.sqrt((g * tuning.jump) / 100),
+        padLaunch: base.padLaunch * Math.sqrt(g),
+        fuelSeconds: tuning.jetpack,
+        // Climb (thrust + gravity) × climb × g, less the tuned gravity: exactly the map's at 100%.
+        thrust: g * (base.thrust * climb + base.gravity * (climb - 1)),
+        dodge: tuning.dash,
+        dashSpeed: base.dashSpeed * pace,
+        dashLift: base.dashLift * Math.sqrt(g),
+        prone: tuning.prone,
+    }
 }
 
 export interface Body {
@@ -222,7 +262,7 @@ export function bodyAt(x: number, y: number, z: number): Body {
  * (not on Overtime, not prone). On the ground Space jumps instead.
  */
 export function jetBurns(body: Body, input: MoveInput, move: Movement = OFFICE_MOVEMENT): boolean {
-    if (!move.jetpack) return false
+    if (move.fuelSeconds <= 0) return false
     return input.jet && body.fuel > 0 && body.overtime === 0 && !body.prone && !body.onGround && !body.jumped
 }
 
@@ -254,8 +294,9 @@ export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
     next.portalCooldown = Math.max(0, body.portalCooldown - 1)
     // An intern grows back only where a mini fits (not under a chair): until then they stay small.
     // Prone: down while held (from the ground, or already down); up once let go, only where a standing mini fits.
-    if (input.prone && (body.onGround || body.prone)) next.prone = true
-    else if (body.prone && !input.prone && fits(world, body, scaleOf(body))) next.prone = false
+    const lies = input.prone && move.prone
+    if (lies && (body.onGround || body.prone)) next.prone = true
+    else if (body.prone && !lies && fits(world, body, scaleOf(body))) next.prone = false
     if (body.small === 1 && !fits(world, body, 1, next.prone)) next.small = 1
     const grounded = body.overtime > 0
 
@@ -271,9 +312,9 @@ export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
     const dodges = move.dodge && input.dash && !grounded && !next.prone
     if (dodges && body.dashCooldown === 0 && body.fuel >= MOVE.dashFuel) {
         const [dx, dz] = length > 0 ? [wx / length, wz / length] : [fx, fz]
-        next.vx = dx * MOVE.dashSpeed
-        next.vz = dz * MOVE.dashSpeed
-        next.vy = Math.max(next.vy, MOVE.dashLift)
+        next.vx = dx * move.dashSpeed
+        next.vz = dz * move.dashSpeed
+        next.vy = Math.max(next.vy, move.dashLift)
         next.fuel -= MOVE.dashFuel
         next.dashLeft = MOVE.dashSteps
         next.dashCooldown = Math.round(MOVE.dashCooldown * (body.espresso > 0 ? ESPRESSO.dashCooldown : 1))
@@ -303,19 +344,20 @@ export function stepBody(world: FpsWorld, body: Body, input: MoveInput): Body {
     next.spaceHeld = input.jet
     const jetting = jetBurns(body, input, move) && next.fuel > 0
     next.jetBoost = Math.max(0, body.jetBoost - 1)
-    const burn = MOVE.fuelUse / (body.jetBoost > 0 ? JETPACK_FACTOR : 1)
+    // Only burning when the map has a jetpack (fuelSeconds > 0: jetBurns says so).
+    const burn = jetting ? 1 / move.fuelSeconds / (body.jetBoost > 0 ? JETPACK_FACTOR : 1) : 0
     const fuelRate = jetting ? -burn : body.onGround && next.dashLeft === 0 ? MOVE.fuelRegen : 0
     next.fuel = Math.max(0, Math.min(1, next.fuel + fuelRate * STEP_S))
 
     const size = sizeAt(scaleOf(next), next.prone)
     // The furthest this step can carry it: its speed, plus what gravity or the jetpack add.
-    const accel = Math.abs(move.gravity + (jetting ? MOVE.thrust : 0))
+    const accel = Math.abs(move.gravity + (jetting ? move.thrust : 0))
     const reach = (Math.hypot(next.vx, next.vy, next.vz) + accel * STEP_S) * STEP_S
     const substeps = Math.min(MAX_SUBSTEPS, Math.max(1, Math.ceil(reach / (size.radius * SUBSTEP_REACH))))
     const h = STEP_S / substeps
     next.onGround = false
     for (let s = 0; s < substeps; s++) {
-        next.vy += (move.gravity + (jetting ? MOVE.thrust : 0)) * h
+        next.vy += (move.gravity + (jetting ? move.thrust : 0)) * h
         next.x += next.vx * h
         next.y += next.vy * h
         next.z += next.vz * h
