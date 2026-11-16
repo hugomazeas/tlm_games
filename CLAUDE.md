@@ -518,6 +518,14 @@ Playable at `/games/office-fps`.
   `buildOffice(scene, renderer)` adds the browser's canvas textures, sky, sun and baking on top.
   Both place everything from the same seeded random numbers: keep anything that calls `R()` in
   the geometry, never in the materials, or the server's collision drifts from what's drawn.
+  Everything in it (desks, chairs, the kitchenette, plants, blinds, ceiling fixtures, the street
+  trees and buildings outside) is an asset from `assets/catalog/office.ts`, put down with
+  `put(parent, ASSET, params, at)`; only the shell stays in office.js (floor, ceiling, walls with
+  their windows, glazing, sills and doors, the street's ground and paint, the podium). The map's
+  own random draws (a chair's jitter, a laptop's screen, which desks get a plant) stay in the map
+  and go in as params or `ry`, so `R()` is drawn as before. Coarse colliders: the frame `put`
+  returns is the unit, tagged by the map (`tagged`); a part flagged `userData.col = false` is
+  left out.
 - **Rue des Érables** (map `erables`, `fps/map/erables.ts` + `erables-kit.ts`, drawn by
   `client/erables.ts`): an original Québec street in October for people at full size: a brick
   bungalow (detached garage, Tempo over the driveway, deck, closed pool) facing a split-level (den,
@@ -544,6 +552,12 @@ Playable at `/games/office-fps`.
   `place(b, ASSET, params, { x, y, z, ry })` (`place.ts`: its own frame, seeded by id and spot,
   so the server and browser build the same), so changing an asset changes it everywhere it
   stands. Only ground surfaces, wires and invisible bounds stay as raw `Builder` calls in a map.
+  **Palettes:** an asset builds with Rue des Érables' materials (default) or the office's
+  (`palette: 'office'`, names in `office-palette.ts`, made by office.js `createOfficeMaterials` /
+  `officePalette`; several names, `chrome`, `glass`…, exist in both with different looks). A
+  `Builder` holds one palette and `place` refuses an asset of the other; a new office material is
+  a name in `OFFICE_MATERIALS` plus its material in `createOfficeMaterials`, never an inline one
+  (each inline material is one more draw call after baking).
   **The lab** (`bun run fps:assets`, http://localhost:8098, `FPS_ASSETS_PORT`): the list with each
   asset's status, current and draft side by side, its params live, Approve / Request changes
   (verdicts in `assets/reviews.json`). The workflow: a change is a new `draft`, at most three

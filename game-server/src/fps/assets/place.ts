@@ -1,3 +1,4 @@
+import type { Group } from 'three'
 import type { Builder } from './kit.ts'
 import type { Asset, AssetVersion, Params, Widened } from './types.ts'
 
@@ -19,7 +20,9 @@ function seedOf(id: string, at: At): number {
 
 /**
  * Builds an asset (its current version: what maps use, or `version` when given, the lab's draft)
- * at a spot, its parameters over its defaults. Its own frame: everything it puts goes there.
+ * at a spot, its parameters over its defaults. Its own frame: everything it puts goes there, and
+ * that frame comes back (the office tags it for its coarse colliders). The builder must hold the
+ * asset's palette.
  */
 export function place<P extends Params>(
     b: Builder,
@@ -27,7 +30,9 @@ export function place<P extends Params>(
     params: Partial<Widened<P>>,
     at: At = {},
     version: AssetVersion<P> = asset.current
-): void {
+): Group {
+    const palette = asset.palette ?? 'erables'
+    if (b.palette !== palette) throw new Error(`${asset.id} is built with the ${palette} palette, not ${b.palette}`)
     const p = { ...asset.defaults, ...params } as P
-    b.place(at, () => version.build(b, p), seedOf(asset.id, at))
+    return b.place(at, () => version.build(b, p), seedOf(asset.id, at))
 }

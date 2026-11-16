@@ -1,4 +1,5 @@
 import type { Builder } from './kit.ts'
+import type { Palette } from './office-palette.ts'
 
 /**
  * The FPS asset library: whole objects (a car, a maple, a bungalow, a sofa) built in real metres
@@ -26,9 +27,17 @@ export interface ParamSpec {
     step?: number
 }
 
-export type Category = 'vehicles' | 'buildings' | 'yard' | 'trees & plants' | 'street' | 'interior'
+export type Category = 'vehicles' | 'buildings' | 'yard' | 'trees & plants' | 'street' | 'interior' | 'office'
 
-export const CATEGORIES: readonly Category[] = ['buildings', 'vehicles', 'yard', 'trees & plants', 'street', 'interior']
+export const CATEGORIES: readonly Category[] = [
+    'buildings',
+    'vehicles',
+    'yard',
+    'trees & plants',
+    'street',
+    'interior',
+    'office',
+]
 
 export interface AssetVersion<P extends Params> {
     version: number
@@ -41,6 +50,8 @@ export interface Asset<P extends Params = Params> {
     id: string
     name: string
     category: Category
+    /** The materials it's built with: Rue des Érables' (when absent) or the office's. */
+    palette?: Palette
     defaults: P
     params: { [K in keyof P]?: ParamSpec }
     /** Shown side by side in the lab (each over the defaults). */

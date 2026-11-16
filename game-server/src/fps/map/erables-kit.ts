@@ -17,6 +17,7 @@ import {
     TubeGeometry,
     Vector3,
 } from 'three'
+import type { OfficeMaterial, OfficeMaterialSet, Palette } from '../assets/office-palette.ts'
 
 /**
  * The pieces Rue des Érables is built from, in real metres (the map is shrunk to the minis' size
@@ -111,6 +112,8 @@ export const ERABLES_MATERIALS = [
 ] as const
 export type ErablesMaterial = (typeof ERABLES_MATERIALS)[number]
 export type ErablesMaterials = Record<ErablesMaterial, Material>
+/** A material name in either palette (a Builder holds one: it builds with that palette's names). */
+export type KitMaterial = ErablesMaterial | OfficeMaterial
 
 /**
  * Painted with world-aligned UVs in the browser (a metre of brick is a metre of brick across every
@@ -181,6 +184,8 @@ export interface Put {
     collide?: boolean
     /** false: casts no shadow (small, or flat on the ground). */
     cast?: boolean
+    /** false: takes no shadow either (a screen, a light). */
+    receive?: boolean
     parent?: Object3D
 }
 
@@ -234,7 +239,25 @@ export class Builder {
     private target: Object3D = this.drawn
     private solidTarget: Object3D = this.solidOnly
 
-    constructor(readonly M: ErablesMaterials) {}
+    /**
+     * `M`: the palette's materials by name (Rue des Érables' by default; the office's for the
+     * office's assets). Its names are what `put` and the rest take.
+     */
+    constructor(
+        readonly M: ErablesMaterials | OfficeMaterialSet,
+        readonly palette: Palette = 'erables'
+    ) {}
+
+    /** Builds into `parent` instead (another asset's frame, a wall, the ceiling). */
+    into<T>(parent: Object3D, build: () => T): T {
+        const target = this.target
+        this.target = parent
+        try {
+            return build()
+        } finally {
+            this.target = target
+        }
+    }
 
     /**
      * Builds `build` in a frame of its own (an asset at its spot, turned `ry`): everything it puts,
@@ -278,12 +301,14 @@ export class Builder {
         return drawn
     }
 
-    put(geometry: BufferGeometry, mat: ErablesMaterial, p: Put = {}): Mesh {
-        const mesh = new Mesh(geometry, this.M[mat])
+    put(geometry: BufferGeometry, mat: KitMaterial, p: Put = {}): Mesh {
+        const material = (this.M as Partial<Record<KitMaterial, Material>>)[mat]
+        if (!material) throw new Error(`No material "${mat}" in the ${this.palette} palette`)
+        const mesh = new Mesh(geometry, material)
         mesh.position.set(p.x ?? 0, p.y ?? 0, p.z ?? 0)
         mesh.rotation.set(p.rx ?? 0, p.ry ?? 0, p.rz ?? 0)
         mesh.castShadow = p.cast ?? true
-        mesh.receiveShadow = true
+        mesh.receiveShadow = p.receive ?? true
         if (p.collide === false) mesh.userData.noCollide = true
         mesh.userData.mat = mat
         ;(p.parent ?? this.target).add(mesh)
