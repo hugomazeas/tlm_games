@@ -6,6 +6,7 @@ import { Builder } from './kit.ts'
 import { readReviews } from './lab.ts'
 import { ASSETS } from './library.ts'
 import { place } from './place.ts'
+import { addSource, assetOf, type SourceRun, sourceAt } from './sources.ts'
 import type { Asset } from './types.ts'
 
 /** A server's builder (plain materials) holding the asset's palette. */
@@ -83,6 +84,9 @@ describe('the FPS asset library', () => {
             'pumpkin',
             'traffic-cone',
             'chair',
+            'table-lamp',
+            'kitchen-sink',
+            'coat-rack',
         ])
         const ghosts: string[] = []
         for (const asset of ASSETS) {
@@ -113,9 +117,51 @@ describe('the FPS asset library', () => {
 
     test("an asset can't be built with the other palette's materials", () => {
         const office = ASSETS.find(a => a.palette === 'office')!
-        const erables = ASSETS.find(a => a.palette !== 'office')!
+        const erables = ASSETS.find(a => !a.palette)!
         expect(() => place(new Builder(plainErablesMaterials()), office, {})).toThrow(/office palette/)
         expect(() => place(builderFor(office), erables, {})).toThrow(/erables palette/)
+    })
+
+    test('a shared asset builds in both palettes, every version and variant', () => {
+        const shared = ASSETS.filter(a => a.palette === 'shared')
+        expect(shared.map(a => a.id)).toContain('ping-pong-table')
+        for (const asset of shared)
+            for (const version of [asset.current, ...(asset.draft ? [asset.draft] : [])])
+                for (const variant of asset.variants) {
+                    const office = new Builder(officePalette(plainOfficeMaterials()), 'office')
+                    const erables = new Builder(plainErablesMaterials())
+                    expect(() => place(office, asset, variant, {}, version)).not.toThrow()
+                    expect(() => place(erables, asset, variant, {}, version)).not.toThrow()
+                }
+    })
+
+    test('the asset view can tell which asset every merged vertex came from', () => {
+        // A planter holding a plant: the plant's meshes read "trough-planter › potted-plant".
+        const planter = ASSETS.find(a => a.id === 'trough-planter')!
+        const b = builderFor(planter)
+        const frame = place(b, planter, {})
+        expect(frame.userData.asset).toBe('trough-planter')
+        const chains = new Set<string | null>()
+        b.drawn.traverse(o => {
+            if ((o as Mesh).isMesh) chains.add(assetOf(o, b.drawn))
+        })
+        expect(chains).toEqual(new Set(['trough-planter', 'trough-planter › potted-plant']))
+
+        // Runs in merge order, the same asset joined, found by vertex.
+        const runs: SourceRun[] = []
+        addSource(runs, 6, null)
+        addSource(runs, 3, 'office-chair')
+        addSource(runs, 9, 'office-chair')
+        addSource(runs, 3, null)
+        expect(runs).toEqual([
+            { start: 0, count: 6, asset: null },
+            { start: 6, count: 12, asset: 'office-chair' },
+            { start: 18, count: 3, asset: null },
+        ])
+        expect(sourceAt(runs, 0)?.asset).toBeNull()
+        expect(sourceAt(runs, 17)?.asset).toBe('office-chair')
+        expect(sourceAt(runs, 18)?.asset).toBeNull()
+        expect(sourceAt(runs, 21)).toBeUndefined()
     })
 
     test('verdicts in reviews.json are about assets the library has', async () => {

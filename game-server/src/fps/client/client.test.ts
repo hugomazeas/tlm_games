@@ -175,6 +175,10 @@ describe('settings', () => {
             antialias: false,
         })
         expect(parseSettings(JSON.stringify({ antialias: 'off' })).antialias).toBe(true)
+        // The asset view is a debug view: off unless turned on.
+        expect(parseSettings(null).assetView).toBe(false)
+        expect(parseSettings(JSON.stringify({ assetView: true })).assetView).toBe(true)
+        expect(parseSettings(JSON.stringify({ assetView: 'yes' })).assetView).toBe(false)
     })
 
     test('aiming zooms in to a bit over half the field of view', () => {

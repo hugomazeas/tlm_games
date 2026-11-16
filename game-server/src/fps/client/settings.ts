@@ -20,6 +20,8 @@ export interface Settings {
     perfOverlay: boolean
     /** Smoothed edges (4× MSAA, about a third of the GPU's work); applies on the next load. */
     antialias: boolean
+    /** The asset view (debug): assets in colours, what the maps draw themselves red, names by the crosshair. */
+    assetView: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -31,6 +33,7 @@ export const DEFAULT_SETTINGS: Settings = {
     resolution: 1,
     perfOverlay: false,
     antialias: true,
+    assetView: false,
 }
 
 export const LIMITS = {
@@ -66,6 +69,7 @@ export function parseSettings(raw: string | null): Settings {
         invertY: typeof value.invertY === 'boolean' ? value.invertY : DEFAULT_SETTINGS.invertY,
         perfOverlay: typeof value.perfOverlay === 'boolean' ? value.perfOverlay : DEFAULT_SETTINGS.perfOverlay,
         antialias: typeof value.antialias === 'boolean' ? value.antialias : DEFAULT_SETTINGS.antialias,
+        assetView: typeof value.assetView === 'boolean' ? value.assetView : DEFAULT_SETTINGS.assetView,
     }
 }
 

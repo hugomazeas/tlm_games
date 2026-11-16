@@ -2,7 +2,6 @@ import {
     BoxGeometry,
     type BufferGeometry,
     CatmullRomCurve3,
-    ConeGeometry,
     CylinderGeometry,
     ExtrudeGeometry,
     Float32BufferAttribute,
@@ -18,6 +17,7 @@ import {
     Vector3,
 } from 'three'
 import type { OfficeMaterial, OfficeMaterialSet, Palette } from '../assets/office-palette.ts'
+import { SHARED_MATERIALS } from '../assets/shared-palette.ts'
 
 /**
  * The pieces Rue des Érables is built from, in real metres (the map is shrunk to the minis' size
@@ -97,7 +97,6 @@ export const ERABLES_MATERIALS = [
     'pumpkin',
     'hay',
     'leafBag',
-    'firewood',
     'net',
     'signBlue',
     'signRed',
@@ -109,6 +108,14 @@ export const ERABLES_MATERIALS = [
     'screen',
     'art',
     'hazard',
+    /** A log's cut end: rings and bark round them, one end per texture (its own 0–1 UVs). */
+    'logEnd',
+    'plasticBlack',
+    /** A traffic cone's reflective collar. */
+    'reflective',
+    /** The leaves texture on a leaf pile's own UVs (in metres along its surface, not world-aligned). */
+    'leafPile',
+    ...SHARED_MATERIALS,
 ] as const
 export type ErablesMaterial = (typeof ERABLES_MATERIALS)[number]
 export type ErablesMaterials = Record<ErablesMaterial, Material>
@@ -159,7 +166,6 @@ export const WORLD_UV: ReadonlySet<ErablesMaterial> = new Set([
     'canvas',
     'hay',
     'leafBag',
-    'firewood',
 ])
 
 /** A seeded random stream (the office's): server and browser place things identically. */
@@ -941,21 +947,6 @@ export class Builder {
 
     // --- Outside ---------------------------------------------------------------------------------
 
-    /** A wheeled bin (recycling blue, compost brown, garbage grey) at the curb. */
-    bin(mat: ErablesMaterial, x: number, z: number, ry: number, y: number): void {
-        const g = this.group(x, y, z, ry)
-        const body = new CylinderGeometry(0.36, 0.3, 0.95, 4, 1)
-            .rotateY(Math.PI / 4)
-            .scale(1, 1, 1.15)
-            .translate(0, 0.5, 0)
-        this.put(body, mat, { parent: g })
-        this.box(mat, -0.32, 0.97, -0.38, 0.32, 1.03, 0.42, { parent: g, collide: false })
-        for (const s of [-1, 1]) {
-            const wheel = new CylinderGeometry(0.1, 0.1, 0.05, 10).rotateZ(Math.PI / 2)
-            this.put(wheel, 'rubber', { parent: g, x: s * 0.25, y: 0.1, z: 0.35, collide: false, cast: false })
-        }
-    }
-
     leafBag(x: number, z: number, y: number, ry: number): void {
         this.block('leafBag', 0.42, 0.82, 0.3, x, y, z, { ry })
         this.block('leafBag', 0.4, 0.08, 0.28, x, y + 0.82, z, { ry: ry + 0.2, collide: false, cast: false })
@@ -1045,31 +1036,11 @@ export class Builder {
             })
     }
 
-    cone(x: number, z: number, y: number): void {
-        this.box('cone', x - 0.18, y, z - 0.18, x + 0.18, y + 0.03, z + 0.18, { collide: false, cast: false })
-        this.put(new ConeGeometry(0.13, 0.62, 12).translate(0, 0.33, 0), 'cone', { x, y, z, collide: false })
-        this.put(new CylinderGeometry(0.075, 0.095, 0.1, 12).translate(0, 0.33, 0), 'paintWhite', {
-            x,
-            y,
-            z,
-            collide: false,
-            cast: false,
-        })
-    }
-
     /** An in-ground trampoline: its mat flush with the lawn (a jump pad: it throws you up), the blue pad round it. */
     trampoline(x: number, z: number, y: number, r: number): void {
         this.cyl('rubber', r, r, 0.06, x, y - 0.01, z, 32)
         const pad = new TorusGeometry(r + 0.12, 0.13, 6, 40).rotateX(Math.PI / 2).scale(1, 0.4, 1)
         this.put(pad, 'paintBlue', { x, y: y + 0.03, z, collide: false, cast: false })
-    }
-
-    /** A firewood stack (a corde), a tarp over it. */
-    woodpile(x: number, z: number, y: number, length: number, ry: number): void {
-        const g = this.group(x, y, z, ry)
-        this.box('firewood', -length / 2, 0.1, -0.24, length / 2, 1.3, 0.24, { parent: g })
-        this.box('wood', -length / 2, 0, -0.3, length / 2, 0.1, 0.3, { parent: g, collide: false })
-        this.box('tarp', -length / 2 - 0.05, 1.3, -0.35, length / 2 + 0.05, 1.36, 0.35, { parent: g, collide: false })
     }
 
     /** A garden shed (cabanon): siding, a gable roof, a door left open toward `doorSide`. */

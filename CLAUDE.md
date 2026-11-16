@@ -557,7 +557,16 @@ Playable at `/games/office-fps`.
   `officePalette`; several names, `chrome`, `glass`…, exist in both with different looks). A
   `Builder` holds one palette and `place` refuses an asset of the other; a new office material is
   a name in `OFFICE_MATERIALS` plus its material in `createOfficeMaterials`, never an inline one
-  (each inline material is one more draw call after baking).
+  (each inline material is one more draw call after baking). An asset for both maps is
+  `palette: 'shared'` (the ping-pong table): built only from `SHARED_MATERIALS`
+  (`assets/shared-palette.ts`), names both palettes list and both maps make with
+  `makeSharedMaterials`, so it looks the same in each.
+  **The asset view** (Esc → Settings → Show assets, `client/asset-debug.ts`): in the game, every
+  asset painted a flat colour of its own and everything a map draws itself red, with the name under
+  the crosshair ("asset · trough-planter › potted-plant", "map · office.js"). `place` tags the
+  asset's frame (`userData.asset`) and the maps' `bake` keeps which asset each run of merged
+  vertices came from (`assets/sources.ts`, `userData.sources`); decor a client file draws itself
+  says so in `userData.drawnBy`.
   **The lab** (`bun run fps:assets`, http://localhost:8098, `FPS_ASSETS_PORT`): the list with each
   asset's status, current and draft side by side, its params live, Approve / Request changes
   (verdicts in `assets/reviews.json`). The workflow: a change is a new `draft`, at most three

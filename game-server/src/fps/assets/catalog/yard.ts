@@ -1,4 +1,5 @@
-import { CylinderGeometry, TorusGeometry, Vector3 } from 'three'
+import { BoxGeometry, CircleGeometry, CylinderGeometry, TorusGeometry, Vector3 } from 'three'
+import { taperedBox } from '../shapes.ts'
 import type { ErablesMaterial } from '../kit.ts'
 import { place } from '../place.ts'
 import { defineAsset } from '../types.ts'
@@ -205,15 +206,81 @@ export const WOODPILE = defineAsset({
     id: 'woodpile',
     name: 'Woodpile',
     category: 'yard',
-    defaults: { length: 4 },
-    params: { length: { label: 'Length', min: 1.5, max: 6, step: 0.5 } },
-    variants: [{}, { length: 2.5 }],
+    defaults: { length: 4, tarp: true },
+    params: {
+        length: { label: 'Length', min: 1.5, max: 6, step: 0.5 },
+        tarp: { label: 'Tarp', options: [true, false] },
+    },
+    variants: [{}, { length: 2.5, tarp: false }],
     size: [4, 1.4, 0.7],
     current: {
-        version: 1,
-        notes: 'A block of log ends on a pallet, a tarp on top.',
+        version: 2,
+        notes: 'Your note: every side had the same texture. Now real logs: 40 cm split-length rounds, each a bark cylinder with its two sawn ends (rings, checks, sapwood), stacked in rows that nest, a little uneven; on two rails over blocks, a stake at each end, a tarp over the top hanging down the front and back. One box collides.',
         build(b, p) {
-            b.woodpile(0, 0, 0, p.length as number, 0)
+            const length = p.length as number
+            const half = length / 2
+            const depth = 0.4
+            const R = b.R
+            // Two rails on blocks, and the end stakes.
+            for (const z of [-0.12, 0.12]) {
+                b.box('wood', -half - 0.05, 0.08, z - 0.04, half + 0.05, 0.12, z + 0.04, { collide: false })
+                for (const x of [-half + 0.2, 0, half - 0.2])
+                    b.box('concrete', x - 0.1, 0, z - 0.1, x + 0.1, 0.08, z + 0.1, { collide: false, cast: false })
+            }
+            for (const x of [-half - 0.03, half + 0.03])
+                for (const z of [-0.12, 0.12])
+                    b.box('wood', x - 0.03, 0.08, z - 0.03, x + 0.03, 1.35, z + 0.03, { collide: false })
+            // The logs: rows from the rails up, each nesting in the one below.
+            let y = 0.12
+            let row = 0
+            while (y < 1.18) {
+                let x = -half + (row % 2 ? 0.07 : 0.02)
+                let tallest = 0
+                while (x < half - 0.06) {
+                    const r = 0.05 + R() * 0.03
+                    if (x + r * 2 > half + 0.01) break
+                    const cx = x + r
+                    const g = b.group(cx, y + r, (R() - 0.5) * 0.05, (R() - 0.5) * 0.08)
+                    const len = depth + (R() - 0.5) * 0.06
+                    // Its bark round the side, along z, and the two sawn ends.
+                    const side = new CylinderGeometry(r, r, len, 9, 1, true).rotateX(Math.PI / 2)
+                    b.put(side, 'barkFurrowed', { parent: g, rz: R() * Math.PI, collide: false })
+                    for (const end of [-1, 1]) {
+                        const face = new CircleGeometry(r, 9).rotateY(end === 1 ? 0 : Math.PI)
+                        b.put(face, 'logEnd', {
+                            parent: g,
+                            z: (end * len) / 2,
+                            rz: R() * Math.PI * 2,
+                            collide: false,
+                            cast: false,
+                        })
+                    }
+                    tallest = Math.max(tallest, r * 2)
+                    x += r * 2 + 0.004
+                }
+                // The next row sits a little into this one's gaps.
+                y += tallest * 0.86
+                row++
+            }
+            // What you bump into: one box round it all.
+            b.solid(new BoxGeometry(length + 0.1, y + 0.05, depth + 0.04).translate(0, (y + 0.05) / 2, 0))
+            if (!p.tarp) return
+            // The tarp: over the top, hanging part way down the front and back.
+            const top = y + 0.02
+            b.box('tarp', -half - 0.08, top, -depth / 2 - 0.06, half + 0.08, top + 0.02, depth / 2 + 0.06, {
+                collide: false,
+            })
+            for (const s of [-1, 1])
+                b.box(
+                    'tarp',
+                    -half - 0.08,
+                    top - 0.32,
+                    s * (depth / 2 + 0.05),
+                    half + 0.08,
+                    top + 0.01,
+                    s * (depth / 2 + 0.07),
+                    { collide: false, rx: s * 0.06 }
+                )
         },
     },
 })
@@ -287,9 +354,52 @@ export const COMPOST_BIN = defineAsset({
     variants: [{}],
     size: [1, 1, 1],
     current: {
-        version: 1,
-        notes: 'A brown plastic cube.',
-        build: b => void b.block('binBrown', 1.0, 1.0, 1.0, 0, 0, 0),
+        version: 2,
+        notes: 'Your note: needs a design. The black backyard composter the city hands out: a moulded body narrowing toward the top with rounded corners, ribs round it with rows of air slots between, a sliding harvest door at the foot of the front (-z) with its grip, and a lid with a hinged hatch and a knob.',
+        build(b) {
+            const [w0, w1, h] = [0.8, 0.62, 0.86]
+            const widthAt = (y: number) => w0 + ((w1 - w0) * y) / h
+            b.put(taperedBox(w0, w0, w1, w1, h, 0.09), 'plasticBlack')
+            // Ribs round it, just proud of the body, and the air slots between them on every side.
+            for (const y of [0.18, 0.4, 0.62]) {
+                const w = widthAt(y) + 0.02
+                b.put(taperedBox(w, w, w - 0.004, w - 0.004, 0.025, 0.1, {}), 'plasticBlack', { y, collide: false })
+            }
+            for (let side = 0; side < 4; side++) {
+                const g = b.group(0, 0, 0, (side * Math.PI) / 2)
+                for (const y of [0.29, 0.51, 0.73]) {
+                    const out = widthAt(y) / 2 + 0.002
+                    const lean = Math.atan2((w0 - w1) / 2, h)
+                    for (let i = -2; i <= 2; i++)
+                        b.box(
+                            'rubber',
+                            i * 0.1 - 0.035,
+                            y - 0.008,
+                            -out - 0.002,
+                            i * 0.1 + 0.035,
+                            y + 0.008,
+                            -out + 0.002,
+                            { parent: g, collide: false, cast: false, rx: lean }
+                        )
+                }
+            }
+            // The harvest door at the foot of the front, its grip.
+            const front = -w0 / 2 - 0.012
+            b.box('plasticBlack', -0.18, 0.03, front, 0.18, 0.2, front + 0.02, { collide: false, rx: 0.1 })
+            b.box('binGrey', -0.06, 0.15, front - 0.02, 0.06, 0.18, front, { collide: false, cast: false })
+            // The lid: a low dome over the top, its hatch and knob.
+            b.put(taperedBox(w1 + 0.04, w1 + 0.04, w1 - 0.06, w1 - 0.06, 0.06, 0.1), 'plasticBlack', {
+                y: h,
+                collide: false,
+            })
+            b.put(taperedBox(0.34, 0.3, 0.32, 0.28, 0.025, 0.04), 'plasticBlack', {
+                y: h + 0.06,
+                z: 0.02,
+                collide: false,
+            })
+            b.box('binGrey', -0.05, h + 0.075, -0.13, 0.05, h + 0.1, -0.11, { collide: false, cast: false })
+            b.cyl('plasticBlack', 0.025, 0.03, 0.04, 0, h + 0.085, 0.02, 10, { collide: false, cast: false })
+        },
     },
 })
 
