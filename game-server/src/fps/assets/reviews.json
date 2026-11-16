@@ -48,21 +48,21 @@
         "at": "2026-11-13T15:32:29.017Z"
     },
     "split-level": {
-        "version": 1,
+        "version": 2,
         "verdict": "approved",
-        "note": "Clipping roofs against the walls (Walls are sticking out of the roof)",
-        "at": "2026-11-13T15:33:47.029Z"
+        "note": "",
+        "at": "2026-11-13T20:20:16.408Z"
     },
     "shed": {
-        "version": 1,
+        "version": 2,
         "verdict": "approved",
-        "note": "Clipping against roofs and walls",
-        "at": "2026-11-13T15:34:01.737Z"
+        "note": "",
+        "at": "2026-11-13T20:20:23.618Z"
     },
     "bungalow": {
-        "version": 1,
+        "version": 2,
         "verdict": "approved",
-        "note": "Clipping against roof and walls",
-        "at": "2026-11-13T15:34:57.524Z"
+        "note": "",
+        "at": "2026-11-13T20:20:27.955Z"
     }
 }
