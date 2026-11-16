@@ -9,10 +9,17 @@ LOCAL_DB  ?= database/database.sqlite
 export LOCAL_UID := $(shell id -u)
 export LOCAL_GID := $(shell id -g)
 
-# Auto-detect USB camera and include override if present
+# Auto-detect the USB cameras and include their overrides if present. Each is found by its
+# USB id, so plugging in the second camera can't swap their /dev/videoN numbers; the
+# container always sees the C920 at /dev/video0 and the C200 (wide angle) at /dev/video-wide.
+export CAMERA_MAIN_DEVICE ?= $(or $(firstword $(wildcard /dev/v4l/by-id/*C920*-video-index0)),/dev/video0)
+export CAMERA_WIDE_DEVICE ?= $(firstword $(wildcard /dev/v4l/by-id/*C200*-video-index0))
 COMPOSE_FILES := -f docker-compose.yml
-ifneq (,$(wildcard /dev/video0))
+ifneq (,$(wildcard $(CAMERA_MAIN_DEVICE)))
   COMPOSE_FILES += -f docker-compose.camera.yml
+endif
+ifneq (,$(CAMERA_WIDE_DEVICE))
+  COMPOSE_FILES += -f docker-compose.camera-wide.yml
 endif
 
 build:

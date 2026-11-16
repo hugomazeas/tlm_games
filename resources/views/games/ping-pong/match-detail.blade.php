@@ -314,6 +314,29 @@
         height: 100%;
         object-fit: contain;
     }
+    /* Camera angles: main, wide, or both side by side (the timeline then goes under them) */
+    .md .angle-picker {
+        display: inline-flex;
+        gap: 4px;
+        margin-bottom: 12px;
+        padding: 3px;
+        border-radius: 8px;
+        background: rgba(255,255,255,0.06);
+    }
+    .md .angle-picker button {
+        padding: 5px 14px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: rgba(255,255,255,0.7);
+        font-size: 13px;
+        cursor: pointer;
+    }
+    .md .angle-picker button:hover { color: #fff; }
+    .md .angle-picker button.active { background: #3b82f6; color: #fff; }
+    .md .recording-videos { display: grid; gap: 12px; }
+    .md .recording-videos.both { grid-template-columns: 1fr 1fr; }
+    .md .recording-layout.both { grid-template-columns: 1fr; }
     .md .timeline-panel {
         max-height: 450px;
         overflow-y: auto;
@@ -525,6 +548,7 @@
 
     @media (max-width: 900px) {
         .md .recording-layout { grid-template-columns: 1fr; }
+        .md .recording-videos.both { grid-template-columns: 1fr; }
         .md .timeline-panel { max-height: 300px; }
         .md .ball-stats { grid-template-columns: 1fr; }
     }
@@ -719,10 +743,26 @@
                         </template>
                     </div>
 
-                    <div class="recording-layout">
-                        <div class="video-wrap">
-                            <video id="matchVideo" controls playsinline preload="metadata"
-                                   :src="match.recording.video_url"></video>
+                    <div x-show="hasWideVideo()" class="angle-picker" role="group" aria-label="Camera" data-angle-picker>
+                        <template x-for="option in [['main', 'Main'], ['wide', 'Wide'], ['both', 'Side by side']]" :key="option[0]">
+                            <button type="button" @click="setAngle(option[0])" :class="{ active: angle === option[0] }"
+                                    :aria-pressed="angle === option[0]" x-text="option[1]"></button>
+                        </template>
+                    </div>
+
+                    <div class="recording-layout" :class="{ both: shownAngle() === 'both' }">
+                        <div class="recording-videos" :class="{ both: shownAngle() === 'both' }">
+                            <div class="video-wrap" x-show="shownAngle() !== 'wide'">
+                                <video id="matchVideo" controls playsinline preload="metadata"
+                                       :src="match.recording.video_url"></video>
+                            </div>
+                            <template x-if="hasWideVideo()">
+                                <div class="video-wrap" x-show="shownAngle() !== 'main'">
+                                    <video id="matchVideoWide" playsinline preload="metadata" muted data-wide-player
+                                           :src="match.recording.wide_video_url"
+                                           x-init="$nextTick(() => setupAngles())"></video>
+                                </div>
+                            </template>
                         </div>
                         <div class="timeline-panel" x-show="pointTimestamps().length > 0">
                             <div class="timeline-header">Points Timeline</div>
@@ -948,6 +988,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pusher-js@8.4.0/dist/web/pusher.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
+@include('games.ping-pong.partials.live-angles-script')
 <script>
 function matchDetail() {
     return {
@@ -961,6 +1002,10 @@ function matchDetail() {
         countdown: 30,
         countdownTimer: null,
         activePoint: null,
+
+        // Camera angle: main, wide or both (shared with the live pages)
+        angle: pingPongStoredAngle(),
+        angleSyncTimer: null,
 
         // Clip creation state
         clipStart: '',
@@ -1046,11 +1091,134 @@ function matchDetail() {
         },
 
         markClipTime(which) {
-            const video = document.getElementById('matchVideo');
-            if (!video) return;
-            const t = Math.max(0, Math.round(video.currentTime * 10) / 10);
-            if (which === 'start') this.clipStart = t;
-            else this.clipEnd = t;
+            const t = this.mainTime();
+            if (t === null) return;
+            const rounded = Math.max(0, Math.round(t * 10) / 10);
+            if (which === 'start') this.clipStart = rounded;
+            else this.clipEnd = rounded;
+        },
+
+        hasWideVideo() {
+            return !!this.match?.recording?.wide_video_url;
+        },
+
+        /** What's on screen: the main angle unless the match has a wide one. */
+        shownAngle() {
+            return this.hasWideVideo() ? this.angle : 'main';
+        },
+
+        /** How much later the wide video starts than the main one, in seconds: wide time = main time - offset. */
+        wideOffset() {
+            return (this.match?.recording?.wide_offset_ms || 0) / 1000;
+        },
+
+        /** The video you drive (controls, sound); the other follows it. Side by side, the main one. */
+        leaderVideo() {
+            return document.getElementById(this.shownAngle() === 'wide' ? 'matchVideoWide' : 'matchVideo');
+        },
+
+        followerVideo() {
+            return document.getElementById(this.shownAngle() === 'wide' ? 'matchVideo' : 'matchVideoWide');
+        },
+
+        /** Where the match video is, in the main video's time (clips and the timeline count in it). */
+        mainTime() {
+            const leader = this.leaderVideo();
+            if (!leader) return null;
+            return leader.id === 'matchVideoWide' ? leader.currentTime + this.wideOffset() : leader.currentTime;
+        },
+
+        seekMain(seconds) {
+            const leader = this.leaderVideo();
+            if (!leader) return;
+            this.placeAt(leader, seconds);
+            leader.play().catch(() => {});
+        },
+
+        /** Puts a video at a moment given in the main video's time. */
+        placeAt(video, mainSeconds) {
+            video.currentTime = Math.max(0, video.id === 'matchVideoWide' ? mainSeconds - this.wideOffset() : mainSeconds);
+        },
+
+        /** The angle shown alone picks up where the one on screen was. */
+        setAngle(angle) {
+            const before = this.leaderVideo();
+            const wasPlaying = before && !before.paused;
+            const at = this.mainTime();
+            this.angle = angle;
+            try {
+                localStorage.setItem('ping_pong_angle', angle);
+            } catch (e) {
+                // Not remembered, still switched
+            }
+            this.applyAngleRoles();
+
+            const leader = this.leaderVideo();
+            if (leader && leader !== before) {
+                before?.pause();
+                if (at !== null) this.placeAt(leader, at);
+                if (wasPlaying) leader.play().catch(() => {});
+            }
+            this.syncFollower(true);
+        },
+
+        /** The leader gets the controls and the sound; the follower is silent. */
+        applyAngleRoles() {
+            const leader = this.leaderVideo();
+            const follower = this.followerVideo();
+            if (leader) {
+                leader.controls = true;
+                leader.muted = false;
+            }
+            if (follower) {
+                follower.controls = false;
+                follower.muted = true;
+            }
+        },
+
+        /** Once both videos exist: the follower copies the leader's play, pause, seek and speed, and is nudged back when it drifts. */
+        setupAngles() {
+            const main = document.getElementById('matchVideo');
+            const wide = document.getElementById('matchVideoWide');
+            if (!main || !wide || this.angleSyncTimer) return;
+
+            for (const video of [main, wide]) {
+                for (const event of ['play', 'pause', 'seeked', 'ratechange']) {
+                    video.addEventListener(event, () => video === this.leaderVideo() && this.syncFollower(true));
+                }
+            }
+            this.angleSyncTimer = setInterval(() => this.syncFollower(false), 500);
+            this.applyAngleRoles();
+            this.syncFollower(true);
+        },
+
+        /** Side by side, keeps the follower on the leader's moment; otherwise it's out of sight and stays paused. */
+        syncFollower(jump) {
+            const leader = this.leaderVideo();
+            const follower = this.followerVideo();
+            if (!leader || !follower || follower.readyState < 1) return;
+
+            if (this.shownAngle() !== 'both') {
+                if (!follower.paused) follower.pause();
+                return;
+            }
+
+            const offset = leader.id === 'matchVideo' ? -this.wideOffset() : this.wideOffset();
+            const target = Math.max(0, leader.currentTime + offset);
+            const drift = follower.currentTime - target;
+
+            if (jump || Math.abs(drift) > 0.3) {
+                follower.currentTime = target;
+                follower.playbackRate = leader.playbackRate;
+            } else if (Math.abs(drift) > 0.04) {
+                follower.playbackRate = leader.playbackRate * (drift > 0 ? 0.9 : 1.1);
+            } else {
+                follower.playbackRate = leader.playbackRate;
+            }
+
+            if (leader.paused !== follower.paused) {
+                leader.paused ? follower.pause() : follower.play().catch(() => {});
+            }
         },
 
         formatSeconds(s) {
@@ -1380,10 +1548,7 @@ function matchDetail() {
         },
 
         seekToPoint(offset) {
-            const video = document.getElementById('matchVideo');
-            if (!video) return;
-            video.currentTime = Math.max(0, offset - 10);
-            video.play().catch(() => {});
+            this.seekMain(offset - 10);
         },
 
         renderScoreChart() {

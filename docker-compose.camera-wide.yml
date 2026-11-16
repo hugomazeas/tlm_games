@@ -1,0 +1,6 @@
+# The second camera (Anker C200, wide angle). The Makefile adds this file only when the
+# camera is plugged in: a missing device would stop the container from starting.
+services:
+  app:
+    devices:
+      - "${CAMERA_WIDE_DEVICE}:/dev/video-wide"

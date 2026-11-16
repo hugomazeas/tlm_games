@@ -50,4 +50,60 @@ class VideoRecordingCommandTest extends TestCase
         $this->assertStringNotContainsString('aresample', $cmd);
         $this->assertStringContainsString("-i '/dev/video0'", $cmd);
     }
+
+    public function test_one_camera_command_is_unchanged_by_the_wide_camera_settings(): void
+    {
+        $service = new VideoRecordingService;
+        $before = $service->buildFfmpegCommand('/tmp/seg%03d.ts', '/tmp/s.m3u8', withAudio: true);
+
+        config(['pingpong.wide_camera.filter' => 'hflip']);
+
+        $this->assertSame($before, $service->buildFfmpegCommand('/tmp/seg%03d.ts', '/tmp/s.m3u8', withAudio: true, withWide: false));
+        $this->assertStringNotContainsString('-map', $before);
+        $this->assertStringNotContainsString('wide', $before);
+    }
+
+    public function test_two_camera_command_films_both_angles_on_one_clock(): void
+    {
+        config([
+            'pingpong.recording_audio_device' => 'plughw:CARD=C200,DEV=0',
+            'pingpong.wide_camera' => ['device' => '/dev/video-wide', 'video_size' => '2560x1440', 'filter' => ''],
+        ]);
+
+        $cmd = (new VideoRecordingService)->buildFfmpegCommand('/live/7/segment%03d.ts', '/live/7/stream.m3u8', withAudio: true, withWide: true);
+
+        // The wide camera at its own size, its timestamps kept relative to the main camera's
+        $this->assertStringContainsString("-video_size '2560x1440' -framerate 30 -input_format mjpeg -isync 0 -i '/dev/video-wide'", $cmd);
+        $this->assertSame(2, substr_count($cmd, '-ts mono2abs'));
+        // The mic is the third input, in both angles
+        $this->assertStringContainsString("-isync 0 -i 'plughw:CARD=C200,DEV=0'", $cmd);
+        $this->assertStringContainsString('-map 0:v -map 2:a -vf "hflip,vflip"', $cmd);
+        $this->assertStringContainsString('-map 1:v -map 2:a -c:v libx264', $cmd);
+        $this->assertSame(2, substr_count($cmd, '-c:a aac -ac 1 '));
+        // The main stream where it always was, the wide one next to it, both stamped with the wall clock
+        $this->assertStringContainsString("-hls_segment_filename '/live/7/segment%03d.ts' '/live/7/stream.m3u8'", $cmd);
+        $this->assertStringContainsString("-hls_segment_filename '/live/7/wide/segment%03d.ts' '/live/7/wide/stream.m3u8'", $cmd);
+        $this->assertSame(2, substr_count($cmd, 'append_list+program_date_time'));
+    }
+
+    public function test_two_camera_command_without_audio_maps_video_only(): void
+    {
+        $cmd = (new VideoRecordingService)->buildFfmpegCommand('/live/7/segment%03d.ts', '/live/7/stream.m3u8', withAudio: false, withWide: true);
+
+        $this->assertStringNotContainsString('alsa', $cmd);
+        $this->assertStringNotContainsString(':a', $cmd);
+        $this->assertStringContainsString('-map 0:v -vf "hflip,vflip"', $cmd);
+        $this->assertStringContainsString('-map 1:v -c:v libx264', $cmd);
+    }
+
+    public function test_the_wide_camera_gets_its_own_mounting_filter(): void
+    {
+        config(['pingpong.wide_camera.filter' => 'hflip']);
+
+        $cmd = (new VideoRecordingService)->buildFfmpegCommand('/live/7/segment%03d.ts', '/live/7/stream.m3u8', withAudio: false, withWide: true);
+
+        $this->assertStringContainsString("-map 1:v -vf 'hflip' -c:v libx264", $cmd);
+        // The main camera keeps its own
+        $this->assertStringContainsString('-map 0:v -vf "hflip,vflip"', $cmd);
+    }
 }

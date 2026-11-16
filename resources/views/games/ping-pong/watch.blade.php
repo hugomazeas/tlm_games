@@ -50,9 +50,13 @@
     {{-- Match active --}}
     <template x-if="matchActive">
         <div class="relative w-full h-full flex items-center justify-center">
-            {{-- Video --}}
-            <video x-show="hasVideo" id="watchPlayer" muted autoplay playsinline
-                   class="w-full h-full object-contain bg-black absolute inset-0 -scale-x-100"></video>
+            {{-- Video: the main angle, the wide one, or both (side by side, stacked on a phone) --}}
+            <video x-show="hasVideo && shownAngle() !== 'wide'" id="watchPlayer" muted autoplay playsinline
+                   class="w-full object-contain bg-black absolute top-0 left-0 -scale-x-100"
+                   :class="shownAngle() === 'both' ? 'h-1/2 md:h-full md:w-1/2' : 'h-full'"></video>
+            <video x-show="hasVideo && shownAngle() !== 'main'" id="watchPlayerWide" muted autoplay playsinline data-wide-player
+                   class="w-full object-contain bg-black absolute bottom-0 right-0"
+                   :class="shownAngle() === 'both' ? 'h-1/2 md:h-full md:w-1/2' : 'h-full'"></video>
 
             {{-- Browsers only autoplay muted: one click turns the sound on for the rest of the visit. --}}
             <button type="button" x-show="hasVideo && !audioOn" @click="enableAudio()" data-audio-enable
@@ -160,6 +164,15 @@
 
             {{-- Top-right chip cluster --}}
             <div class="absolute top-3 right-3 md:top-4 md:right-4 flex items-center gap-1.5 md:gap-2 whitespace-nowrap">
+                <div x-show="hasVideo && wideUrl" data-angle-picker role="group" aria-label="Camera"
+                     class="inline-flex rounded-md bg-black/70 backdrop-blur-sm overflow-hidden">
+                    <template x-for="option in [['main', 'Main'], ['wide', 'Wide'], ['both', 'Both']]" :key="option[0]">
+                        <button type="button" @click="setAngle(option[0])" :aria-pressed="angle === option[0]"
+                                class="px-2.5 py-1 border-0 cursor-pointer text-xs pph-mono uppercase tracking-[0.12em] transition"
+                                :class="angle === option[0] ? 'bg-[#ffd166] text-[#06081b]' : 'bg-transparent text-white hover:bg-white/10'"
+                                x-text="option[1]"></button>
+                    </template>
+                </div>
                 <button type="button" x-show="eloPreview" @click="toggleElo()" data-elo-toggle
                         class="hidden md:inline-flex items-center gap-1 px-3 py-1 rounded-md bg-black/70 text-white text-xs border-0 cursor-pointer backdrop-blur-sm pph-mono uppercase tracking-[0.12em]">
                     ELO <span x-text="eloOpen ? '▾' : '▸'"></span>
@@ -271,6 +284,7 @@
 @include('games.ping-pong.partials.chat-script')
 @include('games.ping-pong.partials.match-alerts-script')
 @include('games.ping-pong.partials.viewers-script')
+@include('games.ping-pong.partials.live-angles-script')
 <script>
 // Give up waiting for the stream to play out after the tail plus ~10s of stream latency and some slack.
 const MATCH_END_FALLBACK_MS = ({{ (int) config('pingpong.recording_tail_seconds') }} + 25) * 1000;
@@ -281,6 +295,7 @@ function watchLive() {
         ...pingPongChat(),
         ...pingPongMatchAlerts(),
         ...pingPongViewers(),
+        ...pingPongLiveAngles('watchPlayer', 'watchPlayerWide'),
 
         API: '/games/ping-pong/api',
         csrf: document.querySelector('meta[name="csrf-token"]').content,
@@ -593,7 +608,7 @@ function watchLive() {
             if (!e?.hls_url) return;
 
             if (e.match_id === this.matchId) {
-                if (!this.hasVideo) this.attachStream(e.hls_url);
+                if (!this.hasVideo) this.attachStream(e.hls_url, e.wide_hls_url);
                 return;
             }
 
@@ -605,10 +620,11 @@ function watchLive() {
             await this.checkForLiveMatch();
         },
 
-        attachStream(hlsUrl) {
+        attachStream(hlsUrl, wideHlsUrl = null) {
             this.hasVideo = true;
             this.hlsNetworkErrorCount = 0;
             this.$nextTick(() => this.initPlayer(hlsUrl));
+            this.attachWide(wideHlsUrl);
         },
 
         async checkForLiveMatch() {
@@ -623,7 +639,7 @@ function watchLive() {
                         this.match = recData.match;
                         this.matchId = recData.match_id;
                         this.matchActive = true;
-                        this.attachStream(recData.hls_url);
+                        this.attachStream(recData.hls_url, recData.wide_hls_url);
                         this.subscribeToScores();
                         this.joinChat(this.matchId);
                         this.joinViewers(this.matchId);
@@ -687,10 +703,11 @@ function watchLive() {
             const onAir = recData.active && recData.hls_url && recData.match_id === this.matchId;
 
             if (onAir && !this.hasVideo) {
-                this.attachStream(recData.hls_url);
+                this.attachStream(recData.hls_url, recData.wide_hls_url);
             } else if (!onAir && this.hasVideo && this.hlsNetworkErrorCount > 0) {
                 this.hasVideo = false;
                 this.destroyPlayer();
+                this.detachWide();
             }
         },
 
@@ -721,6 +738,7 @@ function watchLive() {
             this.hasVideo = false;
             this.eloPreview = null;
             this.destroyPlayer();
+            this.detachWide();
             this.leaveMatchChannel();
             this.leaveChat();
             this.leaveViewers();
@@ -786,7 +804,7 @@ function watchLive() {
 
         /** Plays with sound if the viewer turned it on; falls back to muted if the browser refuses. */
         startVideo(video) {
-            video.muted = !this.audioOn;
+            video.muted = !this.audioOn || this.shownAngle() === 'wide';
             video.play().catch(() => {
                 if (video.muted) return;
                 this.audioOn = false;
@@ -795,8 +813,9 @@ function watchLive() {
             });
         },
 
+        /** Sound from the angle on screen (side by side: the main one). */
         enableAudio() {
-            const video = document.getElementById('watchPlayer');
+            const video = document.getElementById(this.shownAngle() === 'wide' ? 'watchPlayerWide' : 'watchPlayer');
             if (!video) return;
             this.audioOn = true;
             video.muted = false;

@@ -23,7 +23,7 @@ services:
     # the image: deploy.sh never rebuilds, so a baked-in program (camera-queue)
     # would never reach prod.
     command: >
-      sh -c "chmod 666 /dev/video0 /dev/snd/* 2>/dev/null || true &&
+      sh -c "chmod 666 /dev/video0 /dev/video-wide /dev/snd/* 2>/dev/null || true &&
              composer install --no-interaction &&
              cp -n .env.example .env || true &&
              php artisan key:generate --force &&

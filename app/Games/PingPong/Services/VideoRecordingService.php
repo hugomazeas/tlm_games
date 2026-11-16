@@ -54,12 +54,28 @@ class VideoRecordingService
         $segmentPattern = $hlsDir.'/segment%03d.ts';
         $m3u8Path = $hlsDir.'/stream.m3u8';
 
-        $pid = $this->spawnFfmpeg($segmentPattern, $m3u8Path, withAudio: $this->audioDevice !== '');
+        $hasWideCamera = $this->hasWideCamera();
+        if ($hasWideCamera && ! is_dir($hlsDir.'/wide')) {
+            mkdir($hlsDir.'/wide', 0775, true);
+        }
 
-        // ponytail: a missing/busy mic shouldn't cost the whole recording, so retry video-only
-        if ($pid > 0 && ! $this->isProcessRunning($pid) && $this->audioDevice !== '') {
-            Log::warning('FFmpeg failed with audio, retrying video-only', ['match_id' => $match->id, 'audio_device' => $this->audioDevice]);
-            $pid = $this->spawnFfmpeg($segmentPattern, $m3u8Path, withAudio: false);
+        // One ffmpeg films everything, so a missing or busy wide camera or mic would cost the
+        // whole recording: drop the mic, then the wide camera, until it starts.
+        $withWide = false;
+        foreach ($this->startAttempts($hasWideCamera) as $attempt => [$withWide, $withAudio]) {
+            if ($attempt > 0) {
+                Log::warning('FFmpeg failed, retrying with less', [
+                    'match_id' => $match->id,
+                    'wide_camera' => $withWide,
+                    'audio' => $withAudio,
+                ]);
+            }
+
+            $pid = $this->spawnFfmpeg($segmentPattern, $m3u8Path, $withAudio, $withWide);
+
+            if ($pid <= 0 || $this->isProcessRunning($pid)) {
+                break;
+            }
         }
 
         if ($pid <= 0) {
@@ -75,9 +91,10 @@ class VideoRecordingService
         $recording->update([
             'status' => 'recording',
             'ffmpeg_pid' => $pid,
+            'wide_hls_path' => $withWide ? 'recordings/live/'.$match->id.'/wide' : null,
         ]);
 
-        Log::info('Recording started', ['match_id' => $match->id, 'pid' => $pid]);
+        Log::info('Recording started', ['match_id' => $match->id, 'pid' => $pid, 'wide_camera' => $withWide]);
 
         AnnounceLiveStreamJob::dispatch($recording->id);
 
@@ -154,9 +171,9 @@ class VideoRecordingService
      * Launch FFmpeg in the background and return its PID, after a short pause
      * so a process that dies on startup (bad device) is already gone.
      */
-    protected function spawnFfmpeg(string $segmentPattern, string $m3u8Path, bool $withAudio): int
+    protected function spawnFfmpeg(string $segmentPattern, string $m3u8Path, bool $withAudio, bool $withWide = false): int
     {
-        $pid = (int) trim((string) shell_exec($this->buildFfmpegCommand($segmentPattern, $m3u8Path, $withAudio)));
+        $pid = (int) trim((string) shell_exec($this->buildFfmpegCommand($segmentPattern, $m3u8Path, $withAudio, $withWide)));
 
         if ($pid > 0) {
             usleep(500000);
@@ -165,8 +182,40 @@ class VideoRecordingService
         return $pid;
     }
 
-    public function buildFfmpegCommand(string $segmentPattern, string $m3u8Path, bool $withAudio): string
+    /**
+     * Whether the second (wide) camera is plugged in, as the container sees it.
+     */
+    protected function hasWideCamera(): bool
     {
+        $device = (string) config('pingpong.wide_camera.device');
+
+        return $device !== '' && file_exists($device);
+    }
+
+    /**
+     * What to try starting ffmpeg with, most first: [wide camera, mic] pairs.
+     *
+     * @return list<array{0: bool, 1: bool}>
+     */
+    private function startAttempts(bool $hasWideCamera): array
+    {
+        $attempts = [];
+
+        foreach ($hasWideCamera ? [true, false] : [false] as $withWide) {
+            foreach ($this->audioDevice !== '' ? [true, false] : [false] as $withAudio) {
+                $attempts[] = [$withWide, $withAudio];
+            }
+        }
+
+        return $attempts;
+    }
+
+    public function buildFfmpegCommand(string $segmentPattern, string $m3u8Path, bool $withAudio, bool $withWide = false): string
+    {
+        if ($withWide) {
+            return $this->buildTwoCameraCommand($segmentPattern, $m3u8Path, $withAudio);
+        }
+
         // ffmpeg rebases each input to start at zero on its own, so the camera and
         // mic would be offset by however long each took to deliver its first
         // packet. Both are stamped on the wall clock (-ts mono2abs on the camera,
@@ -191,6 +240,39 @@ class VideoRecordingService
             escapeshellarg($segmentPattern),
             escapeshellarg($m3u8Path)
         );
+    }
+
+    /**
+     * Both cameras (and the mic) in one ffmpeg, writing the main stream where it always was and
+     * the wide one in `wide/` next to it. `-isync 0` keeps the wide camera's and the mic's
+     * timestamps relative to the main camera's, and every segment carries the wall-clock time
+     * it was filmed (program_date_time), so players can line the two angles up.
+     */
+    private function buildTwoCameraCommand(string $segmentPattern, string $m3u8Path, bool $withAudio): string
+    {
+        $wide = config('pingpong.wide_camera');
+        $wideDir = dirname($m3u8Path).'/wide';
+
+        $audioInput = $withAudio
+            ? '-f alsa -thread_queue_size 1024 -isync 0 -i '.escapeshellarg($this->audioDevice).' '
+            : '';
+        $audioMap = $withAudio ? '-map 2:a ' : '';
+        $audioCodec = $withAudio ? '-af aresample=async=1000 -c:a aac -ac 1 -b:a 96k ' : '';
+        $video = '-c:v libx264 -pix_fmt yuv420p -preset ultrafast -tune zerolatency -g 60 ';
+        $hls = '-f hls -hls_time 2 -hls_list_size 0 -hls_flags append_list+program_date_time ';
+        $wideFilter = (string) ($wide['filter'] ?? '') !== '' ? '-vf '.escapeshellarg($wide['filter']).' ' : '';
+
+        return 'nohup ffmpeg '
+            .'-f v4l2 -thread_queue_size 512 -ts mono2abs -video_size 1280x720 -framerate 30 -input_format mjpeg '
+            .'-i '.escapeshellarg($this->videoDevice).' '
+            .'-f v4l2 -thread_queue_size 512 -ts mono2abs -video_size '.escapeshellarg((string) $wide['video_size'])
+            .' -framerate 30 -input_format mjpeg -isync 0 -i '.escapeshellarg((string) $wide['device']).' '
+            .$audioInput
+            .'-map 0:v '.$audioMap.'-vf "hflip,vflip" '.$video.$audioCodec.$hls
+            .'-hls_segment_filename '.escapeshellarg($segmentPattern).' '.escapeshellarg($m3u8Path).' '
+            .'-map 1:v '.$audioMap.$wideFilter.$video.$audioCodec.$hls
+            .'-hls_segment_filename '.escapeshellarg($wideDir.'/segment%03d.ts').' '.escapeshellarg($wideDir.'/stream.m3u8').' '
+            .'> /dev/null 2>&1 & echo $!';
     }
 
     public function getActiveRecording(): ?PingPongRecording
@@ -256,8 +338,9 @@ class VideoRecordingService
             $dirs = glob($this->hlsBasePath.'/*', GLOB_ONLYDIR);
             foreach ($dirs as $dir) {
                 $matchId = basename($dir);
+                // A wide angle still being finalized keeps its path after the main one completes.
                 $hasActive = PingPongRecording::where('match_id', $matchId)
-                    ->whereIn('status', ['recording', 'finalizing'])
+                    ->where(fn ($query) => $query->whereIn('status', ['recording', 'finalizing'])->orWhereNotNull('wide_hls_path'))
                     ->exists();
 
                 if (! $hasActive) {
@@ -275,8 +358,15 @@ class VideoRecordingService
      */
     public function isStreamReady(PingPongRecording $recording): bool
     {
-        $playlist = $this->hlsBasePath.'/'.$recording->match_id.'/stream.m3u8';
+        $dir = $this->hlsBasePath.'/'.$recording->match_id;
 
+        // Both angles come from one ffmpeg, so the wide one is only a segment or two behind.
+        return $this->playlistHasSegment($dir.'/stream.m3u8')
+            && (! $recording->wide_hls_path || $this->playlistHasSegment($dir.'/wide/stream.m3u8'));
+    }
+
+    private function playlistHasSegment(string $playlist): bool
+    {
         return is_file($playlist) && str_contains((string) file_get_contents($playlist), '.ts');
     }
 

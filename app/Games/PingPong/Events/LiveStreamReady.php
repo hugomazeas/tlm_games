@@ -13,6 +13,7 @@ class LiveStreamReady implements ShouldBroadcastNow
     public function __construct(
         public int $matchId,
         public string $hlsUrl,
+        public ?string $wideHlsUrl = null,
     ) {}
 
     public function broadcastOn(): array
@@ -26,13 +27,14 @@ class LiveStreamReady implements ShouldBroadcastNow
     }
 
     /**
-     * @return array{match_id: int, hls_url: string}
+     * @return array{match_id: int, hls_url: string, wide_hls_url: ?string}
      */
     public function broadcastWith(): array
     {
         return [
             'match_id' => $this->matchId,
             'hls_url' => $this->hlsUrl,
+            'wide_hls_url' => $this->wideHlsUrl,
         ];
     }
 }

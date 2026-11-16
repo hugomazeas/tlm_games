@@ -9,13 +9,15 @@ use Illuminate\Support\Facades\Http;
 
 /**
  * Sends a finished match video to the external video archive as `{matchId}.mp4`,
- * and keeps the name of the stats run the archive starts for it.
+ * and keeps the name of the stats run the archive starts for it. When the match
+ * was also filmed from the wide camera, that angle rides along in the same request
+ * as `file_wide` (`{matchId}_wide.mp4`): two angles of one match.
  */
 class UploadRecordingJob implements ShouldQueue
 {
     use Queueable;
 
-    public int $timeout = 300;
+    public int $timeout = 900;
 
     public int $tries = 3;
 
@@ -32,16 +34,26 @@ class UploadRecordingJob implements ShouldQueue
             return;
         }
 
+        // Only a wide angle that finished finalizing: a file without the row could be half-written
+        $wideVideoPath = PingPongRecording::where('match_id', $this->matchId)->value('wide_video_path');
+        $widePath = $wideVideoPath ? storage_path('app/public/'.$wideVideoPath) : null;
         $file = fopen($path, 'r');
+        $wideFile = $widePath && file_exists($widePath) ? fopen($widePath, 'r') : null;
 
         try {
-            $response = Http::timeout(240)
-                ->attach('file', $file, $this->matchId.'.mp4', ['Content-Type' => 'video/mp4'])
-                ->post($url)
-                ->throw();
+            $request = Http::timeout(600)
+                ->attach('file', $file, $this->matchId.'.mp4', ['Content-Type' => 'video/mp4']);
+
+            if ($wideFile) {
+                $request->attach('file_wide', $wideFile, $this->matchId.'_wide.mp4', ['Content-Type' => 'video/mp4']);
+            }
+
+            $response = $request->post($url)->throw();
         } finally {
-            if (is_resource($file)) {
-                fclose($file);
+            foreach ([$file, $wideFile] as $handle) {
+                if (is_resource($handle)) {
+                    fclose($handle);
+                }
             }
         }
 

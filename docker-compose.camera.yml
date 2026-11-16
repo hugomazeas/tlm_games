@@ -1,7 +1,7 @@
 services:
   app:
     devices:
-      - "/dev/video0:/dev/video0"
+      - "${CAMERA_MAIN_DEVICE:-/dev/video0}:/dev/video0"
       - "/dev/snd:/dev/snd"
     group_add:
       - "video"
