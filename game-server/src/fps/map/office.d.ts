@@ -89,6 +89,8 @@ export interface OfficeGeometry {
 
 export function plainOfficeMaterials(): OfficeMaterials
 export function createOfficeMaterials(renderer: WebGLRenderer): OfficeMaterials
+/** The office assets' palette (assets/office-palette.ts) from the office's materials. */
+export function officePalette(materials: OfficeMaterials): import('../assets/office-palette.ts').OfficeMaterialSet
 export function buildOfficeGeometry(opts?: OfficeGeometryOptions): OfficeGeometry
 
 export interface Office extends OfficeGeometry {

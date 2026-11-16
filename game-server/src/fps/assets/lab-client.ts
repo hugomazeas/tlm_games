@@ -27,7 +27,9 @@ import {
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { Sky } from 'three/addons/objects/Sky.js'
 import { bake, crowns, paintMaterials } from '../client/erables.ts'
+import { createOfficeMaterials, officePalette } from '../map/office.js'
 import { Builder } from './kit.ts'
+import type { OfficeMaterialSet } from './office-palette.ts'
 import { ASSETS } from './library.ts'
 import { place } from './place.ts'
 import { type Asset, type AssetVersion, CATEGORIES, type Params, type ParamValue } from './types.ts'
@@ -143,6 +145,9 @@ const glass = new MeshPhysicalMaterial({
     side: DoubleSide,
 })
 const M = paintMaterials(glass)
+/** The office's materials, painted the first time an office asset is shown. */
+let office: OfficeMaterialSet | null = null
+const officeMaterials = (): OfficeMaterialSet => (office ??= officePalette(createOfficeMaterials(renderer)))
 
 // The ground: the map's lawn, with world-aligned UVs like the map's.
 const groundBuilder = new Builder(M)
@@ -207,11 +212,13 @@ function rebuild(): void {
     const blockWidth = variants.length * (w + gap) + 1.2
     const all = new Box3()
     versions.forEach(({ v, title, color }, row) => {
-        const b = new Builder(M)
+        const b = asset.palette === 'office' ? new Builder(officeMaterials(), 'office') : new Builder(M)
         const x0 = (row - (versions.length - 1) / 2) * (blockWidth + 4) - blockWidth / 2
         variants.forEach((variant, i) => place(b, asset, variant, { x: x0 + 1.2 + i * (w + gap) + w / 2 }, v))
         const group = b.drawn
         if (b.trees.length) group.add(crowns(b.trees, 7))
+        // The bake gives Rue des Érables' names world UVs; the office's keep their own (as in office.js).
+        if (asset.palette === 'office') group.traverse(o => delete o.userData.mat)
         bake(group)
         const man = figure()
         man.position.set(x0 + 0.4, 0, d / 2 + 0.6)

@@ -1,14 +1,22 @@
 import { describe, expect, test } from 'bun:test'
 import { Box3, type Mesh } from 'three'
 import { plainErablesMaterials } from '../map/erables.ts'
+import { officePalette, plainOfficeMaterials } from '../map/office.js'
 import { Builder } from './kit.ts'
 import { readReviews } from './lab.ts'
 import { ASSETS } from './library.ts'
 import { place } from './place.ts'
+import type { Asset } from './types.ts'
+
+/** A server's builder (plain materials) holding the asset's palette. */
+const builderFor = (asset: Asset) =>
+    asset.palette === 'office'
+        ? new Builder(officePalette(plainOfficeMaterials()), 'office')
+        : new Builder(plainErablesMaterials())
 
 /** Builds one copy (no DOM), as the server does: what's drawn, what collides, its box. */
-function built(build: (b: Builder) => void) {
-    const b = new Builder(plainErablesMaterials())
+function built(asset: Asset, build: (b: Builder) => void) {
+    const b = builderFor(asset)
     build(b)
     b.drawn.updateMatrixWorld(true)
     let meshes = 0
@@ -43,7 +51,7 @@ describe('the FPS asset library', () => {
         for (const asset of ASSETS) {
             for (const version of [asset.current, asset.draft].filter(v => v !== undefined)) {
                 for (const variant of asset.variants.length ? asset.variants : [{}]) {
-                    const { meshes, box } = built(b => place(b, asset, variant, {}, version))
+                    const { meshes, box } = built(asset, b => place(b, asset, variant, {}, version))
                     const label = `${asset.id} v${version.version} ${JSON.stringify(variant)}`
                     expect({ label, drawn: meshes > 0 }).toEqual({ label, drawn: true })
                     // Within reason of its declared size (variants change sizes: a generous margin).
@@ -80,7 +88,7 @@ describe('the FPS asset library', () => {
         for (const asset of ASSETS) {
             if (decorative.has(asset.id)) continue
             for (const version of [asset.current, asset.draft].filter(v => v !== undefined)) {
-                if (built(b => place(b, asset, {}, {}, version)).solid === 0)
+                if (built(asset, b => place(b, asset, {}, {}, version)).solid === 0)
                     ghosts.push(`${asset.id} v${version.version}`)
             }
         }
@@ -90,7 +98,7 @@ describe('the FPS asset library', () => {
     test('the same asset in the same spot comes out the same (server and browser agree)', () => {
         for (const asset of ASSETS) {
             const count = () => {
-                const b = new Builder(plainErablesMaterials())
+                const b = builderFor(asset)
                 place(b, asset, {}, { x: 3, z: -2, ry: 0.4 })
                 let positions = 0
                 b.drawn.traverse(o => {
@@ -101,6 +109,13 @@ describe('the FPS asset library', () => {
             }
             expect({ id: asset.id, same: count() === count() }).toEqual({ id: asset.id, same: true })
         }
+    })
+
+    test("an asset can't be built with the other palette's materials", () => {
+        const office = ASSETS.find(a => a.palette === 'office')!
+        const erables = ASSETS.find(a => a.palette !== 'office')!
+        expect(() => place(new Builder(plainErablesMaterials()), office, {})).toThrow(/office palette/)
+        expect(() => place(builderFor(office), erables, {})).toThrow(/erables palette/)
     })
 
     test('verdicts in reviews.json are about assets the library has', async () => {
