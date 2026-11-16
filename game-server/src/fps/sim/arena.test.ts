@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 import { createRng } from '../../sim/rng.ts'
-import { BUTTON, DEFAULT_LOADOUT, type InputFrame, type Loadout, type Slot, type Team } from '../protocol.ts'
+import {
+    BUTTON,
+    DEFAULT_LOADOUT,
+    type InputFrame,
+    type Loadout,
+    type Slot,
+    type Team,
+    type Tuning,
+} from '../protocol.ts'
 import { BONUS, FIREWALL, INTERN, OVERTIME, type PickupSpot, PROMOTION } from './places.ts'
 import { Arena, MAX_BURST, RESPAWN_STEPS, SHIELD_STEPS } from './arena.ts'
 import { GUNS, LAUNCHER, REGEN, STAPLER } from './combat.ts'
@@ -8,8 +16,9 @@ import { GUNS, LAUNCHER, REGEN, STAPLER } from './combat.ts'
 const RIFLE = GUNS.rifle
 /** Frames between two rifle shots. */
 const RIFLE_EVERY = (RIFLE.intervalMs * 60) / 1000
-import { type Body, bodyAt, MOVE, moveOf, stepBody } from './movement.ts'
+import { type Body, bodyAt, MOVE, moveOf, OFFICE_MOVEMENT, stepBody } from './movement.ts'
 import { testWorld } from './testing.ts'
+import { resolveTuning } from './tuning.ts'
 
 const world = testWorld([{ name: 'middle', position: [0, 0, 0], yaw: 0 }])
 
@@ -354,6 +363,72 @@ describe('health comes back', () => {
         expect(again).toBeLessThan(hurt)
         for (let i = 0; i < (REGEN.delayMs / 1000) * SECOND - 2; i++) d.step()
         expect(d.a.self(d.south)!.health).toBe(again)
+    })
+})
+
+describe("a match's options", () => {
+    const SECOND = 60
+    const tuned = (d: ReturnType<typeof duel>, chosen: Partial<Tuning>) => {
+        d.a.setTuning(resolveTuning(OFFICE_MOVEMENT, chosen))
+        d.a.respawnAll()
+        d.waitShields()
+    }
+
+    test('health: everyone comes back with twice as much, and regen climbs to twice as far', () => {
+        const d = duel()
+        tuned(d, { health: 200 })
+        expect(d.a.self(d.south)!.health).toBe(200)
+        for (let i = 0; i < 200 && d.a.self(d.south)!.health >= 100; i++) d.shoot()
+        for (let i = 0; i < 20 * SECOND; i++) d.step()
+        expect(d.a.self(d.south)!.health).toBe(REGEN.upTo * 2)
+    })
+
+    test('regen off: what a hit takes stays taken', () => {
+        const d = duel()
+        tuned(d, { regen: false })
+        for (let i = 0; i < 200 && d.a.self(d.south)!.health >= 40; i++) d.shoot()
+        const hurt = d.a.self(d.south)!.health
+        for (let i = 0; i < 10 * SECOND; i++) d.step()
+        expect(d.a.self(d.south)!.health).toBe(hurt)
+    })
+
+    test('damage at half, and no headshot bonus: a round to the head does what one to the chest does', () => {
+        const d = duel()
+        tuned(d, { damage: 50, headshot: 0 })
+        d.shoot()
+        expect(d.a.self(d.south)!.health).toBe(100 - Math.round(RIFLE.damage / 2))
+        for (let i = 0; i < RIFLE_EVERY; i++) d.step()
+        const before = d.a.self(d.south)!.health
+        d.shoot(true)
+        expect(before - d.a.self(d.south)!.health).toBe(Math.round(RIFLE.damage / 2))
+    })
+
+    test('respawn after a second instead of three', () => {
+        const d = duel()
+        tuned(d, { respawn: 1, health: 75 })
+        for (let i = 0; i < 300 && d.a.self(d.south)!.alive; i++) d.shoot()
+        expect(d.a.self(d.south)!.alive).toBe(false)
+        for (let i = 0; i < SECOND + 2; i++) d.step()
+        expect(d.a.self(d.south)!).toMatchObject({ alive: true, health: 75 })
+    })
+
+    test('pickups off: none lies anywhere, and walking over a spot takes nothing', () => {
+        const d = duel([{ kind: 'magazine', x: 0, z: -2, room: 'here' }])
+        tuned(d, { pickups: false })
+        expect(d.a.pickups()).toEqual([null])
+        expect(d.step().some(e => e.type === 'pickup')).toBe(false)
+        expect(d.a.self(d.north)!.buffs).toEqual([])
+    })
+
+    test('building off: no wall goes up', () => {
+        const d = duel()
+        tuned(d, { building: false })
+        const feet = d.a.self(d.north)!.body
+        const wall = { x: feet.x, y: 0.3, z: feet.z + 0.5, axis: 'z' as const }
+        expect(d.a.build(d.north, wall)).toBe(false)
+        // The same wall, building on again.
+        d.a.setTuning(resolveTuning(OFFICE_MOVEMENT))
+        expect(d.a.build(d.north, wall)).toBe(true)
     })
 })
 

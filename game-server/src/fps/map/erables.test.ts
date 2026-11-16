@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import { Line3, Vector3 } from 'three'
 import { SIEGE } from '../protocol.ts'
-import { type Body, bodyAt, type MoveInput, sizeAt, STEP_MS, stepBody } from '../sim/movement.ts'
+import { type Body, bodyAt, type MoveInput, sizeAt, STEP_MS, stepBody, tunedMovement } from '../sim/movement.ts'
+import { resolveTuning } from '../sim/tuning.ts'
 import { domeSpawns, PROMOTION, rollPickup, spotSpawns } from '../sim/places.ts'
 import { collideCapsule, erablesWorld, rayDistance } from '../sim/world.ts'
 import { createRng } from '../../sim/rng.ts'
@@ -10,6 +11,7 @@ import { BUILD } from '../sim/walls.ts'
 import {
     BOUNDS,
     buildErablesGeometry,
+    ERABLES_MOVEMENT,
     ERABLES_PLACES,
     ERABLES_SCALE,
     LAWN,
@@ -158,21 +160,43 @@ describe('Rue des Érables', () => {
         }
     })
 
-    test('people walk at a person’s pace and jump about 55 cm (scaled with the map)', () => {
+    test('people jog (5.75 m/s), jump about 55 cm and dodge, all scaled with the map', () => {
         const start = standing(-2.6, -1.8, 0)
         const after = run(start, { forward: 1, yaw: Math.PI / 2 }, 1)
-        expect((start.x - after.x) / S).toBeGreaterThan(4.0)
-        expect((start.x - after.x) / S).toBeLessThan(4.7)
+        expect((start.x - after.x) / S).toBeGreaterThan(5.0)
+        expect((start.x - after.x) / S).toBeLessThan(5.8)
+        // A press of Space: a jump, let go at once.
         let b = run(start, { jet: true }, 1 / 60)
         let top = b.y
         for (let i = 0; i < 90; i++) {
-            b = stepBody(world, b, { ...idle, jet: true })
+            b = stepBody(world, b, idle)
             top = Math.max(top, b.y)
         }
         expect((top - start.y) / S).toBeGreaterThan(0.45)
         expect((top - start.y) / S).toBeLessThan(0.65)
-        // Held Space in the air does nothing more: no jetpack here.
         expect(b.fuel).toBe(1)
+        // A dodge (strafing left, toward -X): about 2.9 m in its burst, a fifth of the tank.
+        const dodged = run(stepBody(world, start, { ...idle, dash: true, strafe: -1 }), {}, 11 / 60)
+        expect((start.x - dodged.x) / S).toBeGreaterThan(2.5)
+        expect((start.x - dodged.x) / S).toBeLessThan(3.2)
+        expect(dodged.fuel).toBeCloseTo(0.8, 2)
+    })
+
+    test('a short jetpack: a second of flight, enough for a garage roof, nowhere near the lid', () => {
+        const start = standing(-2.6, -1.8, 0)
+        let b = start
+        let top = b.y
+        let flown = 0
+        for (let i = 0; i < 240; i++) {
+            const before = b.fuel
+            b = stepBody(world, b, { ...idle, jet: true })
+            top = Math.max(top, b.y)
+            if (b.fuel < before) flown++
+        }
+        // A second of flight, after the jump's rise.
+        expect(flown / 60).toBeCloseTo(1, 1)
+        expect((top - start.y) / S).toBeGreaterThan(3.0)
+        expect((top - start.y) / S).toBeLessThan(BOUNDS.lid - 4)
     })
 
     test('up the bungalow’s front steps, through the door and into the dining room', () => {
@@ -230,8 +254,8 @@ describe('Rue des Érables', () => {
             const end = run(standing(...from), { forward: 1, yaw }, seconds)
             expect({ door, through: past(end) }).toEqual({ door, through: true })
         }
-        // The bungalow's side door: up its steps toward the house, then in.
-        const landing = run(standing(-2.2, -11.0, LAWN), { forward: 1, yaw: NORTH }, 0.65)
+        // The bungalow's side door: up its steps toward the house (2.6 m, onto its landing), then in.
+        const landing = run(standing(-2.2, -11.0, LAWN), { forward: 1, yaw: NORTH }, 0.52)
         expect(landing.z / S).toBeLessThan(-13.1)
         expect(landing.z / S).toBeGreaterThan(-14.4)
         const kitchen = run(landing, { forward: 1, yaw: WEST }, 1.5)
@@ -255,7 +279,15 @@ describe('Rue des Érables', () => {
         expect(b.y / S).toBeGreaterThan(2.8)
     })
 
-    test('nobody gets out: 30 s of wild running, jumping and bouncing stays in bounds', () => {
+    test.each([
+        ['as it is', {}],
+        // The options that move bodies furthest and highest.
+        ['at the wildest options', { walk: 150, jump: 200, gravity: 50, jetpack: 8, thrust: 150 }],
+    ] as const)('nobody gets out: 30 s of wild running, jumping, flying, dodging and bouncing (%s)', (_, chosen) => {
+        const world = {
+            ...erablesWorld(),
+            move: tunedMovement(ERABLES_MOVEMENT, resolveTuning(ERABLES_MOVEMENT, chosen)),
+        }
         const random = createRng(11)
         const starts = [
             ...world.spawnPoints.map(p => p.position),
@@ -274,6 +306,8 @@ describe('Rue des Érables', () => {
                         jet: random() < 0.4,
                     }
                 }
+                // A dodge whenever one's ready (it needs a fresh press: one frame).
+                input = { ...input, dash: i % 30 === 15 }
                 // Now and then a rocket's shove.
                 if (i % 240 === 120)
                     b = {

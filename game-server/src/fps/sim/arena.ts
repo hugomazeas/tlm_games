@@ -14,11 +14,13 @@ import {
     type SelfState,
     type Slot,
     type Team,
+    type Tuning,
     type WallSpec,
     type WallState,
     type Weapon,
     weaponIn,
 } from '../protocol.ts'
+import { resolveTuning } from './tuning.ts'
 import {
     BONUS,
     FIREWALL,
@@ -40,7 +42,6 @@ import {
     GUNS,
     LAUNCHER,
     magazineOf,
-    MAX_HEALTH,
     maxHealthOf,
     rayBody,
     REGEN,
@@ -66,6 +67,7 @@ const fitSeg = new Line3()
 
 const steps = (ms: number): number => Math.round(ms / STEP_MS)
 
+/** Down this long by default (a match's options may say otherwise). */
 export const RESPAWN_STEPS = steps(3000)
 export const SHIELD_STEPS = steps(1500)
 const REGEN_DELAY_STEPS = steps(REGEN.delayMs)
@@ -190,13 +192,34 @@ export class Arena {
     private readonly pickupKind: PickupKind[] = []
     /** Where each side spawns, when the match says (siege); null or an empty list: the usual, away from the enemy. */
     private spawnsOf: ((team: Team | null) => readonly SiegeSpawn[] | null) | null = null
+    /** How play goes (the match's options): hit boxes, health, damage, respawns, pickups, building. Movement is the world's. */
+    private tuning: Tuning
 
     constructor(
         private world: FpsWorld,
         private readonly random: Rng
     ) {
+        this.tuning = resolveTuning(world.move)
         this.pickupAt = world.pickups.map(() => 0)
         this.rollPickups()
+    }
+
+    /** A match's options (or back to the usual): from the next step on; health over the new full comes down to it. */
+    setTuning(tuning: Tuning): void {
+        this.tuning = tuning
+        for (const fighter of this.fighters.values()) {
+            fighter.health = Math.min(fighter.health, this.fullHealth(fighter.body))
+        }
+    }
+
+    /** Full health with these powers, at the match's health. */
+    private fullHealth(powers: Parameters<typeof maxHealthOf>[0]): number {
+        return maxHealthOf(powers, this.tuning.health / 100)
+    }
+
+    /** What a hit by them does to a player, times: their Bonus, the match's damage. */
+    private hitFactor(by: Fighter | null): number {
+        return (by ? this.bonusOf(by) : 1) * (this.tuning.damage / 100)
     }
 
     /**
@@ -249,7 +272,7 @@ export class Arena {
             yaw: 0,
             pitch: 0,
             jetting: false,
-            health: MAX_HEALTH,
+            health: 0,
             alive: false,
             respawnAt: 0,
             shieldUntil: 0,
@@ -301,7 +324,7 @@ export class Arena {
      */
     build(id: string, spec: WallSpec): boolean {
         const fighter = this.fighters.get(id)
-        if (!fighter?.alive || this.step < fighter.nextBuildAt) return false
+        if (!this.tuning.building || !fighter?.alive || this.step < fighter.nextBuildAt) return false
         const eye = eyeOf(fighter.body)
         const reach = BUILD.reach + BUILD.slack
         if (Math.hypot(spec.x - eye.x, spec.y - eye.y, spec.z - eye.z) > reach) return false
@@ -446,6 +469,7 @@ export class Arena {
 
     /** What lies on each spot to take, null where it's been taken and not back yet. */
     pickups(): Array<PickupKind | null> {
+        if (!this.tuning.pickups) return this.pickupAt.map(() => null)
         return this.pickupAt.map((at, i) => (this.step >= at ? this.pickupKind[i]! : null))
     }
 
@@ -488,7 +512,7 @@ export class Arena {
             }
             if (fighter.alive) this.collect(fighter, events)
             // A Promotion or Overtime running out: their health back down to what they can hold now.
-            fighter.health = Math.min(fighter.health, maxHealthOf(fighter.body))
+            fighter.health = Math.min(fighter.health, this.fullHealth(fighter.body))
             if (fighter.alive) this.regenerate(fighter)
             if (fighter.firewallUntil > 0 && this.step >= fighter.firewallUntil) {
                 fighter.firewall = 0
@@ -602,21 +626,27 @@ export class Arena {
         return magazineOf(gun, f.magazineUntil > this.step ? MAGAZINE_FACTOR : 1)
     }
 
-    /** Left alone for REGEN.delayMs, health climbs back REGEN.perSecond, up to REGEN.upTo (or full, if less). */
+    /**
+     * Left alone for REGEN.delayMs, health climbs back REGEN.perSecond, up to REGEN.upTo (or full, if
+     * less), both at the match's health; never when the match turned it off.
+     */
     private regenerate(f: Fighter): void {
-        const ceiling = Math.min(REGEN.upTo, maxHealthOf(f.body))
+        if (!this.tuning.regen) return
+        const factor = this.tuning.health / 100
+        const ceiling = Math.min(REGEN.upTo * factor, this.fullHealth(f.body))
         if (f.health >= ceiling || this.step - f.hurtAt < REGEN_DELAY_STEPS) return
         f.health = Math.min(ceiling, f.health + REGEN_PER_STEP)
     }
 
     /** Takes any pickup they're standing on (health only when hurt), and sets it to come back later. */
     private collect(f: Fighter, events: ArenaEvent[]): void {
+        if (!this.tuning.pickups) return
         this.world.pickups.forEach((spot, index) => {
             if (this.step < this.pickupAt[index]!) return
             const near = Math.hypot(f.body.x - spot.x, f.body.z - spot.z) <= PICKUP_REACH
             if (!near || f.body.y - (spot.y ?? 0) > PICKUP_HEIGHT) return
             const kind = this.pickupKind[index]!
-            if (kind === 'health' && f.health >= maxHealthOf(f.body)) return
+            if (kind === 'health' && f.health >= this.fullHealth(f.body)) return
 
             const info = PICKUPS[kind]
             const lasts = steps(info.durationMs ?? 0)
@@ -629,7 +659,7 @@ export class Arena {
             }
             switch (kind) {
                 case 'health':
-                    f.health = Math.min(maxHealthOf(f.body), f.health + HEALTH_PACK)
+                    f.health = Math.min(this.fullHealth(f.body), f.health + HEALTH_PACK)
                     break
                 case 'magazine':
                     f.magazineUntil = until
@@ -644,7 +674,7 @@ export class Arena {
                 // Overtime and Espresso are opposites, as are Promotion and Intern: one ends the other.
                 case 'overtime':
                     f.body = { ...f.body, overtime: lasts, espresso: 0 }
-                    f.health = Math.min(maxHealthOf(f.body), f.health + OVERTIME.health)
+                    f.health = Math.min(this.fullHealth(f.body), f.health + OVERTIME.health)
                     refill()
                     break
                 case 'espresso':
@@ -652,7 +682,7 @@ export class Arena {
                     break
                 case 'promotion':
                     f.body = { ...f.body, big: lasts, small: 0 }
-                    f.health = maxHealthOf(f.body)
+                    f.health = this.fullHealth(f.body)
                     break
                 case 'intern':
                     f.body = { ...f.body, small: lasts, big: 0 }
@@ -668,7 +698,7 @@ export class Arena {
                     f.orgchartUntil = until
                     break
             }
-            f.health = Math.min(f.health, maxHealthOf(f.body))
+            f.health = Math.min(f.health, this.fullHealth(f.body))
             this.pickupAt[index] = this.step + steps(info.respawnMs)
             // What comes back here is rolled now (snapshots only show it once it's back), not
             // a power already lying elsewhere.
@@ -772,7 +802,9 @@ export class Arena {
             }
             if (!shot.hit) continue
             const headshot = shot.hit.headshot
-            const amount = damageAt(spec, origin.distanceTo(shot.end)) * (headshot ? spec.headshot : 1)
+            // The gun's headshot bonus, at the match's share of it.
+            const head = 1 + (spec.headshot - 1) * (this.tuning.headshot / 100)
+            const amount = damageAt(spec, origin.distanceTo(shot.end)) * (headshot ? head : 1)
             const so = dealt.get(shot.hit.id) ?? { amount: 0, headshot: false }
             dealt.set(shot.hit.id, { amount: so.amount + amount, headshot: so.headshot || headshot })
         }
@@ -785,8 +817,8 @@ export class Arena {
             const victim = this.fighters.get(id)
             // Headshot rounds: any headshot kills, a Promotion's and through a firewall too.
             const oneShot = headshot && fighter.headshotUntil > this.step
-            const whole = victim ? victim.health + victim.firewall : MAX_HEALTH
-            const total = this.hurts(victim) ? (oneShot ? whole : Math.round(amount * bonus)) : 0
+            const whole = victim ? victim.health + victim.firewall : 0
+            const total = this.hurts(victim) ? (oneShot ? whole : Math.round(amount * this.hitFactor(fighter))) : 0
             if (victim && total > 0) hurt.push({ victim, amount: total, headshot })
             if (!top || total > top.amount) top = { id, amount: total, headshot }
         }
@@ -840,7 +872,7 @@ export class Arena {
                 if (f.id === rocket.by && this.step - rocket.born < ROCKET_ARMED_STEPS) continue
                 if (rocket.team !== null && f.team === rocket.team && f.id !== rocket.by) continue
                 if (this.apart(rocket.position, middleOf(f.body))) continue
-                const met = rayBody(rocket.position, direction, this.targetOf(f))
+                const met = rayBody(rocket.position, direction, this.hitboxed(this.targetOf(f)))
                 if (met && met.distance < nearest) {
                     nearest = met.distance
                     hitPlayer = true
@@ -893,7 +925,7 @@ export class Arena {
                 vz: f.body.vz + push.z,
                 onGround: false,
             }
-            const factor = (self ? LAUNCHER.selfFactor : 1) * (by ? this.bonusOf(by) : 1)
+            const factor = (self ? LAUNCHER.selfFactor : 1) * this.hitFactor(by)
             const amount = this.hurts(f) ? Math.round(LAUNCHER.damage * share * factor) : 0
             if (amount > 0) {
                 hits.push({ id: f.id, damage: amount })
@@ -935,7 +967,7 @@ export class Arena {
         const victim = reached ? this.fighters.get(reached.id) : undefined
         const backstab = reached?.backstab ?? false
         const base = backstab ? STAPLER.backstab : STAPLER.damage
-        const amount = this.hurts(victim) ? base * this.bonusOf(fighter) : 0
+        const amount = this.hurts(victim) ? Math.round(base * this.hitFactor(fighter)) : 0
         events.push({ type: 'swing', by: fighter.id, hit: victim?.id ?? null, damage: amount, backstab })
         if (victim && amount > 0) {
             this.damage(fighter, victim, amount, { headshot: false, weapon: 'stapler', backstab }, events)
@@ -986,7 +1018,7 @@ export class Arena {
         const recap = by && by !== victim ? this.recap(by, victim, how.weapon) : undefined
         victim.alive = false
         victim.jetting = false
-        victim.respawnAt = this.step + RESPAWN_STEPS
+        victim.respawnAt = this.step + steps(this.tuning.respawn * 1000)
         // Their powers go with them (those in their body at the respawn).
         this.losePowers(victim)
         const victimStreak = victim.lifeKills
@@ -1041,7 +1073,7 @@ export class Arena {
             if (fighter.id === shooter || !fighter.alive) continue
             if (team !== null && fighter.team === team) continue
             if (from && this.apart(middleOf(from.body), middleOf(fighter.body))) continue
-            targets.push(past?.at.get(fighter.id) ?? this.targetOf(fighter))
+            targets.push(this.hitboxed(past?.at.get(fighter.id) ?? this.targetOf(fighter)))
         }
 
         return targets
@@ -1070,6 +1102,11 @@ export class Arena {
             scale: scaleOf(f.body),
             prone: f.body.prone,
         }
+    }
+
+    /** Shots' targets with the match's hit boxes. */
+    private hitboxed(target: Target): Target {
+        return { ...target, hitbox: this.tuning.hitbox / 100 }
     }
 
     private losePowers(f: Fighter): void {
@@ -1104,7 +1141,7 @@ export class Arena {
         fighter.yaw = point.yaw
         fighter.pitch = 0
         fighter.jetting = false
-        fighter.health = MAX_HEALTH
+        fighter.health = this.fullHealth(fighter.body)
         fighter.alive = true
         fighter.shieldUntil = this.step + SHIELD_STEPS
         fighter.nextSwingAt = 0

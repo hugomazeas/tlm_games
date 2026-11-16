@@ -17,6 +17,7 @@ import {
     spreadOf,
 } from '../sim/combat.ts'
 import { bodyAt, MOVE, PLAYER } from '../sim/movement.ts'
+import { DEFAULT_HITBOX } from '../sim/tuning.ts'
 
 /**
  * The gun lab's debug numbers (pure): a gun's cone, damage, shots to kill and the chance its
@@ -81,7 +82,8 @@ export function roundsOf(gun: Gun, situation: Situation, seq: number): Round[] {
     const aim = aimDirection(0, aimPitch(situation))
     const cone = coneOf(gun, situation).total
     const pellets = gun === 'launcher' ? 1 : GUNS[gun].pellets
-    const feet = { x: 0, y: 0, z: -situation.distance }
+    // At the usual hit boxes (a match may set others).
+    const feet = { x: 0, y: 0, z: -situation.distance, hitbox: DEFAULT_HITBOX / 100 }
     const rounds: Round[] = []
     for (let pellet = 0; pellet < pellets; pellet++) {
         const direction = gun === 'launcher' ? aim.clone() : spreadDirection(aim, cone, seq, pellet)

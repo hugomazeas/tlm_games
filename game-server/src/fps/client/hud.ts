@@ -22,14 +22,19 @@ import {
     type Score,
     type SelfState,
     SIEGE,
+    sameTuning,
     type Team,
     TEAM_COLORS,
     TEAMS,
+    type Tuning,
+    TUNING_CHOICES,
+    type TuningKey,
     type Weapon,
     ZONE_SECONDS_PER_POINT,
 } from '../protocol.ts'
 import { magazineOf, MAX_HEALTH, maxHealthOf, powersOf } from '../sim/combat.ts'
 import { siegeWinner } from '../sim/places.ts'
+import { resolveTuning } from '../sim/tuning.ts'
 import { placesOf } from '../sim/world.ts'
 import { DEFAULT_SETTINGS, LIMITS, type Settings } from './settings.ts'
 
@@ -155,6 +160,14 @@ const CSS = `
 #fps-hud .setup .row { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
 #fps-hud .setup .hint { font-size: 12px; opacity: .72; margin: 8px 0 0; min-height: 1em; font-weight: 500; }
 #fps-hud .setup .actions { display: flex; gap: 10px; margin-top: 18px; }
+#fps-hud .setup details.tuning { margin-top: 16px; }
+#fps-hud .setup details.tuning summary { cursor: pointer; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; opacity: .75; }
+#fps-hud .setup .tuning-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 18px; margin-top: 8px; }
+#fps-hud .setup .tuning-grid h3 { grid-column: 1 / -1; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; opacity: .55; margin: 8px 0 0; }
+#fps-hud .setup .tuning-grid label { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }
+#fps-hud .setup .tuning-grid label.changed { color: #ffd166; }
+#fps-hud .setup .tuning-grid select { padding: 4px 8px; }
+#fps-hud .setup details.tuning .hint button { margin-left: 8px; padding: 3px 10px; font-size: 12px; }
 #fps-hud .setup button[data-start] { background: #e4572e; border-color: #e4572e; font-weight: 700; padding: 8px 18px; }
 #fps-hud .card .next-line { font-size: 13px; }
 #fps-hud .card .section { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.12); text-align: left; }
@@ -379,6 +392,8 @@ export class Hud {
 
     /** What the host is lining up on their panel (starts from what's lined up, else the last match's rules). */
     private draft: Rules | null = null
+    /** The panel's Options are unfolded (kept as it's drawn again on each change). */
+    private tuningOpen = false
 
     /** Is the Next match panel for you now (you host, it's warmup)? */
     get canSetUp(): boolean {
@@ -400,6 +415,7 @@ export class Hud {
             mode: match.mode,
             fragLimit: match.fragLimit,
             minutes: match.minutes,
+            tuning: {},
         })
         const enough = this.host.seated >= 2
         const maps = MAPS.map(
@@ -428,7 +444,26 @@ export class Hud {
             draft.map === match.next.map &&
             draft.mode === match.mode &&
             draft.fragLimit === match.fragLimit &&
-            draft.minutes === match.minutes
+            draft.minutes === match.minutes &&
+            sameTuning(draft.tuning, match.next.tuning)
+        // Each option: the map's own unless picked (a jetpack second long on Rue des Érables, three in the office).
+        const chosen = draft.tuning ?? {}
+        const own = resolveTuning(placesOf(draft.map).move)
+        let group = ''
+        const options = TUNING_ROWS.map(row => {
+            const heading = row.group === group ? '' : `<h3>${row.group}</h3>`
+            group = row.group
+            const value = chosen[row.key]
+            const choices = (TUNING_CHOICES[row.key] as readonly (number | boolean)[])
+                .map(
+                    c =>
+                        `<option value="${String(c)}"${c === value ? ' selected' : ''}>${tuningLabel(row.key, c)}</option>`
+                )
+                .join('')
+            return `${heading}<label class="${value === undefined ? '' : 'changed'}">${row.label}
+                <select data-tuning="${row.key}"><option value="">Default · ${tuningLabel(row.key, own[row.key])}</option>${choices}</select></label>`
+        }).join('')
+        const changed = Object.keys(chosen).length
         panel.innerHTML = `
             <h1>Next match</h1>
             <h2>Map</h2><div class="maps">${maps}</div>
@@ -438,6 +473,12 @@ export class Hud {
                 <label>First to <select data-rule="fragLimit">${limits}</select></label>
                 <label>or <select data-rule="minutes" ${draft.mode === 'siege' ? 'disabled' : ''}>${minutes}</select></label>
             </div>
+            <details class="tuning"${this.tuningOpen ? ' open' : ''}>
+                <summary>Options${changed ? ` · ${changed} changed` : ''}</summary>
+                <div class="tuning-grid">${options}</div>
+                <p class="hint">Speeds, heights and gravity are of the map's own; hit boxes against the body as drawn.
+                ${changed ? '<button type="button" data-tuning-reset>Reset to defaults</button>' : ''}</p>
+            </details>
             <div class="actions">
                 <button type="button" data-start ${enough ? '' : 'disabled'}>${rematch ? 'Rematch' : 'Start match'}</button>
                 <button type="button" data-back>Back to warmup</button>
@@ -460,6 +501,19 @@ export class Hud {
         const select = (rule: string) => panel.querySelector<HTMLSelectElement>(`[data-rule="${rule}"]`)!
         select('fragLimit').addEventListener('change', () => change({ fragLimit: Number(select('fragLimit').value) }))
         select('minutes').addEventListener('change', () => change({ minutes: Number(select('minutes').value) }))
+        const details = panel.querySelector<HTMLDetailsElement>('details.tuning')!
+        details.addEventListener('toggle', () => (this.tuningOpen = details.open))
+        for (const node of panel.querySelectorAll<HTMLSelectElement>('[data-tuning]')) {
+            node.addEventListener('change', () => {
+                const key = node.dataset.tuning as TuningKey
+                const tuning: Partial<Record<TuningKey, number | boolean>> = { ...chosen }
+                // The first entry: back to the map's own.
+                if (node.value === '') delete tuning[key]
+                else tuning[key] = node.value === 'true' ? true : node.value === 'false' ? false : Number(node.value)
+                change({ tuning: tuning as Partial<Tuning> })
+            })
+        }
+        panel.querySelector('[data-tuning-reset]')?.addEventListener('click', () => change({ tuning: {} }))
         panel.querySelector('[data-back]')!.addEventListener('click', () => this.card('paused'))
         panel.querySelector('[data-start]')!.addEventListener('click', () => {
             this.hostNotice = null
@@ -560,7 +614,7 @@ export class Hud {
         this.lowHealth(self && self.alive ? self.health : null)
         if (!self) return
         // Out of the usual (a Promotion, Overtime, an Intern): what full is now. The firewall: on top, in its colour.
-        const full = maxHealthOf(powersOf(self.buffs.map(b => b.kind)))
+        const full = maxHealthOf(powersOf(self.buffs.map(b => b.kind)), (this.match?.tuning.health ?? 100) / 100)
         const outOf = full !== MAX_HEALTH ? `<span style="opacity:.5;font-size:16px"> / ${full}</span>` : ''
         const wall = self.buffs.find(b => b.kind === 'firewall')?.points
         const shield = wall ? `<span style="color:${BUFF_COLORS.firewall};font-size:18px"> +${wall}</span>` : ''
@@ -997,7 +1051,46 @@ export function limitLabel(mode: Mode, value: number): string {
 /** A match's rules in a line: "Siege on the office, 5 points a half". */
 export function describeRules(rules: Rules): string {
     const length = rules.mode === 'siege' ? '' : `, ${rules.minutes} min`
-    return `${MODE_NAMES[rules.mode]} on ${MAP_INFO[rules.map].name.replace(/^The /, 'the ')}, ${limitLabel(rules.mode, rules.fragLimit)}${length}`
+    const options = describeTuning(rules.tuning)
+    return `${MODE_NAMES[rules.mode]} on ${MAP_INFO[rules.map].name.replace(/^The /, 'the ')}, ${limitLabel(rules.mode, rules.fragLimit)}${length}${options ? `; ${options}` : ''}`
+}
+
+/** The Next match panel's options, in its order and groups. */
+export const TUNING_ROWS: ReadonlyArray<{ group: string; key: TuningKey; label: string }> = [
+    { group: 'Movement', key: 'walk', label: 'Walk speed' },
+    { group: 'Movement', key: 'jump', label: 'Jump height' },
+    { group: 'Movement', key: 'gravity', label: 'Gravity' },
+    { group: 'Movement', key: 'dash', label: 'Dodge (Shift)' },
+    { group: 'Movement', key: 'prone', label: 'Prone (C)' },
+    { group: 'Jetpack', key: 'jetpack', label: 'Fuel' },
+    { group: 'Jetpack', key: 'thrust', label: 'Climb' },
+    { group: 'Combat', key: 'hitbox', label: 'Hit boxes' },
+    { group: 'Combat', key: 'damage', label: 'Damage' },
+    { group: 'Combat', key: 'headshot', label: 'Headshot bonus' },
+    { group: 'Combat', key: 'health', label: 'Health' },
+    { group: 'Combat', key: 'regen', label: 'Health regen' },
+    { group: 'Combat', key: 'respawn', label: 'Respawn' },
+    { group: 'Map', key: 'pickups', label: 'Pickups' },
+    { group: 'Map', key: 'building', label: 'Building (B)' },
+]
+
+/** An option's value as the panel shows it. */
+export function tuningLabel(key: TuningKey, value: number | boolean): string {
+    if (typeof value === 'boolean') return value ? 'On' : 'Off'
+    if (key === 'jetpack') return value === 0 ? 'Off' : `${Number(value.toFixed(1))} s`
+    if (key === 'respawn') return `${value} s`
+    if (key === 'headshot' && value === 0) return 'None'
+    return `${value}%`
+}
+
+/** The options the host changed, in a line ("walk speed 125%, pickups off"); empty when none. */
+export function describeTuning(tuning: Partial<Tuning> = {}): string {
+    return TUNING_ROWS.filter(row => tuning[row.key] !== undefined)
+        .map(row => {
+            const name = row.group === 'Jetpack' ? `jetpack ${row.label.toLowerCase()}` : row.label.toLowerCase()
+            return `${name.replace(/ \(.*\)$/, '')} ${tuningLabel(row.key, tuning[row.key]!).toLowerCase()}`
+        })
+        .join(', ')
 }
 
 const MODE_HINTS: Record<Mode, string> = {
@@ -1040,6 +1133,8 @@ export interface DeathCause {
     recap?: KillRecap
     /** Real metres per metre of the map it happened on (Rue des Érables is built for people, shrunk). */
     unit?: number
+    /** The match's health option (%; 100 when absent): what full health was. */
+    health?: number
 }
 
 /**
@@ -1056,7 +1151,8 @@ export function deathRecap(cause: DeathCause): string {
     ].join(' · ')
     if (!r) return `<div class="recap"><div class="recap-head">${head}</div></div>`
 
-    const rows: Array<[string, string]> = [['Their health', `${r.killerHealth} / ${maxHealthOf(powersOf(r.buffs))}`]]
+    const full = maxHealthOf(powersOf(r.buffs), (cause.health ?? 100) / 100)
+    const rows: Array<[string, string]> = [['Their health', `${r.killerHealth} / ${full}`]]
     if (r.ammo !== null && r.magazine !== null) {
         rows.push(['Their magazine', r.ammo === 0 ? 'empty' : `${r.ammo} / ${r.magazine}`])
     }

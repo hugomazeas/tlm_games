@@ -1,13 +1,29 @@
 import { describe, expect, test } from 'bun:test'
 import { createRng } from '../../sim/rng.ts'
 import { eyeOf } from './combat.ts'
-import { type Body, bodyAt, MOVE, type MoveInput, PLAYER, PRONE, scaleOf, stepBody } from './movement.ts'
+import type { Tuning } from '../protocol.ts'
+import {
+    type Body,
+    bodyAt,
+    MOVE,
+    type MoveInput,
+    OFFICE_MOVEMENT,
+    PLAYER,
+    PRONE,
+    scaleOf,
+    stepBody,
+    tunedMovement,
+} from './movement.ts'
 import { ESPRESSO, OVERTIME, PAD, PORTAL, PROMOTION } from './places.ts'
 import { testWorld } from './testing.ts'
+import { resolveTuning } from './tuning.ts'
 import { Vector3 } from 'three'
 import { type FpsWorld, officeWorld, rayDistance, rayHit } from './world.ts'
 
 const IDLE: MoveInput = { forward: 0, strafe: 0, yaw: 0, dash: false, jet: false, prone: false }
+
+/** The match options that move bodies furthest and highest: nothing may get out under them either. */
+const EXTREME_TUNING: Partial<Tuning> = { walk: 150, jump: 200, gravity: 50, jetpack: 8, thrust: 150 }
 
 function run(body: Body, input: MoveInput, steps: number): Body {
     const world = officeWorld()
@@ -190,9 +206,12 @@ describe('a mini in the office', () => {
         expect(play()).toEqual(play())
     })
 
-    test('twenty seconds of wild flying never leaves the office, pads and portals and all', () => {
+    test.each([
+        ['as it is', {}],
+        ['at the wildest options', EXTREME_TUNING],
+    ] as const)('twenty seconds of wild flying never leaves the office, pads and portals and all (%s)', (_, chosen) => {
         const rng = createRng(11)
-        const world = officeWorld()
+        const world = { ...officeWorld(), move: tunedMovement(OFFICE_MOVEMENT, resolveTuning(OFFICE_MOVEMENT, chosen)) }
         for (const spawn of world.spawnPoints) {
             let body = bodyAt(spawn.position[0], 0.02, spawn.position[2])
             let input: MoveInput = IDLE
@@ -280,6 +299,68 @@ describe('jump pads and portals', () => {
         // From east of the second, walking west into it: out of the first, east of it.
         const back = walkInto({ ...after, portalCooldown: 0 }, -EAST)
         expect(back.x).toBeCloseTo(PORTAL.exit, 1)
+    })
+})
+
+describe("a match's options", () => {
+    const tunedRoom = (chosen: Partial<Tuning>) => ({
+        ...testWorld([]),
+        move: tunedMovement(OFFICE_MOVEMENT, resolveTuning(OFFICE_MOVEMENT, chosen)),
+    })
+    /** The highest a press of Space (or holding it, with the jetpack) takes you from the floor. */
+    const highest = (world: FpsWorld, hold: boolean) => {
+        let b = settledIn(world, 0, 0)
+        const floor = b.y
+        let top = floor
+        b = stepBody(world, b, { ...IDLE, jet: true })
+        for (let i = 0; i < 400; i++) {
+            b = stepBody(world, b, { ...IDLE, jet: hold })
+            top = Math.max(top, b.y)
+        }
+        return top - floor
+    }
+
+    test('all at 100%: the map’s own movement, to the bit', () => {
+        expect(tunedMovement(OFFICE_MOVEMENT, resolveTuning(OFFICE_MOVEMENT))).toEqual(OFFICE_MOVEMENT)
+    })
+
+    test('gravity changes the feel, not the heights: a jump is as high, a jump option twice as high', () => {
+        // Within 4% (60 steps a second land a little differently at each speed and gravity).
+        const usual = highest(tunedRoom({}), false)
+        const share = (chosen: Partial<Tuning>) => highest(tunedRoom(chosen), false) / usual
+        expect(Math.abs(share({ gravity: 150 }) - 1)).toBeLessThan(0.04)
+        expect(Math.abs(share({ gravity: 50 }) - 1)).toBeLessThan(0.04)
+        expect(Math.abs(share({ jump: 200 }) - 2)).toBeLessThan(0.08)
+    })
+
+    test('the jetpack climbs under any gravity, and as long as its fuel says', () => {
+        const flight = (chosen: Partial<Tuning>) => {
+            const world = tunedRoom(chosen)
+            let b = stepBody(world, settledIn(world, 0, 0), { ...IDLE, jet: true })
+            let burning = 0
+            for (let i = 0; i < 600; i++) {
+                const before = b.fuel
+                b = stepBody(world, b, { ...IDLE, jet: true })
+                if (b.fuel < before) burning++
+            }
+            return burning / 60
+        }
+        const jump = highest(tunedRoom({}), false)
+        expect(highest(tunedRoom({ gravity: 150, thrust: 75 }), true)).toBeGreaterThan(jump * 3)
+        expect(flight({ jetpack: 5 })).toBeCloseTo(5, 1)
+        expect(flight({ jetpack: 1 })).toBeCloseTo(1, 1)
+        // None at all: Space jumps, nothing more, and the tank stays full for dodges.
+        expect(flight({ jetpack: 0 })).toBe(0)
+        expect(highest(tunedRoom({ jetpack: 0 }), true)).toBeCloseTo(jump, 2)
+    })
+
+    test('no dodge and no prone: Shift and C do nothing', () => {
+        const world = tunedRoom({ dash: false, prone: false })
+        const start = settledIn(world, 0, 0)
+        const pressed = stepBody(world, start, { ...IDLE, dash: true, prone: true })
+        const b = runIn(world, pressed, { ...IDLE, prone: true }, 10)
+        expect(b).toMatchObject({ prone: false, dashLeft: 0, fuel: 1 })
+        expect(Math.hypot(b.x - start.x, b.z - start.z)).toBeLessThan(0.01)
     })
 })
 

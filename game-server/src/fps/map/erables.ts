@@ -94,17 +94,22 @@ export const LAWN = 0.15
 export const BOUNDS = { x: 27, z: 27, lid: 12 } as const
 
 /**
- * How bodies move here: a person's pace (4.6 m/s walking, a 55 cm jump), the trampolines' throw
- * onto the carport and garage roofs, a rocket's shove at a person's scale; no jetpack, no dodge.
- * All shrunk by the map's scale, gravity too.
+ * How bodies move here: a brisk person's pace (5.75 m/s, a jog), a 55 cm jump, a short jetpack (a
+ * second of flight, the office's climb against gravity), a dodge as quick against the walk as the
+ * office's (2.5×) with a 10 cm hop, the trampolines' throw onto the carport and garage roofs, a
+ * rocket's shove at a person's scale. All shrunk by the map's scale, gravity too.
  */
 export const ERABLES_MOVEMENT: Movement = {
-    walk: 4.6 * S,
+    walk: 5.75 * S,
     crawl: 1.3 * S,
     jump: Math.sqrt(2 * 9.8 * 0.55) * S,
     gravity: -9.8 * S,
-    jetpack: false,
-    dodge: false,
+    fuelSeconds: 1,
+    thrust: 16 * S,
+    dodge: true,
+    dashSpeed: 14.4 * S,
+    dashLift: Math.sqrt(2 * 9.8 * 0.1) * S,
+    prone: true,
     padLaunch: Math.sqrt(2 * 9.8 * 5.0) * S,
     knockback: S,
     moving: 2.8 * S,

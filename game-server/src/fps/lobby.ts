@@ -23,6 +23,7 @@ import {
     type SiegeHold,
     type SiegeView,
     type Team,
+    type Tuning,
     type WallSpec,
     TEAMS,
     type Weapon,
@@ -30,7 +31,8 @@ import {
     type ZoneState,
 } from './protocol.ts'
 import { Arena, type ArenaEvent } from './sim/arena.ts'
-import { STEP_MS } from './sim/movement.ts'
+import { type Movement, STEP_MS, tunedMovement } from './sim/movement.ts'
+import { resolveTuning } from './sim/tuning.ts'
 import { domeSpawns, inSpot, inZone, siegeForbidsBuild, siegeWinner, spotSpawns, ZONE_MS } from './sim/places.ts'
 import { Walls } from './sim/walls.ts'
 import type { FpsWorld } from './sim/world.ts'
@@ -225,6 +227,10 @@ export class FpsLobby {
     private world: FpsWorld
     /** What the host has lined up for the next match (null until they pick). */
     private next: Rules | null = null
+    /** Each map's own movement, before a match's options change its world's. */
+    private readonly baseMoves = new Map<MapId, Movement>()
+    /** How play goes now: the match's options from its countdown to its scoreboard, the office's own in warmup. */
+    private tuning: Tuning
 
     constructor(
         office: FpsWorld,
@@ -235,10 +241,26 @@ export class FpsLobby {
         // The game's own walls: what's built here stays here.
         for (const [id, world] of Object.entries({ ...maps, [LOBBY_MAP]: office }) as Array<[MapId, FpsWorld]>) {
             this.worlds.set(id, { ...world, walls: new Walls(), dome: null })
+            this.baseMoves.set(id, world.move)
         }
         this.world = this.worlds.get(LOBBY_MAP)!
         this.arena = new Arena(this.world, hooks.random)
+        this.tuning = this.useTuning({})
         this.clockStart = hooks.now()
+    }
+
+    /**
+     * Plays on with these options (the host's; none: the map's own) on the map everyone is on: its
+     * world's movement and the arena's rules. Its own step, not the map change's: a match in the
+     * office stays on the office's world.
+     */
+    private useTuning(chosen: Partial<Tuning>): Tuning {
+        const base = this.baseMoves.get(this.map)!
+        this.tuning = resolveTuning(base, chosen)
+        this.world.move = tunedMovement(base, this.tuning)
+        this.arena.setTuning(this.tuning)
+
+        return this.tuning
     }
 
     /** Someone opens the game. The same Hub player in a second tab takes over from the first. */
@@ -404,6 +426,7 @@ export class FpsLobby {
     /** Everyone onto the match's map, and the countdown. */
     private toCountdown(): void {
         this.useMap(this.rules.map)
+        this.useTuning(this.rules.tuning ?? {})
         this.setPhase('countdown')
     }
 
@@ -788,8 +811,11 @@ export class FpsLobby {
 
     private setPhase(phase: Phase): void {
         this.phase = phase
-        // Warmup is the office's.
-        if (phase === 'warmup') this.useMap(LOBBY_MAP)
+        // Warmup is the office's, as it plays without a match's options.
+        if (phase === 'warmup') {
+            this.useMap(LOBBY_MAP)
+            this.useTuning({})
+        }
         const length = {
             warmup: null,
             loading: LOADING_MS,
@@ -910,6 +936,7 @@ export class FpsLobby {
             fragLimit: this.rules.fragLimit,
             minutes: this.rules.minutes,
             next: this.next ? { ...this.next } : null,
+            tuning: { ...this.tuning },
             loading:
                 this.phase === 'loading'
                     ? {

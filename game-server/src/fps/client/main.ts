@@ -52,11 +52,11 @@ import {
     STAPLER,
     SWITCH_MS,
 } from '../sim/combat.ts'
-import { jetBurns, MOVE, moveOf, PLAYER, scaleOf, STEP_MS } from '../sim/movement.ts'
+import { jetBurns, MOVE, moveOf, PLAYER, scaleOf, STEP_MS, tunedMovement } from '../sim/movement.ts'
 import { type PickupKind, PICKUPS, PORTAL, siegeForbidsBuild, siegeWinner } from '../sim/places.ts'
 import { buildSlot, type BuildSlot } from '../sim/building.ts'
 import { BUILD, type Wall } from '../sim/walls.ts'
-import { type FpsWorld, rayDistance, rayHit, worldFrom } from '../sim/world.ts'
+import { type FpsWorld, placesOf, rayDistance, rayHit, worldFrom } from '../sim/world.ts'
 import { WallViews } from './building.ts'
 import { AssetDebug } from './asset-debug.ts'
 import { buildErables, erablesLooks } from './erables.ts'
@@ -528,6 +528,7 @@ function receive(message: ServerMessage): void {
             match = message.match
             matchAt = now
             syncDome(match)
+            syncTuning(match)
             world.walls.clear()
             for (const wall of message.walls ?? []) world.walls.add(wall)
             wallViews.sync(world.walls, now)
@@ -552,6 +553,7 @@ function receive(message: ServerMessage): void {
             matchAt = now
             useMap(match.map, now)
             syncDome(match)
+            syncTuning(match)
             siegeNews(siegeBefore, match)
             hud.setMatch(message.match, now)
             updateHost()
@@ -603,8 +605,18 @@ function useMap(map: MapId, now: number): void {
     pickupsReady = []
     zone = null
     holds = []
-    hud.jetpack = world.move.jetpack
     showMap(map)
+}
+
+/**
+ * The options in play (the match's, or the office's own in warmup) on the world you predict on, as
+ * the server has them on its own: after `useMap`, since a match in the office keeps the same map.
+ */
+function syncTuning(view: MatchView): void {
+    world.move = tunedMovement(placesOf(mapNow).move, view.tuning)
+    // The tank feeds the dodge too: its gauge shows when either is on.
+    hud.jetpack = world.move.fuelSeconds > 0 || world.move.dodge
+    controls.canBuild = view.tuning.building
 }
 
 /** Siege's dome from the match: in the world while it stands, so your prediction meets it as the server does. */
@@ -902,7 +914,7 @@ function onEvent(event: GameEvent, now: number): void {
             killer = event.killer ? name(event.killer) : null
             deathTaunt = event.killer && event.killer !== me ? taunt(event, Math.random) : null
             const { weapon, headshot, backstab, recap } = event
-            deathCause = { weapon, headshot, backstab, recap, unit: world.unit }
+            deathCause = { weapon, headshot, backstab, recap, unit: world.unit, health: match?.tuning.health }
         }
         if (event.killer === me && event.victim !== me) {
             hud.hitMarker(event.headshot, true)
@@ -1488,6 +1500,7 @@ function showTarget(poses: Map<string, Pose>): void {
     const info = roster.get(id)
     const buffs = pose.state.buffs.map(kind => BUFF_LABELS[kind].icon).join('')
     const label = `${info?.name ?? '?'}${buffs ? ` ${buffs}` : ''}`
-    const who = { name: label, color: colorOf(id), health: pose.state.health, maxHealth: maxHealthOf(powers) }
+    const full = maxHealthOf(powers, (match?.tuning.health ?? 100) / 100)
+    const who = { name: label, color: colorOf(id), health: pose.state.health, maxHealth: full }
     hud.target(who, at.x, at.y)
 }
