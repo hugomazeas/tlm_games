@@ -23,15 +23,18 @@ import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometr
 import { MeshBVH } from 'three-mesh-bvh';
 import { Builder } from '../assets/kit.ts';
 import { place } from '../assets/place.ts';
+import { addSource, assetOf } from '../assets/sources.ts';
 import { OFFICE_MATERIALS } from '../assets/office-palette.ts';
+import { makeSharedMaterials } from '../assets/shared-palette.ts';
 import {
   AIR_DIFFUSER, ARCHERY_TARGET, BAR_COUNTER, BASEBOARD_HEATER, BEAN_BAG, BOWL_LAMP, CEILING_PANEL, CITY_BUILDING,
   CLOSET_SHELVES, CLUB_ARMCHAIR, DESK_END_PANEL, DESK_HUTCH, DESK_SLAB, DUMBBELL, EXIT_SIGN, FRAMED_ART, FRUIT,
   KITCHENETTE, LAPTOP, LED_STRIP, LOUNGE_SOFA, MONITOR, MUG, NOTICE, OFFICE_CHAIR, OFFICE_DESK, OTTOMAN, PEDESTAL,
-  PENDANT_LIGHT, PILLAR, BAMBOO_PING_PONG, POTTED_PLANT, PRINTER_CABINET, PRIVACY_SCREEN, RECYCLING_BIN, ROUND_TABLE,
+  PENDANT_LIGHT, PILLAR, POTTED_PLANT, PRINTER_CABINET, PRIVACY_SCREEN, RECYCLING_BIN, ROUND_TABLE,
   SKYLINE_TOWER, SPRINKLER, SQUARE_ISLAND, STANDING_DESK, STREET_TREE, TROUGH_PLANTER, TV_DESK, VERTICAL_BLINDS,
   WASTE_BIN, WHITEBOARD, YOGA_MAT,
 } from '../assets/catalog/office.ts';
+import { PING_PONG_TABLE } from '../assets/catalog/interior.ts';
 
 export const H = 2.7;          // ceiling height
 export const GROUND = -7.0;    // street level (the office is on the 3rd floor)
@@ -503,6 +506,8 @@ export function createOfficeMaterials(renderer) {
     cityRoof: std({ color: 0x55585c, roughness: .9 }), balconyRail: std({ color: 0x2c2f33, roughness: .5, metalness: .5 }),
     balconySlab: std({ color: 0xcfcac2, roughness: .9 }), awning: std({ color: 0x2f6b47, roughness: .7 }),
     ...Object.fromEntries([1, 2, 3].map((seed, i) => [`skyline${i}`, std({ map: windowsTexture(seed), roughness: .6, metalness: .2 })])),
+    // What the shared assets are made of (the ping-pong table), the same as on Rue des Érables.
+    ...makeSharedMaterials(),
   });
 
   return { M, screenMats, artMats, texture: canvasTexture };
@@ -546,6 +551,8 @@ const SURFACE_OF = {
   pillowB: 'fabric',
   baseboard: 'plastic', plastic: 'plastic', plasticWhite: 'plastic', whiteboard: 'plastic', panel: 'plastic',
   greenBin: 'plastic', potDark: 'plastic',
+  pingPongTop: 'wood', pingPongLines: 'wood', pingPongFrame: 'metal', pingPongStrut: 'metal', pingPongMesh: 'fabric', caster: 'plastic',
+  paddleRubber: 'plastic', paddleHandle: 'wood',
   tile: 'tile', closetTile: 'tile', subway: 'tile', counter: 'tile', pot: 'tile',
   bulb: 'screen',
   leaf: 'plant', leafDark: 'plant', soil: 'plant', grass: 'plant', bark: 'plant',
@@ -981,8 +988,9 @@ export function buildOfficeGeometry(opts = {}) {
   // structural pillar behind the sofa (scan: 0.44 x 0.31 m) and a thin column
   tagged(put(world, PILLAR, { width: .44, depth: .31, height: H }, { x: 3.27, z: -1.49 }), 'pillar');
   tagged(put(world, PILLAR, { shape: 'round', width: .12, height: H }, { x: 3.35, z: -2.75 }), 'pillar');
-  // ping-pong table: two bamboo tables pushed together with a clamp-on net (scan: 1.27 x 2.78 m)
-  tagged(put(world, BAMBOO_PING_PONG, {}, { x: 6.135, z: -1.9 }), 'table');
+  // The ping-pong table (the library's, shared with Rue des Érables), its length along z where the
+  // scan's two bamboo tables stood (1.27 x 2.78 m).
+  tagged(put(world, PING_PONG_TABLE, {}, { x: 6.135, z: -1.9, ry: Math.PI / 2 }), 'table');
   { // zig-zag LED strip on the ceiling over the table
     const pts = [[905, 222], [955, 268], [1010, 238], [1060, 290], [1105, 262]].map(([x, y]) => V(x, y));
     for (let i = 0; i < pts.length - 1; i++) {
@@ -1261,13 +1269,16 @@ export function buildOffice(scene, renderer, opts = {}) {
       if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
       g.morphAttributes = {}; g.clearGroups();
       g.applyMatrix4(o.matrixWorld);
-      if (!buckets.has(key)) buckets.set(key, { mat: o.material, cast, recv: o.receiveShadow, order: o.renderOrder, geos: [] });
-      buckets.get(key).geos.push(g);
+      if (!buckets.has(key)) buckets.set(key, { mat: o.material, cast, recv: o.receiveShadow, order: o.renderOrder, geos: [], sources: [] });
+      const bucket = buckets.get(key);
+      bucket.geos.push(g);
+      addSource(bucket.sources, g.attributes.position.count, assetOf(o, group));
     });
     for (const c of [...group.children]) group.remove(c);
     for (const b of buckets.values()) {
       const m = new THREE.Mesh(mergeGeometries(b.geos), b.mat);
       m.castShadow = b.cast; m.receiveShadow = b.recv; m.renderOrder = b.order; group.add(m);
+      m.userData.sources = b.sources; m.userData.drawnBy = 'office.js';
     }
     group.updateMatrixWorld(true);
     group.traverse((o) => { o.matrixAutoUpdate = false; });

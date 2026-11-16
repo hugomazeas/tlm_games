@@ -58,6 +58,7 @@ import { buildSlot, type BuildSlot } from '../sim/building.ts'
 import { BUILD, type Wall } from '../sim/walls.ts'
 import { type FpsWorld, rayDistance, rayHit, worldFrom } from '../sim/world.ts'
 import { WallViews } from './building.ts'
+import { AssetDebug } from './asset-debug.ts'
 import { buildErables, erablesLooks } from './erables.ts'
 import { Impacts } from './impacts.ts'
 import { Avatars } from './avatars.ts'
@@ -199,6 +200,9 @@ const gpuTimer = new GpuTimer(renderer.getContext() as WebGL2RenderingContext)
 const gpuName = gpuNameOf(renderer.getContext())
 perf.visible = settings.perfOverlay
 applyResolution()
+/** Esc → Settings → Show assets: which of the maps' objects are library assets, which the maps draw. */
+const assetView = new AssetDebug([office.root, erables.group])
+assetView.enabled = settings.assetView
 /** The guns picked in this browser (sent with hello, and on every change). */
 let picked: Loadout = rememberedLoadout()
 const sounds = new Sounds()
@@ -211,6 +215,7 @@ const hud = new Hud(config.backUrl, {
         controls.invertY = changed.invertY
         sounds.setVolume(changed.volume)
         perf.visible = changed.perfOverlay
+        assetView.enabled = changed.assetView
         if (resized) applyResolution()
     },
     onStart: rules => startMatch(rules),
@@ -1384,6 +1389,7 @@ function draw(now: number): void {
     showZone(now)
     showTarget(poses)
     hud.update(now, { me, self, killer, taunt: deathTaunt, cause: deathCause, tab: controls.scoreboardHeld, roster })
+    assetView.update(camera, now)
     const hudDone = performance.now()
     cpu.hud = hudDone - sceneDone
     if (perf.visible) gpuTimer.begin()

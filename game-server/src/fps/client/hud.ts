@@ -489,6 +489,7 @@ export class Hud {
             <label class="check"><input type="checkbox" data-setting="invertY" ${s.invertY ? 'checked' : ''}> Invert mouse Y</label>
             <label class="check"><input type="checkbox" data-setting="antialias" ${s.antialias ? 'checked' : ''}> Anti-aliasing <small data-out="antialias"></small></label>
             <label class="check"><input type="checkbox" data-setting="perfOverlay" ${s.perfOverlay ? 'checked' : ''}> Performance overlay</label>
+            <label class="check"><input type="checkbox" data-setting="assetView" ${s.assetView ? 'checked' : ''}> Show assets <small>(debug: assets in colour, the map red)</small></label>
             <button type="button" data-reset>Defaults</button>`
         const show = (key: keyof typeof LIMITS, text: string) => {
             panel.querySelector(`[data-out="${key}"]`)!.textContent = text
@@ -505,6 +506,7 @@ export class Hud {
                 invertY: panel.querySelector<HTMLInputElement>('[data-setting="invertY"]')!.checked,
                 perfOverlay: panel.querySelector<HTMLInputElement>('[data-setting="perfOverlay"]')!.checked,
                 antialias: panel.querySelector<HTMLInputElement>('[data-setting="antialias"]')!.checked,
+                assetView: panel.querySelector<HTMLInputElement>('[data-setting="assetView"]')!.checked,
             }
         }
         // The canvas keeps the anti-aliasing it was made with: say when a change waits for a reload.

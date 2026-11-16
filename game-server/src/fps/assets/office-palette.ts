@@ -1,4 +1,5 @@
 import type { Material } from 'three'
+import { SHARED_MATERIALS } from './shared-palette.ts'
 
 /**
  * The office's materials, by name: what the office's assets are built with (the office map makes
@@ -99,10 +100,16 @@ export const OFFICE_MATERIALS = [
     'skyline0',
     'skyline1',
     'skyline2',
+    ...SHARED_MATERIALS,
 ] as const
 export type OfficeMaterial = (typeof OFFICE_MATERIALS)[number]
 /** The office palette's materials by name (office.js `officePalette`). */
 export type OfficeMaterialSet = Record<OfficeMaterial, Material>
 
-/** Which set of materials an asset is built with: Rue des Érables' (the default) or the office's. */
+/** Which set of materials a Builder holds: Rue des Érables' (the default) or the office's. */
 export type Palette = 'erables' | 'office'
+/**
+ * Which an asset is built with: one palette, or `shared` (only the names both have,
+ * `SHARED_MATERIALS`: it stands in either map).
+ */
+export type AssetPalette = Palette | 'shared'

@@ -1,5 +1,6 @@
 import { CylinderGeometry, TorusGeometry, Vector3 } from 'three'
 import type { ErablesMaterial } from '../kit.ts'
+import { taperedBox } from '../shapes.ts'
 import { defineAsset } from '../types.ts'
 
 /** A wooden utility pole: crossarm and insulators, a transformer, a street light reaching toward +z. */
@@ -108,8 +109,35 @@ export const TRAFFIC_CONE = defineAsset({
     defaults: {},
     params: {},
     variants: [{}],
-    size: [0.4, 0.65, 0.4],
-    current: { version: 1, notes: 'A base, a cone, a white band.', build: b => b.cone(0, 0, 0) },
+    size: [0.4, 0.72, 0.4],
+    current: {
+        version: 2,
+        notes: 'Your note: way too pointy. A 71 cm road cone: a black square base with rounded corners and a raised collar, the orange body a truncated cone (its top 6 cm across, open, with a lip), two reflective bands (15 cm and 10 cm).',
+        build(b) {
+            // The base: a rounded square slab, its collar round the cone's foot.
+            b.put(taperedBox(0.38, 0.38, 0.37, 0.37, 0.035, 0.05), 'rubber', { collide: false })
+            b.cyl('rubber', 0.15, 0.165, 0.03, 0, 0.035, 0, 24, { collide: false })
+            // The body, from the collar to its open top, and the lip round the top.
+            const foot = 0.06
+            const tip = 0.71
+            const [r0, r1] = [0.14, 0.032]
+            const radiusAt = (y: number) => r0 + ((r1 - r0) * (y - foot)) / (tip - foot)
+            b.cyl('cone', r1, r0, tip - foot, 0, foot, 0, 24, { collide: false })
+            b.put(new TorusGeometry(r1, 0.006, 6, 20).rotateX(Math.PI / 2), 'cone', {
+                y: tip,
+                collide: false,
+                cast: false,
+            })
+            // Its reflective bands, just proud of the body.
+            for (const [y0, y1] of [
+                [0.44, 0.59],
+                [0.26, 0.36],
+            ] as const) {
+                const band = new CylinderGeometry(radiusAt(y1) + 0.002, radiusAt(y0) + 0.002, y1 - y0, 24, 1, true)
+                b.put(band.translate(0, (y0 + y1) / 2, 0), 'reflective', { collide: false, cast: false })
+            }
+        },
+    },
 })
 
 /** A "Rue barrée" board, facing +z (on a barrier, or the hoarding). */
@@ -185,13 +213,92 @@ export const BIN = defineAsset({
     variants: [{}, { kind: 'compost' }, { kind: 'garbage' }],
     size: [0.75, 1.05, 0.85],
     current: {
-        version: 1,
-        notes: 'A tapered square body, a lid, two wheels.',
+        version: 2,
+        notes: 'Your note: needs a redesign. A moulded wheelie bin: a body with rounded corners flaring toward the top, a stiffening rib round its rim, a front foot and side ribs; the lid overhanging at the front with its grip, hinged at the back on the handle bar; two wheels on an axle in the back corners. The compost bin is the city’s small brown one.',
         build(b, p) {
             const mat = ({ recycling: 'binBlue', compost: 'binBrown', garbage: 'binGrey' } as const)[
                 p.kind as 'recycling'
             ]
-            b.bin(mat, 0, 0, 0, 0)
+            // The brown bin is the small one (the city's organics bin), the others the 360 L kind.
+            const k = p.kind === 'compost' ? 0.72 : 1
+            const [w0, d0, w1, d1, h] = [0.5 * k, 0.56 * k, 0.6 * k, 0.72 * k, 0.94 * k]
+            const lift = 0.04
+            // Its body: open at the top under the lid; the floor closed.
+            b.put(taperedBox(w0, d0, w1, d1, h, 0.06 * k, { bottom: true }), mat, { y: lift })
+            // The rim's rib, a little proud of the body all round.
+            b.put(taperedBox(w1 + 0.02, d1 + 0.02, w1 + 0.024, d1 + 0.024, 0.05 * k, 0.07 * k, {}), mat, {
+                y: lift + h - 0.06 * k,
+                collide: false,
+            })
+            // Side ribs (vertical) and the front foot it stands on, the wheels behind.
+            for (const s of [-1, 1])
+                b.box(
+                    mat,
+                    s * (w0 / 2 + 0.005),
+                    lift + 0.12,
+                    -0.08 * k,
+                    s * (w0 / 2 + ((w1 - w0) / 2) * 0.8 + 0.012),
+                    lift + h - 0.1 * k,
+                    0.08 * k,
+                    { collide: false, cast: false }
+                )
+            b.box(mat, -w0 / 2 + 0.04, 0, -d0 / 2, w0 / 2 - 0.04, lift + 0.02, -d0 / 2 + 0.08, { collide: false })
+            // The lid: overhanging at the front (-z), its grip lip, hinged at the back on the handle.
+            const top = lift + h
+            b.put(taperedBox(w1 + 0.04, d1 + 0.05, w1 + 0.03, d1 + 0.04, 0.035, 0.07 * k), mat, {
+                y: top,
+                z: -0.01,
+                collide: false,
+            })
+            b.box(mat, -w1 / 2 + 0.08, top - 0.03, -(d1 / 2 + 0.045), w1 / 2 - 0.08, top + 0.03, -(d1 / 2 + 0.02), {
+                collide: false,
+                cast: false,
+            })
+            const back = d1 / 2 + 0.03
+            b.rod(
+                mat,
+                new Vector3(-w1 / 2 + 0.05, top - 0.02, back),
+                new Vector3(w1 / 2 - 0.05, top - 0.02, back),
+                0.016,
+                { collide: false }
+            )
+            for (const s of [-1, 1])
+                b.box(
+                    mat,
+                    s * (w1 / 2 - 0.06) - 0.02,
+                    top - 0.12,
+                    back - 0.05,
+                    s * (w1 / 2 - 0.06) + 0.02,
+                    top,
+                    back + 0.01,
+                    { collide: false, cast: false }
+                )
+            // Wheels in the back corners on their axle, their hubs.
+            const wheel = 0.1 * k
+            const axleZ = d0 / 2 + 0.02
+            b.rod(
+                'metalDark',
+                new Vector3(-w1 / 2 - 0.02, wheel, axleZ),
+                new Vector3(w1 / 2 + 0.02, wheel, axleZ),
+                0.012,
+                { collide: false, cast: false }
+            )
+            for (const s of [-1, 1]) {
+                const x = s * (w0 / 2 + 0.035)
+                b.put(new CylinderGeometry(wheel, wheel, 0.05, 16).rotateZ(Math.PI / 2), 'rubber', {
+                    x,
+                    y: wheel,
+                    z: axleZ,
+                    collide: false,
+                })
+                b.put(new CylinderGeometry(wheel * 0.45, wheel * 0.45, 0.054, 10).rotateZ(Math.PI / 2), 'binGrey', {
+                    x,
+                    y: wheel,
+                    z: axleZ,
+                    collide: false,
+                    cast: false,
+                })
+            }
         },
     },
 })

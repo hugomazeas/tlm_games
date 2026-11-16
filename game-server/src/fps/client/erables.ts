@@ -36,6 +36,8 @@ import {
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { TREE } from '../assets/catalog/plants.ts'
 import { place } from '../assets/place.ts'
+import { makeSharedMaterials } from '../assets/shared-palette.ts'
+import { addSource, assetOf, type SourceRun } from '../assets/sources.ts'
 import { BOUNDS, buildErablesGeometry, ERABLES_PLACES, ERABLES_SCALE, LAWN } from '../map/erables.ts'
 import {
     Builder,
@@ -609,37 +611,40 @@ export function paintMaterials(glass: Material): ErablesMaterials {
         },
         2
     )
-    const firewood = paint(
-        256,
-        0.5,
+    // One log's sawn end on its own 0–1 UVs: growth rings off-centre, a check or two, sapwood paler
+    // toward the bark, the bark a dark rim.
+    const logEnd = paint(
+        128,
+        1,
         (u, v, o) => {
-            // Log ends packed in rows: rings, bark round them.
-            const cu = u * 4
-            const cv = v * 4 + (Math.floor(u * 4) % 2) * 0.5
-            const dx = fract(cu) - 0.5
-            const dy = fract(cv) - 0.5
-            const d = Math.hypot(dx, dy)
-            const ring = Math.sin(d * 80) * 0.5 + 0.5
-            if (d > 0.46) {
-                o[0] = 40
-                o[1] = 30
-                o[2] = 22
+            const dx = u - 0.47
+            const dy = v - 0.53
+            const d = Math.hypot(dx, dy) / 0.5
+            const a = Math.atan2(dy, dx)
+            const wobble = (mid(u * 0.6, v * 0.6) - 0.5) * 0.08
+            const ring = Math.sin((d + wobble) * 46) * 0.5 + 0.5
+            const check = Math.abs(Math.sin(a * 1.5 + 0.7)) < 0.035 && d > 0.12 && d < 0.8
+            if (d > 0.9) {
+                o[0] = 58
+                o[1] = 44
+                o[2] = 34
                 o[3] = -1
-            } else if (d > 0.4) {
-                o[0] = 90
-                o[1] = 70
-                o[2] = 52
-                o[3] = 0.5
+            } else if (check) {
+                o[0] = 70
+                o[1] = 50
+                o[2] = 34
+                o[3] = -0.6
             } else {
-                o[0] = 176 + ring * 30
-                o[1] = 130 + ring * 24
-                o[2] = 84 + ring * 14
-                o[3] = 1
+                const sap = Math.max(0, d - 0.55) * 1.6
+                const age = 1 - d * 0.25
+                o[0] = (150 + ring * 34 + sap * 30) * age + fine(u, v) * 10
+                o[1] = (104 + ring * 26 + sap * 24) * age + fine(u, v) * 8
+                o[2] = (62 + ring * 16 + sap * 14) * age
+                o[3] = ring * 0.4
             }
         },
-        3
+        2
     )
-
     // Bark on a trunk's own UVs (round it, up it): repeat set by hand.
     const furrowNoise = noise(13, 32)
     const furrowed = paint(
@@ -897,7 +902,12 @@ export function paintMaterials(glass: Material): ErablesMaterials {
         pumpkin: plain(0xe3741a, 0.6),
         hay: mapped(hay, 1),
         leafBag: mapped(leafBag, 0.9),
-        firewood: mapped(firewood, 0.95),
+        logEnd: mapped(logEnd, 0.9),
+        // Black moulded plastic, a little sheen: dark enough to read black, light enough for its ribs to show.
+        plasticBlack: plain(0x30332f, 0.5),
+        reflective: std({ color: 0xf6f6f2, roughness: 0.25, metalness: 0.15 }),
+        leafPile: mapped(leaves, 0.95),
+        ...makeSharedMaterials(),
         net: std({
             map: netting,
             roughness: 0.9,
@@ -954,7 +964,7 @@ export function bake(group: Group): void {
     const inverse = new Matrix4().copy(group.matrixWorld).invert()
     const buckets = new Map<
         string,
-        { mat: Material; key: ErablesMaterial | null; cast: boolean; geos: BufferGeometry[] }
+        { mat: Material; key: ErablesMaterial | null; cast: boolean; geos: BufferGeometry[]; sources: SourceRun[] }
     >()
     const relative = new Matrix4()
     group.traverse(o => {
@@ -975,8 +985,10 @@ export function bake(group: Group): void {
         g.clearGroups()
         relative.multiplyMatrices(inverse, mesh.matrixWorld)
         g.applyMatrix4(relative)
-        if (!buckets.has(id)) buckets.set(id, { mat: material, key, cast, geos: [] })
-        buckets.get(id)!.geos.push(g)
+        if (!buckets.has(id)) buckets.set(id, { mat: material, key, cast, geos: [], sources: [] })
+        const bucket = buckets.get(id)!
+        bucket.geos.push(g)
+        addSource(bucket.sources, g.attributes.position!.count, assetOf(mesh, group))
     })
     for (const c of [...group.children]) group.remove(c)
     for (const bucket of buckets.values()) {
@@ -988,6 +1000,8 @@ export function bake(group: Group): void {
         mesh.receiveShadow = true
         if (bucket.key === 'glass') mesh.renderOrder = 2
         mesh.userData.mat = bucket.key
+        mesh.userData.sources = bucket.sources
+        mesh.userData.drawnBy = 'erables.ts'
         group.add(mesh)
     }
     group.updateMatrixWorld(true)
@@ -1184,6 +1198,7 @@ export function crowns(trees: readonly TreeSpot[], seed: number): Mesh {
     const mesh = new Mesh(quadGeometry(positions, normals, colors, uvs), material)
     mesh.castShadow = true
     mesh.receiveShadow = true
+    mesh.userData.drawnBy = 'client/erables.ts · leaf crowns'
     return mesh
 }
 
@@ -1228,6 +1243,7 @@ export function fallenLeaves(
     }
     const mesh = new Mesh(quadGeometry(positions, normals, colors, uvs), material)
     mesh.receiveShadow = true
+    mesh.userData.drawnBy = 'client/erables.ts · fallen leaves'
     return mesh
 }
 
@@ -1250,6 +1266,7 @@ class FallingLeaves {
     ) {
         this.mesh = new InstancedMesh(new PlaneGeometry(0.15, 0.15), material, count)
         this.mesh.frustumCulled = false
+        this.mesh.userData.drawnBy = 'client/erables.ts · falling leaves'
         const color = new Color()
         for (let i = 0; i < count; i++) {
             this.leaves.push(this.fresh(true))
@@ -1436,6 +1453,7 @@ function treeline(): Mesh {
         new CylinderGeometry(98, 98, 15, 72, 1, true).translate(0, 7.5 + LAWN, 0),
         new MeshStandardMaterial({ map: texture, alphaTest: 0.5, side: BackSide, roughness: 1, color: 0xd8d0c4 })
     )
+    band.userData.drawnBy = 'client/erables.ts · treeline'
     return band
 }
 
@@ -1474,6 +1492,7 @@ function clouds(): Mesh {
         })
     )
     dome.renderOrder = 2
+    dome.userData.drawnBy = 'client/erables.ts · clouds'
     return dome
 }
 

@@ -36,10 +36,10 @@
         "at": "2026-11-13T15:32:22.081Z"
     },
     "leaf-pile": {
-        "version": 2,
+        "version": 3,
         "verdict": "approved",
         "note": "",
-        "at": "2026-11-13T15:32:25.419Z"
+        "at": "2026-11-16T15:14:55.428Z"
     },
     "hedge": {
         "version": 2,
@@ -48,10 +48,10 @@
         "at": "2026-11-13T15:32:29.017Z"
     },
     "split-level": {
-        "version": 2,
+        "version": 3,
         "verdict": "approved",
         "note": "",
-        "at": "2026-11-13T20:20:16.408Z"
+        "at": "2026-11-16T15:14:11.676Z"
     },
     "shed": {
         "version": 2,
@@ -60,9 +60,45 @@
         "at": "2026-11-13T20:20:23.618Z"
     },
     "bungalow": {
+        "version": 3,
+        "verdict": "approved",
+        "note": "",
+        "at": "2026-11-16T15:14:33.950Z"
+    },
+    "ping-pong-table": {
+        "version": 3,
+        "verdict": "approved",
+        "note": "",
+        "at": "2026-11-16T15:15:18.180Z"
+    },
+    "tempo": {
+        "version": 1,
+        "verdict": "approved",
+        "note": "",
+        "at": "2026-11-16T15:14:29.116Z"
+    },
+    "woodpile": {
         "version": 2,
         "verdict": "approved",
         "note": "",
-        "at": "2026-11-13T20:20:27.955Z"
+        "at": "2026-11-16T15:14:42.571Z"
+    },
+    "compost-bin": {
+        "version": 2,
+        "verdict": "approved",
+        "note": "",
+        "at": "2026-11-16T15:14:48.309Z"
+    },
+    "traffic-cone": {
+        "version": 2,
+        "verdict": "approved",
+        "note": "",
+        "at": "2026-11-16T15:14:59.902Z"
+    },
+    "bin": {
+        "version": 2,
+        "verdict": "approved",
+        "note": "",
+        "at": "2026-11-16T15:15:09.132Z"
     }
 }

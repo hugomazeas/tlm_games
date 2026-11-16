@@ -1,5 +1,5 @@
 import type { Builder } from './kit.ts'
-import type { Palette } from './office-palette.ts'
+import type { AssetPalette } from './office-palette.ts'
 
 /**
  * The FPS asset library: whole objects (a car, a maple, a bungalow, a sofa) built in real metres
@@ -50,8 +50,8 @@ export interface Asset<P extends Params = Params> {
     id: string
     name: string
     category: Category
-    /** The materials it's built with: Rue des Érables' (when absent) or the office's. */
-    palette?: Palette
+    /** The materials it's built with: Rue des Érables' (when absent), the office's, or only the names both share. */
+    palette?: AssetPalette
     defaults: P
     params: { [K in keyof P]?: ParamSpec }
     /** Shown side by side in the lab (each over the defaults). */

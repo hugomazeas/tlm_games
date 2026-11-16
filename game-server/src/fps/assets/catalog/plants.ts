@@ -264,8 +264,8 @@ export const LEAF_PILE = defineAsset({
     variants: [{ radius: 0.8 }, {}],
     size: [2.4, 0.7, 2.4],
     current: {
-        version: 2,
-        notes: 'An uneven heap (lumps and a slumped side) under the leaves texture, the browser’s fallen leaves strewn over it. One round.',
+        version: 3,
+        notes: 'Your note: the texture looked stretched. The heap took the ground’s leaves texture projected straight down (and from the sides on its slopes), which smeared it up the sides and switched direction from one triangle to the next. It now has its own: the texture laid along its surface from the top down (in metres, the same size as on the ground), on a material of its own (leafPile). Same heap.',
         build(b, p) {
             const r = p.radius as number
             const g = lumpy(new SphereGeometry(r, 22, 10, 0, Math.PI * 2, 0, Math.PI / 2), r * 0.3, 2.5 / r).scale(
@@ -276,8 +276,32 @@ export const LEAF_PILE = defineAsset({
             const pos = g.attributes.position!
             for (let i = 0; i < pos.count; i++) if (pos.getY(i) < 0) pos.setY(i, 0)
             g.computeVertexNormals()
-            b.put(g, 'leaves', { collide: false })
+            surfaceUvs(g, r, r * 0.5)
+            b.put(g, 'leafPile', { collide: false })
             b.piles.push({ x: 0, y: 0, z: 0, r })
         },
     },
 })
+
+/**
+ * UVs in metres along a dome's surface (a half sphere's own UVs in, `a` its radius, `b` its
+ * height): from the top, the distance down its slope, out along each bearing. The texture keeps
+ * its size up the sides instead of stretching, with no seam.
+ */
+function surfaceUvs(g: BufferGeometry, a: number, b: number): void {
+    // The distance from the top down the ellipse's side, by polar angle (a table: 0 … π/2).
+    const steps = 64
+    const along = [0]
+    for (let i = 1; i <= steps; i++) {
+        const t = ((i - 0.5) / steps) * (Math.PI / 2)
+        along.push(along[i - 1]! + Math.hypot(a * Math.cos(t), b * Math.sin(t)) * (Math.PI / 2 / steps))
+    }
+    const uv = g.attributes.uv!
+    for (let i = 0; i < uv.count; i++) {
+        const k = (1 - uv.getY(i)) * steps
+        const lo = Math.min(steps - 1, Math.floor(k))
+        const s = along[lo]! + (along[lo + 1]! - along[lo]!) * (k - lo)
+        const bearing = uv.getX(i) * Math.PI * 2
+        uv.setXY(i, s * Math.cos(bearing), s * Math.sin(bearing))
+    }
+}
