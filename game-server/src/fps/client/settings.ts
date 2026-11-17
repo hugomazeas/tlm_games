@@ -1,6 +1,6 @@
 /**
  * Your settings, kept in this browser: mouse sensitivity (and while aiming), field of view,
- * invert Y, sound volume, resolution, anti-aliasing, the performance overlay. Read with every value checked and clamped, so an old or hand-edited one can't break
+ * invert Y, sound volume, resolution, anti-aliasing, graphics, the performance overlay. Read with every value checked and clamped, so an old or hand-edited one can't break
  * the game.
  */
 
@@ -22,7 +22,15 @@ export interface Settings {
     antialias: boolean
     /** The asset view (debug): assets in colours, what the maps draw themselves red, names by the crosshair. */
     assetView: boolean
+    /**
+     * `optimized` (the default) for the GPUs that can't keep up: lighter leaves on Rue des Érables
+     * and at most one pixel per CSS pixel; `full` draws everything. Applies at once.
+     */
+    graphics: Graphics
 }
+
+export const GRAPHICS = ['optimized', 'full'] as const
+export type Graphics = (typeof GRAPHICS)[number]
 
 export const DEFAULT_SETTINGS: Settings = {
     sensitivity: 1,
@@ -34,6 +42,7 @@ export const DEFAULT_SETTINGS: Settings = {
     perfOverlay: false,
     antialias: true,
     assetView: false,
+    graphics: 'optimized',
 }
 
 export const LIMITS = {
@@ -70,6 +79,7 @@ export function parseSettings(raw: string | null): Settings {
         perfOverlay: typeof value.perfOverlay === 'boolean' ? value.perfOverlay : DEFAULT_SETTINGS.perfOverlay,
         antialias: typeof value.antialias === 'boolean' ? value.antialias : DEFAULT_SETTINGS.antialias,
         assetView: typeof value.assetView === 'boolean' ? value.assetView : DEFAULT_SETTINGS.assetView,
+        graphics: GRAPHICS.find(g => g === value.graphics) ?? DEFAULT_SETTINGS.graphics,
     }
 }
 

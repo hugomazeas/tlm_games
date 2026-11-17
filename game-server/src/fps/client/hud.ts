@@ -181,6 +181,7 @@ const CSS = `
 #fps-hud .card .slider { display: block; font-size: 13px; margin-bottom: 8px; }
 #fps-hud .card .slider output { float: right; opacity: .8; font-variant-numeric: tabular-nums; }
 #fps-hud .card .slider input { display: block; width: 100%; accent-color: #ffd166; }
+#fps-hud .card .slider select { display: block; width: 100%; margin-top: 4px; }
 #fps-hud .card .check { display: block; font-size: 13px; margin: 4px 0 10px; }
 #fps-hud .slots b { display: inline-block; min-width: 14px; margin-left: 4px; padding: 0 3px; border-radius: 3px; text-align: center; background: rgba(255,255,255,.12); font-size: 10px; }
 #fps-hud .slots b.on { background: #ffd166; color: #1a1206; }
@@ -539,6 +540,11 @@ export class Hud {
             ${slider('aimSensitivity', 'While aiming', times)}
             ${slider('fov', 'Field of view', v => `${v}°`)}
             ${slider('volume', 'Sound', percent)}
+            <label class="slider">Graphics
+                <select data-setting="graphics">
+                    <option value="optimized" ${s.graphics === 'optimized' ? 'selected' : ''}>Optimized (lighter leaves, 1× pixels)</option>
+                    <option value="full" ${s.graphics === 'full' ? 'selected' : ''}>Full (everything, for a strong GPU)</option>
+                </select></label>
             ${slider('resolution', 'Resolution', resolution)}
             <label class="check"><input type="checkbox" data-setting="invertY" ${s.invertY ? 'checked' : ''}> Invert mouse Y</label>
             <label class="check"><input type="checkbox" data-setting="antialias" ${s.antialias ? 'checked' : ''}> Anti-aliasing <small data-out="antialias"></small></label>
@@ -561,6 +567,10 @@ export class Hud {
                 perfOverlay: panel.querySelector<HTMLInputElement>('[data-setting="perfOverlay"]')!.checked,
                 antialias: panel.querySelector<HTMLInputElement>('[data-setting="antialias"]')!.checked,
                 assetView: panel.querySelector<HTMLInputElement>('[data-setting="assetView"]')!.checked,
+                graphics:
+                    panel.querySelector<HTMLSelectElement>('[data-setting="graphics"]')!.value === 'full'
+                        ? 'full'
+                        : 'optimized',
             }
         }
         // The canvas keeps the anti-aliasing it was made with: say when a change waits for a reload.
