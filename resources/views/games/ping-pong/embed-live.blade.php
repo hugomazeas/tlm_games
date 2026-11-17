@@ -36,9 +36,15 @@
     <!-- Match active -->
     <template x-if="matchActive">
         <div style="position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
-            <!-- Video player -->
-            <div x-show="hasVideo" style="width:100%;height:100%;position:absolute;inset:0;transform:scaleX(-1);">
+            <!-- Video players: the main angle, the wide one, or both side by side (?angle=main|wide|both) -->
+            <div x-show="hasVideo && shownAngle() !== 'wide'" style="height:100%;position:absolute;top:0;left:0;transform:scaleX(-1);"
+                 :style="{ width: shownAngle() === 'both' ? '50%' : '100%' }">
                 <video id="embedPlayer" muted autoplay playsinline
+                       style="width:100%;height:100%;object-fit:contain;background:#000;"></video>
+            </div>
+            <div x-show="hasVideo && shownAngle() !== 'main'" style="height:100%;position:absolute;top:0;right:0;"
+                 :style="{ width: shownAngle() === 'both' ? '50%' : '100%' }">
+                <video id="embedPlayerWide" muted autoplay playsinline data-wide-player
                        style="width:100%;height:100%;object-fit:contain;background:#000;"></video>
             </div>
 
@@ -48,9 +54,20 @@
                 <span style="color:white;font-size:0.9rem;font-weight:700;">LIVE</span>
             </div>
 
-            <!-- Overlay: Share embed button -->
+            <!-- Overlay: camera picker and share embed button -->
+            <div style="position:absolute;top:16px;right:16px;display:flex;align-items:center;gap:8px;">
+            <div x-show="hasVideo && wideUrl" data-angle-picker role="group" aria-label="Camera"
+                 style="display:inline-flex;background:rgba(0,0,0,0.6);border-radius:6px;overflow:hidden;opacity:0.7;transition:opacity 0.15s;"
+                 @mouseenter="$el.style.opacity=1" @mouseleave="$el.style.opacity=0.7">
+                <template x-for="option in [['main', 'Main'], ['wide', 'Wide'], ['both', 'Both']]" :key="option[0]">
+                    <button type="button" @click="setAngle(option[0])" :aria-pressed="angle === option[0]"
+                            style="padding:4px 10px;border:0;cursor:pointer;font-size:0.8rem;"
+                            :style="angle === option[0] ? { background: '#fbbf24', color: '#000' } : { background: 'transparent', color: '#fff' }"
+                            x-text="option[1]"></button>
+                </template>
+            </div>
             <button type="button" @click="shareEmbed()"
-                    style="position:absolute;top:16px;right:16px;background:rgba(0,0,0,0.6);padding:4px 12px;border-radius:6px;color:white;border:0;cursor:pointer;font-size:0.8rem;display:inline-flex;align-items:center;gap:6px;opacity:0.7;transition:opacity 0.15s;"
+                    style="background:rgba(0,0,0,0.6);padding:4px 12px;border-radius:6px;color:white;border:0;cursor:pointer;font-size:0.8rem;display:inline-flex;align-items:center;gap:6px;opacity:0.7;transition:opacity 0.15s;"
                     @mouseenter="$el.style.opacity=1" @mouseleave="$el.style.opacity=0.7">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
@@ -58,6 +75,7 @@
                 </svg>
                 <span x-text="shareLabel"></span>
             </button>
+            </div>
 
             <!-- Overlay: Corner scores (on top of video). The video is mirrored, so
                  player_left appears on the left of the image, same as /watch. -->
@@ -83,12 +101,15 @@
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pusher-js@8.4.0/dist/web/pusher.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
+@include('games.ping-pong.partials.live-angles-script')
 <script>
 // Give up waiting for the stream to play out after the tail plus ~10s of stream latency and some slack.
 const MATCH_END_FALLBACK_MS = ({{ (int) config('pingpong.recording_tail_seconds') }} + 25) * 1000;
 
 function embedLive() {
     return {
+        ...pingPongLiveAngles('embedPlayer', 'embedPlayerWide'),
+
         matchActive: false,
         hasVideo: false,
         hlsInstance: null,
@@ -189,7 +210,7 @@ function embedLive() {
             if (!e?.hls_url) return;
 
             if (e.match_id === this.matchId) {
-                if (!this.hasVideo) this.attachStream(e.hls_url);
+                if (!this.hasVideo) this.attachStream(e.hls_url, e.wide_hls_url);
                 return;
             }
 
@@ -201,10 +222,11 @@ function embedLive() {
             await this.checkForLiveMatch();
         },
 
-        attachStream(hlsUrl) {
+        attachStream(hlsUrl, wideHlsUrl = null) {
             this.hasVideo = true;
             this.hlsNetworkErrorCount = 0;
             this.$nextTick(() => this.initPlayer(hlsUrl));
+            this.attachWide(wideHlsUrl);
         },
 
         async checkForLiveMatch() {
@@ -218,7 +240,7 @@ function embedLive() {
                         this.match = recData.match;
                         this.matchId = recData.match_id;
                         this.matchActive = true;
-                        this.attachStream(recData.hls_url);
+                        this.attachStream(recData.hls_url, recData.wide_hls_url);
                         this.subscribeToScores();
                         return;
                     }
@@ -276,10 +298,11 @@ function embedLive() {
             const onAir = recData.active && recData.hls_url && recData.match_id === this.matchId;
 
             if (onAir && !this.hasVideo) {
-                this.attachStream(recData.hls_url);
+                this.attachStream(recData.hls_url, recData.wide_hls_url);
             } else if (!onAir && this.hasVideo && this.hlsNetworkErrorCount > 0) {
                 this.hasVideo = false;
                 this.destroyPlayer();
+                this.detachWide();
             }
         },
 
@@ -309,6 +332,7 @@ function embedLive() {
             this.matchActive = false;
             this.hasVideo = false;
             this.destroyPlayer();
+            this.detachWide();
             this.leaveMatchChannel();
 
             // A match may have started during the tail: jump straight to it.

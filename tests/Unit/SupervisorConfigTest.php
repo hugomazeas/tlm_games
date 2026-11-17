@@ -32,7 +32,7 @@ class SupervisorConfigTest extends TestCase
      */
     public function test_the_compose_files_parse_and_keep_the_game_servers_command(): void
     {
-        foreach (['docker-compose.yml', 'docker-compose.camera.yml'] as $file) {
+        foreach (['docker-compose.yml', 'docker-compose.camera.yml', 'docker-compose.camera-wide.yml'] as $file) {
             $parsed = Yaml::parseFile(dirname(__DIR__, 2).'/'.$file);
             $this->assertIsArray($parsed['services'] ?? null, "{$file} has no services");
         }
@@ -78,5 +78,15 @@ class SupervisorConfigTest extends TestCase
 
         $this->assertStringContainsString('[program:camera-queue]', $config);
         $this->assertStringContainsString('queue:work --queue=camera', $config);
+    }
+
+    public function test_supervisor_works_the_video_queue_that_encodes_the_wide_angle(): void
+    {
+        $config = file_get_contents(dirname(__DIR__, 2).'/docker/supervisor/supervisord.conf');
+
+        $this->assertSame('video', \App\Jobs\FinalizeWideRecordingJob::QUEUE);
+        $this->assertStringContainsString('[program:video-queue]', $config);
+        // Long enough for a 2K encode, which the job's own timeout allows too
+        $this->assertStringContainsString('queue:work --queue=video --sleep=3 --tries=1 --timeout=1800', $config);
     }
 }

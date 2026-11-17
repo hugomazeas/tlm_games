@@ -559,6 +559,7 @@ class PingPongApiController extends Controller
                 $data['recording'] = $match->recording ? [
                     'status' => $match->recording->status,
                     'hls_url' => $match->recording->hls_url,
+                    'wide_hls_url' => $match->recording->wide_hls_url,
                 ] : null;
 
                 return $data;
@@ -672,6 +673,9 @@ class PingPongApiController extends Controller
                 'status' => $match->recording->status,
                 'video_url' => $match->recording->video_url,
                 'hls_url' => $match->recording->hls_url,
+                'wide_video_url' => $match->recording->wide_video_url,
+                'wide_hls_url' => $match->recording->wide_hls_url,
+                'wide_offset_ms' => $match->recording->wide_offset_ms,
                 'duration_seconds' => $match->recording->duration_seconds,
                 'created_at' => $match->recording->created_at?->toISOString(),
             ];
@@ -927,6 +931,7 @@ class PingPongApiController extends Controller
                 $response['recording'] = [
                     'status' => $recording->status,
                     'video_url' => $recording->video_url,
+                    'wide_video_url' => $recording->wide_video_url,
                 ];
             }
         }
@@ -1018,6 +1023,7 @@ class PingPongApiController extends Controller
             'active' => true,
             'match_id' => $recording->match_id,
             'hls_url' => $recording->hls_url,
+            'wide_hls_url' => $recording->wide_hls_url,
             'match' => $match,
         ]);
     }

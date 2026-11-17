@@ -29,9 +29,9 @@ class RecordingsCleanup extends Command
 
         $deleted = 0;
         foreach ($old as $recording) {
-            if ($recording->video_path) {
-                $fullPath = storage_path('app/public/' . $recording->video_path);
-                if (file_exists($fullPath)) {
+            foreach ([$recording->video_path, $recording->wide_video_path] as $videoPath) {
+                $fullPath = $videoPath ? storage_path('app/public/'.$videoPath) : null;
+                if ($fullPath && file_exists($fullPath)) {
                     unlink($fullPath);
                 }
             }

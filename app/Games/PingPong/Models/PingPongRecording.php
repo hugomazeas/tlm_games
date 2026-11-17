@@ -19,6 +19,10 @@ class PingPongRecording extends Model
         'file_size',
         'duration_seconds',
         'error_message',
+        'wide_hls_path',
+        'wide_video_path',
+        'wide_file_size',
+        'wide_offset_ms',
     ];
 
     protected function casts(): array
@@ -27,6 +31,8 @@ class PingPongRecording extends Model
             'ffmpeg_pid' => 'integer',
             'file_size' => 'integer',
             'duration_seconds' => 'integer',
+            'wide_file_size' => 'integer',
+            'wide_offset_ms' => 'integer',
         ];
     }
 
@@ -51,5 +57,26 @@ class PingPongRecording extends Model
         }
 
         return '/recordings/live/'.$this->match_id.'/stream.m3u8';
+    }
+
+    /**
+     * The wide angle's finished video, once the main one is done and the wide one finalized.
+     */
+    public function getWideVideoUrlAttribute(): ?string
+    {
+        if ($this->status !== 'completed' || ! $this->wide_video_path) {
+            return null;
+        }
+
+        return '/storage/'.$this->wide_video_path;
+    }
+
+    public function getWideHlsUrlAttribute(): ?string
+    {
+        if ($this->status !== 'recording' || ! $this->wide_hls_path) {
+            return null;
+        }
+
+        return '/recordings/live/'.$this->match_id.'/wide/stream.m3u8';
     }
 }

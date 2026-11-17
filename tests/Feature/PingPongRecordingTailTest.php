@@ -224,7 +224,7 @@ class PingPongRecordingTailTest extends TestCase
     {
         return new class extends VideoRecordingService
         {
-            protected function spawnFfmpeg(string $segmentPattern, string $m3u8Path, bool $withAudio): int
+            protected function spawnFfmpeg(string $segmentPattern, string $m3u8Path, bool $withAudio, bool $withWide = false): int
             {
                 return 0;
             }

@@ -136,7 +136,7 @@ class PingPongLiveStreamReadyTest extends TestCase
 
         $this->assertEquals([new Channel('ping-pong.live')], $event->broadcastOn());
         $this->assertSame('stream.ready', $event->broadcastAs());
-        $this->assertSame(['match_id' => 7, 'hls_url' => '/recordings/live/7/stream.m3u8'], $event->broadcastWith());
+        $this->assertSame(['match_id' => 7, 'hls_url' => '/recordings/live/7/stream.m3u8', 'wide_hls_url' => null], $event->broadcastWith());
     }
 
     public function test_live_recording_endpoint_waits_for_the_playlist(): void

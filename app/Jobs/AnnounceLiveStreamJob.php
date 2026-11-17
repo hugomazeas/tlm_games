@@ -44,7 +44,7 @@ class AnnounceLiveStreamJob implements ShouldQueue
             }
 
             if ($videoRecordingService->isStreamReady($recording)) {
-                broadcast(new LiveStreamReady($recording->match_id, $recording->hls_url));
+                broadcast(new LiveStreamReady($recording->match_id, $recording->hls_url, $recording->wide_hls_url));
 
                 return;
             }

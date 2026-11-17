@@ -41,6 +41,29 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Wide Camera (second angle)
+    |--------------------------------------------------------------------------
+    |
+    | The Anker PowerConf C200, filmed by the same ffmpeg as the C920 so both
+    | angles share one clock. `device` is the path inside the container
+    | (docker-compose.camera-wide.yml maps the host's camera there); when it
+    | is missing, matches are filmed by the C920 alone, as before. `filter`
+    | is an ffmpeg -vf chain for the way it is mounted (e.g. "hflip,vflip"),
+    | empty for none. `latency_ms` is how much later the wide camera delivers
+    | the same moment than the C920 (clap in front of both, compare): the
+    | players shift the wide angle by it, live and recorded.
+    |
+    */
+
+    'wide_camera' => [
+        'device' => env('RECORDING_WIDE_DEVICE', '/dev/video-wide'),
+        'video_size' => env('RECORDING_WIDE_VIDEO_SIZE', '2560x1440'),
+        'filter' => env('RECORDING_WIDE_FILTER', ''),
+        'latency_ms' => (int) env('RECORDING_WIDE_LATENCY_MS', 0),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Match Recording Tail
     |--------------------------------------------------------------------------
     |
