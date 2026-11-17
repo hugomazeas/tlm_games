@@ -1,7 +1,15 @@
 <script>
 const PING_PONG_ANGLES = ['main', 'wide', 'both'];
-// How much later the wide camera delivers the same moment than the main one (a clap test)
-const PING_PONG_WIDE_LATENCY_SECONDS = {{ (int) config('pingpong.wide_camera.latency_ms') }} / 1000;
+// How much later the wide camera delivers the same moment than the main one (a clap test;
+// negative when the wide one is ahead)
+const PING_PONG_WIDE_LATENCY_SECONDS = pingPongWideLatencyMs() / 1000;
+
+/** RECORDING_WIDE_LATENCY_MS, unless ?wide_latency_ms= tries another value (to find it by eye, side by side). */
+function pingPongWideLatencyMs() {
+    const tried = new URLSearchParams(window.location.search).get('wide_latency_ms');
+    if (tried !== null && /^-?\d+$/.test(tried.trim())) return parseInt(tried, 10);
+    return {{ (int) config('pingpong.wide_camera.latency_ms') }};
+}
 
 /** The angle this viewer last picked (?angle= in the URL wins): main, wide or both. */
 function pingPongStoredAngle() {
