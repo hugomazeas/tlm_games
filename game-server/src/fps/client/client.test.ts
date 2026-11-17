@@ -179,6 +179,10 @@ describe('settings', () => {
         expect(parseSettings(null).assetView).toBe(false)
         expect(parseSettings(JSON.stringify({ assetView: true })).assetView).toBe(true)
         expect(parseSettings(JSON.stringify({ assetView: 'yes' })).assetView).toBe(false)
+        // Graphics: optimized unless this browser picked full; anything else is optimized.
+        expect(parseSettings(null).graphics).toBe('optimized')
+        expect(parseSettings(JSON.stringify({ graphics: 'full' })).graphics).toBe('full')
+        expect(parseSettings(JSON.stringify({ graphics: 'ultra' })).graphics).toBe('optimized')
     })
 
     test('aiming zooms in to a bit over half the field of view', () => {

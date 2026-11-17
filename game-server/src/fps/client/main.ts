@@ -199,6 +199,7 @@ const perf = new PerfOverlay()
 const gpuTimer = new GpuTimer(renderer.getContext() as WebGL2RenderingContext)
 const gpuName = gpuNameOf(renderer.getContext())
 perf.visible = settings.perfOverlay
+applyGraphics()
 applyResolution()
 /** Esc → Settings → Show assets: which of the maps' objects are library assets, which the maps draw. */
 const assetView = new AssetDebug([office.root, erables.group])
@@ -209,13 +210,15 @@ const sounds = new Sounds()
 const hud = new Hud(config.backUrl, {
     settings,
     onSettings: changed => {
-        const resized = changed.resolution !== settings.resolution
+        const resized = changed.resolution !== settings.resolution || changed.graphics !== settings.graphics
+        const regraphed = changed.graphics !== settings.graphics
         settings = changed
         saveSettings(changed)
         controls.invertY = changed.invertY
         sounds.setVolume(changed.volume)
         perf.visible = changed.perfOverlay
         assetView.enabled = changed.assetView
+        if (regraphed) applyGraphics()
         if (resized) applyResolution()
     },
     onStart: rules => startMatch(rules),
@@ -1047,10 +1050,21 @@ function frame(now: number): void {
 /** This frame's CPU time per section (ms), for the overlay. */
 const cpu: Record<Section, number> = { sim: 0, scene: 0, hud: 0, render: 0 }
 
-/** The Resolution setting: a share of the full pixel ratio (the canvas stays the window's size). */
+/**
+ * The Resolution setting: a share of the full pixel ratio (the canvas stays the window's size);
+ * Optimized graphics never draws more than one pixel per CSS pixel (a laptop scaled to 125% draws
+ * 1.56× the pixels otherwise).
+ */
 function applyResolution(): void {
-    renderer.setPixelRatio(FULL_PIXEL_RATIO * settings.resolution)
+    const full = settings.graphics === 'full' ? FULL_PIXEL_RATIO : Math.min(FULL_PIXEL_RATIO, 1)
+    renderer.setPixelRatio(full * settings.resolution)
     renderer.setSize(innerWidth, innerHeight)
+}
+
+/** The Graphics setting: Rue des Érables' leaves (they cast shadows: drawn again once). */
+function applyGraphics(): void {
+    erables.setGraphics(settings.graphics)
+    renderer.shadowMap.needsUpdate = true
 }
 
 /** The graphics card the browser draws with (when it says). */

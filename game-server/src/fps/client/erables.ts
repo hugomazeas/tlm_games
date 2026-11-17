@@ -49,6 +49,7 @@ import {
     WORLD_UV,
 } from '../map/erables-kit.ts'
 import type { Office } from '../map/office.js'
+import type { Graphics } from './settings.ts'
 import type { MapId } from '../protocol.ts'
 import { type FpsWorld, worldFrom } from '../sim/world.ts'
 
@@ -69,6 +70,8 @@ export interface ErablesScene {
     world: FpsWorld
     /** Falling leaves, the stalled car's hazards. */
     update(now: number): void
+    /** Esc → Settings → Graphics: how many leaves (the rest of the street is the same either way). */
+    setGraphics(graphics: Graphics): void
 }
 
 // --- Painting ----------------------------------------------------------------------------------
@@ -1091,7 +1094,15 @@ function quadGeometry(positions: number[], normals: number[], colors: number[], 
  * narrow one for birches, a cone for cedars), each card's normal pointing out of the crown so the
  * crown shades like a volume, tinted from its tree's palette.
  */
-export function crowns(trees: readonly TreeSpot[], seed: number): Mesh {
+export function crowns(
+    trees: readonly TreeSpot[],
+    seed: number,
+    opts: { sparse?: number; grow?: number; material?: Material } = {}
+): Mesh {
+    // `sparse` of the cards, each larger (by 1/√sparse: about as full); a `grow` under that covers
+    // less in all, fewer layers of cards for the GPU to test (Optimized graphics).
+    const sparse = opts.sparse ?? 1
+    const grow = opts.grow ?? 1 / Math.sqrt(sparse)
     const R = rng(seed)
     const positions: number[] = []
     const normals: number[] = []
@@ -1110,7 +1121,7 @@ export function crowns(trees: readonly TreeSpot[], seed: number): Mesh {
             const middle = new Vector3(tree.x, tree.y + tree.height * 0.65, tree.z)
             for (const [cx, cy, cz, cr] of tree.clusters) {
                 const clump = new Vector3(cx, cy, cz)
-                const n = Math.max(6, Math.round(26 * cr * cr))
+                const n = Math.max(Math.round(6 * sparse) || 1, Math.round(26 * cr * cr * sparse))
                 for (let i = 0; i < n; i++) {
                     const dir = new Vector3(R() * 2 - 1, R() * 1.6 - 0.6, R() * 2 - 1)
                     if (dir.lengthSq() > 1 || dir.lengthSq() < 0.02) {
@@ -1125,7 +1136,7 @@ export function crowns(trees: readonly TreeSpot[], seed: number): Mesh {
                         .add(at.clone().sub(middle).normalize().multiplyScalar(0.4))
                     normal.y += 0.35
                     normal.normalize()
-                    const size = 1.15 * (0.75 + R() * 0.5)
+                    const size = 1.15 * grow * (0.75 + R() * 0.5)
                     axis.set(R() - 0.5, R() - 0.5, R() - 0.5).normalize()
                     q.setFromAxisAngle(axis, R() * Math.PI)
                     const corners = [
@@ -1144,7 +1155,7 @@ export function crowns(trees: readonly TreeSpot[], seed: number): Mesh {
         }
         const cedar = false
         const radius = tree.crown
-        const count = Math.round((cedar ? 110 : tree.kind === 'birch' ? 150 : 210) * (radius / 3.5) ** 2)
+        const count = Math.round((cedar ? 110 : tree.kind === 'birch' ? 150 : 210) * (radius / 3.5) ** 2 * sparse)
         const centre = new Vector3(tree.x, tree.y + tree.height * (cedar ? 0.5 : 0.66), tree.z)
         for (let i = 0; i < count; i++) {
             let at: Vector3
@@ -1175,7 +1186,7 @@ export function crowns(trees: readonly TreeSpot[], seed: number): Mesh {
             const normal = at.clone().sub(centre)
             normal.y = cedar ? 0.4 : normal.y + 0.6
             normal.normalize()
-            const size = (cedar ? 1.1 : 1.7) * (0.7 + R() * 0.6)
+            const size = (cedar ? 1.1 : 1.7) * grow * (0.7 + R() * 0.6)
             axis.set(R() - 0.5, R() - 0.5, R() - 0.5).normalize()
             q.setFromAxisAngle(axis, R() * Math.PI)
             const corners = [
@@ -1188,13 +1199,15 @@ export function crowns(trees: readonly TreeSpot[], seed: number): Mesh {
             pushQuad(positions, normals, colors, uvs, corners, normal, color)
         }
     }
-    const material = new MeshStandardMaterial({
-        map: leafCard(),
-        vertexColors: true,
-        alphaTest: 0.5,
-        side: DoubleSide,
-        roughness: 0.85,
-    })
+    const material =
+        opts.material ??
+        new MeshStandardMaterial({
+            map: leafCard(),
+            vertexColors: true,
+            alphaTest: 0.5,
+            side: DoubleSide,
+            roughness: 0.85,
+        })
     const mesh = new Mesh(quadGeometry(positions, normals, colors, uvs), material)
     mesh.castShadow = true
     mesh.receiveShadow = true
@@ -1207,13 +1220,19 @@ export function fallenLeaves(
     spots: Array<{ x: number; z: number; r: number; count: number; heap?: number }>,
     floorAt: (x: number, z: number) => number | null,
     material: Material,
-    seed: number
-): Mesh {
+    seed: number,
+    light = 1
+): { mesh: Mesh; lightCount: number } {
     const R = rng(seed)
-    const positions: number[] = []
-    const normals: number[] = []
-    const colors: number[] = []
-    const uvs: number[] = []
+    // Its own draws, so the leaves lie where they always did.
+    const pick = rng(seed + 1000)
+    // Two lots: a `light` share drawn by every setting, then the rest (Full only, a draw range).
+    const lots = [0, 1].map(() => ({
+        positions: [] as number[],
+        normals: [] as number[],
+        colors: [] as number[],
+        uvs: [] as number[],
+    }))
     const up = new Vector3(0, 1, 0)
     const color = new Color()
     for (const spot of spots) {
@@ -1238,13 +1257,23 @@ export function fallenLeaves(
                 new Vector3(x - c - s, y - tilt, z - s + c),
             ]
             color.set(LEAF_COLORS[Math.floor(R() * LEAF_COLORS.length)]!).multiplyScalar(0.75 + R() * 0.35)
-            pushQuad(positions, normals, colors, uvs, corners, up, color)
+            const lot = lots[pick() < light ? 0 : 1]!
+            pushQuad(lot.positions, lot.normals, lot.colors, lot.uvs, corners, up, color)
         }
     }
-    const mesh = new Mesh(quadGeometry(positions, normals, colors, uvs), material)
+    const [first, rest] = lots as [(typeof lots)[0], (typeof lots)[0]]
+    const mesh = new Mesh(
+        quadGeometry(
+            [...first.positions, ...rest.positions],
+            [...first.normals, ...rest.normals],
+            [...first.colors, ...rest.colors],
+            [...first.uvs, ...rest.uvs]
+        ),
+        material
+    )
     mesh.receiveShadow = true
     mesh.userData.drawnBy = 'client/erables.ts · fallen leaves'
-    return mesh
+    return { mesh, lightCount: first.positions.length / 3 }
 }
 
 /** Leaves coming down from the crowns, swaying, round and round. */
@@ -1544,21 +1573,45 @@ export function buildErables(office: Office): ErablesScene {
         spots.push({ x: -26 + R() * 52, z: (R() < 0.5 ? -1 : 1) * (3.9 + R() * 0.5), r: 0.6, count: 8 })
         spots.push({ x: -26 + R() * 52, z: -4 + R() * 8, r: 0.8, count: 2 })
     }
-    const fallen = fallenLeaves(spots, floorAt, leafMaterial, 5)
+    const fallen = fallenLeaves(spots, floorAt, leafMaterial, 5, LIGHT_LEAVES.fallen)
     const backdropFallen = fallenLeaves(
         backdrop.trees.filter(t => t.kind !== 'cedar').map(t => ({ x: t.x, z: t.z, r: t.crown * 1.2, count: 90 })),
         () => LAWN - 0.02,
         leafMaterial,
         6
-    )
+    ).mesh
     const leafCrowns = crowns(allTrees, 41)
+    // Optimized graphics: the same crowns in fewer, bigger cards covering less (the cards' layers
+    // were most of the street's cost on a weak GPU), on the same material (no new shader).
+    const material = leafCrowns.material as Material
+    const lightCrowns = crowns(built.trees, 43, { ...LIGHT_LEAVES.crowns, material })
+    const lightBackdropCrowns = crowns(backdrop.trees, 44, { ...LIGHT_LEAVES.backdrop, material })
     const falling = new FallingLeaves(leafMaterial.clone(), built.trees, rng(17))
     ;(falling.mesh.material as MeshStandardMaterial).vertexColors = false
+    const fallingCount = falling.mesh.count
 
     bake(built.drawn)
     bake(backdrop.drawn)
-    built.drawn.add(leafCrowns, fallen, backdropFallen, falling.mesh, treeline(), clouds())
+    built.drawn.add(
+        leafCrowns,
+        lightCrowns,
+        lightBackdropCrowns,
+        fallen.mesh,
+        backdropFallen,
+        falling.mesh,
+        treeline(),
+        clouds()
+    )
     root.visible = false
+
+    const setGraphics = (graphics: Graphics) => {
+        const full = graphics === 'full'
+        leafCrowns.visible = backdropFallen.visible = full
+        lightCrowns.visible = lightBackdropCrowns.visible = !full
+        fallen.mesh.geometry.setDrawRange(0, full ? Infinity : fallen.lightCount)
+        falling.mesh.count = full ? fallingCount : Math.round(fallingCount * LIGHT_LEAVES.falling)
+    }
+    setGraphics('optimized')
 
     return {
         group: root,
@@ -1568,8 +1621,21 @@ export function buildErables(office: Office): ErablesScene {
             falling.update(now)
             hazard.emissiveIntensity = Math.floor(now / 520) % 2 === 0 ? 2.2 : 0.05
         },
+        setGraphics,
     }
 }
+
+/**
+ * Optimized graphics' leaves: the street's crowns in 30% of the cards, each 1.35× (about half the
+ * area: fewer layers, as full to the eye), the neighbourhood's thinner still, half the fallen
+ * leaves on the ground (none past the fences), half of those falling.
+ */
+const LIGHT_LEAVES = {
+    crowns: { sparse: 0.3, grow: 1.35 },
+    backdrop: { sparse: 0.12, grow: 2 },
+    fallen: 0.5,
+    falling: 0.5,
+} as const
 
 /**
  * Switching between the office and Rue des Érables: what shows, and the office's own lights retuned

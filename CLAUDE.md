@@ -470,7 +470,12 @@ Playable at `/games/office-fps`.
   few is held one event: applied with the next if that carries on the same way (a real flick,
   which at 40 fps can start that suddenly), thrown away otherwise.
 - **Settings** (`client/settings.ts`, in this browser): sensitivity, aiming sensitivity, field
-  of view, invert Y, sound volume, on the Esc menu.
+  of view, invert Y, sound volume, on the Esc menu. **Graphics** (like racing's High/Low):
+  `optimized` by default, `full` for a strong GPU, applied at once. Optimized draws Rue des Érables'
+  crowns in fewer, bigger leaf cards covering about half the area (`LIGHT_LEAVES`, a second mesh on
+  the same material: no new shader), half the fallen and falling leaves, none past the fences, and
+  at most one pixel per CSS pixel. The leaves' alpha-tested, double-sided cards were the street's
+  whole extra GPU cost over the office (measured: Full 30% or more a frame, Optimized ~the office's).
 - **Sound** (`client/sounds.ts`): every effect synthesized with Web Audio (oscillator sweeps and
   filtered noise, no files), unlocked by the click that takes the mouse. Others' shots and
   swings are panned and faded by `spatial()`. Reloads: `SelfState.reloadLeftMs` drives the ring
