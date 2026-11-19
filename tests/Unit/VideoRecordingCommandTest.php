@@ -88,12 +88,22 @@ class VideoRecordingCommandTest extends TestCase
 
     public function test_two_camera_command_without_audio_maps_video_only(): void
     {
+        config(['pingpong.wide_camera.filter' => '']);
+
         $cmd = (new VideoRecordingService)->buildFfmpegCommand('/live/7/segment%03d.ts', '/live/7/stream.m3u8', withAudio: false, withWide: true);
 
         $this->assertStringNotContainsString('alsa', $cmd);
         $this->assertStringNotContainsString(':a', $cmd);
         $this->assertStringContainsString('-map 0:v -vf "hflip,vflip"', $cmd);
         $this->assertStringContainsString('-map 1:v -c:v libx264', $cmd);
+    }
+
+    public function test_the_wide_camera_is_turned_upright_by_default(): void
+    {
+        // Upside down on the ceiling, like the C920: a half turn
+        $cmd = (new VideoRecordingService)->buildFfmpegCommand('/live/7/segment%03d.ts', '/live/7/stream.m3u8', withAudio: false, withWide: true);
+
+        $this->assertStringContainsString("-map 1:v -vf 'hflip,vflip' -c:v libx264", $cmd);
     }
 
     public function test_the_wide_camera_gets_its_own_mounting_filter(): void

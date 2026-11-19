@@ -152,6 +152,21 @@ class PingPongWideAngleTest extends TestCase
         $this->assertEqualsWithDelta(380, $recording->fresh()->wide_offset_ms, 40);
     }
 
+    public function test_a_wide_camera_ahead_of_the_main_one_is_held_back_on_the_match_page(): void
+    {
+        $this->requireFfmpeg();
+        // The C200 sees a clap 200 ms before the C920 does
+        config(['pingpong.wide_camera.latency_ms' => -200]);
+        $recording = $this->recording(['status' => 'finalizing', 'wide_hls_path' => 'wide']);
+        $dir = storage_path('app/recordings/live/'.$recording->match_id);
+        $this->makeHls($dir, 0);
+        $this->makeHls($dir.'/wide', 0.5);
+
+        (new FinalizeRecordingJob($recording->id, $recording->match_id))->handle();
+
+        $this->assertEqualsWithDelta(700, $recording->fresh()->wide_offset_ms, 40);
+    }
+
     public function test_the_wide_angle_is_kept_at_its_size_then_both_are_uploaded(): void
     {
         $this->requireFfmpeg();
@@ -262,6 +277,17 @@ class PingPongWideAngleTest extends TestCase
             $this->assertStringContainsString('data-wide-player', $html, $page);
             $this->assertStringContainsString('function pingPongStoredAngle()', $html, $page);
         }
+    }
+
+    public function test_the_live_pages_hold_the_wide_angle_back_by_the_configured_latency_or_a_tried_one(): void
+    {
+        config(['pingpong.wide_camera.latency_ms' => -180]);
+
+        $html = $this->get('/games/ping-pong/watch')->assertOk()->getContent();
+
+        $this->assertStringContainsString('return -180;', $html);
+        // ?wide_latency_ms= tries another value live, to find the one for .env
+        $this->assertStringContainsString("get('wide_latency_ms')", $html);
     }
 
     /**
