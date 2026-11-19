@@ -254,8 +254,9 @@ Playable at `/games/office-fps`.
   records, per weapon, per mode, nemesis and favourite target, recent matches). The `game_types` and
   `game_modes` rows come from migrations (deploys don't seed).
 - **Host and rules:** no match starts by itself. Everyone warms up **in the office** until the host
-  (the longest seated; it passes on when they leave) opens their **Next match** panel (N, or the
-  Esc menu's button; `hud.renderSetup`) and picks a map, a mode that map allows and a limit and a
+  (the longest seated; it passes on when they leave) sets up the **Next match** on the Esc menu's
+  Match page (N, or Esc: in warmup the host's menu opens there; `hud.setupPage`) and picks a map, a
+  mode that map allows and a limit and a
   length (`Rules`: `MAPS` / `MAP_INFO` / `playableOn`, `MODES`, `FRAG_LIMITS`, `MATCH_MINUTES`). Each
   change goes out as `plan` (`MatchView.next`: everyone's warmup line shows it, browsers build its
   map); Start sends `start`. Then `loading` (each browser says `ready` once it has the map; the
@@ -469,6 +470,15 @@ Playable at `/games/office-fps`.
   (`unadjustedMovement`, falling back to a plain lock), and a movement far bigger than the last
   few is held one event: applied with the next if that carries on the same way (a real flick,
   which at 40 fps can start that suddenly), thrown away otherwise.
+- **The Esc menu** (`hud.card`, styled by `MENU_CSS` in `hud.ts`): the game dimmed behind (no blur),
+  a panel with a sidebar (Play / Resume, the pages Loadout, Match, Settings, Controls, back to the
+  Hub) and the page beside it. Resume or a click outside the panel takes the mouse (`[data-resume]`,
+  `[data-menu-panel]` in `controls.ts`); a click inside never does. Match says what's on, what's
+  lined up and who starts it. The host's menu differs in warmup (`primaryAction`): it opens on Match,
+  which is the Next match setup (map cards, modes, length, Options, Start in a bar that stays in
+  view), a dot on the tab, and the sidebar's big button is Start match / Rematch (Back to warmup
+  under it); Start also takes the mouse. Controls lists every key; settings are rows (sliders,
+  Off/On segments), Restore defaults.
 - **Settings** (`client/settings.ts`, in this browser): sensitivity, aiming sensitivity, field
   of view, invert Y, sound volume, on the Esc menu. **Graphics** (like racing's High/Low):
   `optimized` by default, `full` for a strong GPU, applied at once. Optimized draws Rue des Érables'

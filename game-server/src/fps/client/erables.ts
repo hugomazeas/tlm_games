@@ -1561,7 +1561,6 @@ export function buildErables(office: Office): ErablesScene {
         side: DoubleSide,
         roughness: 0.9,
     })
-    const allTrees = [...built.trees, ...backdrop.trees]
     const spots: Array<{ x: number; z: number; r: number; count: number; heap?: number }> = [
         ...built.trees
             .filter(t => t.kind !== 'cedar')
@@ -1580,7 +1579,10 @@ export function buildErables(office: Office): ErablesScene {
         leafMaterial,
         6
     ).mesh
-    const leafCrowns = crowns(allTrees, 41)
+    // The street's trees full; the neighbourhood's (only ever seen over the fences) light: they were
+    // most of the map's triangles, every one an alpha-tested, double-sided leaf card.
+    const leafCrowns = crowns(built.trees, 41)
+    const backdropCrowns = crowns(backdrop.trees, 42, { sparse: 0.25 })
     // Optimized graphics: the same crowns in fewer, bigger cards covering less (the cards' layers
     // were most of the street's cost on a weak GPU), on the same material (no new shader).
     const material = leafCrowns.material as Material
@@ -1594,6 +1596,7 @@ export function buildErables(office: Office): ErablesScene {
     bake(backdrop.drawn)
     built.drawn.add(
         leafCrowns,
+        backdropCrowns,
         lightCrowns,
         lightBackdropCrowns,
         fallen.mesh,
@@ -1606,7 +1609,7 @@ export function buildErables(office: Office): ErablesScene {
 
     const setGraphics = (graphics: Graphics) => {
         const full = graphics === 'full'
-        leafCrowns.visible = backdropFallen.visible = full
+        leafCrowns.visible = backdropCrowns.visible = backdropFallen.visible = full
         lightCrowns.visible = lightBackdropCrowns.visible = !full
         fallen.mesh.geometry.setDrawRange(0, full ? Infinity : fallen.lightCount)
         falling.mesh.count = full ? fallingCount : Math.round(fallingCount * LIGHT_LEAVES.falling)

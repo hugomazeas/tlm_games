@@ -225,7 +225,6 @@ const hud = new Hud(config.backUrl, {
     onPlan: rules => {
         if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'plan', rules }))
     },
-    onSetup: () => openSetup(),
     loadout: picked,
     onLoadout: chosen => {
         picked = chosen
@@ -233,11 +232,8 @@ const hud = new Hud(config.backUrl, {
         if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'loadout', loadout: chosen }))
     },
 })
-/** The host's Next match panel is open (or opening: the mouse is being let go for it). */
-let settingUp = false
 const controls = new Controls(renderer.domElement, locked => {
-    if (locked) settingUp = false
-    hud.card(locked ? 'playing' : settingUp ? 'setup' : 'paused')
+    hud.card(locked ? 'playing' : 'paused')
     // The click that takes the mouse is the one browsers need before any sound.
     if (locked) sounds.unlock()
     else sounds.jetting(false)
@@ -666,12 +662,12 @@ function startMatch(rules: Rules): void {
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'start', rules }))
 }
 
-/** The host's Next match panel (N, or the menu's button): the mouse let go, the panel up. */
+/** The host's Next match setup (N): the mouse let go, the menu on its Match page. */
 function openSetup(): void {
     if (!hud.canSetUp) return
-    settingUp = true
+    // Letting go of the mouse opens the host's menu on the Match page already.
     if (controls.locked) document.exitPointerLock()
-    else hud.card('setup')
+    else hud.showPage('match')
 }
 controls.onNextMatch = () => openSetup()
 
