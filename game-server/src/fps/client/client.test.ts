@@ -19,9 +19,28 @@ import { finishOf } from './finish.ts'
 import { kitFor } from './guns.ts'
 import { Vector3 } from 'three'
 import { aimDirection, fireShot, reloadMsOf } from '../sim/combat.ts'
-import { BLOOD, bloodCells, deathRecap } from './hud.ts'
+import { BLOOD, bloodCells, deathRecap, primaryAction } from './hud.ts'
 import { MouseFilter } from './controls.ts'
 import { bottleneck, FrameStats, HITCH_MS } from './perf.ts'
+
+describe("the menu's big button", () => {
+    const base = { hosting: false, seated: 3, rematch: false, started: true }
+
+    test('the host in warmup starts the match: that is what everyone waits for', () => {
+        expect(primaryAction({ ...base, hosting: true })).toEqual({ kind: 'start', label: 'Start match', ready: true })
+        expect(primaryAction({ ...base, hosting: true, rematch: true }).label).toBe('Rematch')
+    })
+
+    test("alone, the host's Start isn't ready", () => {
+        expect(primaryAction({ ...base, hosting: true, seated: 1 }).ready).toBe(false)
+    })
+
+    test('everyone else resumes, or plays before they have', () => {
+        expect(primaryAction(base)).toEqual({ kind: 'resume', label: 'Resume', ready: true })
+        expect(primaryAction({ ...base, started: false }).label).toBe('Play')
+        expect(primaryAction({ ...base, seated: 1 }).ready).toBe(true)
+    })
+})
 
 describe('the death recap', () => {
     const recap = {

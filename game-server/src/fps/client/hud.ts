@@ -17,6 +17,7 @@ import {
     type Mode,
     MODE_NAMES,
     MODES,
+    type Phase,
     type PlayerInfo,
     type Rules,
     type Score,
@@ -32,7 +33,7 @@ import {
     type Weapon,
     ZONE_SECONDS_PER_POINT,
 } from '../protocol.ts'
-import { magazineOf, MAX_HEALTH, maxHealthOf, powersOf } from '../sim/combat.ts'
+import { GUNS, LAUNCHER, magazineOf, MAX_HEALTH, maxHealthOf, powersOf } from '../sim/combat.ts'
 import { siegeWinner } from '../sim/places.ts'
 import { resolveTuning } from '../sim/tuning.ts'
 import { placesOf } from '../sim/world.ts'
@@ -43,6 +44,139 @@ import { DEFAULT_SETTINGS, LIMITS, type Settings } from './settings.ts'
  * the match's timer, the kill feed, the scoreboard (Tab, and between matches), messages in the
  * middle (warmup, countdown, down, watching), and the click-to-play card while the mouse is free.
  */
+
+/**
+ * The Esc menu: the game dimmed behind (no blur: it would re-blur the canvas every frame), a panel
+ * with a sidebar (Resume, the pages, back to the Hub) and the page beside it.
+ */
+const MENU_CSS = `
+#fps-hud .menu { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; pointer-events: auto; background: rgba(6,8,12,.74); --ink: #eef1f4; --soft: rgba(238,241,244,.64); --line: rgba(255,255,255,.07); --gold: #ffd166; }
+#fps-hud .menu ::selection { background: rgba(255,209,102,.35); }
+#fps-hud .menu :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+#fps-hud .menu .icon { width: 18px; height: 18px; flex: none; }
+#fps-hud .menu kbd { display: inline-block; min-width: 22px; text-align: center; padding: 3px 7px; border-radius: 5px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.13); border-bottom-width: 2px; font: 600 12px/1 system-ui, sans-serif; color: var(--ink); }
+#fps-hud .menu-shell, #fps-hud .menu-message { cursor: default; color: var(--ink); background: #12151b; border: 1px solid rgba(255,255,255,.08); border-radius: 14px; box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.35); animation: menu-in .24s cubic-bezier(.16,1,.3,1); font-weight: 500; }
+@keyframes menu-in { from { opacity: .35; transform: translateY(10px) scale(.985); } }
+#fps-hud .menu-shell { width: min(980px, 100%); height: min(620px, calc(100vh - 32px)); display: grid; grid-template-columns: 236px minmax(0, 1fr); overflow: hidden; }
+#fps-hud .menu-nav { display: flex; flex-direction: column; gap: 2px; padding: 24px 14px 14px; background: #0d1015; border-right: 1px solid var(--line); min-height: 0; overflow-y: auto; }
+#fps-hud .menu-title b { display: block; padding: 0 10px; font-size: 19px; font-weight: 800; letter-spacing: -.01em; }
+#fps-hud .menu-title span { display: flex; align-items: center; gap: 7px; padding: 5px 10px 0; font-size: 12.5px; color: var(--soft); }
+#fps-hud .menu .phase { width: 7px; height: 7px; border-radius: 50%; background: #60a5fa; flex: none; }
+#fps-hud .menu .phase.loading, #fps-hud .menu .phase.countdown { background: var(--gold); }
+#fps-hud .menu .phase.playing { background: #4ade80; }
+#fps-hud .menu .phase.intermission { background: #c084fc; }
+#fps-hud .menu .resume { margin: 20px 0 0; display: flex; align-items: center; justify-content: center; gap: 8px; height: 46px; border: 0; border-radius: 10px; background: var(--gold); color: #1a1206; font: 800 15px/1 system-ui, sans-serif; cursor: pointer; box-shadow: 0 6px 16px rgba(0,0,0,.35); transition: background .12s, transform .12s; }
+#fps-hud .menu .resume:hover { background: #ffdd88; }
+#fps-hud .menu .resume:active { transform: translateY(1px); }
+#fps-hud .menu .resume-hint { margin: 7px 0 16px; text-align: center; font-size: 11.5px; color: var(--soft); }
+#fps-hud .menu .tabs { display: flex; flex-direction: column; gap: 2px; }
+#fps-hud .menu .tabs button { display: flex; align-items: center; gap: 11px; height: 40px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--soft); font: 600 14px system-ui, sans-serif; text-align: left; cursor: pointer; transition: background .12s, color .12s; }
+#fps-hud .menu .tabs button:hover { background: rgba(255,255,255,.05); color: var(--ink); }
+#fps-hud .menu .tabs button[aria-selected="true"] { background: rgba(255,255,255,.08); color: #fff; }
+#fps-hud .menu .tabs button[aria-selected="true"] .icon { color: var(--gold); }
+#fps-hud .menu .tabs .dot { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); }
+#fps-hud .menu .leave { margin-top: auto; display: flex; align-items: center; gap: 11px; height: 40px; padding: 0 10px; border-radius: 8px; color: var(--soft); font-size: 13.5px; font-weight: 600; text-decoration: none; transition: background .12s, color .12s; }
+#fps-hud .menu .leave:hover { color: #ffab99; background: rgba(255,120,100,.08); }
+#fps-hud .menu-pages { min-height: 0; overflow-y: auto; padding: 30px 36px 32px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent; }
+#fps-hud .menu .page-head h1 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -.01em; }
+#fps-hud .menu .page-head p { margin: 5px 0 0; font-size: 13.5px; color: var(--soft); }
+#fps-hud .menu .pending { color: var(--gold); font-weight: 600; }
+#fps-hud .menu .group { margin-top: 28px; }
+#fps-hud .menu .group h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--soft); }
+#fps-hud .menu .group h2 kbd { letter-spacing: 0; }
+#fps-hud .menu .group p { margin: 0 0 10px; font-size: 14px; line-height: 1.45; }
+#fps-hud .menu .group .lead { font-size: 16px; font-weight: 650; color: #fff; }
+#fps-hud .menu .group .muted { color: var(--soft); }
+#fps-hud .menu .group .notice { color: #ffab99; }
+#fps-hud .menu .page-foot { margin: 28px 0 0; font-size: 12.5px; color: var(--soft); }
+#fps-hud .menu button.primary { display: inline-flex; align-items: center; gap: 10px; height: 40px; margin-top: 4px; padding: 0 16px; border: 0; border-radius: 9px; background: #e4572e; color: #fff; font: 700 14px system-ui, sans-serif; cursor: pointer; transition: background .12s; }
+#fps-hud .menu button.primary:hover { background: #ef6a42; }
+#fps-hud .menu button.primary kbd { background: rgba(0,0,0,.18); border-color: rgba(0,0,0,.2); }
+#fps-hud .menu .guns { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+#fps-hud .menu .gun { display: flex; flex-direction: column; gap: 4px; padding: 13px 14px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.09); background: rgba(255,255,255,.035); color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: border-color .12s, background .12s; }
+#fps-hud .menu .gun:hover { border-color: rgba(255,255,255,.22); background: rgba(255,255,255,.06); }
+#fps-hud .menu .gun.on { border-color: var(--gold); background: rgba(255,209,102,.09); }
+#fps-hud .menu .gun-name { display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: 700; }
+#fps-hud .menu .gun-name .icon { width: 16px; height: 16px; color: var(--gold); }
+#fps-hud .menu .gun-blurb { font-size: 12.5px; color: var(--soft); }
+#fps-hud .menu .gun-specs { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: 7px; font-size: 11.5px; color: var(--soft); font-variant-numeric: tabular-nums; }
+#fps-hud .menu .gun-specs b { color: var(--ink); font-weight: 700; }
+#fps-hud .menu .set-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 300px); align-items: center; gap: 24px; padding: 12px 0; border-top: 1px solid var(--line); }
+#fps-hud .menu .group h2 + .set-row { border-top: 0; padding-top: 4px; }
+#fps-hud .menu .set-label { font-size: 14px; font-weight: 600; }
+#fps-hud .menu .set-label small { display: block; margin-top: 3px; font-size: 12px; font-weight: 500; color: var(--soft); }
+#fps-hud .menu .set-control { display: flex; align-items: center; gap: 12px; }
+#fps-hud .menu .set-control input { flex: 1; min-width: 0; margin: 0; accent-color: var(--gold); cursor: pointer; }
+#fps-hud .menu .set-control output { min-width: 50px; text-align: right; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+#fps-hud .menu .seg { display: inline-flex; justify-self: end; padding: 3px; border-radius: 9px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08); }
+#fps-hud .menu .seg button { min-width: 74px; height: 30px; padding: 0 14px; border: 0; border-radius: 7px; background: transparent; color: var(--soft); font: 600 13px system-ui, sans-serif; cursor: pointer; transition: background .12s, color .12s; }
+#fps-hud .menu .seg button:hover { color: #fff; }
+#fps-hud .menu .seg button[aria-pressed="true"] { background: var(--ink); color: #12151b; }
+#fps-hud .menu .page-actions { display: flex; justify-content: flex-end; margin-top: 24px; }
+#fps-hud .menu .page-actions button { height: 36px; padding: 0 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,.14); background: transparent; color: var(--ink); font: 600 13px system-ui, sans-serif; cursor: pointer; transition: border-color .12s; }
+#fps-hud .menu .page-actions button:hover { border-color: rgba(255,255,255,.32); }
+#fps-hud .menu .keys { margin: 0; }
+#fps-hud .menu .keys div { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 8px 0; border-top: 1px solid var(--line); }
+#fps-hud .menu .keys div:first-child { border-top: 0; }
+#fps-hud .menu .keys dt { font-size: 14px; }
+#fps-hud .menu .keys dd { display: flex; align-items: center; gap: 4px; margin: 0; flex: none; }
+#fps-hud .menu .keys em { padding: 0 2px; font-style: normal; font-size: 12px; color: var(--soft); }
+#fps-hud .menu-message { width: min(440px, 100%); padding: 26px 28px 20px; }
+#fps-hud .menu-message h1 { margin: 0 0 6px; font-size: 20px; font-weight: 800; }
+#fps-hud .menu-message p { margin: 0 0 14px; color: var(--soft); line-height: 1.45; }
+#fps-hud .menu-message .leave { margin: 0 -10px; color: var(--gold); }
+#fps-hud .menu .menu-action { display: flex; flex-direction: column; align-items: stretch; }
+#fps-hud .menu .host-badge { margin: 20px 10px -12px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--gold); }
+#fps-hud .menu .resume:disabled { background: rgba(255,209,102,.28); color: rgba(26,18,6,.7); cursor: default; box-shadow: none; }
+#fps-hud .menu .resume-link { display: block; width: 100%; margin: -8px 0 12px; padding: 6px; border: 0; border-radius: 7px; background: transparent; color: var(--soft); font: 600 13px system-ui, sans-serif; cursor: pointer; }
+#fps-hud .menu .resume-link:hover { color: var(--ink); background: rgba(255,255,255,.05); }
+#fps-hud .menu .choice { border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.035); color: var(--ink); font: 600 13.5px system-ui, sans-serif; border-radius: 9px; cursor: pointer; transition: border-color .12s, background .12s; }
+#fps-hud .menu .choice:hover { border-color: rgba(255,255,255,.24); background: rgba(255,255,255,.06); }
+#fps-hud .menu .choice.on { border-color: var(--gold); background: rgba(255,209,102,.09); }
+#fps-hud .menu .maps { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+#fps-hud .menu .maps .choice { padding: 0; text-align: left; overflow: hidden; }
+#fps-hud .menu .maps .art { display: block; height: 84px; }
+#fps-hud .menu .maps b { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px 0; font-size: 15px; }
+#fps-hud .menu .maps b .icon { width: 16px; height: 16px; color: var(--gold); }
+#fps-hud .menu .maps small { display: block; padding: 3px 12px 12px; font-size: 12px; font-weight: 500; color: var(--soft); }
+#fps-hud .menu .modes { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+#fps-hud .menu .modes .choice { height: 36px; padding: 0 14px; }
+#fps-hud .menu .rules { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; font-size: 14px; }
+#fps-hud .menu .rules label { display: flex; align-items: center; gap: 10px; }
+#fps-hud .menu select { height: 34px; padding: 0 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,.14); background: #1b1f27; color: var(--ink); font: 600 13px system-ui, sans-serif; cursor: pointer; }
+#fps-hud .menu select:disabled { opacity: .45; cursor: default; }
+#fps-hud .menu details.tuning { margin-top: 28px; }
+#fps-hud .menu details.tuning summary { cursor: pointer; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--soft); }
+#fps-hud .menu details.tuning summary:hover { color: var(--ink); }
+#fps-hud .menu .tuning-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px 22px; margin-top: 10px; }
+#fps-hud .menu .tuning-grid h3 { grid-column: 1 / -1; margin: 10px 0 0; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--soft); }
+#fps-hud .menu .tuning-grid label { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13.5px; }
+#fps-hud .menu .tuning-grid label.changed { color: var(--gold); }
+#fps-hud .menu .tuning .muted { margin: 12px 0 0; font-size: 12.5px; color: var(--soft); }
+#fps-hud .menu .tuning .muted button { margin-left: 8px; height: 28px; padding: 0 10px; border-radius: 7px; border: 1px solid rgba(255,255,255,.14); background: transparent; color: var(--ink); font: 600 12px system-ui, sans-serif; cursor: pointer; }
+#fps-hud .menu-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+#fps-hud .menu-main .menu-pages { flex: 1; }
+#fps-hud .menu .menu-foot { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 36px; background: #12151b; border-top: 1px solid var(--line); }
+#fps-hud .menu .menu-foot.hidden { display: none; }
+#fps-hud .menu .menu-foot p { margin: 0; font-size: 13px; color: var(--soft); }
+#fps-hud .menu .menu-foot p b { color: var(--ink); }
+#fps-hud .menu .menu-foot .notice { color: #ffab99; }
+#fps-hud .menu .menu-foot button.primary { margin: 0; height: 44px; padding: 0 22px; font-size: 15px; flex: none; }
+#fps-hud .menu button.primary:disabled { background: rgba(228,87,46,.35); color: rgba(255,255,255,.6); cursor: default; }
+@media (max-width: 720px) {
+    #fps-hud .menu .menu-foot { padding: 12px 18px; }
+    #fps-hud .menu .host-badge { margin: 12px 0 -6px; }
+    #fps-hud .menu-shell { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); height: calc(100vh - 32px); }
+    #fps-hud .menu-nav { padding: 14px; border-right: 0; border-bottom: 1px solid var(--line); }
+    #fps-hud .menu .resume { margin-top: 12px; }
+    #fps-hud .menu .resume-hint { display: none; }
+    #fps-hud .menu .tabs { flex-direction: row; margin-top: 10px; overflow-x: auto; }
+    #fps-hud .menu .leave { margin-top: 4px; }
+    #fps-hud .menu-pages { padding: 20px 18px 24px; }
+    #fps-hud .menu .set-row { grid-template-columns: 1fr; gap: 10px; }
+    #fps-hud .menu .seg { justify-self: start; }
+}
+`
 
 const CSS = `
 #fps-hud { position: fixed; inset: 0; pointer-events: none; font: 600 14px/1.3 system-ui, sans-serif; color: #f4f6f8; z-index: 20; user-select: none; }
@@ -139,56 +273,10 @@ const CSS = `
 #fps-hud .spread i:nth-child(3) { top: -1px; left: calc(-1 * var(--r) - 7px); width: 7px; height: 2px; }
 #fps-hud .spread i:nth-child(4) { top: -1px; left: var(--r); width: 7px; height: 2px; }
 #fps-hud.aiming .spread { display: none; }
-#fps-hud .card { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); text-align: center; pointer-events: auto; max-width: 420px; padding: 22px 26px; }
-#fps-hud .card h1 { font-size: 22px; margin: 0 0 4px; }
-#fps-hud .card p { margin: 6px 0; opacity: .85; font-weight: 500; }
 #fps-hud kbd { background: rgba(255,255,255,.12); border-radius: 4px; padding: 1px 6px; font: inherit; font-size: 12px; }
-#fps-hud .card a { color: #ffd166; }
-#fps-hud .card { max-height: calc(100vh - 40px); overflow-y: auto; }
-#fps-hud .setup { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); pointer-events: auto; width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow-y: auto; padding: 22px 26px; }
-#fps-hud .setup h1 { font-size: 22px; margin: 0 0 14px; }
-#fps-hud .setup h2 { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; opacity: .6; margin: 16px 0 8px; }
-#fps-hud .setup button, #fps-hud .setup select { font: inherit; font-size: 13px; color: #f4f6f8; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18); border-radius: 7px; padding: 6px 12px; cursor: pointer; }
-#fps-hud .setup button.on { background: rgba(255,209,102,.18); border-color: #ffd166; }
-#fps-hud .setup button:disabled { opacity: .45; cursor: default; }
-#fps-hud .setup .maps { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
-#fps-hud .setup .maps button { padding: 0; text-align: left; overflow: hidden; }
-#fps-hud .setup .maps .art { height: 92px; display: block; }
-#fps-hud .setup .maps b { display: block; padding: 8px 10px 0; font-size: 14px; }
-#fps-hud .setup .maps small { display: block; padding: 2px 10px 10px; font-size: 11.5px; font-weight: 500; opacity: .75; }
-#fps-hud .setup .modes { display: flex; flex-wrap: wrap; gap: 6px; }
-#fps-hud .setup .row { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
-#fps-hud .setup .hint { font-size: 12px; opacity: .72; margin: 8px 0 0; min-height: 1em; font-weight: 500; }
-#fps-hud .setup .actions { display: flex; gap: 10px; margin-top: 18px; }
-#fps-hud .setup details.tuning { margin-top: 16px; }
-#fps-hud .setup details.tuning summary { cursor: pointer; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; opacity: .75; }
-#fps-hud .setup .tuning-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 18px; margin-top: 8px; }
-#fps-hud .setup .tuning-grid h3 { grid-column: 1 / -1; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; opacity: .55; margin: 8px 0 0; }
-#fps-hud .setup .tuning-grid label { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }
-#fps-hud .setup .tuning-grid label.changed { color: #ffd166; }
-#fps-hud .setup .tuning-grid select { padding: 4px 8px; }
-#fps-hud .setup details.tuning .hint button { margin-left: 8px; padding: 3px 10px; font-size: 12px; }
-#fps-hud .setup button[data-start] { background: #e4572e; border-color: #e4572e; font-weight: 700; padding: 8px 18px; }
-#fps-hud .card .next-line { font-size: 13px; }
-#fps-hud .card .section { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.12); text-align: left; }
-#fps-hud .card h2 { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; opacity: .6; margin: 0 0 8px; }
-#fps-hud .card .row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
-#fps-hud .card select, #fps-hud .card button { font: inherit; font-size: 13px; color: #f4f6f8; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18); border-radius: 7px; padding: 4px 8px; }
-#fps-hud .card button { cursor: pointer; padding: 6px 14px; }
-#fps-hud .card button[data-start] { background: #e4572e; border-color: #e4572e; font-weight: 700; }
-#fps-hud .card button:disabled { opacity: .45; cursor: default; }
-#fps-hud .card .hint { font-size: 12px; opacity: .7; min-height: 1em; }
-#fps-hud .card .slider { display: block; font-size: 13px; margin-bottom: 8px; }
-#fps-hud .card .slider output { float: right; opacity: .8; font-variant-numeric: tabular-nums; }
-#fps-hud .card .slider input { display: block; width: 100%; accent-color: #ffd166; }
-#fps-hud .card .slider select { display: block; width: 100%; margin-top: 4px; }
-#fps-hud .card .check { display: block; font-size: 13px; margin: 4px 0 10px; }
+${MENU_CSS}
 #fps-hud .slots b { display: inline-block; min-width: 14px; margin-left: 4px; padding: 0 3px; border-radius: 3px; text-align: center; background: rgba(255,255,255,.12); font-size: 10px; }
 #fps-hud .slots b.on { background: #ffd166; color: #1a1206; }
-#fps-hud .guns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px; }
-#fps-hud .card .guns button { text-align: left; padding: 6px 8px; line-height: 1.25; }
-#fps-hud .card .guns button.on { background: rgba(255,209,102,.18); border-color: #ffd166; }
-#fps-hud .guns button small { display: block; font-size: 11px; font-weight: 500; opacity: .7; }
 #fps-hud .scope { position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, transparent 0, transparent 32vmin, rgba(0,0,0,.9) 32.4vmin, #000 34vmin); }
 #fps-hud .scope::before, #fps-hud .scope::after { content: ''; position: absolute; left: 50%; top: 50%; background: rgba(0,0,0,.85); }
 #fps-hud .scope::before { width: 64vmin; height: 1.5px; margin: -0.75px 0 0 -32vmin; }
@@ -233,8 +321,6 @@ export class Hud {
             onStart(rules: Rules): void
             /** The host changed what's lined up on their Next match panel. */
             onPlan(rules: Rules): void
-            /** The host asked for the Next match panel (the button on the menu). */
-            onSetup(): void
             /** The guns this browser picked last. */
             loadout: Loadout
             onLoadout(loadout: Loadout): void
@@ -276,15 +362,38 @@ export class Hud {
             <div class="panel ammo" data-el="ammo"></div>
             <div class="fuel" data-el="fuelBar"><div data-el="fuel"></div></div>
             <div class="panel board hidden" data-el="board"></div>
-            <div class="panel card" data-el="card">
-                <div data-el="cardMain"></div>
-                <div class="section hidden" data-el="loadout"></div>
-                <div class="section hidden" data-el="host"></div>
-                <div class="section hidden" data-el="settings"></div>
-            </div>
-            <div class="panel setup hidden" data-el="setup"></div>`
+            <div class="menu" data-el="card">
+                <div class="menu-message hidden" data-el="cardMain" data-menu-panel></div>
+                <div class="menu-shell hidden" data-el="menuShell" data-menu-panel role="dialog" aria-modal="true" aria-label="Menu">
+                    <nav class="menu-nav">
+                        <div class="menu-title"><b>Office FPS</b><span data-el="menuStatus"></span></div>
+                        <div class="menu-action" data-el="menuAction"></div>
+                        <div class="tabs" role="tablist">
+                            ${PAGES.map(p => `<button type="button" role="tab" data-page="${p.id}">${ICONS[p.id]}<span>${p.label}</span><i class="dot hidden" data-dot="${p.id}"></i></button>`).join('')}
+                        </div>
+                        <a class="leave" href="${escape(backUrl)}">${ICONS.leave}<span>Back to the Hub</span></a>
+                    </nav>
+                    <div class="menu-main">
+                        <div class="menu-pages">
+                            <section class="page" data-el="loadout" data-for="loadout" role="tabpanel"></section>
+                            <section class="page" data-el="host" data-for="match" role="tabpanel"></section>
+                            <section class="page" data-el="settings" data-for="settings" role="tabpanel"></section>
+                            <section class="page" data-el="controls" data-for="controls" role="tabpanel">${controlsPage()}</section>
+                        </div>
+                        <div class="menu-foot hidden" data-el="menuFoot"></div>
+                    </div>
+                </div>
+            </div>`
         for (const node of this.root.querySelectorAll<HTMLElement>('[data-el]')) this.el[node.dataset.el!] = node
         document.body.append(this.root)
+        this.el.menuShell!.addEventListener('click', e => {
+            const target = e.target as Element
+            const tab = target.closest<HTMLElement>('[data-page]')
+            if (tab) this.showPage(tab.dataset.page as PageId)
+            if (target.closest('[data-start]')) this.startNext()
+        })
+        this.listenToSetup()
+        this.showPage('loadout')
         this.buildSettings()
         this.picked = hooks.loadout
         this.renderLoadout()
@@ -306,13 +415,19 @@ export class Hud {
         const panel = this.el.loadout!
         const pick = this.picked
         const button = (gun: keyof typeof GUN_BLURBS, on: boolean) =>
-            `<button type="button" data-gun="${gun}" class="${on ? 'on' : ''}">${WEAPON_NAMES[gun]}<small>${GUN_BLURBS[gun]}</small></button>`
+            `<button type="button" class="gun${on ? ' on' : ''}" data-gun="${gun}" aria-pressed="${on}">
+                <span class="gun-name">${WEAPON_NAMES[gun]}${on ? ICONS.check : ''}</span>
+                <span class="gun-blurb">${GUN_BLURBS[gun]}</span>
+                <span class="gun-specs">${gunSpecs(gun)}</span></button>`
         const waiting =
             this.carried && (this.carried.primary !== pick.primary || this.carried.secondary !== pick.secondary)
-        panel.innerHTML = `<h2>Loadout</h2>
-            <div class="guns">${PRIMARIES.map(g => button(g, g === pick.primary)).join('')}</div>
-            <div class="guns">${SECONDARIES.map(g => button(g, g === pick.secondary)).join('')}</div>
-            <p class="hint">${waiting ? 'From your next spawn.' : '<kbd>1</kbd> primary · <kbd>2</kbd> secondary · <kbd>3</kbd> stapler'}</p>`
+        panel.innerHTML = `<header class="page-head"><h1>Loadout</h1>
+                <p>${waiting ? '<b class="pending">Picked: you carry it from your next spawn.</b>' : 'Two guns and the stapler. A change applies from your next spawn.'}</p></header>
+            <div class="group"><h2>Primary <kbd>1</kbd></h2>
+                <div class="guns">${PRIMARIES.map(g => button(g, g === pick.primary)).join('')}</div></div>
+            <div class="group"><h2>Secondary <kbd>2</kbd></h2>
+                <div class="guns">${SECONDARIES.map(g => button(g, g === pick.secondary)).join('')}</div></div>
+            <p class="page-foot">Stapler <kbd>3</kbd> · the mouse wheel cycles · <kbd>Q</kbd> back to the last</p>`
         for (const node of panel.querySelectorAll<HTMLButtonElement>('[data-gun]')) {
             node.addEventListener('click', () => {
                 const gun = node.dataset.gun!
@@ -326,69 +441,121 @@ export class Hud {
     }
 
     /**
-     * The middle card: while connecting, while the mouse is free (with the host's controls and the
-     * settings), or when the game is closed to you. `setup`: the host's Next match panel instead.
+     * The middle card: while connecting, the menu while the mouse is free, or a message when the game
+     * is closed to you. The host's menu opens on the Match page in warmup: starting is theirs to do.
      */
     card(state: CardState): void {
+        const was = this.cardState
         this.cardState = state
-        this.el.card!.classList.toggle('hidden', state === 'playing' || state === 'setup')
-        this.renderSetup()
-        if (state === 'setup') return
-        this.el.settings!.classList.toggle('hidden', state !== 'paused')
-        this.el.loadout!.classList.toggle('hidden', state !== 'paused')
+        if (state === 'playing') this.started = true
+        this.el.card!.classList.toggle('hidden', state === 'playing')
+        const menu = state === 'paused'
+        this.el.menuShell!.classList.toggle('hidden', !menu)
+        this.el.cardMain!.classList.toggle('hidden', menu)
+        if (menu && was !== 'paused' && this.canSetUp) this.showPage('match')
         this.renderHost()
-        const back = `<p><a href="${this.backUrl}">Back to the Hub</a></p>`
+        if (menu) return
+        const back = `<a class="leave" href="${escape(this.backUrl)}">${ICONS.leave}<span>Back to the Hub</span></a>`
         this.el.cardMain!.innerHTML = {
-            connecting: `<h1>Office FPS</h1><p>Connecting…</p>`,
-            paused: `<h1>Office FPS</h1><p><b>Click to play</b></p>
-                <p><kbd>WASD</kbd> move · <kbd>Shift</kbd> + direction dodge · <kbd>Space</kbd> jump (hold, or in the air: jetpack) · <kbd>C</kbd> (hold) prone<br>
-                <kbd>Click</kbd> fire · <kbd>Right-click</kbd> aim · <kbd>R</kbd> reload<br>
-                <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> weapons (or the wheel, <kbd>Q</kbd> the last) · <kbd>V</kbd> 1st / 3rd person<br>
-                <kbd>B</kbd> build walls (click to place, <kbd>R</kbd> turn, wheel flat / standing, <kbd>F</kbd> door, <kbd>G</kbd> window, <kbd>E</kbd> take back)<br>
-                <kbd>F</kbd> open / shut your side's doors<br>
-                <kbd>Tab</kbd> scores · <kbd>Esc</kbd> this menu · <kbd>N</kbd> next match (the host)</p>${back}`,
+            connecting: `<h1>Office FPS</h1><p>Connecting to the game…</p>`,
+            paused: '',
             playing: '',
-            setup: '',
-            replaced: `<h1>Playing in another tab</h1><p>This one let go.</p>${back}`,
-            unavailable: `<h1>The game server is unavailable</h1><p>Retrying…</p>${back}`,
+            replaced: `<h1>Playing in another tab</h1><p>This tab let go of the game. Close it, or reload it to play here.</p>${back}`,
+            unavailable: `<h1>The game server is unavailable</h1><p>Trying again on its own…</p>${back}`,
             unknown: `<h1>Unknown player</h1><p>Pick yourself again from the Hub.</p>${back}`,
         }[state]
     }
 
+    /** You've played since the page opened: the menu's button says Resume, not Play. */
+    private started = false
+    private page: PageId = 'loadout'
+
+    /** The menu's page: its tab marked, the others hidden. */
+    showPage(page: PageId): void {
+        this.page = page
+        for (const tab of this.el.menuShell!.querySelectorAll<HTMLElement>('[data-page]'))
+            tab.setAttribute('aria-selected', String(tab.dataset.page === page))
+        for (const section of this.el.menuShell!.querySelectorAll<HTMLElement>('[data-for]'))
+            section.classList.toggle('hidden', section.dataset.for !== page)
+        this.syncFoot()
+    }
+
     /** Who hosts, and whether it's you: the host's controls show on your menu in warmup. */
     setHost(host: { isHost: boolean; name: string | null; seated: number }): void {
-        const before = this.host
         this.host = host
         this.renderHost()
-        // Only a change redraws the panel (it would lose an open select otherwise).
-        if (before.isHost !== host.isHost || before.seated !== host.seated) this.leaveSetupIfDone()
     }
 
     /** A refusal from the server, shown on the menu (the host's start, mostly). */
     notice(text: string): void {
         this.hostNotice = text
         this.renderHost()
-        if (this.cardState === 'setup') this.renderSetup()
     }
 
     /**
-     * The host's line on the menu (warmup): what's lined up, and the button to their Next match
-     * panel. Others see who they wait for, and what's coming.
+     * The menu's sidebar button and Match page. The host in warmup gets Start as the big button and
+     * the Next match setup as the page; everyone else gets Resume, and what's on and what's coming.
+     * Drawn through `write`, so an unchanged page keeps an open select.
      */
     private renderHost(): void {
-        const panel = this.el.host!
         const match = this.match
-        const show = this.cardState === 'paused' && match?.phase === 'warmup'
-        panel.classList.toggle('hidden', !show)
-        if (!show || !match) return
-        const next = match.next ? `<p class="next-line">Next: <b>${escape(describeRules(match.next))}</b></p>` : ''
-        if (!this.host.isHost) {
-            panel.innerHTML = `<p>Waiting for <b>${escape(this.host.name ?? 'the host')}</b> to start the next match.</p>${next}`
+        const hosting = this.canSetUp
+        // Becoming the host (it's known only after the menu is up, at join) brings the setup forward.
+        if (hosting && !this.wasHosting && this.cardState === 'paused') this.showPage('match')
+        this.wasHosting = hosting
+        const draft = hosting ? this.currentDraft() : null
+        const action = primaryAction({
+            hosting,
+            seated: this.host.seated,
+            rematch: draft !== null && this.isRematch(draft),
+            started: this.started,
+        })
+        write(
+            this.el.menuAction!,
+            action.kind === 'start'
+                ? `<p class="host-badge">You're the host</p>
+                    <button type="button" class="resume" data-start data-resume ${action.ready ? '' : 'disabled'}>${ICONS.play}<span>${action.label}</span></button>
+                    <p class="resume-hint">${action.ready ? escape(describeRules(draft!)) : 'Needs a second player'}</p>
+                    <button type="button" class="resume-link" data-resume>Back to warmup</button>`
+                : `<button type="button" class="resume" data-resume>${ICONS.play}<span>${action.label}</span></button>
+                    <p class="resume-hint">or click outside this panel</p>`
+        )
+        this.el.menuShell!.querySelector('[data-dot="match"]')!.classList.toggle('hidden', !hosting)
+        this.syncFoot()
+        if (draft) {
+            write(this.el.host!, this.setupPage(draft))
+            write(this.el.menuFoot!, this.setupFoot(action))
+            this.writeStatus()
             return
         }
-        panel.innerHTML = `<h2>You're the host</h2>${next}
-            <button type="button" data-setup>Set up the next match <kbd>N</kbd></button>`
-        panel.querySelector('[data-setup]')!.addEventListener('click', () => this.hooks.onSetup())
+        if (!match) {
+            write(this.el.menuStatus!, 'Connecting…')
+            write(this.el.host!, `<header class="page-head"><h1>Match</h1><p>Connecting to the game…</p></header>`)
+            return
+        }
+        const map = MAP_INFO[match.map].name
+        this.writeStatus()
+        const warmup = match.phase === 'warmup'
+        const now = warmup
+            ? `<p class="lead">Warmup in ${escape(map.replace(/^The /, 'the '))}: nothing counts until the host starts a match.</p>`
+            : `<p class="lead">${escape(describeRules({ map: match.map, mode: match.mode, fragLimit: match.fragLimit, minutes: match.minutes }))}</p>`
+        const hostName = `<b>${escape(this.host.name ?? 'The host')}</b>`
+        const next = match.next
+            ? `<p class="lead">${escape(describeRules(match.next))}</p>`
+            : `<p class="muted">Nothing lined up yet.</p>`
+        const whoStarts = this.host.isHost
+            ? `<p>You're the host: you set up the next match once this one is over.</p>`
+            : warmup
+              ? `<p>Waiting for ${hostName} to start the next match.</p>`
+              : `<p>${hostName} sets up the next match once this one is over.</p>`
+        const notice = this.hostNotice ? `<p class="notice">${escape(this.hostNotice)}</p>` : ''
+        write(
+            this.el.host!,
+            `<header class="page-head"><h1>Match</h1><p>${PHASE_NAMES[match.phase]} · ${this.host.seated} in the game</p></header>
+            <div class="group"><h2>${warmup ? 'Now' : match.phase === 'intermission' ? 'Just played' : 'Playing now'}</h2>${now}</div>
+            <div class="group"><h2>Next</h2>${next}${whoStarts}${notice}</div>
+            <p class="page-foot"><kbd>Tab</kbd> shows the scores</p>`
+        )
     }
 
     /** What the host is lining up on their panel (starts from what's lined up, else the last match's rules). */
@@ -401,36 +568,65 @@ export class Hud {
         return this.host.isHost && this.match?.phase === 'warmup'
     }
 
-    /**
-     * The host's Next match panel (warmup): a map, a mode it allows, the limit and the length, then
-     * Start. Every change is sent (`onPlan`), so everyone sees what's coming and gets its map ready.
-     */
-    private renderSetup(): void {
-        const panel = this.el.setup!
+    /** You were the host in warmup at the last render (a change to it opens the setup). */
+    private wasHosting = false
+
+    /** What the host is lining up, from what's lined up, else the last match's rules (warmup only). */
+    private currentDraft(): Rules | null {
         const match = this.match
-        const show = this.cardState === 'setup' && match !== null && this.canSetUp
-        panel.classList.toggle('hidden', !show)
-        if (!show || !match) return
-        const draft = (this.draft ??= match.next ?? {
+        if (!match) return null
+        return (this.draft ??= match.next ?? {
             map: LOBBY_MAP,
             mode: match.mode,
             fragLimit: match.fragLimit,
             minutes: match.minutes,
             tuning: {},
         })
-        const enough = this.host.seated >= 2
-        const maps = MAPS.map(
-            id =>
-                `<button type="button" data-map="${id}" class="${id === draft.map ? 'on' : ''}">
+    }
+
+    /** The same rules as the match just played: a rematch. */
+    private isRematch(draft: Rules): boolean {
+        const match = this.match
+        return (
+            this.played &&
+            match !== null &&
+            match.next !== null &&
+            draft.map === match.next.map &&
+            draft.mode === match.mode &&
+            draft.fragLimit === match.fragLimit &&
+            draft.minutes === match.minutes &&
+            sameTuning(draft.tuning, match.next.tuning)
+        )
+    }
+
+    /** The sidebar's line under the title: the phase and the map. */
+    private writeStatus(): void {
+        const match = this.match
+        if (!match) return
+        write(
+            this.el.menuStatus!,
+            `<i class="phase ${match.phase}"></i>${PHASE_NAMES[match.phase]} · ${escape(MAP_INFO[match.map].name)}`
+        )
+    }
+
+    /**
+     * The host's Match page in warmup: a map, a mode it allows, the limit and the length, the
+     * options, and Start in a bar that stays in view. Every change is sent (`onPlan`), so everyone
+     * sees what's coming and gets its map ready.
+     */
+    private setupPage(draft: Rules): string {
+        const maps = MAPS.map(id => {
+            const on = id === draft.map
+            return `<button type="button" class="choice${on ? ' on' : ''}" data-map="${id}" aria-pressed="${on}">
                     <span class="art" style="background:${MAP_ART[id]}"></span>
-                    <b>${escape(MAP_INFO[id].name)}</b><small>${escape(MAP_INFO[id].blurb)} · ${MAP_INFO[id].players} players</small>
+                    <b>${escape(MAP_INFO[id].name)}${on ? ICONS.check : ''}</b><small>${escape(MAP_INFO[id].blurb)} · ${MAP_INFO[id].players} players</small>
                 </button>`
-        ).join('')
+        }).join('')
         const modes = MODES.filter(m => playableOn(draft.map, m))
-            .map(
-                m =>
-                    `<button type="button" data-mode="${m}" class="${m === draft.mode ? 'on' : ''}">${MODE_NAMES[m]}</button>`
-            )
+            .map(m => {
+                const on = m === draft.mode
+                return `<button type="button" class="choice${on ? ' on' : ''}" data-mode="${m}" aria-pressed="${on}">${MODE_NAMES[m]}</button>`
+            })
             .join('')
         const limits = FRAG_LIMITS.map(
             v => `<option value="${v}"${v === draft.fragLimit ? ' selected' : ''}>${limitLabel(draft.mode, v)}</option>`
@@ -438,15 +634,6 @@ export class Hud {
         const minutes = MATCH_MINUTES.map(
             v => `<option value="${v}"${v === draft.minutes ? ' selected' : ''}>${v} min</option>`
         ).join('')
-        // The same rules as the match just played: a rematch.
-        const rematch =
-            this.played &&
-            match.next !== null &&
-            draft.map === match.next.map &&
-            draft.mode === match.mode &&
-            draft.fragLimit === match.fragLimit &&
-            draft.minutes === match.minutes &&
-            sameTuning(draft.tuning, match.next.tuning)
         // Each option: the map's own unless picked (a jetpack second long on Rue des Érables, three in the office).
         const chosen = draft.tuning ?? {}
         const own = resolveTuning(placesOf(draft.map).move)
@@ -465,134 +652,185 @@ export class Hud {
                 <select data-tuning="${row.key}"><option value="">Default · ${tuningLabel(row.key, own[row.key])}</option>${choices}</select></label>`
         }).join('')
         const changed = Object.keys(chosen).length
-        panel.innerHTML = `
-            <h1>Next match</h1>
-            <h2>Map</h2><div class="maps">${maps}</div>
-            <h2>Mode</h2><div class="modes">${modes}</div>
-            <p class="hint">${MODE_HINTS[draft.mode]}</p>
-            <div class="row">
+        return `<header class="page-head"><h1>Next match</h1><p>You're the host: pick the map and the mode, then start the match for everyone.</p></header>
+            <div class="group"><h2>Map</h2><div class="maps">${maps}</div></div>
+            <div class="group"><h2>Mode</h2><div class="modes">${modes}</div><p class="muted">${MODE_HINTS[draft.mode]}</p></div>
+            <div class="group"><h2>Length</h2><div class="rules">
                 <label>First to <select data-rule="fragLimit">${limits}</select></label>
                 <label>or <select data-rule="minutes" ${draft.mode === 'siege' ? 'disabled' : ''}>${minutes}</select></label>
-            </div>
+            </div></div>
             <details class="tuning"${this.tuningOpen ? ' open' : ''}>
                 <summary>Options${changed ? ` · ${changed} changed` : ''}</summary>
                 <div class="tuning-grid">${options}</div>
-                <p class="hint">Speeds, heights and gravity are of the map's own; hit boxes against the body as drawn.
+                <p class="muted">Speeds, heights and gravity are of the map's own; hit boxes against the body as drawn.
                 ${changed ? '<button type="button" data-tuning-reset>Reset to defaults</button>' : ''}</p>
-            </details>
-            <div class="actions">
-                <button type="button" data-start ${enough ? '' : 'disabled'}>${rematch ? 'Rematch' : 'Start match'}</button>
-                <button type="button" data-back>Back to warmup</button>
-            </div>
-            <p class="hint">${enough ? (this.hostNotice ?? 'Everyone warms up in the office; the match moves them to its map.') : 'Needs a second player.'}</p>`
-        const change = (to: Partial<Rules>) => {
-            const next = { ...draft, ...to }
-            // A map that doesn't have the mode: its first one.
-            if (!playableOn(next.map, next.mode)) next.mode = MAP_INFO[next.map].modes[0]!
-            this.draft = next
-            this.hooks.onPlan(next)
-            this.renderSetup()
-        }
-        for (const node of panel.querySelectorAll<HTMLButtonElement>('[data-map]')) {
-            node.addEventListener('click', () => change({ map: node.dataset.map as MapId }))
-        }
-        for (const node of panel.querySelectorAll<HTMLButtonElement>('[data-mode]')) {
-            node.addEventListener('click', () => change({ mode: node.dataset.mode as Mode }))
-        }
-        const select = (rule: string) => panel.querySelector<HTMLSelectElement>(`[data-rule="${rule}"]`)!
-        select('fragLimit').addEventListener('change', () => change({ fragLimit: Number(select('fragLimit').value) }))
-        select('minutes').addEventListener('change', () => change({ minutes: Number(select('minutes').value) }))
-        const details = panel.querySelector<HTMLDetailsElement>('details.tuning')!
-        details.addEventListener('toggle', () => (this.tuningOpen = details.open))
-        for (const node of panel.querySelectorAll<HTMLSelectElement>('[data-tuning]')) {
-            node.addEventListener('change', () => {
-                const key = node.dataset.tuning as TuningKey
-                const tuning: Partial<Record<TuningKey, number | boolean>> = { ...chosen }
-                // The first entry: back to the map's own.
-                if (node.value === '') delete tuning[key]
-                else tuning[key] = node.value === 'true' ? true : node.value === 'false' ? false : Number(node.value)
-                change({ tuning: tuning as Partial<Tuning> })
-            })
-        }
-        panel.querySelector('[data-tuning-reset]')?.addEventListener('click', () => change({ tuning: {} }))
-        panel.querySelector('[data-back]')!.addEventListener('click', () => this.card('paused'))
-        panel.querySelector('[data-start]')!.addEventListener('click', () => {
-            this.hostNotice = null
-            this.hooks.onStart(draft)
+            </details>`
+    }
+
+    /** The setup's footer, under the scrolling page: who's in, and Start. */
+    private setupFoot(action: PrimaryAction): string {
+        const status = this.hostNotice
+            ? `<p class="notice">${escape(this.hostNotice)}</p>`
+            : action.ready
+              ? `<p><b>${this.host.seated} in the game.</b> Everyone warms up in the office until you start.</p>`
+              : `<p><b>You're alone.</b> A match needs a second player.</p>`
+        return `${status}<button type="button" class="primary" data-start data-resume ${action.ready ? '' : 'disabled'}>${action.label}</button>`
+    }
+
+    /** The footer shows on the host's Match page only. */
+    private syncFoot(): void {
+        this.el.menuFoot!.classList.toggle('hidden', !(this.canSetUp && this.page === 'match'))
+    }
+
+    /** The setup's choices, listened to once on the Match page (it's drawn again on each change). */
+    private listenToSetup(): void {
+        const page = this.el.host!
+        page.addEventListener('click', e => {
+            const target = e.target as Element
+            const map = target.closest<HTMLElement>('[data-map]')
+            if (map) this.changeDraft({ map: map.dataset.map as MapId })
+            const mode = target.closest<HTMLElement>('[data-mode]')
+            if (mode) this.changeDraft({ mode: mode.dataset.mode as Mode })
+            if (target.closest('[data-tuning-reset]')) this.changeDraft({ tuning: {} })
         })
+        page.addEventListener('change', e => {
+            const select = e.target as HTMLSelectElement
+            const rule = select.dataset.rule
+            if (rule === 'fragLimit') this.changeDraft({ fragLimit: Number(select.value) })
+            if (rule === 'minutes') this.changeDraft({ minutes: Number(select.value) })
+            const key = select.dataset.tuning as TuningKey | undefined
+            if (!key) return
+            const tuning: Partial<Record<TuningKey, number | boolean>> = { ...this.currentDraft()?.tuning }
+            // The first entry: back to the map's own.
+            if (select.value === '') delete tuning[key]
+            else tuning[key] = select.value === 'true' ? true : select.value === 'false' ? false : Number(select.value)
+            this.changeDraft({ tuning: tuning as Partial<Tuning> })
+        })
+        // `toggle` doesn't bubble: caught on the way down.
+        page.addEventListener(
+            'toggle',
+            e => {
+                const details = e.target as HTMLElement
+                if (details.matches('details.tuning')) this.tuningOpen = (details as HTMLDetailsElement).open
+            },
+            true
+        )
+    }
+
+    private changeDraft(to: Partial<Rules>): void {
+        const draft = this.currentDraft()
+        if (!draft || !this.canSetUp) return
+        const next = { ...draft, ...to }
+        // A map that doesn't have the mode: its first one.
+        if (!playableOn(next.map, next.mode)) next.mode = MAP_INFO[next.map].modes[0]!
+        this.draft = next
+        this.hooks.onPlan(next)
+        this.renderHost()
+    }
+
+    /** The host's Start (the sidebar's button or the page's): the button also takes the mouse. */
+    private startNext(): void {
+        const draft = this.currentDraft()
+        if (!draft || !this.canSetUp) return
+        this.hostNotice = null
+        this.hooks.onStart(draft)
     }
 
     /** The settings: built once (the sliders keep their place), saved on every change. */
     private buildSettings(): void {
         const panel = this.el.settings!
-        const s = this.hooks.settings
-        const slider = (key: keyof typeof LIMITS, label: string, format: (v: number) => string) => {
-            const { min, max, step } = LIMITS[key]
-            return `<label class="slider">${label} <output data-out="${key}">${format(s[key])}</output>
-                <input type="range" data-setting="${key}" min="${min}" max="${max}" step="${step}" value="${s[key]}"></label>`
-        }
+        let s: Settings = { ...this.hooks.settings }
         const times = (v: number) => `${v.toFixed(2)}×`
-        const percent = (v: number) => (v === 0 ? 'off' : `${Math.round(v * 100)}%`)
-        const resolution = (v: number) => `${Math.round(v * 100)}%`
-        panel.innerHTML = `
-            <h2>Settings</h2>
-            ${slider('sensitivity', 'Mouse sensitivity', times)}
-            ${slider('aimSensitivity', 'While aiming', times)}
-            ${slider('fov', 'Field of view', v => `${v}°`)}
-            ${slider('volume', 'Sound', percent)}
-            <label class="slider">Graphics
-                <select data-setting="graphics">
-                    <option value="optimized" ${s.graphics === 'optimized' ? 'selected' : ''}>Optimized (lighter leaves, 1× pixels)</option>
-                    <option value="full" ${s.graphics === 'full' ? 'selected' : ''}>Full (everything, for a strong GPU)</option>
-                </select></label>
-            ${slider('resolution', 'Resolution', resolution)}
-            <label class="check"><input type="checkbox" data-setting="invertY" ${s.invertY ? 'checked' : ''}> Invert mouse Y</label>
-            <label class="check"><input type="checkbox" data-setting="antialias" ${s.antialias ? 'checked' : ''}> Anti-aliasing <small data-out="antialias"></small></label>
-            <label class="check"><input type="checkbox" data-setting="perfOverlay" ${s.perfOverlay ? 'checked' : ''}> Performance overlay</label>
-            <label class="check"><input type="checkbox" data-setting="assetView" ${s.assetView ? 'checked' : ''}> Show assets <small>(debug: assets in colour, the map red)</small></label>
-            <button type="button" data-reset>Defaults</button>`
-        const show = (key: keyof typeof LIMITS, text: string) => {
-            panel.querySelector(`[data-out="${key}"]`)!.textContent = text
+        const percent = (v: number) => (v === 0 ? 'Off' : `${Math.round(v * 100)}%`)
+        const formats: Record<SliderKey, (v: number) => string> = {
+            sensitivity: times,
+            aimSensitivity: times,
+            fov: v => `${v}°`,
+            volume: percent,
+            resolution: v => `${Math.round(v * 100)}%`,
         }
-        const read = (): Settings => {
-            const value = (key: string) =>
-                Number(panel.querySelector<HTMLInputElement>(`[data-setting="${key}"]`)!.value)
-            return {
-                sensitivity: value('sensitivity'),
-                aimSensitivity: value('aimSensitivity'),
-                fov: value('fov'),
-                volume: value('volume'),
-                resolution: value('resolution'),
-                invertY: panel.querySelector<HTMLInputElement>('[data-setting="invertY"]')!.checked,
-                perfOverlay: panel.querySelector<HTMLInputElement>('[data-setting="perfOverlay"]')!.checked,
-                antialias: panel.querySelector<HTMLInputElement>('[data-setting="antialias"]')!.checked,
-                assetView: panel.querySelector<HTMLInputElement>('[data-setting="assetView"]')!.checked,
-                graphics:
-                    panel.querySelector<HTMLSelectElement>('[data-setting="graphics"]')!.value === 'full'
-                        ? 'full'
-                        : 'optimized',
-            }
+        const label = (key: string, text: string, note: string) =>
+            `<span class="set-label" id="set-${key}-label">${text}${note ? `<small>${note}</small>` : ''}</span>`
+        const slider = (key: SliderKey, text: string, note = '') => {
+            const { min, max, step } = LIMITS[key]
+            return `<div class="set-row">${label(key, text, note)}<div class="set-control">
+                <input type="range" data-setting="${key}" aria-labelledby="set-${key}-label" min="${min}" max="${max}" step="${step}" value="${s[key]}">
+                <output data-out="${key}">${formats[key](s[key])}</output></div></div>`
         }
+        const toggle = (key: ToggleKey, text: string, note: string, choices: ReadonlyArray<[string, string]>) =>
+            `<div class="set-row">${label(key, text, note)}<div class="seg" role="group" aria-labelledby="set-${key}-label">${choices
+                .map(
+                    ([value, name]) => `<button type="button" data-seg="${key}" data-value="${value}">${name}</button>`
+                )
+                .join('')}</div></div>`
+        const onOff: ReadonlyArray<[string, string]> = [
+            ['false', 'Off'],
+            ['true', 'On'],
+        ]
+        panel.innerHTML = `<header class="page-head"><h1>Settings</h1><p>Kept in this browser, applied as you change them.</p></header>
+            <div class="group"><h2>Mouse</h2>
+                ${slider('sensitivity', 'Sensitivity')}
+                ${slider('aimSensitivity', 'While aiming', 'On top of the zoom’s own slowdown')}
+                ${toggle('invertY', 'Invert Y', '', onOff)}</div>
+            <div class="group"><h2>Display</h2>
+                ${toggle('graphics', 'Graphics', 'Optimized: lighter leaves on Rue des Érables, at most 1× pixels', [
+                    ['optimized', 'Optimized'],
+                    ['full', 'Full'],
+                ])}
+                ${slider('fov', 'Field of view')}
+                ${slider('resolution', 'Resolution', 'Fewer pixels for a graphics card that can’t keep up')}
+                ${toggle('antialias', 'Anti-aliasing', '<span data-out="antialias">Smoother edges, about a third of the GPU’s work</span>', onOff)}</div>
+            <div class="group"><h2>Audio</h2>
+                ${slider('volume', 'Sound effects')}</div>
+            <div class="group"><h2>Advanced</h2>
+                ${toggle('perfOverlay', 'Performance overlay', 'Frame times, CPU and GPU, network, under the fps', onOff)}
+                ${toggle('assetView', 'Show assets', 'Debug: library assets in colour, what the maps draw red', onOff)}</div>
+            <div class="page-actions"><button type="button" data-reset>Restore defaults</button></div>`
         // The canvas keeps the anti-aliasing it was made with: say when a change waits for a reload.
         const loadedWith = s.antialias
-        panel.addEventListener('input', () => {
-            const settings = read()
-            show('sensitivity', times(settings.sensitivity))
-            show('aimSensitivity', times(settings.aimSensitivity))
-            show('fov', `${settings.fov}°`)
-            show('volume', percent(settings.volume))
-            show('resolution', resolution(settings.resolution))
-            panel.querySelector('[data-out="antialias"]')!.textContent =
-                settings.antialias === loadedWith ? '' : '(reload the page to apply)'
-            this.hooks.onSettings(settings)
-        })
-        panel.querySelector('[data-reset]')!.addEventListener('click', () => {
-            for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
-                const input = panel.querySelector<HTMLInputElement>(`[data-setting="${key}"]`)!
-                if (typeof value === 'boolean') input.checked = value
-                else input.value = String(value)
+        const sync = () => {
+            for (const key of SLIDER_KEYS) {
+                panel.querySelector<HTMLInputElement>(`[data-setting="${key}"]`)!.value = String(s[key])
+                panel.querySelector(`[data-out="${key}"]`)!.textContent = formats[key](s[key])
             }
-            panel.dispatchEvent(new Event('input'))
+            for (const button of panel.querySelectorAll<HTMLElement>('[data-seg]'))
+                button.setAttribute(
+                    'aria-pressed',
+                    String(String(s[button.dataset.seg as ToggleKey]) === button.dataset.value)
+                )
+            panel.querySelector('[data-out="antialias"]')!.textContent =
+                s.antialias === loadedWith
+                    ? 'Smoother edges, about a third of the GPU’s work'
+                    : 'Reload the page to apply this'
+            panel.querySelector('[data-out="antialias"]')!.classList.toggle('pending', s.antialias !== loadedWith)
+        }
+        const commit = () => {
+            sync()
+            this.hooks.onSettings({ ...s })
+        }
+        sync()
+        panel.addEventListener('input', e => {
+            const key = (e.target as HTMLElement).dataset.setting as SliderKey | undefined
+            if (!key) return
+            s = { ...s, [key]: Number((e.target as HTMLInputElement).value) }
+            commit()
+        })
+        panel.addEventListener('click', e => {
+            const target = e.target as Element
+            const seg = target.closest<HTMLElement>('[data-seg]')
+            if (seg) {
+                const key = seg.dataset.seg as ToggleKey
+                const value = seg.dataset.value!
+                s =
+                    key === 'graphics'
+                        ? { ...s, graphics: value === 'full' ? 'full' : 'optimized' }
+                        : { ...s, [key]: value === 'true' }
+                commit()
+            }
+            if (target.closest('[data-reset]')) {
+                s = { ...DEFAULT_SETTINGS }
+                commit()
+            }
         })
     }
 
@@ -604,17 +842,10 @@ export class Hud {
         // Past warmup, the next panel starts again from what was played.
         if (match.phase !== 'warmup') this.draft = null
         this.renderHost()
-        this.leaveSetupIfDone()
     }
 
     /** A match has been played here (the panel offers a rematch). */
     private played = false
-
-    /** The Next match panel is the host's, in warmup: otherwise back to the menu. */
-    private leaveSetupIfDone(): void {
-        if (this.cardState === 'setup' && !this.canSetUp) this.card('paused')
-        else if (this.cardState === 'setup') this.renderSetup()
-    }
 
     /** Your state from the latest snapshot (null: watching). */
     setSelf(self: SelfState | null): void {
@@ -1040,7 +1271,23 @@ function clock(ms: number): string {
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
-type CardState = 'connecting' | 'paused' | 'playing' | 'setup' | 'replaced' | 'unavailable' | 'unknown'
+type CardState = 'connecting' | 'paused' | 'playing' | 'replaced' | 'unavailable' | 'unknown'
+
+type PrimaryAction = { kind: 'start' | 'resume'; label: string; ready: boolean }
+
+/**
+ * The menu's big button: the host's Start in warmup (they're who everyone waits for; Rematch on
+ * the last match's rules, not ready alone), else Resume (Play before you've played).
+ */
+export function primaryAction(o: {
+    hosting: boolean
+    seated: number
+    rematch: boolean
+    started: boolean
+}): PrimaryAction {
+    if (o.hosting) return { kind: 'start', label: o.rematch ? 'Rematch' : 'Start match', ready: o.seated >= 2 }
+    return { kind: 'resume', label: o.started ? 'Resume' : 'Play', ready: true }
+}
 
 /** Each map's picture on its card (CSS, no image to load). */
 const MAP_ART: Record<MapId, string> = {
@@ -1245,6 +1492,118 @@ const GUN_BLURBS = {
     pistol: 'Quick, 8 rounds',
     launcher: 'Rockets, splash · 7 s reload',
 } as const
+
+/** A gun's numbers on its loadout card: damage, rate, magazine, reload. */
+function gunSpecs(gun: keyof typeof GUN_BLURBS): string {
+    const cell = (value: string, unit: string) => `<span><b>${value}</b> ${unit}</span>`
+    if (gun === 'launcher')
+        return [
+            cell(String(LAUNCHER.damage), 'splash'),
+            cell('1', 'rocket'),
+            cell(`${LAUNCHER.reloadMs / 1000}`, 's reload'),
+        ].join('')
+    const spec = GUNS[gun]
+    return [
+        cell(spec.pellets > 1 ? `${spec.damage}×${spec.pellets}` : String(spec.damage), 'dmg'),
+        cell(String(Math.round(60000 / spec.intervalMs)), 'rpm'),
+        cell(String(spec.magazine), 'rounds'),
+        cell((spec.reloadMs / 1000).toFixed(1), 's reload'),
+    ].join('')
+}
+
+/** The menu's pages, in the sidebar's order. */
+const PAGES = [
+    { id: 'loadout', label: 'Loadout' },
+    { id: 'match', label: 'Match' },
+    { id: 'settings', label: 'Settings' },
+    { id: 'controls', label: 'Controls' },
+] as const
+type PageId = (typeof PAGES)[number]['id']
+
+const SLIDER_KEYS = ['sensitivity', 'aimSensitivity', 'fov', 'volume', 'resolution'] as const
+type SliderKey = (typeof SLIDER_KEYS)[number]
+type ToggleKey = 'invertY' | 'graphics' | 'antialias' | 'perfOverlay' | 'assetView'
+
+const PHASE_NAMES: Record<Phase, string> = {
+    warmup: 'Warmup',
+    loading: 'Loading the map',
+    countdown: 'Starting',
+    playing: 'Match on',
+    intermission: 'Scoreboard',
+}
+
+/** The menu's icons: one stroke, drawn on a 24 grid. */
+const icon = (paths: string) =>
+    `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`
+const ICONS = {
+    play: icon('<path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/>'),
+    loadout: icon('<circle cx="12" cy="12" r="7"/><path d="M12 2.5v5M12 16.5v5M2.5 12h5M16.5 12h5"/>'),
+    match: icon('<path d="M5 21V4M5 4h11l-2.5 4L16 12H5"/>'),
+    settings: icon(
+        '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>'
+    ),
+    controls: icon(
+        '<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6.5 10h1M10.5 10h1M14.5 10h1M8 14h8"/>'
+    ),
+    leave: icon('<path d="M14 4h4.5a1.5 1.5 0 0 1 1.5 1.5v13a1.5 1.5 0 0 1-1.5 1.5H14M10 8l-4 4 4 4M6 12h10"/>'),
+    check: icon('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
+}
+
+/** The keys, grouped: the Controls page (built once). */
+function controlsPage(): string {
+    const keys = (...names: string[]) =>
+        names.map(n => (n === '+' || n === '/' ? `<em>${n}</em>` : `<kbd>${n}</kbd>`)).join('')
+    const groups: ReadonlyArray<[string, ReadonlyArray<[string, string]>]> = [
+        [
+            'Move',
+            [
+                ['Walk', keys('W', 'A', 'S', 'D')],
+                ['Jump', keys('Space')],
+                ['Jetpack: hold Space, or press it in the air', keys('Space')],
+                ['Dodge', keys('Shift', '+', 'direction')],
+                ['Lie prone (hold)', keys('C')],
+            ],
+        ],
+        [
+            'Fight',
+            [
+                ['Fire', keys('Click')],
+                ['Aim', keys('Right-click')],
+                ['Reload', keys('R')],
+                ['Primary · secondary · stapler', keys('1', '2', '3')],
+                ['Next weapon · the last', keys('Wheel', '/', 'Q')],
+                ['First / third person', keys('V')],
+            ],
+        ],
+        [
+            'Build',
+            [
+                ['Build mode', keys('B')],
+                ['Put up a wall', keys('Click')],
+                ['Turn it a quarter', keys('R')],
+                ['Lay it flat / stand it up', keys('Wheel')],
+                ['Make it a door · a window', keys('F', '/', 'G')],
+                ['Take one of yours back', keys('E')],
+                ['Open or shut a door (any time)', keys('F')],
+            ],
+        ],
+        [
+            'Game',
+            [
+                ['Scores', keys('Tab')],
+                ['This menu', keys('Esc')],
+                ['Set up the next match (the host)', keys('N')],
+            ],
+        ],
+    ]
+    return `<header class="page-head"><h1>Controls</h1><p>Every key in the game.</p></header>
+        ${groups
+            .map(
+                ([title, rows]) =>
+                    `<div class="group"><h2>${title}</h2><dl class="keys">${rows.map(([what, how]) => `<div><dt>${what}</dt><dd>${how}</dd></div>`).join('')}</dl></div>`
+            )
+            .join('')}`
+}
 
 /** What each element was last given: the HUD redraws every frame, and an unchanged write would still cost a layout. */
 const written = new WeakMap<HTMLElement, string>()

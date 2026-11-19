@@ -144,11 +144,16 @@ export class Controls {
         private readonly canvas: HTMLCanvasElement,
         private readonly onLockChange: (locked: boolean) => void
     ) {
-        // Anywhere on the page, the "Click to play" card included (it sits over the canvas); not
-        // its links, buttons and settings.
+        // The menu's Resume, or anywhere outside the menu's panel (the dimmed game around it); not a
+        // click inside the panel, nor any link, button or setting.
         document.addEventListener('click', e => {
             const target = e.target as Element | null
-            if (!this.locked && !target?.closest('a, button, input, select, label')) this.lock()
+            if (this.locked) return
+            if (
+                target?.closest('[data-resume]') ||
+                !target?.closest('a, button, input, select, label, [data-menu-panel]')
+            )
+                this.lock()
         })
         document.addEventListener('pointerlockchange', () => {
             if (!this.locked) this.release()
