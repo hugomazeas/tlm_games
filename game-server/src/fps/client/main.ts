@@ -576,6 +576,8 @@ function receive(message: ServerMessage): void {
                 closedForGood = true
                 hud.card('unknown')
             }
+            // The Hub didn't answer: close, and the reconnect tries again.
+            if (message.code === 'UNAVAILABLE') socket?.close()
             if (message.code === 'NOT_ENOUGH') hud.notice('Needs a second player.')
             if (message.code === 'NOT_HOST') hud.notice('Only the host can start a match.')
             return

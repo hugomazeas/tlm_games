@@ -19,9 +19,9 @@ import type { Race } from './race.ts'
 const SEND_MS = 50
 /** …with at most this many race steps each (the server takes up to 30). */
 const SAMPLES_PER_MESSAGE = 20
-/** A dropped socket is reopened this many times, waiting this long more each time. */
-const RECONNECT_TRIES = 5
+/** A dropped socket is reopened for as long as the page is open, waiting this long more each time, up to the cap. */
 const RECONNECT_MS = 1000
+const RECONNECT_MAX_MS = 5000
 /** Results reach the Hub a moment after the race ends; records are fetched again after this. */
 const RECORDS_DELAY_MS = 1500
 
@@ -171,6 +171,7 @@ export function joinLobby(options: LobbyOptions): Lobby {
             switch (message.type) {
                 case 'welcome':
                     attempts = 0
+                    panel.reconnecting(null)
                     you = message.you
                     // Keep the lobby in the URL: a refresh comes back to it, and it can be shared.
                     history.replaceState(null, '', withLobby(message.lobby.id))
@@ -225,7 +226,8 @@ export function joinLobby(options: LobbyOptions): Lobby {
                     break
                 case 'error':
                     if (message.code === 'NOT_HOST') break
-                    fail(ERRORS[message.code])
+                    // The Hub didn't answer (a restart, a hiccup): close and let the reconnect try again.
+                    if (message.code !== 'UNAVAILABLE') fail(ERRORS[message.code])
                     socket.close()
                     break
             }
@@ -234,13 +236,10 @@ export function joinLobby(options: LobbyOptions): Lobby {
         socket.addEventListener('close', event => {
             console.warn('racing: lobby socket closed', event.code, event.reason || '(no reason)')
             if (failed) return
-            // Dropped (a long first frame, the Wi-Fi, a server restart): try again a few times.
-            if (attempts < RECONNECT_TRIES) {
-                attempts += 1
-                setTimeout(connect, RECONNECT_MS * attempts)
-                return
-            }
-            fail('Disconnected from the lobby. Reload to join again.')
+            // Dropped (a long first frame, the Wi-Fi, Cloudflare, a server restart): try again until it's back.
+            attempts += 1
+            if (attempts > 1) panel.reconnecting('Connection lost. Reconnecting…')
+            setTimeout(connect, Math.min(RECONNECT_MS * attempts, RECONNECT_MAX_MS))
         })
     }
     connect()
