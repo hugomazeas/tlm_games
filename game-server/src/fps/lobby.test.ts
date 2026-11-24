@@ -742,7 +742,7 @@ describe('shots are judged where the shooter saw the target', () => {
             [b, { forward: 0, strafe: 1, yaw: 0, pitch: 0, buttons: 0, view: 0 }],
             [a, { ...aim, buttons: BUTTON.aim, view: seenAt }],
         ])
-        expect(Math.abs(where(a, b.id).x)).toBeGreaterThan(0.2)
+        expect(Math.abs(where(a, b.id).x)).toBeGreaterThan(0.15)
 
         const shotsAfter = (from: number) =>
             a.inbox

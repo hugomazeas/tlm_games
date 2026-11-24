@@ -40,6 +40,8 @@ export function createFpsLive(laravel: LaravelClient, onResults: (result: MatchR
                 } catch (error) {
                     console.error('Office FPS player lookup failed:', (error as Error).message)
                     refuse(conn, 'UNAVAILABLE')
+                    // Closed, so the browser's reconnect tries again (left open, it waited forever).
+                    conn.close()
                     return false
                 }
             }

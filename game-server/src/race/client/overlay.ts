@@ -35,6 +35,7 @@ const CSS = `
     #race-lobby { top: 12px; pointer-events: auto; width: 290px; box-sizing: border-box; max-height: calc(100vh - 360px); overflow-y: auto; overflow-x: hidden; display: grid; gap: 6px; font-size: 14px; }
     #race-lobby .time { white-space: nowrap; gap: 6px; }
     #race-lobby .title { font-weight: 700; font-size: 15px; }
+    #race-lobby .reconnecting { padding: 6px 8px; border-radius: 6px; background: rgb(251 191 36 / 0.16); color: #fcd34d; font-size: 13px; }
     #race-lobby .phase { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; }
     #race-lobby .sky { font-size: 12px; color: #cbd5e1; }
     #race-lobby .receipt { display: grid; gap: 3px; padding: 8px; border-radius: 6px; background: #fefce8; color: #1c1917; font: 12px ui-monospace, monospace; }

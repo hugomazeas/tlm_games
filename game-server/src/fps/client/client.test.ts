@@ -19,9 +19,35 @@ import { finishOf } from './finish.ts'
 import { kitFor } from './guns.ts'
 import { Vector3 } from 'three'
 import { aimDirection, fireShot, reloadMsOf } from '../sim/combat.ts'
-import { BLOOD, bloodCells, deathRecap, primaryAction } from './hud.ts'
+import { BLOOD, bloodCells, deathRecap, modeRules, primaryAction } from './hud.ts'
 import { MouseFilter } from './controls.ts'
 import { bottleneck, FrameStats, HITCH_MS } from './perf.ts'
+import { COUNTDOWN_MS } from '../lobby.ts'
+
+describe("the countdown's rules", () => {
+    test('lasts long enough to read them', () => {
+        expect(COUNTDOWN_MS).toBe(10_000)
+    })
+
+    test("siege explains both sides' jobs with the match's numbers", () => {
+        const text = modeRules({ mode: 'siege', fragLimit: 4, minutes: 10 }).join(' ')
+        expect(text).toContain('Defenders')
+        expect(text).toContain('Attackers')
+        expect(text).toContain('45 s')
+        expect(text).toContain('4 points')
+        expect(text).toContain('swap')
+        // A siege's halves run on their own clock, not the host's minutes.
+        expect(text).not.toContain('10 min')
+    })
+
+    test('every mode has rules ending with how it is won', () => {
+        for (const mode of ['ffa', 'tdm', 'koth'] as const) {
+            const lines = modeRules({ mode, fragLimit: 5, minutes: 7 })
+            expect(lines.length).toBeGreaterThan(1)
+            expect(lines.at(-1)).toContain('7 min')
+        }
+    })
+})
 
 describe("the menu's big button", () => {
     const base = { hosting: false, seated: 3, rematch: false, started: true }

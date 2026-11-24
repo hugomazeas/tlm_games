@@ -7,6 +7,9 @@ import type { RaceResult } from './race/lobbies.ts'
 import { type Livery, liveryFrom } from './race/livery.ts'
 import type { GameResult } from './sessions.ts'
 
+/** How many times a lookup a player waits on is tried before giving up. */
+export const LOOKUP_TRIES = 3
+
 /**
  * The sidecar's only way to the database: Laravel's internal hot potato and
  * racing endpoints, behind a shared secret. The sidecar never opens SQLite itself.
@@ -14,12 +17,14 @@ import type { GameResult } from './sessions.ts'
 export class LaravelClient {
     constructor(
         private readonly baseUrl: string,
-        private readonly secret: string
+        private readonly secret: string,
+        /** Between a lookup's tries (a restart, a hiccup): see `lookup`. */
+        private readonly retryMs = 1000
     ) {}
 
     /** The player, null when Laravel says it doesn't exist. Throws when Laravel can't be reached. */
     async findPlayer(playerId: number): Promise<PlayerInfo | null> {
-        const response = await this.request('GET', `/internal/hot-potato/players/${playerId}`)
+        const response = await this.lookup(`/internal/hot-potato/players/${playerId}`)
         if (response.status === 404) return null
         if (!response.ok) throw new Error(`Player lookup failed with ${response.status}`)
 
@@ -127,7 +132,7 @@ export class LaravelClient {
 
     /** A racing driver's name, garage colours and livery; null when Laravel says the player doesn't exist. */
     async findDriver(playerId: number): Promise<({ name: string; body: string; accent: string } & Livery) | null> {
-        const response = await this.request('GET', `/internal/racing/drivers/${playerId}`)
+        const response = await this.lookup(`/internal/racing/drivers/${playerId}`)
         if (response.status === 404) return null
         if (!response.ok) throw new Error(`Driver lookup failed with ${response.status}`)
         const found = (await response.json()) as { name: string; body: string; accent: string } & Partial<Livery>
@@ -137,7 +142,7 @@ export class LaravelClient {
 
     /** A racing track's checkpoints; null when it doesn't exist (any more). */
     async findTrack(trackId: number): Promise<{ id: number; name: string; laps: number; gates: GateSpec[] } | null> {
-        const response = await this.request('GET', `/internal/racing/tracks/${trackId}`)
+        const response = await this.lookup(`/internal/racing/tracks/${trackId}`)
         if (response.status === 404) return null
         if (!response.ok) throw new Error(`Track lookup failed with ${response.status}`)
 
@@ -198,6 +203,23 @@ export class LaravelClient {
             })),
         })
         if (!response.ok) throw new Error(`Saving the office FPS match failed with ${response.status}`)
+    }
+
+    /**
+     * A GET a joining player waits on, tried up to LOOKUP_TRIES times while the Hub can't answer
+     * (unreachable, or a 5xx: the Hub restarting with the game server after a deploy, a hiccup).
+     * Any other answer, a 404 included, is returned at once.
+     */
+    private async lookup(path: string): Promise<Response> {
+        for (let attempt = 1; ; attempt++) {
+            try {
+                const response = await this.request('GET', path)
+                if (response.status < 500 || attempt >= LOOKUP_TRIES) return response
+            } catch (error) {
+                if (attempt >= LOOKUP_TRIES) throw error
+            }
+            await Bun.sleep(this.retryMs)
+        }
     }
 
     private request(method: 'GET' | 'POST', path: string, body?: unknown): Promise<Response> {

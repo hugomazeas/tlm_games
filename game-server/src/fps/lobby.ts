@@ -58,7 +58,8 @@ import type { FpsWorld } from './sim/world.ts'
  */
 
 export const MIN_PLAYERS = 2
-export const COUNTDOWN_MS = 5_000
+/** Long enough to read the mode's rules, which the browsers show meanwhile (`rulesCard`). */
+export const COUNTDOWN_MS = 10_000
 export const INTERMISSION_MS = 12_000
 /** A snapshot every this many steps (30 Hz). */
 export const SNAPSHOT_EVERY = 2

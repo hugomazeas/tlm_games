@@ -59,8 +59,10 @@ export interface LobbyPanel {
     setRecords(records: TrackRecords | null): void
     /** The last race's snacks: who ate what, and the bill (a joke: nothing is charged). */
     setReceipt(lines: readonly ReceiptLine[]): void
-    /** Replaces everything with a message: the lobby is full, the connection dropped… */
+    /** Replaces everything with a message: the lobby is full, the lobby was closed… */
     fail(text: string): void
+    /** A line on top while the connection is being retried (null: back). */
+    reconnecting(text: string | null): void
 }
 
 export function createLobbyPanel(
@@ -78,6 +80,7 @@ export function createLobbyPanel(
     let records: TrackRecords | null = null
     let showRecords = false
     let failed = false
+    let reconnecting: string | null = null
 
     const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = '') =>
         Object.assign(document.createElement(tag), { className, textContent: text })
@@ -182,11 +185,19 @@ export function createLobbyPanel(
     }
 
     const render = () => {
-        if (failed || !lobby) return
+        if (failed) return
+        const notice = reconnecting === null ? [] : [el('div', 'reconnecting', reconnecting)]
+        if (!lobby) {
+            // Still joining: only the reconnect line, if any.
+            element.replaceChildren(...notice)
+            element.hidden = notice.length === 0
+            return
+        }
         const host = lobby.members.find(m => m.id === lobby!.hostId)
         const live = lobby.phase === 'countdown' || lobby.phase === 'racing'
         const me = lobby.members.find(m => m.id === you)
         const children: HTMLElement[] = [
+            ...notice,
             el('div', 'title', `${lobby.trackName} · ${laps} ${laps === 1 ? 'lap' : 'laps'}`),
             el('div', `phase phase-${lobby.phase}`, PHASES[lobby.phase]),
             el('div', 'sky', `${live ? '' : 'Next race: '}${describeSky(lobby.sky)}`),
@@ -301,6 +312,12 @@ export function createLobbyPanel(
 
         setReceipt(lines) {
             receipt = lines
+            render()
+        },
+
+        reconnecting(text) {
+            if (reconnecting === text) return
+            reconnecting = text
             render()
         },
 

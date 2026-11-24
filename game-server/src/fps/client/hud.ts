@@ -34,7 +34,7 @@ import {
     ZONE_SECONDS_PER_POINT,
 } from '../protocol.ts'
 import { GUNS, LAUNCHER, magazineOf, MAX_HEALTH, maxHealthOf, powersOf } from '../sim/combat.ts'
-import { siegeWinner } from '../sim/places.ts'
+import { siegeWinner, ZONE_MS } from '../sim/places.ts'
 import { resolveTuning } from '../sim/tuning.ts'
 import { placesOf } from '../sim/world.ts'
 import { DEFAULT_SETTINGS, LIMITS, type Settings } from './settings.ts'
@@ -249,6 +249,14 @@ const CSS = `
 #fps-hud .stats .bad { color: #ff6b6b; }
 #fps-hud .middle { position: absolute; left: 50%; top: 34%; transform: translateX(-50%); text-align: center; font-size: 22px; text-shadow: 0 2px 6px rgba(0,0,0,.6); }
 #fps-hud .middle small { display: block; font-size: 14px; opacity: .8; }
+#fps-hud .rules { width: min(520px, calc(100vw - 32px)); padding: 14px 20px 16px; border-radius: 12px; background: rgba(12,14,18,.72); text-align: left; text-shadow: none; }
+#fps-hud .rules .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+#fps-hud .rules h2 { margin: 0; font-size: 22px; }
+#fps-hud .rules .count { font-size: 34px; font-weight: 700; color: var(--gold, #ffd166); font-variant-numeric: tabular-nums; }
+#fps-hud .rules .sub { margin: 2px 0 10px; font-size: 13px; opacity: .7; }
+#fps-hud .rules ul { margin: 0; padding-left: 18px; font-size: 15px; line-height: 1.45; }
+#fps-hud .rules li + li { margin-top: 4px; }
+#fps-hud .rules li b { color: #ffd166; }
 #fps-hud .board { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); min-width: 360px; }
 #fps-hud .board table { width: 100%; border-collapse: collapse; }
 #fps-hud .board td, #fps-hud .board th { padding: 4px 8px; text-align: left; }
@@ -1153,7 +1161,7 @@ export class Hud {
             const recap = opts.cause ? deathRecap(opts.cause) : ''
             middle = `${by}${taunt}${recap}<small>Back in ${Math.ceil((opts.self.respawnInMs ?? 0) / 1000)} with ${escape(guns)} · <kbd>Esc</kbd> to change</small>`
         } else if (match.phase === 'countdown') {
-            middle = `${Math.ceil((left ?? 0) / 1000)}<small>Warmup kills don't count</small>`
+            middle = rulesCard(match, Math.ceil((left ?? 0) / 1000))
         }
         write(this.el.middle!, middle)
 
@@ -1348,6 +1356,45 @@ export function describeTuning(tuning: Partial<Tuning> = {}): string {
             return `${name.replace(/ \(.*\)$/, '')} ${tuningLabel(row.key, tuning[row.key]!).toLowerCase()}`
         })
         .join(', ')
+}
+
+/** The mode's rules, one line each, with this match's numbers: what the countdown shows. */
+export function modeRules(match: Pick<MatchView, 'mode' | 'fragLimit' | 'minutes'>): string[] {
+    const { fragLimit, minutes } = match
+    const end = `First to <b>${limitLabel(match.mode, fragLimit)}</b>, or the most when the <b>${minutes} min</b> run out.`
+    switch (match.mode) {
+        case 'ffa':
+            return ['Everyone for themselves: every kill counts.', end]
+        case 'tdm':
+            return [
+                '<b>Red against blue</b>, sides shuffled at the start. No friendly fire.',
+                'Every kill scores for your side.',
+                end,
+            ]
+        case 'koth':
+            return [
+                'One meeting room is <b>live</b>: follow the marker.',
+                '<b>Alone</b> in it, you score a second a second. Contested, nobody scores.',
+                `It moves to another room every <b>${ZONE_MS / 60_000} min</b>.`,
+                end,
+            ]
+        case 'siege':
+            return [
+                `<b>Red against blue</b>, two halves on one spot. Your side and the spot show when it starts.`,
+                `<b>Defenders</b>: <b>${SIEGE.headStartMs / 1000} s</b> to build round the spot (<kbd>B</kbd>) while the attackers wait in their dome. Only defenders build.`,
+                `<b>Attackers</b>: stay <b>${SIEGE.holdMs / 1000} s</b> in the spot to score a point, then back to the dome. Leaving or dying starts it over.`,
+                `A half ends at <b>${fragLimit} points</b> or after <b>${SIEGE.halfMs / 60_000} min</b>, then the sides swap and the walls go.`,
+                'Most points wins; on a tie, the side that got them faster.',
+            ]
+    }
+}
+
+/** The countdown's card: the mode, the seconds left and its rules. */
+export function rulesCard(match: MatchView, seconds: number): string {
+    const rules = modeRules(match)
+        .map(line => `<li>${line}</li>`)
+        .join('')
+    return `<div class="rules"><div class="head"><h2>${MODE_NAMES[match.mode]}</h2><span class="count">${seconds}</span></div><p class="sub">on ${escape(MAP_INFO[match.map].name.replace(/^The /, 'the '))} · warmup kills don't count</p><ul>${rules}</ul></div>`
 }
 
 const MODE_HINTS: Record<Mode, string> = {
