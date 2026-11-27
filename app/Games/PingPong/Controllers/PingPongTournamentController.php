@@ -9,6 +9,7 @@ use App\Games\PingPong\Services\TournamentService;
 use App\Games\PingPong\Services\VideoRecordingService;
 use App\Http\Controllers\Controller;
 use App\Jobs\SendMatchStartedNotificationJob;
+use App\Models\Office;
 use App\Models\Player;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -27,6 +28,7 @@ class PingPongTournamentController extends Controller
         return view('games.ping-pong.tournaments', [
             'tournaments' => PingPongTournament::with('winner')->latest()->get(),
             'players' => Player::orderBy('name')->get(),
+            'offices' => Office::orderBy('name')->get(['id', 'name']),
         ]);
     }
 
@@ -39,11 +41,13 @@ class PingPongTournamentController extends Controller
             'name' => 'required|string|max:100',
             'player_ids' => 'required|array|min:2|max:64',
             'player_ids.*' => 'integer|distinct|exists:players,id',
+            'office_id' => 'nullable|integer|exists:offices,id',
         ]);
 
         $tournament = $this->tournamentService->create(
             $validated['name'],
             array_map('intval', $validated['player_ids']),
+            isset($validated['office_id']) ? (int) $validated['office_id'] : null,
         );
 
         return redirect('/games/ping-pong/tournaments/'.$tournament->id);
@@ -82,6 +86,7 @@ class PingPongTournamentController extends Controller
         $match = PingPongMatch::create([
             'mode' => '1v1',
             'tournament_id' => $tournament->id,
+            'office_id' => $tournament->office_id,
             'player_left_id' => $slot->player_left_id,
             'player_right_id' => $slot->player_right_id,
             'player_left_score' => 0,

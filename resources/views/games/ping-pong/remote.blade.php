@@ -1688,6 +1688,22 @@
             }
         }
 
+        // This side's light colour, as a glowing bar along the top, when the match's office has lights on.
+        async function showLightColor(officeId) {
+            if (!officeId) return;
+            try {
+                const offices = await (await fetch(`${API}/offices`)).json();
+                const colors = offices.find((o) => o.id === officeId)?.light_colors;
+                if (!colors) return;
+                const bar = document.createElement('div');
+                bar.title = 'Your side\'s light colour';
+                bar.style.cssText = `position:fixed;top:0;left:0;right:0;height:6px;z-index:50;pointer-events:none;background:${colors[SIDE]};box-shadow:0 0 16px ${colors[SIDE]}`;
+                document.body.appendChild(bar);
+            } catch (err) {
+                // No bar: the lights still work.
+            }
+        }
+
         // Initial load
         async function init() {
             await registerConnection();
@@ -1695,6 +1711,7 @@
                 const res = await fetch(`${API}/matches/${MATCH_ID}`);
                 const data = await res.json();
                 renderMatch(data);
+                showLightColor(data.office_id);
             } catch (err) {
                 leftNames.textContent = 'Error loading match';
             }

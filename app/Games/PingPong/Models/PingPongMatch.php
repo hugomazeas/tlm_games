@@ -16,6 +16,7 @@ class PingPongMatch extends Model
     protected $fillable = [
         'mode',
         'free_play',
+        'office_id',
         'tournament_id',
         'player_left_id',
         'team_left_player2_id',

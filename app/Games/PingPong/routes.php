@@ -3,6 +3,7 @@
 use App\Games\PingPong\Controllers\PingPongApiController;
 use App\Games\PingPong\Controllers\PingPongChatController;
 use App\Games\PingPong\Controllers\PingPongController;
+use App\Games\PingPong\Controllers\PingPongLightsController;
 use App\Games\PingPong\Controllers\PingPongLobbyApiController;
 use App\Games\PingPong\Controllers\PingPongLogController;
 use App\Games\PingPong\Controllers\PingPongTournamentController;
@@ -20,6 +21,14 @@ Route::get('/games/ping-pong/lobby/{code}', [PingPongController::class, 'lobbyJo
 Route::get('/games/ping-pong/log', [PingPongLogController::class, 'create']);
 Route::post('/games/ping-pong/api/logged-results', [PingPongLogController::class, 'store']);
 Route::delete('/games/ping-pong/api/logged-results/{id}', [PingPongLogController::class, 'destroy']);
+
+// Lights: each office's Home Assistant light reacting to its matches
+Route::middleware('web')->group(function () {
+    Route::get('/games/ping-pong/lights', [PingPongLightsController::class, 'index']);
+    Route::put('/games/ping-pong/lights/{office}', [PingPongLightsController::class, 'update']);
+    Route::post('/games/ping-pong/lights/{office}/test-connection', [PingPongLightsController::class, 'testConnection']);
+    Route::post('/games/ping-pong/lights/{office}/test', [PingPongLightsController::class, 'test']);
+});
 
 // Tournaments (single elimination, off the books: no ELO, no official stats).
 // Plain HTML forms, so they need the session + CSRF from the web group.
@@ -83,6 +92,7 @@ Route::post('/games/ping-pong/api/lobbies/{code}/join', [PingPongLobbyApiControl
 Route::patch('/games/ping-pong/api/lobbies/{code}/side', [PingPongLobbyApiController::class, 'switchSide']);
 Route::post('/games/ping-pong/api/lobbies/{code}/swap', [PingPongLobbyApiController::class, 'swapSides']);
 Route::patch('/games/ping-pong/api/lobbies/{code}/free-play', [PingPongLobbyApiController::class, 'setFreePlay']);
+Route::patch('/games/ping-pong/api/lobbies/{code}/office', [PingPongLobbyApiController::class, 'setOffice']);
 Route::delete('/games/ping-pong/api/lobbies/{code}/leave', [PingPongLobbyApiController::class, 'leaveLobby']);
 Route::post('/games/ping-pong/api/lobbies/{code}/start', [PingPongLobbyApiController::class, 'startMatch']);
 Route::delete('/games/ping-pong/api/lobbies/{code}', [PingPongLobbyApiController::class, 'closeLobby']);

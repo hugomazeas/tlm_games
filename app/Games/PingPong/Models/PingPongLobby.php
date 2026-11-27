@@ -16,6 +16,7 @@ class PingPongLobby extends Model
         'code',
         'mode',
         'free_play',
+        'office_id',
         'host_token',
         'status',
         'match_id',

@@ -133,6 +133,22 @@
                                 </span>
                             </button>
 
+                            {{-- Office: where the table is, so that office's lights react. Asked once, then remembered
+                                 on this device and hidden (forget it from /games/ping-pong/lights). --}}
+                            <label x-show="offices.length && hostToken && !lobbyOfficeId" class="flex items-center justify-between gap-3 rounded-xl px-4 py-3 border border-[#f5ecd6]/15 bg-[#f5ecd6]/[0.03]">
+                                <span class="flex flex-col items-start text-left">
+                                    <span class="pph-mono text-xs font-bold tracking-[0.18em] uppercase text-[#f5ecd6]/70">Office</span>
+                                    <span class="pph-mono text-[10px] tracking-[0.08em] text-[#f5ecd6]/45">Its lights follow the match</span>
+                                </span>
+                                <select x-model="lobbyOfficeId" @change="setLobbyOffice()" :disabled="!hostToken"
+                                        class="rounded-lg px-2.5 py-1.5 text-[13px] font-semibold text-[#f5ecd6] bg-[#06081b] border border-[#f5ecd6]/20 focus:outline-none focus:border-[#f5ecd6]/45 disabled:opacity-60">
+                                    <option value="">None</option>
+                                    <template x-for="office in offices" :key="office.id">
+                                        <option :value="String(office.id)" x-text="office.name" :selected="String(office.id) === lobbyOfficeId"></option>
+                                    </template>
+                                </select>
+                            </label>
+
                             {{-- Start --}}
                             <button class="appearance-none border-0 mt-0.5 bg-[#f5ecd6] text-[#06081b] px-5 py-3.5 rounded-xl pph-display text-[22px] tracking-[0.06em] uppercase cursor-pointer transition shadow-[0_8px_22px_rgba(245,236,214,0.18)] hover:enabled:-translate-y-px hover:enabled:bg-[#fffaf0] hover:enabled:shadow-[0_12px_30px_rgba(245,236,214,0.28)] disabled:opacity-[0.35] disabled:cursor-not-allowed disabled:shadow-none disabled:bg-[#f5ecd6]/40"
                                     :disabled="!lobbyReady || loading || !hostToken"
@@ -277,7 +293,10 @@
                                 <a href="/games/ping-pong/recordings"
                                    class="px-3 py-1.5 rounded-full border border-[#f5ecd6]/15 text-[#f5ecd6]/80 no-underline text-xs font-semibold transition hover:text-[#f5ecd6] hover:border-[#f5ecd6]/30 hover:bg-[#f5ecd6]/[0.04]">Recordings</a>
                                 <a href="/games/ping-pong/tournaments"
-                                   class="px-3 py-1.5 rounded-full border border-[#f5ecd6]/15 text-[#f5ecd6]/80 no-underline text-xs font-semibold transition hover:text-[#f5ecd6] hover:border-[#f5ecd6]/30 hover:bg-[#f5ecd6]/[0.04]">Tournaments</a>                            </div>
+                                   class="px-3 py-1.5 rounded-full border border-[#f5ecd6]/15 text-[#f5ecd6]/80 no-underline text-xs font-semibold transition hover:text-[#f5ecd6] hover:border-[#f5ecd6]/30 hover:bg-[#f5ecd6]/[0.04]">Tournaments</a>
+                                <a href="/games/ping-pong/lights"
+                                   class="px-3 py-1.5 rounded-full border border-[#f5ecd6]/15 text-[#f5ecd6]/80 no-underline text-xs font-semibold transition hover:text-[#f5ecd6] hover:border-[#f5ecd6]/30 hover:bg-[#f5ecd6]/[0.04]">Lights</a>
+                            </div>
                         </div>
 
                         <div class="overflow-y-auto overflow-x-auto flex-1 min-h-0 pb-3 -mx-1 px-1">
@@ -366,6 +385,9 @@
                 {{-- LEFT team --}}
                 <div class="relative rounded-2xl border-2 border-[#ff5a4a]/25 bg-gradient-to-b from-[#ff5a4a]/[0.08] to-[#ff5a4a]/[0.02] p-3 md:p-8 flex flex-col items-center justify-center transition-all duration-300"
                      :class="isServing('left') ? '!border-[#ff5a4a]/75 !bg-[#ff5a4a]/[0.18] shadow-[inset_0_0_80px_rgba(255,90,74,0.16),0_0_40px_rgba(255,90,74,0.18)]' : ''">
+                    <template x-if="matchLightColors">
+                        <div class="absolute top-0 inset-x-6 h-1.5 rounded-b-full" :style="`background:${matchLightColors.left};box-shadow:0 0 14px ${matchLightColors.left}`" title="This side's light colour"></div>
+                    </template>
 
                     {{-- Player name(s), photo beside each name so nothing below moves --}}
                     <template x-if="mode === '1v1'">
@@ -437,6 +459,9 @@
                 {{-- RIGHT team --}}
                 <div class="relative rounded-2xl border-2 border-[#3ec8ff]/25 bg-gradient-to-b from-[#3ec8ff]/[0.08] to-[#3ec8ff]/[0.02] p-3 md:p-8 flex flex-col items-center justify-center transition-all duration-300"
                      :class="isServing('right') ? '!border-[#3ec8ff]/75 !bg-[#3ec8ff]/[0.18] shadow-[inset_0_0_80px_rgba(62,200,255,0.16),0_0_40px_rgba(62,200,255,0.18)]' : ''">
+                    <template x-if="matchLightColors">
+                        <div class="absolute top-0 inset-x-6 h-1.5 rounded-b-full" :style="`background:${matchLightColors.right};box-shadow:0 0 14px ${matchLightColors.right}`" title="This side's light colour"></div>
+                    </template>
 
                     <template x-if="mode === '1v1'">
                         <div class="flex items-center justify-center gap-2 md:gap-3 max-w-full min-w-0">
@@ -596,6 +621,7 @@ function pingPong() {
         lobbyCode: '',
         hostToken: '',
         lobbyFreePlay: false,
+        lobbyOfficeId: '',
         lobbyParticipants: [],
         lobbyJoinUrl: '',
 
@@ -628,6 +654,7 @@ function pingPong() {
             this.$watch("screen === 'playing' ? match.id : null", (matchId) => matchId ? this.startChat(matchId) : this.stopChat());
 
             if (this.preloadedMatchId) {
+                this.loadOffices(); // for the light colours on the scoreboard
                 await this.loadAndStartMatch(this.preloadedMatchId);
                 return;
             }
@@ -661,6 +688,7 @@ function pingPong() {
                 this.hostToken = '';
                 this.mode = lobby.mode;
                 this.lobbyFreePlay = !!lobby.free_play;
+                this.lobbyOfficeId = lobby.office_id ? String(lobby.office_id) : '';
                 this.lobbyParticipants = lobby.participants || [];
                 this.lobbyJoinUrl = `${window.location.origin}/games/ping-pong/lobby/${this.lobbyCode}`;
 
@@ -973,18 +1001,48 @@ function pingPong() {
 
         // --- LOBBY ---
 
+        // The office this device's table is in, remembered across lobbies (only if it still exists).
+        rememberedOfficeId() {
+            let id = '';
+            try { id = localStorage.getItem('pingPong.officeId') || ''; } catch (e) {}
+            return this.offices.some((o) => String(o.id) === id) ? id : '';
+        },
+
+        async setLobbyOffice() {
+            try { localStorage.setItem('pingPong.officeId', this.lobbyOfficeId); } catch (e) {}
+            if (!this.hostToken) return;
+            try {
+                await fetch(`${this.API}/lobbies/${this.lobbyCode}/office`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf },
+                    body: JSON.stringify({ office_id: this.lobbyOfficeId ? Number(this.lobbyOfficeId) : null, host_token: this.hostToken }),
+                });
+            } catch (err) {
+                console.warn('Could not set the office:', err);
+            }
+        },
+
+        // Each side's light colour for the match on screen (null when its office has no lights on).
+        get matchLightColors() {
+            const office = this.offices.find((o) => o.id === this.match?.office_id);
+            return office?.light_colors || null;
+        },
+
         async createLobby() {
             if (this.loading) return;
             this.loading = true;
             try {
+                if (!this.offices.length) await this.loadOffices();
+                const officeId = this.rememberedOfficeId();
                 const res = await fetch(`${this.API}/lobbies`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf },
-                    body: JSON.stringify({ mode: this.mode }),
+                    body: JSON.stringify({ mode: this.mode, office_id: officeId ? Number(officeId) : null }),
                 });
                 const data = await res.json();
                 this.lobbyCode = data.code;
                 this.hostToken = data.host_token;
+                this.lobbyOfficeId = officeId;
                 this.lobbyFreePlay = false;
                 this.lobbyParticipants = [];
 

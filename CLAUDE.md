@@ -49,6 +49,9 @@ DELETE /players/{player}            Delete player
 GET  /leaderboards                  All game types
 GET  /leaderboards/{gameType:slug}  Per-game leaderboard (dynamic columns)
 GET  /notifications                 Web push opt-in (pick your player, enable)
+GET  /games/ping-pong/lights         Ping pong lights: each office's Home Assistant light (settings, Test, preview)
+PUT  /games/ping-pong/lights/{office}   Save an office's light settings (the token is write-only)
+POST /games/ping-pong/lights/{office}/test-connection|test  Check Home Assistant / play an animation with the form's values
 GET  /games/hot-potato              Hot potato: pick office + player, lobby, live game, the office's recent games
 GET  /games/hot-potato/locker/{player}      Locker: a player's hot potato look (colour, hat, trail, boom; the potato is always a potato)
 PUT  /games/hot-potato/locker/{player}      Save it (needs the profile claimed with a PIN and unlocked)
@@ -143,6 +146,30 @@ public function boot(): void
 - `config/games.php` — lists game module ServiceProvider classes to auto-register
 - `game_types` DB table — metadata for each game (icon, color, leaderboard column definitions)
 - Leaderboard columns are defined as JSON on the `game_types` table and rendered dynamically
+
+### Ping pong lights (Home Assistant)
+
+Spec: `docs/superpowers/specs/2026-11-27-ping-pong-lights-design.md`. Each office can connect the
+light over its table (Quebec: a Tuya strip in `https://home.tlmhub.space`): a point flashes the
+scoring side's colour, a won match plays the win animation in the winner's colour, then the light
+goes back as it was. Score corrections (decrement) never fire.
+
+- **The office is per match** (`office_id` on matches, lobbies and tournaments): picked on the
+  table's lobby screen (`PATCH /api/lobbies/{code}/office`, host only) or the tournament form,
+  asked once per device, then remembered (`localStorage` `pingPong.officeId`) and the picker hidden;
+  the lights page shows that device's office with a Forget button. A rematch keeps it. No office: no lights.
+- **Settings** (`ping_pong_light_settings`, one per office, `/games/ping-pong/lights`): address,
+  token (`encrypted` cast, hidden, write-only), light entity, side colours (defaults the
+  scoreboard's red / cyan), brightness, and per event (`point`, `win`) on/off, flashes, on and off
+  times. The page has no login, so **the stored token only goes to the saved address**: another
+  address must come with its token (422). `/api/offices` gives each office's `light_colors` (null
+  when off); the scoreboard and remotes draw a bar in that side's colour.
+- **Playing** (`Lights/PingPongLights` → `PlayLightAnimationJob`, encrypted, on the `lights`
+  queue, its own supervisord program): Home Assistant's REST API (`HomeAssistantClient`, 3–4 s
+  timeouts). Newest wins: each trigger bumps a per-office cache counter and an older job stops
+  without restoring; the resting state stays in the cache until a job restores it, so a burst of
+  points ends on the real state. Never throws into scoring.
+- Tests: `tests/Feature/PingPongLightsTest.php`.
 
 ### Hot Potato (live game sidecar)
 
