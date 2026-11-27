@@ -99,6 +99,9 @@ class PingPongLightsController extends Controller
             "animations.$event.flashes" => 'required|integer|min:1|max:10',
             "animations.$event.on_ms" => 'required|integer|min:200|max:10000',
             "animations.$event.off_ms" => 'required|integer|min:0|max:10000',
+            "animations.$event.style" => 'sometimes|in:'.implode(',', PingPongLightSettings::STYLES),
+            "animations.$event.duration_ms" => 'sometimes|integer|min:1000|max:15000',
+            "animations.$event.speed" => 'sometimes|integer|min:1|max:100',
         ])->all();
 
         $validated = $request->validate([
@@ -139,11 +142,14 @@ class PingPongLightsController extends Controller
             'left_color' => strtolower($validated['left_color']),
             'right_color' => strtolower($validated['right_color']),
             'brightness' => $validated['brightness'],
-            'animations' => collect($validated['animations'])->only(PingPongLightSettings::EVENTS)->map(fn (array $animation) => [
+            'animations' => collect($validated['animations'])->only(PingPongLightSettings::EVENTS)->map(fn (array $animation, string $event) => [
                 'enabled' => (bool) $animation['enabled'],
+                'style' => $animation['style'] ?? PingPongLightSettings::DEFAULT_ANIMATIONS[$event]['style'],
                 'flashes' => (int) $animation['flashes'],
                 'on_ms' => (int) $animation['on_ms'],
                 'off_ms' => (int) $animation['off_ms'],
+                'duration_ms' => (int) ($animation['duration_ms'] ?? PingPongLightSettings::DEFAULT_ANIMATIONS[$event]['duration_ms']),
+                'speed' => (int) ($animation['speed'] ?? PingPongLightSettings::DEFAULT_ANIMATIONS[$event]['speed']),
             ])->all(),
         ]);
 

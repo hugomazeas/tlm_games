@@ -15,10 +15,16 @@ class PingPongLightSettings extends Model
 {
     public const EVENTS = ['point', 'win'];
 
-    /** @var array<string, array{enabled: bool, flashes: int, on_ms: int, off_ms: int}> */
+    /**
+     * How an animation plays: `flash` (the Hub turns the colour on and off) or `strobe` (the
+     * strip's own scene, through rustuya: fast, for `duration_ms` at `speed`).
+     */
+    public const STYLES = ['flash', 'strobe'];
+
+    /** @var array<string, array{enabled: bool, style: string, flashes: int, on_ms: int, off_ms: int, duration_ms: int, speed: int}> */
     public const DEFAULT_ANIMATIONS = [
-        'point' => ['enabled' => true, 'flashes' => 1, 'on_ms' => 1500, 'off_ms' => 0],
-        'win' => ['enabled' => true, 'flashes' => 3, 'on_ms' => 1200, 'off_ms' => 800],
+        'point' => ['enabled' => true, 'style' => 'flash', 'flashes' => 1, 'on_ms' => 1500, 'off_ms' => 0, 'duration_ms' => 2000, 'speed' => 100],
+        'win' => ['enabled' => true, 'style' => 'flash', 'flashes' => 3, 'on_ms' => 1200, 'off_ms' => 800, 'duration_ms' => 5000, 'speed' => 100],
     ];
 
     protected $table = 'ping_pong_light_settings';
@@ -60,7 +66,7 @@ class PingPongLightSettings extends Model
     }
 
     /**
-     * @return array{enabled: bool, flashes: int, on_ms: int, off_ms: int}
+     * @return array{enabled: bool, style: string, flashes: int, on_ms: int, off_ms: int, duration_ms: int, speed: int}
      */
     public function animation(string $event): array
     {
@@ -68,7 +74,7 @@ class PingPongLightSettings extends Model
     }
 
     /**
-     * @return array<string, array{enabled: bool, flashes: int, on_ms: int, off_ms: int}>
+     * @return array<string, array{enabled: bool, style: string, flashes: int, on_ms: int, off_ms: int, duration_ms: int, speed: int}>
      */
     public function allAnimations(): array
     {

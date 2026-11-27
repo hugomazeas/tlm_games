@@ -38,7 +38,7 @@ class PlayLightAnimationJob implements ShouldBeEncrypted, ShouldQueue
     public int $timeout = 60;
 
     /**
-     * @param  array{ha_url: string, ha_token: string, entity_id: string, color: string, brightness: int, flashes: int, on_ms: int, off_ms: int}  $animation
+     * @param  array{ha_url: string, ha_token: string, entity_id: string, color: string, brightness: int, style?: string, flashes: int, on_ms: int, off_ms: int, duration_ms?: int, speed?: int}  $animation
      */
     public function __construct(public int $officeId, public int $sequence, public array $animation)
     {
@@ -67,21 +67,12 @@ class PlayLightAnimationJob implements ShouldBeEncrypted, ShouldQueue
 
         try {
             $resting = $this->restingState($client, $entity);
-            $rgb = PingPongLightSettings::hexToRgb($this->animation['color']);
-            $flashes = max(1, $this->animation['flashes']);
 
-            for ($flash = 1; $flash <= $flashes; $flash++) {
-                $client->turnOnColor($entity, $rgb, $this->animation['brightness']);
-                if (! $this->wait($this->animation['on_ms'])) {
-                    return;
-                }
-
-                if ($flash < $flashes && $this->animation['off_ms'] > 0) {
-                    $client->turnOff($entity);
-                    if (! $this->wait($this->animation['off_ms'])) {
-                        return;
-                    }
-                }
+            $finished = ($this->animation['style'] ?? 'flash') === 'strobe'
+                ? $this->strobe($client, $entity)
+                : $this->flash($client, $entity);
+            if (! $finished) {
+                return;
             }
 
             $this->putBack($client, $entity, $resting);
@@ -98,6 +89,48 @@ class PlayLightAnimationJob implements ShouldBeEncrypted, ShouldQueue
                 Cache::forget(self::restingKey($this->officeId));
             }
         }
+    }
+
+    /**
+     * Flashes of the colour, sent one by one. False when a newer animation took over.
+     */
+    private function flash(HomeAssistantClient $client, string $entity): bool
+    {
+        $rgb = PingPongLightSettings::hexToRgb($this->animation['color']);
+        $flashes = max(1, $this->animation['flashes']);
+
+        for ($flash = 1; $flash <= $flashes; $flash++) {
+            $client->turnOnColor($entity, $rgb, $this->animation['brightness']);
+            if (! $this->wait($this->animation['on_ms'])) {
+                return false;
+            }
+
+            if ($flash < $flashes && $this->animation['off_ms'] > 0) {
+                $client->turnOff($entity);
+                if (! $this->wait($this->animation['off_ms'])) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * The strip's own strobe in the colour for the animation's duration. The office is marked as
+     * strobing until a restore takes the strip out of scene mode, whichever job does it.
+     */
+    private function strobe(HomeAssistantClient $client, string $entity): bool
+    {
+        Cache::put(self::strobingKey($this->officeId), true, now()->addMinutes(10));
+        $client->startStrobe($entity, TuyaScene::strobe($this->animation['color'], $this->animation['brightness'], $this->animation['speed']));
+
+        return $this->wait($this->animation['duration_ms']);
+    }
+
+    public static function strobingKey(int $officeId): string
+    {
+        return "ping-pong-lights:{$officeId}:strobing";
     }
 
     /**
@@ -148,6 +181,10 @@ class PlayLightAnimationJob implements ShouldBeEncrypted, ShouldQueue
      */
     private function putBack(HomeAssistantClient $client, string $entity, array $resting): void
     {
+        if (Cache::pull(self::strobingKey($this->officeId))) {
+            $client->stopStrobe($entity);
+        }
+
         if (isset($resting['scene'])) {
             $client->restoreSnapshot($resting['scene']);
 
