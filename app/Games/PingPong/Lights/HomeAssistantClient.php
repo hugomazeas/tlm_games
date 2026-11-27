@@ -64,6 +64,25 @@ class HomeAssistantClient
     }
 
     /**
+     * Saves the light exactly as it is (colour mode, effect, brightness, on/off) in a Home Assistant
+     * scene, so restoreSnapshot() puts every setting back.
+     */
+    public function snapshot(string $sceneId, string $entityId): void
+    {
+        $this->call(fn (PendingRequest $http) => $http->post('/api/services/scene/create', [
+            'scene_id' => $sceneId,
+            'snapshot_entities' => [$entityId],
+        ]));
+    }
+
+    public function restoreSnapshot(string $sceneId): void
+    {
+        $this->call(fn (PendingRequest $http) => $http->post('/api/services/scene/turn_on', [
+            'entity_id' => 'scene.'.$sceneId,
+        ]));
+    }
+
+    /**
      * @param  array{0: int, 1: int, 2: int}  $rgb
      */
     public function turnOnColor(string $entityId, array $rgb, int $brightnessPct): void

@@ -84,14 +84,14 @@ class PlayLightAnimationJob implements ShouldBeEncrypted, ShouldQueue
                 }
             }
 
-            $client->restore($entity, $resting);
+            $this->putBack($client, $entity, $resting);
             Cache::forget(self::restingKey($this->officeId));
         } catch (HomeAssistantException $e) {
             Log::warning('Ping pong lights: '.$e->getMessage(), ['office_id' => $this->officeId]);
 
             if ($resting !== null && $this->isNewest()) {
                 try {
-                    $client->restore($entity, $resting);
+                    $this->putBack($client, $entity, $resting);
                 } catch (HomeAssistantException) {
                     // Already logged the first failure; Home Assistant is likely down.
                 }
@@ -101,9 +101,19 @@ class PlayLightAnimationJob implements ShouldBeEncrypted, ShouldQueue
     }
 
     /**
-     * The state to end on: the one an interrupted animation saved, else the light as it is now.
+     * The Home Assistant scene holding the office's light as it was before the animation.
+     */
+    public static function sceneId(int $officeId): string
+    {
+        return "ping_pong_lights_office_{$officeId}";
+    }
+
+    /**
+     * What to end on: the one an interrupted animation saved, else the light as it is now. Saved
+     * as a Home Assistant scene snapshot (every setting: colour mode, effect, brightness), or,
+     * when Home Assistant can't make one, as the state read from it.
      *
-     * @return array{on: bool, brightness: ?int, rgb_color: ?array, color_temp_kelvin: ?int}
+     * @return array{scene: string}|array{on: bool, brightness: ?int, rgb_color: ?array, color_temp_kelvin: ?int}
      */
     private function restingState(HomeAssistantClient $client, string $entity): array
     {
@@ -113,15 +123,38 @@ class PlayLightAnimationJob implements ShouldBeEncrypted, ShouldQueue
         }
 
         try {
-            $state = $client->lightState($entity);
+            $client->snapshot(self::sceneId($this->officeId), $entity);
+            $state = ['scene' => self::sceneId($this->officeId)];
         } catch (HomeAssistantException $e) {
-            Log::warning('Ping pong lights: '.$e->getMessage(), ['office_id' => $this->officeId]);
-            $state = self::FALLBACK_STATE;
+            Log::warning('Ping pong lights: no snapshot, '.$e->getMessage(), ['office_id' => $this->officeId]);
+
+            try {
+                $state = $client->lightState($entity);
+            } catch (HomeAssistantException $e) {
+                Log::warning('Ping pong lights: '.$e->getMessage(), ['office_id' => $this->officeId]);
+                $state = self::FALLBACK_STATE;
+            }
         }
 
         Cache::put(self::restingKey($this->officeId), $state, now()->addMinutes(10));
 
         return $state;
+    }
+
+    /**
+     * Puts the light back as restingState() saved it.
+     *
+     * @param  array{scene: string}|array{on: bool, brightness: ?int, rgb_color: ?array, color_temp_kelvin: ?int}  $resting
+     */
+    private function putBack(HomeAssistantClient $client, string $entity, array $resting): void
+    {
+        if (isset($resting['scene'])) {
+            $client->restoreSnapshot($resting['scene']);
+
+            return;
+        }
+
+        $client->restore($entity, $resting);
     }
 
     /**
