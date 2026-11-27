@@ -124,30 +124,7 @@
                                         </button>
                                     </div>
                                 </div>
-                                <div class="flex flex-wrap items-center gap-3 mt-3">
-                                    <span class="text-xs text-white/55">Style</span>
-                                    <div class="inline-flex rounded-lg border border-white/20 overflow-hidden text-xs font-semibold">
-                                        <button type="button" @click="form.animations[event.key].style = 'flash'"
-                                                class="px-3 py-1.5 transition" :class="form.animations[event.key].style === 'flash' ? 'bg-indigo-600 text-white' : 'text-white/60 hover:bg-white/10'">Flash</button>
-                                        <button type="button" @click="form.animations[event.key].style = 'strobe'"
-                                                class="px-3 py-1.5 transition" :class="form.animations[event.key].style === 'strobe' ? 'bg-indigo-600 text-white' : 'text-white/60 hover:bg-white/10'">Strobe</button>
-                                    </div>
-                                    <span class="text-xs text-white/40" x-text="form.animations[event.key].style === 'strobe'
-                                        ? 'Fast flashes for the duration. Needs a light that answers fast (local, e.g. rustuya): through the Tuya cloud it lags.'
-                                        : 'The Hub turns the colour on and off, step by step.'"></span>
-                                </div>
-                                <div x-show="form.animations[event.key].style === 'strobe'" class="grid grid-cols-2 gap-3 mt-3">
-                                    <label class="block">
-                                        <span class="block text-xs text-white/55 mb-1">Duration (ms)</span>
-                                        <input type="number" min="1000" max="15000" step="500" x-model.number="form.animations[event.key].duration_ms"
-                                               class="w-full bg-white/10 border border-white/20 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-indigo-500">
-                                    </label>
-                                    <label class="block">
-                                        <span class="block text-xs text-white/55 mb-1">Speed <span class="text-white/40" x-text="form.animations[event.key].speed"></span></span>
-                                        <input type="range" min="1" max="100" x-model.number="form.animations[event.key].speed" class="w-full mt-2 accent-indigo-500">
-                                    </label>
-                                </div>
-                                <div x-show="form.animations[event.key].style !== 'strobe'" class="grid grid-cols-3 gap-3 mt-3">
+                                <div class="grid grid-cols-3 gap-3 mt-3">
                                     <label class="block">
                                         <span class="block text-xs text-white/55 mb-1">Flashes</span>
                                         <input type="number" min="1" max="10" x-model.number="form.animations[event.key].flashes"
@@ -286,17 +263,6 @@
                     let at = 0;
                     const step = (fn) => this.previewTimers.push(setTimeout(fn, at));
                     this.previewLabel = `${event === 'win' ? 'Match won' : 'Point'}, ${side}`;
-                    if (a.style === 'strobe') {
-                        // Same steps as the light (PlayLightAnimationJob::strobeStepMs): 150 ms at 100, 1 s at 1.
-                        const half = Math.round(1000 - ((Math.min(100, Math.max(1, Number(a.speed) || 100))) - 1) * 850 / 99);
-                        for (let t = 0, on = true; t < (Number(a.duration_ms) || 0); t += half, on = !on) {
-                            const lit = on;
-                            step(() => (this.previewColor = lit ? color : null));
-                            at += half;
-                        }
-                        step(() => { this.previewColor = null; this.previewLabel = ''; });
-                        return;
-                    }
                     for (let i = 1; i <= flashes; i++) {
                         step(() => (this.previewColor = color));
                         at += Number(a.on_ms) || 0;

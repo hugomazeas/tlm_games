@@ -38,7 +38,7 @@ class PlayLightAnimationJob implements ShouldBeEncrypted, ShouldQueue
     public int $timeout = 60;
 
     /**
-     * @param  array{ha_url: string, ha_token: string, entity_id: string, color: string, brightness: int, style?: string, flashes: int, on_ms: int, off_ms: int, duration_ms?: int, speed?: int}  $animation
+     * @param  array{ha_url: string, ha_token: string, entity_id: string, color: string, brightness: int, flashes: int, on_ms: int, off_ms: int}  $animation
      */
     public function __construct(public int $officeId, public int $sequence, public array $animation)
     {
@@ -68,10 +68,7 @@ class PlayLightAnimationJob implements ShouldBeEncrypted, ShouldQueue
         try {
             $resting = $this->restingState($client, $entity);
 
-            $finished = ($this->animation['style'] ?? 'flash') === 'strobe'
-                ? $this->strobe($client, $entity)
-                : $this->flash($client, $entity);
-            if (! $finished) {
+            if (! $this->flash($client, $entity)) {
                 return;
             }
 
@@ -114,39 +111,6 @@ class PlayLightAnimationJob implements ShouldBeEncrypted, ShouldQueue
         }
 
         return true;
-    }
-
-    /**
-     * Fast flashes for the animation's duration: the colour at full brightness, then nearly off
-     * (1%, a colour change rather than a power cycle, which strips follow faster), each step
-     * `strobeStepMs()` long. Needs a light that answers fast (a local one: through the Tuya cloud
-     * the steps arrive late and bunched up). False when a newer animation took over.
-     */
-    private function strobe(HomeAssistantClient $client, string $entity): bool
-    {
-        $rgb = PingPongLightSettings::hexToRgb($this->animation['color']);
-        $step = self::strobeStepMs($this->animation['speed']);
-        $lit = true;
-
-        for ($elapsed = 0; $elapsed < $this->animation['duration_ms']; $elapsed += $step, $lit = ! $lit) {
-            $client->turnOnColor($entity, $rgb, $lit ? $this->animation['brightness'] : 1);
-            if (! $this->wait($step)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * How long each strobe step lasts: 150 ms at speed 100, up to 1 s at speed 1. The page's
-     * preview uses the same numbers.
-     */
-    public static function strobeStepMs(int $speed): int
-    {
-        $speed = max(1, min(100, $speed));
-
-        return (int) round(1000 - ($speed - 1) * 850 / 99);
     }
 
     /**

@@ -452,60 +452,14 @@ class PingPongLightsTest extends TestCase
         $this->assertContains(\Illuminate\Contracts\Queue\ShouldBeEncrypted::class, class_implements(PlayLightAnimationJob::class));
     }
 
-    // --- Strobe: fast flashes from the Hub ---
-
-    public function test_a_strobe_win_flashes_the_colour_fast_then_puts_the_light_back(): void
+    public function test_leftover_animation_keys_are_ignored(): void
     {
-        Sleep::fake();
         $office = $this->office();
-        $this->settings($office, ['entity_id' => 'light.strip_light_1', 'left_color' => '#ff0000', 'brightness' => 80, 'animations' => [
-            'win' => ['enabled' => true, 'style' => 'strobe', 'flashes' => 3, 'on_ms' => 1200, 'off_ms' => 800, 'duration_ms' => 600, 'speed' => 100],
+        $settings = $this->settings($office, ['animations' => [
+            'win' => ['enabled' => true, 'style' => 'strobe', 'flashes' => 2, 'on_ms' => 900, 'off_ms' => 300, 'speed' => 100],
         ]]);
-        Http::fake([self::HA.'/api/services/*' => Http::response([])]);
 
-        $this->score($this->match($office, leftScore: 10), 'left');
-
-        $calls = collect(Http::recorded())->map(fn (array $pair) => [
-            str_replace(self::HA, '', $pair[0]->url()),
-            $pair[0]->data(),
-        ])->all();
-
-        $scene = PlayLightAnimationJob::sceneId($office->id);
-        $at = fn (int $pct) => ['/api/services/light/turn_on', ['entity_id' => 'light.strip_light_1', 'rgb_color' => [255, 0, 0], 'brightness_pct' => $pct, 'transition' => 0]];
-        // 600 ms at 150 ms a step: lit, dim, lit, dim.
-        $this->assertEquals([
-            ['/api/services/scene/create', ['scene_id' => $scene, 'snapshot_entities' => ['light.strip_light_1']]],
-            $at(80), $at(1), $at(80), $at(1),
-            ['/api/services/scene/turn_on', ['entity_id' => 'scene.'.$scene]],
-        ], $calls);
-        Http::assertNotSent(fn (HttpRequest $r) => str_contains($r->url(), 'rustuya'));
-    }
-
-    public function test_strobe_steps_get_shorter_with_speed(): void
-    {
-        $this->assertSame(150, PlayLightAnimationJob::strobeStepMs(100));
-        $this->assertSame(1000, PlayLightAnimationJob::strobeStepMs(1));
-        $this->assertSame(579, PlayLightAnimationJob::strobeStepMs(50));
-        $this->assertSame(150, PlayLightAnimationJob::strobeStepMs(500));
-    }
-
-    public function test_the_style_is_saved_and_validated(): void
-    {
-        $office = $this->office();
-        $animations = PingPongLightSettings::DEFAULT_ANIMATIONS;
-        $animations['win'] = [...$animations['win'], 'style' => 'strobe', 'duration_ms' => 6000, 'speed' => 80];
-
-        $this->putJson("/games/ping-pong/lights/{$office->id}", $this->form(['ha_token' => self::TOKEN, 'animations' => $animations]))
-            ->assertOk()
-            ->assertJsonPath('animations.win.style', 'strobe')
-            ->assertJsonPath('animations.win.duration_ms', 6000)
-            ->assertJsonPath('animations.point.style', 'flash');
-
-        $animations['win']['style'] = 'disco';
-        $animations['win']['speed'] = 0;
-        $this->putJson("/games/ping-pong/lights/{$office->id}", $this->form(['animations' => $animations]))
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors(['animations.win.style', 'animations.win.speed']);
+        $this->assertSame(['enabled' => true, 'flashes' => 2, 'on_ms' => 900, 'off_ms' => 300], $settings->animation('win'));
     }
 
     // --- The office on a match ---
