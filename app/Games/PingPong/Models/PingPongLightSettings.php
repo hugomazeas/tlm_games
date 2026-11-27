@@ -15,16 +15,10 @@ class PingPongLightSettings extends Model
 {
     public const EVENTS = ['point', 'win'];
 
-    /**
-     * How an animation plays: `flash` (the colour on, off between, step by step) or `strobe` (fast
-     * flashes of the colour for `duration_ms`, quicker with `speed`: for a local light).
-     */
-    public const STYLES = ['flash', 'strobe'];
-
-    /** @var array<string, array{enabled: bool, style: string, flashes: int, on_ms: int, off_ms: int, duration_ms: int, speed: int}> */
+    /** @var array<string, array{enabled: bool, flashes: int, on_ms: int, off_ms: int}> */
     public const DEFAULT_ANIMATIONS = [
-        'point' => ['enabled' => true, 'style' => 'flash', 'flashes' => 1, 'on_ms' => 1500, 'off_ms' => 0, 'duration_ms' => 2000, 'speed' => 100],
-        'win' => ['enabled' => true, 'style' => 'flash', 'flashes' => 3, 'on_ms' => 1200, 'off_ms' => 800, 'duration_ms' => 5000, 'speed' => 100],
+        'point' => ['enabled' => true, 'flashes' => 1, 'on_ms' => 1500, 'off_ms' => 0],
+        'win' => ['enabled' => true, 'flashes' => 3, 'on_ms' => 1200, 'off_ms' => 800],
     ];
 
     protected $table = 'ping_pong_light_settings';
@@ -66,15 +60,18 @@ class PingPongLightSettings extends Model
     }
 
     /**
-     * @return array{enabled: bool, style: string, flashes: int, on_ms: int, off_ms: int, duration_ms: int, speed: int}
+     * @return array{enabled: bool, flashes: int, on_ms: int, off_ms: int}
      */
     public function animation(string $event): array
     {
-        return array_merge(self::DEFAULT_ANIMATIONS[$event], $this->animations[$event] ?? []);
+        return array_merge(
+            self::DEFAULT_ANIMATIONS[$event],
+            array_intersect_key($this->animations[$event] ?? [], self::DEFAULT_ANIMATIONS[$event]),
+        );
     }
 
     /**
-     * @return array<string, array{enabled: bool, style: string, flashes: int, on_ms: int, off_ms: int, duration_ms: int, speed: int}>
+     * @return array<string, array{enabled: bool, flashes: int, on_ms: int, off_ms: int}>
      */
     public function allAnimations(): array
     {
