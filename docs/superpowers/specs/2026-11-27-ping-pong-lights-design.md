@@ -40,8 +40,8 @@ its own Home Assistant and light.
 - Tuya goes through the cloud: each state change takes ~0.5–1 s to show. Animations are a few
   strong steps (≥ ~0.7 s each), not strobes; the page says so next to the timing fields.
 - No frontend build: Blade + Tailwind CDN + Alpine.
-- `docker/supervisor/supervisord.conf` is baked into the image and `deploy.sh` never rebuilds,
-  so a new queue worker needs one image rebuild on the server (flag it in the PR).
+- The app container runs supervisord from the repo's `docker/supervisor/supervisord.conf`, so a
+  new queue worker there ships with a normal deploy (no image rebuild).
 - Points can come fast (a quick rally, two taps): a newer animation must cut the running one
   short, never queue behind it.
 
@@ -66,7 +66,7 @@ its own Home Assistant and light.
 - `ping_pong_light_settings`, one row per office (unique `office_id`):
   - `enabled` bool (default false)
   - `ha_url` string, `ha_token` text (Laravel `encrypted` cast), `entity_id` string
-  - `left_color`, `right_color` (hex, defaults `#2563eb` / `#f97316`)
+  - `left_color`, `right_color` (hex, defaults `#ff5a4a` / `#3ec8ff`, the scoreboard's own red and cyan)
   - `brightness` (1–100, default 100)
   - `animations` JSON keyed by event (`point`, `win`), each
     `{enabled, flashes, on_ms, off_ms}`; defaults point `{true, 1, 1500, 0}`, win

@@ -24,11 +24,13 @@ class PingPongLobbyApiController extends Controller
     {
         $validated = $request->validate([
             'mode' => 'required|in:1v1,2v2',
+            'office_id' => 'nullable|integer|exists:offices,id',
         ]);
 
         $lobby = PingPongLobby::create([
             'code' => PingPongLobby::generateCode(),
             'mode' => $validated['mode'],
+            'office_id' => $validated['office_id'] ?? null,
             'host_token' => Str::random(64),
             'status' => 'waiting',
             'expires_at' => now()->addYears(10),
@@ -50,6 +52,7 @@ class PingPongLobbyApiController extends Controller
             'code' => $lobby->code,
             'mode' => $lobby->mode,
             'free_play' => $lobby->free_play,
+            'office_id' => $lobby->office_id,
             'status' => $lobby->status,
             'match_id' => $lobby->match_id,
             'participants' => $lobby->participants->map(fn ($p) => [
@@ -219,6 +222,28 @@ class PingPongLobbyApiController extends Controller
         return response()->json(['free_play' => $lobby->free_play]);
     }
 
+    /**
+     * The office the lobby's match is played in (its lights react to it). Host only: it's the
+     * table's own screen that knows where it is.
+     */
+    public function setOffice(Request $request, string $code): JsonResponse
+    {
+        $lobby = PingPongLobby::where('code', $code)->where('status', 'waiting')->firstOrFail();
+
+        $validated = $request->validate([
+            'office_id' => 'nullable|integer|exists:offices,id',
+            'host_token' => 'required|string',
+        ]);
+
+        if ($lobby->host_token !== $validated['host_token']) {
+            return response()->json(['error' => 'Only the host can change the office'], 403);
+        }
+
+        $lobby->update(['office_id' => $validated['office_id'] ?? null]);
+
+        return response()->json(['office_id' => $lobby->office_id]);
+    }
+
     public function leaveLobby(Request $request, string $code): JsonResponse
     {
         $lobby = PingPongLobby::where('code', $code)->firstOrFail();
@@ -279,6 +304,7 @@ class PingPongLobbyApiController extends Controller
         $matchData = [
             'mode' => $lobby->mode,
             'free_play' => $lobby->free_play,
+            'office_id' => $lobby->office_id,
             'player_left_id' => $leftParticipants[0]->player_id,
             'player_right_id' => $rightParticipants[0]->player_id,
             'player_left_score' => 0,

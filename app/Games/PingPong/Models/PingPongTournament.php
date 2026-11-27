@@ -13,6 +13,7 @@ class PingPongTournament extends Model
 
     protected $fillable = [
         'name',
+        'office_id',
         'status',
         'winner_id',
     ];

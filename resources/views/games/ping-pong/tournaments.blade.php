@@ -32,6 +32,23 @@
                        value="{{ old('name', 'Tournament '.now()->format('M j')) }}"
                        class="w-full rounded-lg px-3 py-2.5 font-semibold text-[15px] text-[#f5ecd6] bg-[#f5ecd6]/[0.06] border border-[#f5ecd6]/15 placeholder-[#f5ecd6]/25 focus:outline-none focus:border-[#f5ecd6]/40">
 
+                @if ($offices->isNotEmpty())
+                    {{-- Where it's played: that office's lights follow its matches. Asked once, then remembered
+                         on this device and hidden (still submitted; forget it from /games/ping-pong/lights). --}}
+                    <label x-data="{ remembered: false }" x-show="! remembered" class="flex items-center justify-between gap-3">
+                        <span class="pph-mono text-xs tracking-[0.18em] uppercase text-[#f5ecd6]/45">Office</span>
+                        <select name="office_id"
+                                x-init="if (! $el.value) { try { const id = localStorage.getItem('pingPong.officeId'); if (id && [...$el.options].some((o) => o.value === id)) { $el.value = id; remembered = true; } } catch (e) {} }"
+                                @change="try { localStorage.setItem('pingPong.officeId', $el.value) } catch (e) {}"
+                                class="rounded-lg px-2.5 py-1.5 text-[13px] font-semibold text-[#f5ecd6] bg-[#06081b] border border-[#f5ecd6]/20 focus:outline-none focus:border-[#f5ecd6]/40">
+                            <option value="">None</option>
+                            @foreach ($offices as $office)
+                                <option value="{{ $office->id }}" @selected((string) old('office_id') === (string) $office->id)>{{ $office->name }}</option>
+                            @endforeach
+                        </select>
+                    </label>
+                @endif
+
                 @if ($errors->any())
                     <div class="rounded-lg px-3 py-2.5 text-xs text-[#ff5a4a] bg-[#ff5a4a]/10 border border-[#ff5a4a]/30">
                         @foreach ($errors->all() as $error)

@@ -6,7 +6,9 @@ use App\Games\PingPong\Events\LiveMatchStarted;
 use App\Games\PingPong\Events\MatchAbandoned;
 use App\Games\PingPong\Events\MatchRematched;
 use App\Games\PingPong\Events\MatchScoreUpdated;
+use App\Games\PingPong\Lights\PingPongLights;
 use App\Games\PingPong\Models\PingPongClip;
+use App\Games\PingPong\Models\PingPongLightSettings;
 use App\Games\PingPong\Models\PingPongLobby;
 use App\Games\PingPong\Models\PingPongLobbyParticipant;
 use App\Games\PingPong\Models\PingPongMatch;
@@ -47,12 +49,22 @@ class PingPongApiController extends Controller
         private PlayerPointTagStatsService $pointTagStatsService,
         private WinProbabilityService $winProbabilityService,
         private TournamentService $tournamentService,
+        private PingPongLights $lights,
     ) {}
 
     public function offices(): JsonResponse
     {
+        $lights = PingPongLightSettings::all()->keyBy('office_id');
+
         return response()->json(
-            Office::orderBy('name')->get(['id', 'name'])
+            Office::orderBy('name')->get(['id', 'name'])->map(fn (Office $office) => [
+                'id' => $office->id,
+                'name' => $office->name,
+                // Each side's light colour when the office's lights are on: the scoreboard tints with them.
+                'light_colors' => $lights->get($office->id)?->isActive()
+                    ? ['left' => $lights[$office->id]->left_color, 'right' => $lights[$office->id]->right_color]
+                    : null,
+            ])
         );
     }
 
@@ -787,6 +799,7 @@ class PingPongApiController extends Controller
             'player_left_id' => 'required|exists:players,id',
             'player_right_id' => 'required|exists:players,id|different:player_left_id',
             'first_server_id' => 'required|exists:players,id',
+            'office_id' => 'nullable|integer|exists:offices,id',
         ];
 
         if ($mode === '2v2') {
@@ -798,6 +811,7 @@ class PingPongApiController extends Controller
 
         $matchData = [
             'mode' => $mode,
+            'office_id' => $validated['office_id'] ?? null,
             'player_left_id' => $validated['player_left_id'],
             'player_right_id' => $validated['player_right_id'],
             'player_left_score' => 0,
@@ -913,6 +927,14 @@ class PingPongApiController extends Controller
         $match->setAttribute('win_probability', $this->winProbabilityService->forMatch($match));
 
         broadcast(new MatchScoreUpdated($match));
+
+        if ($validated['action'] === 'increment') {
+            if ($match->winner_id) {
+                $this->lights->trigger($match, 'win', $match->winner_id === $match->player_left_id ? 'left' : 'right');
+            } else {
+                $this->lights->trigger($match, 'point', $validated['side']);
+            }
+        }
 
         $response = $match->toArray();
         $response['duration'] = $match->duration;
@@ -1318,6 +1340,7 @@ class PingPongApiController extends Controller
             'code' => PingPongLobby::generateCode(),
             'mode' => $previousMatch->mode,
             'free_play' => $previousMatch->free_play,
+            'office_id' => $previousMatch->office_id,
             'host_token' => \Illuminate\Support\Str::random(64),
             'status' => 'waiting',
             'expires_at' => now()->addYears(10),

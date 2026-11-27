@@ -17,7 +17,7 @@ class TournamentService
     /**
      * @param  array<int, int>  $playerIds
      */
-    public function create(string $name, array $playerIds): PingPongTournament
+    public function create(string $name, array $playerIds, ?int $officeId = null): PingPongTournament
     {
         $ratings = PingPongRating::where('mode', '1v1')
             ->whereIn('player_id', $playerIds)
@@ -32,8 +32,8 @@ class TournamentService
         $size = 2 ** (int) ceil(log($seeded->count(), 2));
         $rounds = (int) log($size, 2);
 
-        return DB::transaction(function () use ($name, $seeded, $size, $rounds) {
-            $tournament = PingPongTournament::create(['name' => $name]);
+        return DB::transaction(function () use ($name, $officeId, $seeded, $size, $rounds) {
+            $tournament = PingPongTournament::create(['name' => $name, 'office_id' => $officeId]);
 
             foreach (array_chunk($this->seedOrder($size), 2) as $position => [$leftSeed, $rightSeed]) {
                 PingPongTournamentMatch::create([
