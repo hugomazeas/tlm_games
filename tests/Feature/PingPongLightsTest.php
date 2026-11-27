@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Games\PingPong\Lights\PlayLightAnimationJob;
-use App\Games\PingPong\Lights\TuyaScene;
 use App\Games\PingPong\Models\PingPongLightSettings;
 use App\Games\PingPong\Models\PingPongLobby;
 use App\Games\PingPong\Models\PingPongLobbyParticipant;
@@ -453,34 +452,16 @@ class PingPongLightsTest extends TestCase
         $this->assertContains(\Illuminate\Contracts\Queue\ShouldBeEncrypted::class, class_implements(PlayLightAnimationJob::class));
     }
 
-    // --- The strip's own strobe (rustuya) ---
+    // --- Strobe: fast flashes from the Hub ---
 
-    public function test_the_strobe_scene_is_the_one_tested_on_the_quebec_strip(): void
-    {
-        // Red at full brightness, fastest: what made the Quebec strip strobe on 2026-11-27.
-        $this->assertSame('05646401000003e803e800000000646401000003e8000000000000', TuyaScene::strobe('#ff0000', 100, 100));
-    }
-
-    public function test_the_strobe_scene_follows_colour_brightness_and_speed(): void
-    {
-        // #3ec8ff: hue 197, saturation 757, value 1000; at 50% brightness value 500; speed 40 = 0x28.
-        $this->assertSame(
-            '05'.'282801'.'00c502f501f400000000'.'282801'.'00c502f5000000000000',
-            TuyaScene::strobe('#3ec8ff', 50, 40),
-        );
-    }
-
-    public function test_a_strobe_win_plays_the_strips_scene_then_puts_the_light_back(): void
+    public function test_a_strobe_win_flashes_the_colour_fast_then_puts_the_light_back(): void
     {
         Sleep::fake();
         $office = $this->office();
-        $this->settings($office, ['entity_id' => 'light.strip_light_1', 'left_color' => '#ff0000', 'animations' => [
-            'win' => ['enabled' => true, 'style' => 'strobe', 'flashes' => 3, 'on_ms' => 1200, 'off_ms' => 800, 'duration_ms' => 4000, 'speed' => 100],
+        $this->settings($office, ['entity_id' => 'light.strip_light_1', 'left_color' => '#ff0000', 'brightness' => 80, 'animations' => [
+            'win' => ['enabled' => true, 'style' => 'strobe', 'flashes' => 3, 'on_ms' => 1200, 'off_ms' => 800, 'duration_ms' => 600, 'speed' => 100],
         ]]);
-        Http::fake([
-            self::HA.'/api/template' => Http::response('abc123device'),
-            self::HA.'/api/services/*' => Http::response([]),
-        ]);
+        Http::fake([self::HA.'/api/services/*' => Http::response([])]);
 
         $this->score($this->match($office, leftScore: 10), 'left');
 
@@ -490,38 +471,22 @@ class PingPongLightsTest extends TestCase
         ])->all();
 
         $scene = PlayLightAnimationJob::sceneId($office->id);
-        $template = ['template' => "{{ device_id('light.strip_light_1') }}"];
+        $at = fn (int $pct) => ['/api/services/light/turn_on', ['entity_id' => 'light.strip_light_1', 'rgb_color' => [255, 0, 0], 'brightness_pct' => $pct, 'transition' => 0]];
+        // 600 ms at 150 ms a step: lit, dim, lit, dim.
         $this->assertEquals([
             ['/api/services/scene/create', ['scene_id' => $scene, 'snapshot_entities' => ['light.strip_light_1']]],
-            ['/api/template', $template],
-            ['/api/services/rustuya/send_command', ['device_id' => 'abc123device', 'dp' => 21, 'value' => 'scene']],
-            ['/api/services/rustuya/send_command', ['device_id' => 'abc123device', 'dp' => 25, 'value' => TuyaScene::strobe('#ff0000', 100, 100)]],
-            ['/api/template', $template],
-            ['/api/services/rustuya/send_command', ['device_id' => 'abc123device', 'dp' => 21, 'value' => 'colour']],
+            $at(80), $at(1), $at(80), $at(1),
             ['/api/services/scene/turn_on', ['entity_id' => 'scene.'.$scene]],
         ], $calls);
-        $this->assertNull(Cache::get(PlayLightAnimationJob::strobingKey($office->id)));
+        Http::assertNotSent(fn (HttpRequest $r) => str_contains($r->url(), 'rustuya'));
     }
 
-    public function test_a_point_cutting_a_strobe_short_takes_the_strip_out_of_its_scene(): void
+    public function test_strobe_steps_get_shorter_with_speed(): void
     {
-        Sleep::fake();
-        $office = $this->office();
-        Cache::put(PlayLightAnimationJob::sequenceKey($office->id), 7);
-        Cache::put(PlayLightAnimationJob::restingKey($office->id), ['scene' => PlayLightAnimationJob::sceneId($office->id)]);
-        Cache::put(PlayLightAnimationJob::strobingKey($office->id), true);
-        Http::fake([
-            self::HA.'/api/template' => Http::response('abc123device'),
-            self::HA.'/api/services/*' => Http::response([]),
-        ]);
-
-        (new PlayLightAnimationJob($office->id, 7, [
-            'ha_url' => self::HA, 'ha_token' => self::TOKEN, 'entity_id' => 'light.strip_light_1',
-            'color' => '#00ff00', 'brightness' => 100, 'style' => 'flash', 'flashes' => 1, 'on_ms' => 1000, 'off_ms' => 0,
-        ]))->handle();
-
-        Http::assertSent(fn (HttpRequest $r) => str_ends_with($r->url(), '/rustuya/send_command') && $r['value'] === 'colour');
-        $this->assertSame(self::HA.'/api/services/scene/turn_on', collect(Http::recorded())->last()[0]->url());
+        $this->assertSame(150, PlayLightAnimationJob::strobeStepMs(100));
+        $this->assertSame(1000, PlayLightAnimationJob::strobeStepMs(1));
+        $this->assertSame(579, PlayLightAnimationJob::strobeStepMs(50));
+        $this->assertSame(150, PlayLightAnimationJob::strobeStepMs(500));
     }
 
     public function test_the_style_is_saved_and_validated(): void

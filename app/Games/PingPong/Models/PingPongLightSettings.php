@@ -16,8 +16,8 @@ class PingPongLightSettings extends Model
     public const EVENTS = ['point', 'win'];
 
     /**
-     * How an animation plays: `flash` (the Hub turns the colour on and off) or `strobe` (the
-     * strip's own scene, through rustuya: fast, for `duration_ms` at `speed`).
+     * How an animation plays: `flash` (the colour on, off between, step by step) or `strobe` (fast
+     * flashes of the colour for `duration_ms`, quicker with `speed`: for a local light).
      */
     public const STYLES = ['flash', 'strobe'];
 
