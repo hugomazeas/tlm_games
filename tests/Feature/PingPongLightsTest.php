@@ -318,14 +318,41 @@ class PingPongLightsTest extends TestCase
 
     // --- The animation ---
 
-    public function test_an_animation_flashes_then_puts_the_light_back_as_it_was(): void
+    public function test_an_animation_snapshots_the_light_flashes_then_puts_every_setting_back(): void
     {
         Sleep::fake();
         $office = $this->office();
         $this->settings($office, ['left_color' => '#ff0000', 'brightness' => 50, 'animations' => [
             'win' => ['enabled' => true, 'flashes' => 2, 'on_ms' => 1000, 'off_ms' => 500],
         ]]);
+        Http::fake([self::HA.'/api/services/*' => Http::response([])]);
+
+        $this->score($this->match($office, leftScore: 10), 'left');
+
+        $calls = collect(Http::recorded())->map(fn (array $pair) => [
+            str_replace(self::HA, '', $pair[0]->url()),
+            $pair[0]->data(),
+        ])->all();
+
+        $scene = PlayLightAnimationJob::sceneId($office->id);
+        $on = ['entity_id' => 'light.ping_pong_strip', 'rgb_color' => [255, 0, 0], 'brightness_pct' => 50, 'transition' => 0];
+        $this->assertEquals([
+            ['/api/services/scene/create', ['scene_id' => $scene, 'snapshot_entities' => ['light.ping_pong_strip']]],
+            ['/api/services/light/turn_on', $on],
+            ['/api/services/light/turn_off', ['entity_id' => 'light.ping_pong_strip', 'transition' => 0]],
+            ['/api/services/light/turn_on', $on],
+            ['/api/services/scene/turn_on', ['entity_id' => 'scene.'.$scene]],
+        ], $calls);
+        $this->assertNull(Cache::get(PlayLightAnimationJob::restingKey($office->id)));
+    }
+
+    public function test_without_a_snapshot_it_puts_back_the_state_it_read(): void
+    {
+        Sleep::fake();
+        $office = $this->office();
+        $this->settings($office);
         Http::fake([
+            self::HA.'/api/services/scene/create' => Http::response('Forbidden', 403),
             self::HA.'/api/states/light.ping_pong_strip' => Http::response([
                 'state' => 'on',
                 'attributes' => ['brightness' => 200, 'color_mode' => 'color_temp', 'color_temp_kelvin' => 3000],
@@ -333,30 +360,20 @@ class PingPongLightsTest extends TestCase
             self::HA.'/api/services/*' => Http::response([]),
         ]);
 
-        $this->score($this->match($office, leftScore: 10), 'left');
+        $this->score($this->match($office), 'right');
 
-        $calls = collect(Http::recorded())->map(fn (array $pair) => [
-            str_replace(self::HA, '', $pair[0]->url()),
-            $pair[0]->method() === 'POST' ? $pair[0]->data() : null,
-        ])->all();
-
-        $on = ['entity_id' => 'light.ping_pong_strip', 'rgb_color' => [255, 0, 0], 'brightness_pct' => 50, 'transition' => 0];
-        $this->assertEquals([
-            ['/api/states/light.ping_pong_strip', null],
-            ['/api/services/light/turn_on', $on],
-            ['/api/services/light/turn_off', ['entity_id' => 'light.ping_pong_strip', 'transition' => 0]],
-            ['/api/services/light/turn_on', $on],
-            ['/api/services/light/turn_on', ['entity_id' => 'light.ping_pong_strip', 'brightness' => 200, 'color_temp_kelvin' => 3000]],
-        ], $calls);
-        $this->assertNull(Cache::get(PlayLightAnimationJob::restingKey($office->id)));
+        $last = collect(Http::recorded())->last()[0];
+        $this->assertSame(self::HA.'/api/services/light/turn_on', $last->url());
+        $this->assertEquals(['entity_id' => 'light.ping_pong_strip', 'brightness' => 200, 'color_temp_kelvin' => 3000], $last->data());
     }
 
-    public function test_a_light_that_was_off_is_turned_off_again(): void
+    public function test_without_a_snapshot_a_light_that_was_off_is_turned_off_again(): void
     {
         Sleep::fake();
         $office = $this->office();
         $this->settings($office);
         Http::fake([
+            self::HA.'/api/services/scene/create' => Http::response('Forbidden', 403),
             self::HA.'/api/states/*' => Http::response(['state' => 'off', 'attributes' => []]),
             self::HA.'/api/services/*' => Http::response([]),
         ]);
@@ -365,6 +382,24 @@ class PingPongLightsTest extends TestCase
 
         $last = collect(Http::recorded())->last()[0];
         $this->assertSame(self::HA.'/api/services/light/turn_off', $last->url());
+    }
+
+    public function test_after_a_burst_of_points_the_light_ends_on_the_snapshot_taken_before_the_first(): void
+    {
+        Sleep::fake();
+        $office = $this->office();
+        Cache::put(PlayLightAnimationJob::sequenceKey($office->id), 3);
+        Cache::put(PlayLightAnimationJob::restingKey($office->id), ['scene' => PlayLightAnimationJob::sceneId($office->id)]);
+        Http::fake([self::HA.'/api/services/*' => Http::response([])]);
+
+        (new PlayLightAnimationJob($office->id, 3, [
+            'ha_url' => self::HA, 'ha_token' => self::TOKEN, 'entity_id' => 'light.ping_pong_strip',
+            'color' => '#ff0000', 'brightness' => 100, 'flashes' => 1, 'on_ms' => 1000, 'off_ms' => 0,
+        ]))->handle();
+
+        // No new snapshot: the light is still showing the interrupted animation's colour.
+        Http::assertNotSent(fn (HttpRequest $r) => str_ends_with($r->url(), '/scene/create'));
+        $this->assertSame(self::HA.'/api/services/scene/turn_on', collect(Http::recorded())->last()[0]->url());
     }
 
     public function test_a_newer_animation_cuts_an_older_one_short(): void

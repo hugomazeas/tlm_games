@@ -167,8 +167,11 @@ goes back as it was. Score corrections (decrement) never fire.
 - **Playing** (`Lights/PingPongLights` → `PlayLightAnimationJob`, encrypted, on the `lights`
   queue, its own supervisord program): Home Assistant's REST API (`HomeAssistantClient`, 3–4 s
   timeouts). Newest wins: each trigger bumps a per-office cache counter and an older job stops
-  without restoring; the resting state stays in the cache until a job restores it, so a burst of
-  points ends on the real state. Never throws into scoring.
+  without restoring. Before the first flash the light is saved as a Home Assistant scene
+  (`scene.create` with `snapshot_entities`, `scene.ping_pong_lights_office_{id}`) and put back with
+  `scene.turn_on`, so every setting returns (colour mode, effect, brightness, off); if the snapshot
+  fails, the state read from `/api/states` is put back instead. The saved state stays in the cache
+  until a job restores it, so a burst of points ends on the real state. Never throws into scoring.
 - Tests: `tests/Feature/PingPongLightsTest.php`.
 
 ### Hot Potato (live game sidecar)
