@@ -26,7 +26,7 @@ services:
       sh -c "chmod 666 /dev/video0 /dev/video-wide /dev/snd/* 2>/dev/null || true &&
              composer install --no-interaction &&
              cp -n .env.example .env || true &&
-             php artisan key:generate --force &&
+             (grep -q '^APP_KEY=base64:' .env || php artisan key:generate --force) &&
              touch /var/www/database/database.sqlite &&
              mkdir -p /var/www/storage/app/recordings/live /var/www/storage/app/public/recordings/matches &&
              chown -R www-data:www-data /var/www/vendor /var/www/database /var/www/storage /var/www/bootstrap/cache &&

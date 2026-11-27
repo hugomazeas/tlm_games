@@ -2,6 +2,7 @@
 
 namespace App\Games\PingPong\Models;
 
+use App\Games\PingPong\Lights\EncryptedOrNull;
 use App\Models\Office;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -47,7 +48,7 @@ class PingPongLightSettings extends Model
     {
         return [
             'enabled' => 'boolean',
-            'ha_token' => 'encrypted',
+            'ha_token' => EncryptedOrNull::class,
             'brightness' => 'integer',
             'animations' => 'array',
         ];

@@ -159,6 +159,19 @@ class PingPongLightsTest extends TestCase
         $this->assertSame('new-token', PingPongLightSettings::firstOrFail()->ha_token);
     }
 
+    public function test_a_token_encrypted_with_an_old_app_key_reads_as_missing_instead_of_failing(): void
+    {
+        $office = $this->office();
+        $this->settings($office);
+        DB::table('ping_pong_light_settings')->update([
+            'ha_token' => (new \Illuminate\Encryption\Encrypter(random_bytes(32), 'aes-256-cbc'))->encryptString(self::TOKEN),
+        ]);
+
+        $this->get('/games/ping-pong/lights')->assertOk();
+        $this->assertNull(PingPongLightSettings::firstOrFail()->ha_token);
+        $this->assertFalse(PingPongLightSettings::firstOrFail()->isActive());
+    }
+
     public function test_lights_cannot_be_turned_on_without_a_connection(): void
     {
         $office = $this->office();
