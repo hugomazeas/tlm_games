@@ -83,50 +83,6 @@ class HomeAssistantClient
     }
 
     /**
-     * Starts the strip's own strobe through the local rustuya integration (raw Tuya data points;
-     * the light has to come from rustuya).
-     */
-    public function startStrobe(string $entityId, string $sceneData): void
-    {
-        $deviceId = $this->deviceIdOf($entityId);
-        $this->rustuyaCommand($deviceId, TuyaScene::MODE_DP, 'scene');
-        $this->rustuyaCommand($deviceId, TuyaScene::SCENE_DP, $sceneData);
-    }
-
-    /**
-     * Takes the strip out of its scene mode, so turning it on later shows a colour again.
-     */
-    public function stopStrobe(string $entityId): void
-    {
-        $this->rustuyaCommand($this->deviceIdOf($entityId), TuyaScene::MODE_DP, 'colour');
-    }
-
-    /**
-     * The Home Assistant device behind an entity (rustuya's commands take the device).
-     */
-    public function deviceIdOf(string $entityId): string
-    {
-        $deviceId = trim($this->call(fn (PendingRequest $http) => $http->post('/api/template', [
-            'template' => "{{ device_id('".addslashes($entityId)."') }}",
-        ]))->body());
-
-        if ($deviceId === '' || $deviceId === 'None') {
-            throw new HomeAssistantException('Home Assistant has no device for that light.');
-        }
-
-        return $deviceId;
-    }
-
-    private function rustuyaCommand(string $deviceId, int $dp, string $value): void
-    {
-        $this->call(fn (PendingRequest $http) => $http->post('/api/services/rustuya/send_command', [
-            'device_id' => $deviceId,
-            'dp' => $dp,
-            'value' => $value,
-        ]));
-    }
-
-    /**
      * @param  array{0: int, 1: int, 2: int}  $rgb
      */
     public function turnOnColor(string $entityId, array $rgb, int $brightnessPct): void

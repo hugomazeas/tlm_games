@@ -117,20 +117,36 @@ class PlayLightAnimationJob implements ShouldBeEncrypted, ShouldQueue
     }
 
     /**
-     * The strip's own strobe in the colour for the animation's duration. The office is marked as
-     * strobing until a restore takes the strip out of scene mode, whichever job does it.
+     * Fast flashes for the animation's duration: the colour at full brightness, then nearly off
+     * (1%, a colour change rather than a power cycle, which strips follow faster), each step
+     * `strobeStepMs()` long. Needs a light that answers fast (a local one: through the Tuya cloud
+     * the steps arrive late and bunched up). False when a newer animation took over.
      */
     private function strobe(HomeAssistantClient $client, string $entity): bool
     {
-        Cache::put(self::strobingKey($this->officeId), true, now()->addMinutes(10));
-        $client->startStrobe($entity, TuyaScene::strobe($this->animation['color'], $this->animation['brightness'], $this->animation['speed']));
+        $rgb = PingPongLightSettings::hexToRgb($this->animation['color']);
+        $step = self::strobeStepMs($this->animation['speed']);
+        $lit = true;
 
-        return $this->wait($this->animation['duration_ms']);
+        for ($elapsed = 0; $elapsed < $this->animation['duration_ms']; $elapsed += $step, $lit = ! $lit) {
+            $client->turnOnColor($entity, $rgb, $lit ? $this->animation['brightness'] : 1);
+            if (! $this->wait($step)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
-    public static function strobingKey(int $officeId): string
+    /**
+     * How long each strobe step lasts: 150 ms at speed 100, up to 1 s at speed 1. The page's
+     * preview uses the same numbers.
+     */
+    public static function strobeStepMs(int $speed): int
     {
-        return "ping-pong-lights:{$officeId}:strobing";
+        $speed = max(1, min(100, $speed));
+
+        return (int) round(1000 - ($speed - 1) * 850 / 99);
     }
 
     /**
@@ -181,10 +197,6 @@ class PlayLightAnimationJob implements ShouldBeEncrypted, ShouldQueue
      */
     private function putBack(HomeAssistantClient $client, string $entity, array $resting): void
     {
-        if (Cache::pull(self::strobingKey($this->officeId))) {
-            $client->stopStrobe($entity);
-        }
-
         if (isset($resting['scene'])) {
             $client->restoreSnapshot($resting['scene']);
 

@@ -133,7 +133,7 @@
                                                 class="px-3 py-1.5 transition" :class="form.animations[event.key].style === 'strobe' ? 'bg-indigo-600 text-white' : 'text-white/60 hover:bg-white/10'">Strobe</button>
                                     </div>
                                     <span class="text-xs text-white/40" x-text="form.animations[event.key].style === 'strobe'
-                                        ? 'The strip strobes by itself, fast. Needs the light through rustuya (local Tuya).'
+                                        ? 'Fast flashes for the duration. Needs a light that answers fast (local, e.g. rustuya): through the Tuya cloud it lags.'
                                         : 'The Hub turns the colour on and off, step by step.'"></span>
                                 </div>
                                 <div x-show="form.animations[event.key].style === 'strobe'" class="grid grid-cols-2 gap-3 mt-3">
@@ -287,8 +287,8 @@
                     const step = (fn) => this.previewTimers.push(setTimeout(fn, at));
                     this.previewLabel = `${event === 'win' ? 'Match won' : 'Point'}, ${side}`;
                     if (a.style === 'strobe') {
-                        // Roughly the strip's pace: 100 ≈ 10 changes a second, slower as speed drops.
-                        const half = Math.round(100 + (100 - (Number(a.speed) || 100)) * 9);
+                        // Same steps as the light (PlayLightAnimationJob::strobeStepMs): 150 ms at 100, 1 s at 1.
+                        const half = Math.round(1000 - ((Math.min(100, Math.max(1, Number(a.speed) || 100))) - 1) * 850 / 99);
                         for (let t = 0, on = true; t < (Number(a.duration_ms) || 0); t += half, on = !on) {
                             const lit = on;
                             step(() => (this.previewColor = lit ? color : null));

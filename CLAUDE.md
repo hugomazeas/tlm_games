@@ -172,12 +172,12 @@ goes back as it was. Score corrections (decrement) never fire.
   `scene.turn_on`, so every setting returns (colour mode, effect, brightness, off); if the snapshot
   fails, the state read from `/api/states` is put back instead. The saved state stays in the cache
   until a job restores it, so a burst of points ends on the real state. Never throws into scoring.
-- **Styles** (per event, `animations.{event}.style`): `flash` (the Hub sends each colour change)
-  or `strobe` (the strip's own Tuya scene, fast: `rustuya.send_command` sets data point 21 to
-  `scene` and 25 to `TuyaScene::strobe()`, the colour and black jumping at `speed`, for
-  `duration_ms`; the restore sets 21 back to `colour` first). Strobe needs the light from the
-  local **rustuya** integration (Quebec: `light.strip_light_1`; `light.ping_pong_strip_light` is the
-  same strip through the Tuya cloud). The scene format was checked on the Quebec strip.
+- **Styles** (per event, `animations.{event}.style`): `flash` (the colour on, then off between
+  flashes, `flashes` × `on_ms`/`off_ms`) or `strobe` (fast: the colour at full brightness and at 1%
+  alternating every `strobeStepMs(speed)`, 150 ms at 100 to 1 s at 1, for `duration_ms`). Strobe
+  needs a light that answers fast: Quebec's is local through the **rustuya** integration
+  (`light.strip_light_1`, ~20 ms a command); through the Tuya cloud the steps lag. The strip's own
+  Tuya scenes (data points 21/25) were tried and play a slow LED-by-LED transition: not used.
 - Tests: `tests/Feature/PingPongLightsTest.php`.
 
 ### Hot Potato (live game sidecar)
